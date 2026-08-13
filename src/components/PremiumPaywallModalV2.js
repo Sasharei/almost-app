@@ -23,6 +23,10 @@ const PRIMARY_PLAN_IDS =
 const FREE_TRIAL_DISPLAY_PLAN_ID = "yearly";
 const TRANSACTION_ABANDONED_TRIGGER = "transaction_abandoned";
 const PAYWALL_DISMISS_COOLDOWN_MS = 5000;
+const PAYWALL_SCROLL_EVENT_THRESHOLD_Y = 96;
+const PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER = 1.35;
+const PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER = 1.2;
+const PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE = 1.25;
 const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
     "Неограниченные сохранения без дневного лимита",
@@ -648,10 +652,14 @@ const AdaptivePaywallText = ({
   numberOfLines = 1,
   minFontSize = 12,
   maxUnitsPerLine = 18,
+  allowFontScaling = true,
+  maxFontSizeMultiplier = PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER,
   ...props
 }) => (
   <Text
     {...props}
+    allowFontScaling={allowFontScaling}
+    maxFontSizeMultiplier={maxFontSizeMultiplier}
     style={[
       style,
       getAdaptiveTextMetrics({ children, style, numberOfLines, minFontSize, maxUnitsPerLine }),
@@ -680,6 +688,7 @@ const PremiumPaywallModalV2 = ({
   onTermsPress = () => {},
   onPrivacyPress = () => {},
   onAbandonedOfferWheelEvent = () => {},
+  onScrollPastThreshold = () => {},
   onClose = () => {},
   language = "en",
   safeAreaTopInset = 0,
@@ -688,13 +697,15 @@ const PremiumPaywallModalV2 = ({
   premiumAccent = null,
   statusBarOverlay = null,
 }) => {
-  const { height: viewportHeight } = useWindowDimensions();
+  const { height: viewportHeight, fontScale } = useWindowDimensions();
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
   const [dismissCooldownComplete, setDismissCooldownComplete] = useState(false);
   const [abandonedWheelClaimed, setAbandonedWheelClaimed] = useState(false);
   const [abandonedWheelStage, setAbandonedWheelStage] = useState("idle");
+  const [stickyFooterHeight, setStickyFooterHeight] = useState(0);
   const mainScrollRef = useRef(null);
+  const scrollThresholdReportedRef = useRef(false);
   const planListOffsetYRef = useRef(0);
   const planCardOffsetsRef = useRef(new Map());
 
@@ -704,6 +715,10 @@ const PremiumPaywallModalV2 = ({
   }, [copyProp]);
 
   const rtl = isRtlLanguage(language);
+  const isAccessibilityText = fontScale >= PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE;
+  const dynamicTypeLayoutKey = `${isAccessibilityText ? "accessibility" : "standard"}-${Number(
+    fontScale || 1
+  ).toFixed(2)}`;
   const resolvedSafeTopInset = Math.max(0, Number(safeAreaTopInset) || 0);
   const resolvedSafeBottomInset = Math.max(0, Number(safeAreaBottomInset) || 0);
   const normalizedStatusMessage = sanitizeLabel(statusMessage);
@@ -711,11 +726,11 @@ const PremiumPaywallModalV2 = ({
   const compactTier = useMemo(() => {
     if (viewportHeight <= 730) {
       return {
-        heroHeight: 132,
+        heroHeight: 144,
         featureCount: 5,
-        featureVerticalPad: 5,
-        planVerticalPad: 5,
-        ctaHeight: 46,
+        featureVerticalPad: 3,
+        planVerticalPad: 3,
+        ctaHeight: 48,
       };
     }
     if (viewportHeight <= 820) {
@@ -755,7 +770,7 @@ const PremiumPaywallModalV2 = ({
     () => ({
       backdrop: "rgba(12,12,16,0.58)",
       sheetBg: colors?.background || (isDarkMode ? "#11141C" : "#F7F8FC"),
-      heroBg: colors?.surfaceMuted || colors?.card || (isDarkMode ? "#1A2030" : "#EEF1F8"),
+      heroBg: "#FBF7F1",
       cardBg: colors?.card || (isDarkMode ? "#1A2030" : "#FFFFFF"),
       cardBorder: colors?.border || (isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(16,24,40,0.11)"),
       cardSelectedBg: colors?.primarySurface || colors?.surfaceElevated || colors?.card || (isDarkMode ? "#222C40" : "#F1F3F8"),
@@ -960,6 +975,17 @@ const PremiumPaywallModalV2 = ({
   );
   const shouldShowFreeTrialToggle = hasAnyTrialOffer && !!freeTrialDisplayPlan?.id;
   const canDismiss = dismissible && dismissCooldownComplete;
+  const stickyFooterBottomInset = 6 + resolvedSafeBottomInset;
+  const transparentScrollTail =
+    Math.max(compactTier.ctaHeight, stickyFooterHeight) + stickyFooterBottomInset + 18;
+
+  const handleStickyFooterLayout = useCallback((event) => {
+    const nextHeight = Math.max(0, Number(event?.nativeEvent?.layout?.height) || 0);
+    if (!(nextHeight > 0)) return;
+    setStickyFooterHeight((currentHeight) =>
+      Math.abs(currentHeight - nextHeight) < 0.5 ? currentHeight : nextHeight
+    );
+  }, []);
 
   const primaryButtonLabel = useMemo(() => {
     if (!selectedPlan) return sanitizeLabel(copy?.ctaPrimary || localizedUi.ctaPrimary);
@@ -1038,6 +1064,21 @@ const PremiumPaywallModalV2 = ({
     onClose("continue_limited");
   }, [canDismiss, onClose]);
 
+  useEffect(() => {
+    scrollThresholdReportedRef.current = false;
+  }, [visible]);
+
+  const handleMainScroll = useCallback(
+    (event) => {
+      if (scrollThresholdReportedRef.current) return;
+      const offsetY = Math.max(0, Number(event?.nativeEvent?.contentOffset?.y) || 0);
+      if (offsetY < PAYWALL_SCROLL_EVENT_THRESHOLD_Y) return;
+      scrollThresholdReportedRef.current = true;
+      onScrollPastThreshold({ offsetY });
+    },
+    [onScrollPastThreshold]
+  );
+
   const scrollToPlanCard = useCallback((planId = "") => {
     const normalizedPlanId = normalizePlanId(planId);
     const scrollView = mainScrollRef.current;
@@ -1115,7 +1156,7 @@ const PremiumPaywallModalV2 = ({
             {
               backgroundColor: palette.sheetBg,
               paddingTop: 2 + Math.min(8, resolvedSafeTopInset),
-              paddingBottom: 6 + Math.min(10, resolvedSafeBottomInset),
+              paddingBottom: 0,
             },
           ]}
         >
@@ -1136,7 +1177,12 @@ const PremiumPaywallModalV2 = ({
                       { backgroundColor: palette.subtleButtonBg },
                     ]}
                   >
-                    <Text style={[styles.headerDismissIconText, { color: palette.muted }]}>×</Text>
+                    <Text
+                      allowFontScaling={false}
+                      style={[styles.headerDismissIconText, { color: palette.muted }]}
+                    >
+                      ×
+                    </Text>
                   </View>
                 </TouchableOpacity>
               ) : null}
@@ -1146,9 +1192,14 @@ const PremiumPaywallModalV2 = ({
           <ScrollView
             ref={mainScrollRef}
             style={styles.mainScroll}
-            contentContainerStyle={styles.mainScrollContent}
-            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.mainScrollContent,
+              { paddingBottom: transparentScrollTail },
+            ]}
+            showsVerticalScrollIndicator
             bounces={false}
+            scrollEventThrottle={16}
+            onScroll={handleMainScroll}
           >
             <View
               style={[
@@ -1160,7 +1211,7 @@ const PremiumPaywallModalV2 = ({
                 },
               ]}
             >
-              <Image source={HERO_REFERENCE_VISUAL} style={styles.heroVisual} resizeMode="cover" />
+              <Image source={HERO_REFERENCE_VISUAL} style={styles.heroVisual} resizeMode="contain" />
             </View>
 
             <View style={styles.copyBlock}>
@@ -1218,7 +1269,11 @@ const PremiumPaywallModalV2 = ({
             </View>
 
             {!!benefitsTitle ? (
-              <Text style={[styles.featuresTitle, { color: palette.text }, textAlignStyle]}>
+              <Text
+                allowFontScaling
+                maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                style={[styles.featuresTitle, { color: palette.text }, textAlignStyle]}
+              >
                 {benefitsTitle}
               </Text>
             ) : null}
@@ -1258,10 +1313,20 @@ const PremiumPaywallModalV2 = ({
                         },
                       ]}
                     >
-                      <Text style={[styles.featureTokenCheck, { color: palette.accent }]}>✓</Text>
+                      <Text
+                        allowFontScaling={false}
+                        style={[styles.featureTokenCheck, { color: palette.accent }]}
+                      >
+                        ✓
+                      </Text>
                     </View>
 
-                    <Text style={[styles.featureLabel, { color: palette.text }, textAlignStyle]} numberOfLines={2}>
+                    <Text
+                      allowFontScaling
+                      maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                      style={[styles.featureLabel, { color: palette.text }, textAlignStyle]}
+                      numberOfLines={isAccessibilityText ? 4 : 2}
+                    >
                       {label}
                     </Text>
                   </RowComponent>
@@ -1287,14 +1352,18 @@ const PremiumPaywallModalV2 = ({
               >
                 <View style={[styles.freeTrialToggleTextBlock, rtl ? styles.freeTrialToggleTextBlockRtl : null]}>
                   <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
                     style={[styles.freeTrialToggleTitle, { color: palette.text }, textAlignStyle]}
-                    numberOfLines={1}
+                    numberOfLines={isAccessibilityText ? 2 : 1}
                   >
                     {freeTrialToggleTitle}
                   </Text>
                   <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
                     style={[styles.freeTrialToggleSubtitle, { color: palette.muted }, textAlignStyle]}
-                    numberOfLines={2}
+                    numberOfLines={isAccessibilityText ? 3 : 2}
                   >
                     {freeTrialToggleSubtitle}
                   </Text>
@@ -1319,6 +1388,7 @@ const PremiumPaywallModalV2 = ({
             ) : null}
 
             <View
+              key={dynamicTypeLayoutKey}
               style={styles.planList}
               onLayout={(event) => {
                 planListOffsetYRef.current = event.nativeEvent.layout.y;
@@ -1400,10 +1470,21 @@ const PremiumPaywallModalV2 = ({
                     accessibilityLabel={`${titleLabel} ${planPriceLine || ""} ${planDetailLine || ""}`.trim()}
                     accessibilityState={{ selected, disabled: plan?.available === false }}
                   >
-                    <View style={[styles.planMainRow, rtl ? styles.planMainRowRtl : null]}>
+                    <View
+                      style={[
+                        styles.planMainRow,
+                        rtl && !isAccessibilityText ? styles.planMainRowRtl : null,
+                        isAccessibilityText ? styles.planMainRowAccessibility : null,
+                      ]}
+                    >
                       <View
                         style={[
                           styles.planSelector,
+                          isAccessibilityText
+                            ? rtl
+                              ? styles.planSelectorAccessibilityRtl
+                              : styles.planSelectorAccessibility
+                            : null,
                           {
                             borderColor: selected ? palette.cardSelectedBorder : palette.cardBorder,
                             backgroundColor: selected ? palette.cardSelectedBorder : "transparent",
@@ -1411,12 +1492,30 @@ const PremiumPaywallModalV2 = ({
                         ]}
                       >
                         {selected ? (
-                          <Text style={[styles.planSelectorTick, { color: palette.bestValueText }]}>✓</Text>
+                          <Text
+                            allowFontScaling={false}
+                            style={[styles.planSelectorTick, { color: palette.bestValueText }]}
+                          >
+                            ✓
+                          </Text>
                         ) : null}
                       </View>
 
-                      <View style={[styles.planContent, rtl ? styles.planContentRtl : null]}>
-                        <View style={[styles.planTitleRow, rtl ? styles.planTitleRowRtl : null]}>
+                      <View
+                        style={[
+                          styles.planContent,
+                          rtl ? styles.planContentRtl : null,
+                          isAccessibilityText ? styles.planContentAccessibility : null,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.planTitleRow,
+                            rtl && !isAccessibilityText ? styles.planTitleRowRtl : null,
+                            isAccessibilityText ? styles.planTitleRowAccessibility : null,
+                            isAccessibilityText && rtl ? styles.planTitleRowAccessibilityRtl : null,
+                          ]}
+                        >
                           <AdaptivePaywallText
                             style={[
                               styles.planTitle,
@@ -1424,7 +1523,7 @@ const PremiumPaywallModalV2 = ({
                               { color: palette.text },
                               textAlignStyle,
                             ]}
-                            numberOfLines={1}
+                            numberOfLines={isAccessibilityText ? 2 : 1}
                             minFontSize={12}
                             maxUnitsPerLine={16}
                           >
@@ -1434,6 +1533,10 @@ const PremiumPaywallModalV2 = ({
                             <View
                               style={[
                                 styles.planValueBadge,
+                                isAccessibilityText ? styles.planValueBadgeAccessibility : null,
+                                isAccessibilityText && rtl
+                                  ? styles.planValueBadgeAccessibilityRtl
+                                  : null,
                                 {
                                   backgroundColor: palette.bestValueBg,
                                 },
@@ -1442,6 +1545,10 @@ const PremiumPaywallModalV2 = ({
                               <AdaptivePaywallText
                                 style={[styles.planValueBadgeText, { color: palette.bestValueText }]}
                                 numberOfLines={1}
+                                maxFontSizeMultiplier={1}
+                                adjustsFontSizeToFit
+                                minimumFontScale={0.9}
+                                ellipsizeMode="clip"
                                 minFontSize={8}
                                 maxUnitsPerLine={16}
                               >
@@ -1458,7 +1565,7 @@ const PremiumPaywallModalV2 = ({
                               { color: palette.muted },
                               textAlignStyle,
                             ]}
-                            numberOfLines={1}
+                            numberOfLines={isAccessibilityText ? 2 : 1}
                             minFontSize={10}
                             maxUnitsPerLine={24}
                           >
@@ -1468,7 +1575,13 @@ const PremiumPaywallModalV2 = ({
                       </View>
 
                       {!!planPriceLine ? (
-                        <View style={[styles.planPriceBlock, rtl ? styles.planPriceBlockRtl : null]}>
+                        <View
+                          style={[
+                            styles.planPriceBlock,
+                            rtl ? styles.planPriceBlockRtl : null,
+                            isAccessibilityText ? styles.planPriceBlockAccessibility : null,
+                          ]}
+                        >
                           <AdaptivePaywallText
                             style={[
                               styles.planPrice,
@@ -1478,7 +1591,7 @@ const PremiumPaywallModalV2 = ({
                                 textAlign: rtl ? "left" : "right",
                               },
                             ]}
-                            numberOfLines={1}
+                            numberOfLines={isAccessibilityText ? 2 : 1}
                             minFontSize={12}
                             maxUnitsPerLine={18}
                           >
@@ -1492,26 +1605,192 @@ const PremiumPaywallModalV2 = ({
               })}
             </View>
 
+            <View style={styles.scrollFooter}>
+              {!!selectedPlanTrialNotice ? (
+                <View style={[styles.trialDisclosureBlock, { backgroundColor: palette.chipBg }]}>
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.trialDisclosureText, { color: palette.text }, textAlignStyle]}
+                    numberOfLines={isAccessibilityText ? undefined : 4}
+                  >
+                    {selectedPlanTrialNotice}
+                  </Text>
+                </View>
+              ) : null}
+
+              {!!noCommitmentLine ? (
+                <View style={[styles.trustRow, rtl ? styles.trustRowRtl : null]}>
+                  <View style={[styles.trustIcon, { backgroundColor: palette.chipBg }]}>
+                    <Text
+                      allowFontScaling={false}
+                      style={[styles.trustIconText, { color: palette.success }]}
+                    >
+                      ✓
+                    </Text>
+                  </View>
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.trustText, { color: palette.text }, textAlignStyle]}
+                    numberOfLines={isAccessibilityText ? undefined : 2}
+                  >
+                    {noCommitmentLine}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.offerDisclosureBlock}>
+                {!!billingNotice && !selectedPlanHasActiveTrial ? (
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
+                    numberOfLines={isAccessibilityText ? undefined : 2}
+                  >
+                    {billingNotice}
+                  </Text>
+                ) : null}
+                {!!legalNotice ? (
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
+                    numberOfLines={isAccessibilityText ? undefined : 2}
+                  >
+                    {legalNotice}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View
+                style={[
+                  styles.secondaryButtonsRow,
+                  isAccessibilityText ? styles.secondaryButtonsColumn : null,
+                ]}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    isAccessibilityText ? styles.secondaryButtonAccessibility : null,
+                    {
+                      backgroundColor: palette.subtleButtonBg,
+                      borderColor: palette.cardBorder,
+                    },
+                  ]}
+                  onPress={() => onRestorePress({ source: "restore_button" })}
+                  disabled={!!purchaseLoadingPlan || restoring}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={copy?.ctaRestore || localizedUi.restore}
+                >
+                  {restoring ? (
+                    <ActivityIndicator size="small" color={palette.subtleButtonText} />
+                  ) : (
+                    <Text
+                      allowFontScaling
+                      maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                      numberOfLines={2}
+                      style={[
+                        styles.secondaryButtonText,
+                        { color: palette.subtleButtonText },
+                        textAlignStyle,
+                      ]}
+                    >
+                      {copy?.ctaRestore || localizedUi.restore}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryButton,
+                    isAccessibilityText ? styles.secondaryButtonAccessibility : null,
+                    {
+                      backgroundColor: palette.subtleButtonBg,
+                      borderColor: palette.cardBorder,
+                    },
+                  ]}
+                  onPress={() => onManagePress({ source: "manage_button" })}
+                  disabled={!!purchaseLoadingPlan || restoring}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={copy?.ctaManage || localizedUi.manage}
+                >
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    numberOfLines={2}
+                    style={[
+                      styles.secondaryButtonText,
+                      { color: palette.subtleButtonText },
+                      textAlignStyle,
+                    ]}
+                  >
+                    {copy?.ctaManage || localizedUi.manage}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View
+                style={[
+                  styles.legalLinksRow,
+                  isAccessibilityText ? styles.legalLinksRowAccessibility : null,
+                  { borderTopColor: palette.divider },
+                ]}
+              >
+                <TouchableOpacity
+                  onPress={() => onTermsPress({ source: "terms_link" })}
+                  activeOpacity={0.82}
+                  accessibilityRole="link"
+                  accessibilityLabel={copy?.legalTermsLabel || localizedUi.terms}
+                >
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}
+                  >
+                    {copy?.legalTermsLabel || localizedUi.terms}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text
+                  allowFontScaling={false}
+                  style={[styles.legalSeparator, { color: palette.muted }]}
+                >
+                  |
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => onPrivacyPress({ source: "privacy_link" })}
+                  activeOpacity={0.82}
+                  accessibilityRole="link"
+                  accessibilityLabel={copy?.legalPrivacyLabel || localizedUi.privacy}
+                >
+                  <Text
+                    allowFontScaling
+                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
+                    style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}
+                  >
+                    {copy?.legalPrivacyLabel || localizedUi.privacy}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </ScrollView>
 
-          <View style={styles.footer}>
-            {!!selectedPlanTrialNotice ? (
-              <View style={[styles.trialDisclosureBlock, { backgroundColor: palette.chipBg }]}>
-                <Text
-                  style={[styles.trialDisclosureText, { color: palette.text }, textAlignStyle]}
-                  numberOfLines={4}
-                >
-                  {selectedPlanTrialNotice}
-                </Text>
-              </View>
-            ) : null}
-
+          <View
+            pointerEvents="box-none"
+            collapsable={false}
+            onLayout={handleStickyFooterLayout}
+            style={[styles.footer, { bottom: stickyFooterBottomInset }]}
+          >
             <TouchableOpacity
               style={[
                 styles.primaryButton,
                 {
                   backgroundColor: purchaseDisabled ? "rgba(248,141,57,0.48)" : palette.ctaBg,
-                  minHeight: compactTier.ctaHeight,
+                  height: compactTier.ctaHeight,
                 },
               ]}
               onPress={handlePrimaryPress}
@@ -1524,98 +1803,18 @@ const PremiumPaywallModalV2 = ({
               {purchaseLoadingPlan ? (
                 <ActivityIndicator color={palette.ctaText} size="small" />
               ) : (
-                <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
+                <Text
+                  allowFontScaling
+                  maxFontSizeMultiplier={PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  numberOfLines={1}
+                  style={styles.primaryButtonText}
+                >
+                  {primaryButtonLabel}
+                </Text>
               )}
             </TouchableOpacity>
-
-            {!!noCommitmentLine ? (
-              <View style={[styles.trustRow, rtl ? styles.trustRowRtl : null]}>
-                <View style={[styles.trustIcon, { backgroundColor: palette.chipBg }]}>
-                  <Text style={[styles.trustIconText, { color: palette.success }]}>✓</Text>
-                </View>
-                <Text
-                  style={[styles.trustText, { color: palette.text }, textAlignStyle]}
-                  numberOfLines={2}
-                >
-                  {noCommitmentLine}
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.offerDisclosureBlock}>
-              {!!billingNotice && !selectedPlanHasActiveTrial ? (
-                <Text
-                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
-                  numberOfLines={2}
-                >
-                  {billingNotice}
-                </Text>
-              ) : null}
-              {!!legalNotice ? (
-                <Text
-                  style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
-                  numberOfLines={2}
-                >
-                  {legalNotice}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.secondaryButtonsRow}>
-              <TouchableOpacity
-                style={[
-                  styles.secondaryButton,
-                  {
-                    backgroundColor: palette.subtleButtonBg,
-                    borderColor: palette.cardBorder,
-                  },
-                ]}
-                onPress={() => onRestorePress({ source: "restore_button" })}
-                disabled={!!purchaseLoadingPlan || restoring}
-                activeOpacity={0.85}
-              >
-                {restoring ? (
-                  <ActivityIndicator size="small" color={palette.subtleButtonText} />
-                ) : (
-                  <Text style={[styles.secondaryButtonText, { color: palette.subtleButtonText }, textAlignStyle]}>
-                    {copy?.ctaRestore || localizedUi.restore}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.secondaryButton,
-                  {
-                    backgroundColor: palette.subtleButtonBg,
-                    borderColor: palette.cardBorder,
-                  },
-                ]}
-                onPress={() => onManagePress({ source: "manage_button" })}
-                disabled={!!purchaseLoadingPlan || restoring}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.secondaryButtonText, { color: palette.subtleButtonText }, textAlignStyle]}>
-                  {copy?.ctaManage || localizedUi.manage}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={[styles.legalLinksRow, { borderTopColor: palette.divider }]}>
-              <TouchableOpacity onPress={() => onTermsPress({ source: "terms_link" })} activeOpacity={0.82}>
-                <Text style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}>
-                  {copy?.legalTermsLabel || localizedUi.terms}
-                </Text>
-              </TouchableOpacity>
-
-              <Text style={[styles.legalSeparator, { color: palette.muted }]}>|</Text>
-
-              <TouchableOpacity onPress={() => onPrivacyPress({ source: "privacy_link" })} activeOpacity={0.82}>
-                <Text style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}>
-                  {copy?.legalPrivacyLabel || localizedUi.privacy}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
           {abandonedWheelActive ? (
             <View
@@ -1686,7 +1885,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   mainScrollContent: {
-    paddingBottom: 4,
+    paddingBottom: 0,
   },
   headerRow: {
     flexDirection: "row",
@@ -1875,12 +2074,20 @@ const styles = StyleSheet.create({
   planMainRowRtl: {
     flexDirection: "row-reverse",
   },
+  planMainRowAccessibility: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 8,
+  },
   planContent: {
     flex: 1,
     minWidth: 0,
   },
   planContentRtl: {
     alignItems: "flex-end",
+  },
+  planContentAccessibility: {
+    width: "100%",
   },
   planTitleRow: {
     flexDirection: "row",
@@ -1891,11 +2098,27 @@ const styles = StyleSheet.create({
   planTitleRowRtl: {
     flexDirection: "row-reverse",
   },
+  planTitleRowAccessibility: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+  },
+  planTitleRowAccessibilityRtl: {
+    alignItems: "flex-end",
+  },
   planValueBadge: {
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 3,
     maxWidth: "52%",
+  },
+  planValueBadgeAccessibility: {
+    maxWidth: "100%",
+    minWidth: 88,
+    alignSelf: "flex-start",
+  },
+  planValueBadgeAccessibilityRtl: {
+    alignSelf: "flex-end",
   },
   planValueBadgeText: {
     fontSize: 8,
@@ -1923,6 +2146,11 @@ const styles = StyleSheet.create({
   planPriceBlockRtl: {
     alignItems: "flex-start",
   },
+  planPriceBlockAccessibility: {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+  },
   planPrice: {
     fontSize: 16,
     lineHeight: 20,
@@ -1937,14 +2165,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
+  planSelectorAccessibility: {
+    alignSelf: "flex-start",
+  },
+  planSelectorAccessibilityRtl: {
+    alignSelf: "flex-end",
+  },
   planSelectorTick: {
     fontSize: 12,
     lineHeight: 14,
     fontWeight: "900",
   },
   footer: {
-    paddingTop: 1,
+    position: "absolute",
+    left: 16,
+    right: 16,
     alignItems: "stretch",
+    zIndex: 4,
+    elevation: 4,
+  },
+  scrollFooter: {
+    paddingTop: 2,
+    paddingBottom: 4,
+    paddingHorizontal: 2,
+    width: "100%",
+    minWidth: 0,
   },
   primaryButton: {
     borderRadius: 14,
@@ -1995,12 +2240,16 @@ const styles = StyleSheet.create({
   offerDisclosureBlock: {
     marginTop: 5,
     rowGap: 2,
+    width: "100%",
+    minWidth: 0,
   },
   offerDisclosureText: {
     textAlign: "center",
     fontSize: 10,
     lineHeight: 13,
     fontWeight: "600",
+    width: "100%",
+    flexShrink: 1,
   },
   trialDisclosureBlock: {
     marginBottom: 8,
@@ -2020,6 +2269,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     columnGap: 8,
   },
+  secondaryButtonsColumn: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    rowGap: 8,
+    columnGap: 0,
+  },
   secondaryButton: {
     flex: 1,
     minHeight: Platform.OS === "ios" ? 44 : 48,
@@ -2028,6 +2283,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
+  },
+  secondaryButtonAccessibility: {
+    flex: 0,
+    width: "100%",
+    paddingVertical: 7,
   },
   secondaryButtonText: {
     textAlign: "center",
@@ -2042,6 +2302,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+  },
+  legalLinksRowAccessibility: {
+    flexWrap: "wrap",
+    rowGap: 6,
   },
   legalLinkText: {
     fontSize: 13,

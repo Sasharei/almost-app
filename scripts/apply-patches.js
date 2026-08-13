@@ -31,10 +31,6 @@ const patches = [
     dest: 'node_modules/expo/scripts/autolinking.gradle',
   },
   {
-    src: 'patches/expo-file-system/ios/FileSystemModule.swift',
-    dest: 'node_modules/expo-file-system/ios/FileSystemModule.swift',
-  },
-  {
     src: 'patches/expo-constants/scripts/get-app-config-android.gradle',
     dest: 'node_modules/expo-constants/scripts/get-app-config-android.gradle',
   },
@@ -45,10 +41,6 @@ const patches = [
   {
     src: 'patches/@react-native-community/blur/android/src/main/java/com/reactnativecommunity/blurview/BlurViewManagerImpl.java',
     dest: 'node_modules/@react-native-community/blur/android/src/main/java/com/reactnativecommunity/blurview/BlurViewManagerImpl.java',
-  },
-  {
-    src: 'patches/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
-    dest: 'node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/service/NotificationForwarderActivity.kt',
   },
   {
     src: 'patches/@react-native/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt',
@@ -63,16 +55,12 @@ const patches = [
     dest: 'node_modules/react-native-gesture-handler/android/build.gradle',
   },
   {
-    src: 'patches/react-native-svg/android/build.gradle',
-    dest: 'node_modules/react-native-svg/android/build.gradle',
-  },
-  {
     src: 'patches/react-native-reanimated/android/build.gradle',
     dest: 'node_modules/react-native-reanimated/android/build.gradle',
   },
   {
-    src: 'patches/react-native-worklets/android/build.gradle',
-    dest: 'node_modules/react-native-worklets/android/build.gradle',
+    src: 'patches/react-native-reanimated/android/CMakeLists.txt',
+    dest: 'node_modules/react-native-reanimated/android/CMakeLists.txt',
   },
   {
     src: 'patches/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
@@ -127,20 +115,32 @@ const patches = [
     dest: 'node_modules/react-native/Libraries/Share/Share.js',
   },
   {
+    src: 'patches/react-native/Libraries/Text/TextNativeComponent.js',
+    dest: 'node_modules/react-native/Libraries/Text/TextNativeComponent.js',
+  },
+  {
     src: 'patches/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
     dest: 'node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.kt',
   },
+];
+
+const contentPatches = [
   {
-    src: 'patches/@sentry/react-native/android/build.gradle',
-    dest: 'node_modules/@sentry/react-native/android/build.gradle',
-  },
-  {
-    src: 'patches/@sentry/react-native/ios/RNSentry.mm',
-    dest: 'node_modules/@sentry/react-native/ios/RNSentry.mm',
-  },
-  {
-    src: 'patches/@sentry/react-native/RNSentry.podspec',
-    dest: 'node_modules/@sentry/react-native/RNSentry.podspec',
+    dest: 'node_modules/metro/src/Assets.js',
+    replacements: [
+      [
+        'var _imageSize = _interopRequireDefault(require("image-size"));',
+        'var _imageSize = _interopRequireWildcard(require("image-size"));',
+      ],
+      [
+        'function isAssetTypeAnImage(type) {',
+        '(0, _imageSize.disableTypes)(["heif", "icns", "jxl", "jxl-stream"]);\nfunction isAssetTypeAnImage(type) {',
+      ],
+      [
+        '    : assetInfo.files[0];',
+        '    : _fs.default.readFileSync(assetInfo.files[0]);',
+      ],
+    ],
   },
 ];
 
@@ -158,6 +158,24 @@ for (const { src, dest } of patches) {
   const destDir = path.dirname(absoluteDest);
   fs.mkdirSync(destDir, { recursive: true });
   fs.copyFileSync(absoluteSrc, absoluteDest);
+  applied += 1;
+}
+
+for (const { dest, replacements } of contentPatches) {
+  const absoluteDest = path.join(projectRoot, dest);
+  let content = fs.readFileSync(absoluteDest, 'utf8');
+
+  for (const [before, after] of replacements) {
+    if (content.includes(after)) {
+      continue;
+    }
+    if (!content.includes(before)) {
+      throw new Error(`[patches] Expected content missing in ${dest}: ${before}`);
+    }
+    content = content.replace(before, after);
+  }
+
+  fs.writeFileSync(absoluteDest, content);
   applied += 1;
 }
 

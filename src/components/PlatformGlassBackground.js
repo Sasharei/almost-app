@@ -29,9 +29,14 @@ const PlatformGlassBackground = ({
   borderColor,
   androidIntensity = 42,
   iosFallbackIntensity = 54,
+  nativeEffectOpacity = 1,
 }) => {
   const { reduceTransparency } = useMotionPreferences();
   const nativeLiquidGlassAvailable = canUseNativeLiquidGlass();
+  const resolvedNativeEffectOpacity = Math.max(
+    0.01,
+    Math.min(1, Number(nativeEffectOpacity) || 1)
+  );
   const resolvedFallbackColor =
     fallbackColor || (isDarkTheme ? "rgba(11,17,29,0.58)" : "rgba(248,251,255,0.5)");
   const resolvedSolidColor =
@@ -61,21 +66,37 @@ const PlatformGlassBackground = ({
 
   if (nativeLiquidGlassAvailable) {
     return (
-      <GlassView
+      <View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, styles.frame, style]}
-        glassEffectStyle={glassEffectStyle}
-        tintColor={tintColor}
-        colorScheme={isDarkTheme ? "dark" : "light"}
-        isInteractive={false}
-      />
+        style={[
+          StyleSheet.absoluteFillObject,
+          styles.frame,
+          style,
+        ]}
+      >
+        <GlassView
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { opacity: resolvedNativeEffectOpacity },
+          ]}
+          glassEffectStyle={glassEffectStyle}
+          tintColor={tintColor}
+          colorScheme={isDarkTheme ? "dark" : "light"}
+          isInteractive={false}
+        />
+      </View>
     );
   }
 
   return (
     <View
       pointerEvents="none"
-      style={[StyleSheet.absoluteFillObject, styles.frame, style]}
+      style={[
+        StyleSheet.absoluteFillObject,
+        styles.frame,
+        style,
+      ]}
     >
       <ExpoBlurView
         pointerEvents="none"

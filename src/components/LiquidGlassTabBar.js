@@ -144,7 +144,11 @@ const LiquidGlassTabBar = ({
   getLabel,
   isDarkTheme = false,
   isProTheme = false,
-  proThemeAccentColor = "#4E6BFF",
+  proThemeAccentColor = "#3E4FD7",
+  proThemeMutedColor = "#565F86",
+  proThemeOnAccentColor = "#FFFFFF",
+  proThemeSurfaceColor = "#DEE4FA",
+  proThemeBorderColor = "#8C9CE8",
   tutorialIsTemptation = false,
   tutorialHighlightTabs,
   isCompactAndroid = false,
@@ -321,11 +325,19 @@ const LiquidGlassTabBar = ({
     [onLayout]
   );
 
-  const activeColor = isDarkTheme ? "#EEF1F6" : isProTheme ? "#18213D" : "#202129";
-  const mutedColor = isDarkTheme ? "rgba(238,241,246,0.68)" : "rgba(32,33,41,0.64)";
+  const activeColor = isDarkTheme
+    ? "#EEF1F6"
+    : isProTheme
+    ? proThemeAccentColor
+    : "#202129";
+  const mutedColor = isDarkTheme
+    ? "rgba(238,241,246,0.68)"
+    : isProTheme
+    ? proThemeMutedColor
+    : "rgba(32,33,41,0.64)";
   const highlightColor = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#356A9A";
   const badgeBackground = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#24262D";
-  const badgeText = isDarkTheme ? "#211A0B" : "#FFFFFF";
+  const badgeText = isDarkTheme ? "#211A0B" : isProTheme ? proThemeOnAccentColor : "#FFFFFF";
   const resolvedTabLabelTextTransform =
     useAndroidLikeVisualStyle ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
   const resolvedTabLabelFontSize = useAndroidLikeVisualStyle
@@ -421,6 +433,11 @@ const LiquidGlassTabBar = ({
             items={tabPayload}
             selectedKey={activeTab}
             isDarkTheme={isDarkTheme}
+            activeColorHex={isProTheme ? proThemeAccentColor : ""}
+            inactiveColorHex={isProTheme ? proThemeMutedColor : ""}
+            surfaceColorHex={isProTheme ? proThemeSurfaceColor : ""}
+            borderColorHex={isProTheme ? proThemeBorderColor : ""}
+            badgeTextColorHex={isProTheme ? proThemeOnAccentColor : ""}
             onTabPress={onTabPress}
           />
         </View>
@@ -606,12 +623,29 @@ const LiquidGlassTabBar = ({
                   />
                 )}
 
-                <TabGlyph tab={tab} color={tabTextColor} />
+                <View style={styles.tabIconSlot}>
+                  <TabGlyph tab={tab} color={tabTextColor} />
+                  {badgeValue > 0 && (
+                    <View style={[styles.badge, { backgroundColor: badgeBackground }]}>
+                      <Text
+                        allowFontScaling
+                        maxFontSizeMultiplier={1.2}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                        style={[styles.badgeText, { color: badgeText }]}
+                      >
+                        {badgeValue > 99 ? "99+" : `${badgeValue}`}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <Text
-                  numberOfLines={1}
+                  numberOfLines={2}
                   allowFontScaling
-                  maxFontSizeMultiplier={1.2}
-                  ellipsizeMode="tail"
+                  maxFontSizeMultiplier={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                  ellipsizeMode="clip"
                   style={[
                     styles.tabLabel,
                     {
@@ -627,19 +661,6 @@ const LiquidGlassTabBar = ({
                   {tabLabel}
                 </Text>
 
-                {badgeValue > 0 && (
-                  <View style={[styles.badge, { backgroundColor: badgeBackground }]}>
-                    <Text
-                      allowFontScaling
-                      maxFontSizeMultiplier={1.2}
-                      accessibilityElementsHidden
-                      importantForAccessibility="no"
-                      style={[styles.badgeText, { color: badgeText }]}
-                    >
-                      {badgeValue > 99 ? "99+" : `${badgeValue}`}
-                    </Text>
-                  </View>
-                )}
               </Pressable>
             );
           })}
@@ -704,6 +725,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
+    overflow: "hidden",
   },
   tabButtonCompact: {
     minHeight: 56,
@@ -711,12 +733,24 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 11,
+    lineHeight: 12,
     letterSpacing: 0.2,
+    width: "100%",
+    paddingHorizontal: 2,
+    textAlign: "center",
+    overflow: "hidden",
+  },
+  tabIconSlot: {
+    width: 32,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
   },
   badge: {
     position: "absolute",
-    top: 2,
-    right: 6,
+    top: -5,
+    right: -7,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -750,6 +784,10 @@ export default React.memo(
     prevProps.isDarkTheme === nextProps.isDarkTheme &&
     prevProps.isProTheme === nextProps.isProTheme &&
     prevProps.proThemeAccentColor === nextProps.proThemeAccentColor &&
+    prevProps.proThemeMutedColor === nextProps.proThemeMutedColor &&
+    prevProps.proThemeOnAccentColor === nextProps.proThemeOnAccentColor &&
+    prevProps.proThemeSurfaceColor === nextProps.proThemeSurfaceColor &&
+    prevProps.proThemeBorderColor === nextProps.proThemeBorderColor &&
     prevProps.tutorialIsTemptation === nextProps.tutorialIsTemptation &&
     areHighlightSetsEqual(prevProps.tutorialHighlightTabs, nextProps.tutorialHighlightTabs) &&
     prevProps.isCompactAndroid === nextProps.isCompactAndroid &&

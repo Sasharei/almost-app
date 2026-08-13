@@ -27,6 +27,8 @@ import { isRtlLanguage } from "../utils/language";
 const STORY_DURATION_MS = 6800;
 const SWIPE_DISTANCE = 52;
 const ARTWORK_FRAME_PADDING = 6;
+const getPlatformFontStyle = (fontFamily, fontWeight) =>
+  Platform.OS === "android" ? { fontWeight } : { fontFamily };
 
 const STORY_ART = Object.freeze({
   welcome: require("../../assets/premium_stories/premium-welcome-scene-v2.webp"),
@@ -587,7 +589,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   brandText: {
-    fontFamily: "Inter_700Bold",
+    ...getPlatformFontStyle("Inter_700Bold", "700"),
     fontSize: 11,
     letterSpacing: 0.55,
     textTransform: "uppercase",
@@ -601,7 +603,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   closeGlyph: {
-    fontFamily: "Inter_400Regular",
+    ...getPlatformFontStyle("Inter_400Regular", "400"),
     fontSize: 28,
     lineHeight: 31,
     marginTop: Platform.OS === "android" ? -3 : -1,
@@ -658,7 +660,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: UI_SPACING.xs,
   },
   title: {
-    fontFamily: "Inter_800ExtraBold",
+    ...getPlatformFontStyle("Inter_800ExtraBold", "800"),
     fontSize: 31,
     lineHeight: 37,
     letterSpacing: -0.65,
@@ -671,7 +673,7 @@ const styles = StyleSheet.create({
   body: {
     maxWidth: 480,
     marginTop: UI_SPACING.sm,
-    fontFamily: "Inter_500Medium",
+    ...getPlatformFontStyle("Inter_500Medium", "500"),
     fontSize: 16,
     lineHeight: 23,
     textAlign: "center",
@@ -701,7 +703,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   nextGlyph: {
-    fontFamily: "Inter_600SemiBold",
+    ...getPlatformFontStyle("Inter_600SemiBold", "600"),
     fontSize: 24,
     lineHeight: 28,
   },
@@ -726,12 +728,12 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   primaryButtonText: {
-    fontFamily: "Inter_700Bold",
+    ...getPlatformFontStyle("Inter_700Bold", "700"),
     fontSize: 16,
     lineHeight: 22,
   },
   primaryArrow: {
-    fontFamily: "Inter_600SemiBold",
+    ...getPlatformFontStyle("Inter_600SemiBold", "600"),
     fontSize: 21,
     lineHeight: 24,
   },

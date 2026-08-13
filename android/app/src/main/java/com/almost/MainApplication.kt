@@ -63,10 +63,10 @@ class MainApplication : Application(), ReactApplication {
     }
   }
 
-  private fun recordFallbackException(error: Throwable) {
+  private fun recordNewArchitectureInitException(error: Throwable) {
     runCatching {
       FirebaseCrashlytics.getInstance().recordException(
-          RuntimeException("RN new architecture init failed; switched to legacy runtime", error)
+          RuntimeException("RN new architecture initialization failed", error)
       )
     }
   }
@@ -107,23 +107,22 @@ class MainApplication : Application(), ReactApplication {
       throw RuntimeException(e)
     }
     if (runtimeNewArchEnabled) {
-      // Keep TurboModules/Fabric, but force bridge mode to avoid null root view crashes on startup.
+      // Reanimated 4 requires the complete New Architecture runtime, including bridgeless mode.
       try {
         DefaultNewArchitectureEntryPoint.load(
             turboModulesEnabled = true,
             fabricEnabled = true,
-            bridgelessEnabled = false
+            bridgelessEnabled = true
         )
       } catch (t: Throwable) {
-        runtimeNewArchEnabled = false
-        setCrashlyticsBooleanKey("rn_new_arch_fallback_triggered", true)
         setCrashlyticsBooleanKey("rn_new_arch_runtime_after_init", runtimeNewArchEnabled)
-        recordFallbackException(t)
+        recordNewArchitectureInitException(t)
         Log.e(
             "MainApplication",
-            "Failed to initialize React Native New Architecture, falling back to legacy runtime.",
+            "Failed to initialize the React Native New Architecture required by Reanimated.",
             t
         )
+        throw RuntimeException("React Native New Architecture initialization failed", t)
       }
     } else {
       setCrashlyticsBooleanKey("rn_new_arch_runtime_after_init", runtimeNewArchEnabled)

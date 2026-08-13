@@ -1,5 +1,62 @@
 # Release Notes
 
+## 7.1.0 (from 7.0.4)
+
+### EN
+- A new rating and feedback flow makes it easier to tell us what works and what needs improvement; support messages can now include helpful app and device diagnostics.
+- Light, Dark, and PRO themes, navigation, dialogs, and the Premium screen have been polished for clearer contrast, spacing, keyboard behavior, and readability.
+- Fixed Android cold-start crashes and improved notification scheduling, image selection and cropping, cross-platform stability, and the clarity of privacy and Terms of Use choices.
+
+### RU
+- Новый сценарий оценки и обратной связи помогает быстрее рассказать, что нравится и что стоит улучшить; обращения в поддержку теперь могут содержать полезную диагностику приложения и устройства.
+- Светлая, тёмная и PRO-темы, навигация, диалоги и экран Premium стали аккуратнее: улучшены контраст, отступы, работа клавиатуры и читаемость.
+- Исправлены сбои при холодном запуске на Android, улучшены уведомления, выбор и обрезка изображений, стабильность на обеих платформах, а также понятность настроек приватности и Условий использования.
+
+### ES
+- Un nuevo flujo de valoración y comentarios facilita contarnos qué funciona y qué debemos mejorar; los mensajes al soporte ahora pueden incluir diagnósticos útiles de la app y el dispositivo.
+- Hemos pulido los temas Claro, Oscuro y PRO, la navegación, los diálogos y la pantalla Premium para mejorar el contraste, los espacios, el comportamiento del teclado y la legibilidad.
+- Corregimos cierres al iniciar Android en frío y mejoramos las notificaciones, la selección y el recorte de imágenes, la estabilidad en ambas plataformas y la claridad de las opciones de privacidad y los Términos de uso.
+
+### FR
+- Un nouveau parcours de notation et de retour facilite le partage de ce qui fonctionne et de ce qui doit être amélioré ; les messages au support peuvent désormais inclure des diagnostics utiles sur l’app et l’appareil.
+- Les thèmes Clair, Sombre et PRO, la navigation, les fenêtres et l’écran Premium ont été affinés pour améliorer le contraste, les espacements, le clavier et la lisibilité.
+- Correction de plantages au démarrage à froid sur Android, avec des améliorations pour les notifications, la sélection et le recadrage d’images, la stabilité sur les deux plateformes et la clarté des choix de confidentialité et des Conditions d’utilisation.
+
+### DE
+- Mit dem neuen Bewertungs- und Feedback-Ablauf kannst du leichter mitteilen, was gut funktioniert und was verbessert werden sollte; Support-Nachrichten können jetzt hilfreiche App- und Gerätediagnosen enthalten.
+- Helles, dunkles und PRO-Design, Navigation, Dialoge und der Premium-Bildschirm wurden für besseren Kontrast, stimmigere Abstände, zuverlässigeres Tastaturverhalten und bessere Lesbarkeit verfeinert.
+- Abstürze beim Kaltstart unter Android wurden behoben. Außerdem wurden Benachrichtigungen, Bildauswahl und -zuschnitt, die Stabilität auf beiden Plattformen sowie die Verständlichkeit der Datenschutzoptionen und Nutzungsbedingungen verbessert.
+
+### PT
+- Um novo fluxo de avaliação e feedback facilita contar o que funciona e o que precisa melhorar; as mensagens ao suporte agora podem incluir diagnósticos úteis do app e do dispositivo.
+- Os temas Claro, Escuro e PRO, a navegação, os diálogos e a tela Premium foram refinados para melhorar contraste, espaçamento, comportamento do teclado e legibilidade.
+- Corrigimos falhas na inicialização a frio no Android e melhoramos notificações, seleção e recorte de imagens, estabilidade nas duas plataformas e a clareza das opções de privacidade e dos Termos de Uso.
+
+### IT
+- Un nuovo flusso per valutazioni e feedback rende più semplice dirci cosa funziona e cosa va migliorato; i messaggi all’assistenza possono ora includere utili dati diagnostici sull’app e sul dispositivo.
+- I temi Chiaro, Scuro e PRO, la navigazione, le finestre e la schermata Premium sono stati rifiniti per migliorare contrasto, spaziatura, comportamento della tastiera e leggibilità.
+- Risolti gli arresti anomali all’avvio a freddo su Android e migliorati notifiche, selezione e ritaglio delle immagini, stabilità su entrambe le piattaforme e chiarezza delle opzioni sulla privacy e dei Termini di utilizzo.
+
+### AR (SA)
+- يسهّل مسار التقييم والملاحظات الجديد إخبارنا بما يعمل جيدًا وما يحتاج إلى تحسين، ويمكن لرسائل الدعم الآن تضمين معلومات تشخيصية مفيدة عن التطبيق والجهاز.
+- حسّنا السمات الفاتحة والداكنة وPRO والتنقّل والنوافذ وشاشة Premium لزيادة وضوح التباين والمسافات وسلوك لوحة المفاتيح وسهولة القراءة.
+- أصلحنا أعطال التشغيل البارد على Android، وحسّنا الإشعارات واختيار الصور واقتصاصها والاستقرار على المنصتين، كما جعلنا خيارات الخصوصية وشروط الاستخدام أوضح.
+
+### AR (AE)
+- يسهّل مسار التقييم والملاحظات الجديد إخبارنا بما يعمل جيدًا وما يحتاج إلى تحسين، ويمكن لرسائل الدعم الآن تضمين معلومات تشخيصية مفيدة عن التطبيق والجهاز.
+- حسّنا السمات الفاتحة والداكنة وPRO والتنقّل والنوافذ وشاشة Premium لزيادة وضوح التباين والمسافات وسلوك لوحة المفاتيح وسهولة القراءة.
+- أصلحنا أعطال التشغيل البارد على Android، وحسّنا الإشعارات واختيار الصور واقتصاصها والاستقرار على المنصتين، كما جعلنا خيارات الخصوصية وشروط الاستخدام أوضح.
+
+### ZH
+- 全新的评分与反馈流程让你更方便地告诉我们哪些体验良好、哪些需要改进；联系支持时还可附上有助于排查问题的应用和设备诊断信息。
+- 优化了浅色、深色和 PRO 主题，以及导航、弹窗和 Premium 页面，改善对比度、间距、键盘交互和可读性。
+- 修复了 Android 冷启动崩溃，并改进通知调度、图片选择与裁剪、双平台稳定性，以及隐私选项和使用条款的清晰度。
+
+### KO
+- 새로운 평가 및 피드백 흐름으로 잘 작동하는 부분과 개선이 필요한 부분을 더 쉽게 알려 줄 수 있으며, 지원 메시지에 문제 해결에 도움이 되는 앱 및 기기 진단 정보도 포함할 수 있습니다.
+- 라이트, 다크, PRO 테마와 탐색, 대화상자, Premium 화면을 다듬어 대비, 간격, 키보드 동작 및 가독성을 개선했습니다.
+- Android 콜드 스타트 충돌을 해결하고 알림 예약, 이미지 선택 및 자르기, 양쪽 플랫폼의 안정성, 개인정보 보호 옵션과 이용 약관의 명확성을 개선했습니다.
+
 ## 7.0.4 (from 7.0.3)
 
 ### EN

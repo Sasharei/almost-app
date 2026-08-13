@@ -71,7 +71,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import * as NavigationBar from "expo-navigation-bar";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { StatusBar } from "expo-status-bar";
 import { BlurView as ExpoBlurView } from "expo-blur";
 import * as SplashScreen from "expo-splash-screen";
@@ -131,7 +131,6 @@ import ViewShot, { captureRef } from "react-native-view-shot";
 import {
   ANALYTICS_SOURCES,
   ANALYTICS_VALUE_UNKNOWN,
-  initAttribution,
   initAnalytics,
   initPerformanceMonitoring,
   logCommercePurchase,
@@ -139,7 +138,6 @@ import {
   logScreenView,
   setAnalyticsOptOut as setAnalyticsOptOutFlag,
   setAppsFlyerAdvertisingIdEnabled as setAppsFlyerAdvertisingIdEnabledFlag,
-  setAppsFlyerPartnerSharingAllowed as setAppsFlyerPartnerSharingAllowedFlag,
   syncAppsFlyerAttributionToRevenueCat,
   setUserProperties,
 } from "./analytics";
@@ -148,6 +146,7 @@ import {
   MotionPreferenceProvider,
   useMotionPreferences,
 } from "./src/hooks/useMotionPreferences";
+import { collectBugReportDiagnostics } from "./src/utils/bugReportDiagnostics";
 import { createMotionLoop } from "./src/utils/motion";
 import {
   UI_ELEVATION,
@@ -383,6 +382,8 @@ import {
   CUSTOM_TEMPTATION_SAMPLE_USD,
   RATING_PROMPT_ACTION_THRESHOLD,
   RATING_PROMPT_ACTION_TYPES,
+  RATING_PROMPT_STORE_THRESHOLD,
+  RATING_PROMPT_FEEDBACK_MIN_LENGTH,
   ANDROID_REVIEW_URL,
   ANDROID_REVIEW_WEB_URL,
   IOS_REVIEW_URL,
@@ -513,7 +514,6 @@ import {
   resolveOfferingByIdentifiers,
   restorePurchasesSafe,
   setPurchasesAttributesSafe,
-  setRevenueCatAppsFlyerSharingAllowedSafe,
   syncRevenueCatDeviceIdentifiersSafe,
 } from "./src/monetization/purchasesClient";
 import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetization/backendSync";
@@ -547,6 +547,21 @@ const safeUseFonts =
         }
         return [true, new Error("useFonts is unavailable")];
       };
+
+// Android text intentionally stays on the device/theme font. Do not register bundled families
+// there; iOS and web keep the existing Inter typography.
+const APP_CUSTOM_FONTS =
+  Platform.OS === "android"
+    ? {}
+    : {
+        Inter_300Light,
+        Inter_400Regular,
+        Inter_500Medium,
+        Inter_600SemiBold,
+        Inter_700Bold,
+        Inter_800ExtraBold,
+        Inter_900Black,
+      };
 const safeUseSafeAreaInsets =
   typeof useSafeAreaInsets === "function"
     ? useSafeAreaInsets
@@ -559,14 +574,6 @@ const safeUseSafeAreaInsets =
 
 const StatusGlassContext = React.createContext(null);
 
-let StoreReview = null;
-try {
-  // Optional native module - older builds might not include it.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  StoreReview = require("expo-store-review");
-} catch (error) {
-  console.warn("StoreReview unavailable", error);
-}
 let Sharing = null;
 try {
   // Optional: module might be missing on some builds (e.g. Expo Go).
@@ -604,6 +611,10 @@ const ANDROID_STABLE_ALPHA_PROPS =
         renderToHardwareTextureAndroid: true,
       }
     : {};
+// Android can briefly blank a complex hardware-composited modal subtree while
+// animating its root alpha. Keep the backdrop/transform motion, but not card alpha.
+const resolveModalCompositeOpacity = (opacity) =>
+  Platform.OS === "android" ? 1 : opacity;
 const MODAL_CLOSE_SETTLE_MS = 120;
 const MODAL_CLOSE_SETTLE_TUTORIAL_MS = 140;
 const MODAL_HANDOFF_FRAME_SLACK_MS = 8;
@@ -900,6 +911,61 @@ const dismissKeyboardOrRun = (action) => {
   action?.();
 };
 
+const NOTIFICATION_TRIGGER_TYPES = {
+  calendar: Notifications?.SchedulableTriggerInputTypes?.CALENDAR || "calendar",
+  daily: Notifications?.SchedulableTriggerInputTypes?.DAILY || "daily",
+  weekly: Notifications?.SchedulableTriggerInputTypes?.WEEKLY || "weekly",
+  monthly: Notifications?.SchedulableTriggerInputTypes?.MONTHLY || "monthly",
+  yearly: Notifications?.SchedulableTriggerInputTypes?.YEARLY || "yearly",
+  date: Notifications?.SchedulableTriggerInputTypes?.DATE || "date",
+  timeInterval:
+    Notifications?.SchedulableTriggerInputTypes?.TIME_INTERVAL || "timeInterval",
+};
+
+const normalizeNotificationTriggerInput = (trigger, content = null) => {
+  if (trigger === null || trigger === undefined) return trigger;
+  const contentChannelId =
+    Platform.OS === "android" && typeof content?.channelId === "string"
+      ? content.channelId.trim()
+      : "";
+  const appendChannel = (value) =>
+    contentChannelId && !value.channelId ? { ...value, channelId: contentChannelId } : value;
+
+  if (trigger instanceof Date || typeof trigger === "number") {
+    return appendChannel({ type: NOTIFICATION_TRIGGER_TYPES.date, date: trigger });
+  }
+  if (!trigger || typeof trigger !== "object") return trigger;
+
+  const normalized = { ...trigger };
+  if (normalized.type) return appendChannel(normalized);
+  if (Object.prototype.hasOwnProperty.call(normalized, "date")) {
+    return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.date });
+  }
+  if (typeof normalized.seconds === "number") {
+    return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.timeInterval });
+  }
+  if (typeof normalized.hour === "number" && typeof normalized.minute === "number") {
+    if (typeof normalized.weekday === "number") {
+      return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.weekly });
+    }
+    if (typeof normalized.month === "number" && typeof normalized.day === "number") {
+      return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.yearly });
+    }
+    if (typeof normalized.day === "number") {
+      return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.monthly });
+    }
+    return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.daily });
+  }
+  if (
+    ["year", "month", "weekday", "weekOfMonth", "weekOfYear", "weekdayOrdinal", "day"].some(
+      (key) => typeof normalized[key] === "number"
+    )
+  ) {
+    return appendChannel({ ...normalized, type: NOTIFICATION_TRIGGER_TYPES.calendar });
+  }
+  return appendChannel(normalized);
+};
+
 const safeNotifications = (() => {
   const api = Notifications || {};
   const isFn = (value) => typeof value === "function";
@@ -975,7 +1041,17 @@ const safeNotifications = (() => {
     getPresentedNotificationsAsync: async () =>
       safeAsyncQueued("notifications presented list", api.getPresentedNotificationsAsync),
 	    scheduleNotificationAsync: async (payload) => {
-      const result = await safeAsyncQueued("notifications schedule", api.scheduleNotificationAsync, payload);
+      const normalizedPayload = payload
+        ? {
+            ...payload,
+            trigger: normalizeNotificationTriggerInput(payload.trigger, payload.content),
+          }
+        : payload;
+      const result = await safeAsyncQueued(
+        "notifications schedule",
+        api.scheduleNotificationAsync,
+        normalizedPayload
+      );
       clearScheduledListCache();
       return result;
     },
@@ -1209,9 +1285,19 @@ const FREE_REPORTS_WEEK_COUNT = FREE_PLAN_LIMITS.reportsWeeks;
 const FREE_REPORTS_MONTH_COUNT = FREE_PLAN_LIMITS.reportsMonths;
 const PREMIUM_UI_ACCENT_LIGHT = "#7C3AED";
 const PREMIUM_UI_ACCENT_DARK = "#C084FC";
-const PREMIUM_UI_ACCENT_PRO_THEME = "#A855F7";
-const resolvePremiumUiAccent = ({ isDark = false, themeId = DEFAULT_THEME } = {}) => {
-  if (themeId === PRO_THEME_ID) return PREMIUM_UI_ACCENT_PRO_THEME;
+const resolvePremiumUiAccent = ({
+  isDark = false,
+  themeId = DEFAULT_THEME,
+  proAccent = null,
+} = {}) => {
+  const normalizedProAccent =
+    typeof proAccent === "string" ? proAccent.trim().toLowerCase() : "";
+  const isConfiguredProAccent = PRO_THEME_ACCENT_OPTIONS.some(
+    (option) => option.accent.toLowerCase() === normalizedProAccent
+  );
+  if (themeId === PRO_THEME_ID || isConfiguredProAccent) {
+    return isConfiguredProAccent ? proAccent : THEMES.pro.primary;
+  }
   return isDark ? PREMIUM_UI_ACCENT_DARK : PREMIUM_UI_ACCENT_LIGHT;
 };
 const QUEUED_MODAL_STALL_TIMEOUT_MS = 2200;
@@ -1223,6 +1309,25 @@ const ANDROID_API_LEVEL =
     : 0;
 const SHOULD_USE_ANDROID_LEGACY_MEDIA_PICKER =
   Platform.OS === "android" && ANDROID_API_LEVEL > 0 && ANDROID_API_LEVEL < 33;
+const resolveAndroidSystemBottomInset = ({ safeBottom = 0, viewportHeight = null } = {}) => {
+  const normalizedSafeBottom = Math.max(0, Number(safeBottom) || 0);
+  if (Platform.OS !== "android") return normalizedSafeBottom;
+  const screenHeight = Math.max(0, Number(Dimensions.get("screen")?.height) || 0);
+  const windowHeight = Math.max(
+    0,
+    Number(viewportHeight) || Number(Dimensions.get("window")?.height) || 0
+  );
+  const rawWindowGap = Math.max(0, screenHeight - windowHeight);
+  const statusBarHeight = Math.max(0, Number(RNStatusBar.currentHeight) || 0);
+  const estimatedNavigationGap =
+    rawWindowGap > statusBarHeight + 32 ? rawWindowGap - statusBarHeight : rawWindowGap;
+  const boundedNavigationGap =
+    estimatedNavigationGap > 0 && estimatedNavigationGap <= 96
+      ? Math.min(80, estimatedNavigationGap)
+      : 0;
+  const platformFallback = ANDROID_API_LEVEL > 0 && ANDROID_API_LEVEL < 35 ? 48 : 24;
+  return Math.max(normalizedSafeBottom, boundedNavigationGap, platformFallback);
+};
 
 const createEmojiStripRegex = () =>
   typeof emojiRegexFactory === "function"
@@ -1572,7 +1677,9 @@ const MONETIZATION_GROUP_C_SOFT_PAYWALL_TRIGGER = "group_c_support_after_5_saves
 const MONETIZATION_GROUP_C_DAILY_SOFT_PAYWALL_TRIGGER =
   "group_c_daily_first_save_or_spend_after_modals";
 const MONETIZATION_TRIAL_ACTION_LIMIT_ENABLED = false;
-const MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT = 1;
+// Keep the first successful save focused on reinforcement. The soft paywall may
+// become eligible from the next save, after the user returns to the core task.
+const MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT = 2;
 const MONETIZATION_EXPERIMENT_GROUP_C_SUPPORT_PAYWALL_ACTION_LIMIT = 5;
 const MONETIZATION_DAILY_SOFT_PAYWALL_TRIGGER = "daily_first_save_or_spend_after_modals";
 const MONETIZATION_RECURRING_SOFT_PAYWALL_TRIGGERS = new Set([
@@ -2634,21 +2741,11 @@ const normalizeThemeId = (value) => {
 const resolveThemeColors = (themeId = DEFAULT_THEME, proAccentId = DEFAULT_PRO_THEME_ACCENT_ID) => {
   if (themeId !== PRO_THEME_ID) return THEMES[themeId] || THEMES[DEFAULT_THEME];
   const accentOption = resolveProThemeAccentOption(proAccentId);
-  const accent = accentOption.accent;
   return {
     ...THEMES.pro,
-    background: blendHexColors(THEMES.pro.background, accent, 0.04),
-    text: blendHexColors(THEMES.pro.text, accent, 0.025),
-    muted: blendHexColors(THEMES.pro.muted, accent, 0.06),
-    border: blendHexColors(THEMES.pro.border, accent, 0.12),
-    surfaceMuted: blendHexColors(THEMES.pro.surfaceMuted, accent, 0.08),
-    separator: blendHexColors(THEMES.pro.separator, accent, 0.08),
-    disabled: blendHexColors(THEMES.pro.disabled, accent, 0.04),
-    primary: accent,
+    ...(accentOption.palette || {}),
+    primary: accentOption.accent,
     onPrimary: accentOption.onAccent || THEMES.pro.onPrimary,
-    primarySurface: blendHexColors(THEMES.pro.background, accent, 0.1),
-    primarySurfaceStrong: blendHexColors(THEMES.pro.background, accent, 0.16),
-    primaryBorder: blendHexColors(THEMES.pro.border, accent, 0.3),
   };
 };
 const resolveThemePreviewPalette = (
@@ -3202,6 +3299,23 @@ const resolveInterFontFamily = (fontWeight) => {
   return INTER_FONTS.regular;
 };
 
+const INTER_FONT_WEIGHT_BY_FAMILY = Object.freeze({
+  [INTER_FONTS.light]: "300",
+  [INTER_FONTS.regular]: "400",
+  [INTER_FONTS.medium]: "500",
+  [INTER_FONTS.semiBold]: "600",
+  [INTER_FONTS.bold]: "700",
+  [INTER_FONTS.extraBold]: "800",
+  [INTER_FONTS.black]: "900",
+});
+
+const resolveAndroidSystemFontWeight = (fontFamily, fontWeight) => {
+  if (fontWeight !== undefined && fontWeight !== null && fontWeight !== "") {
+    return fontWeight;
+  }
+  return INTER_FONT_WEIGHT_BY_FAMILY[fontFamily];
+};
+
 const FormattingLanguageContext = React.createContext(DEFAULT_LANGUAGE);
 const MIN_READABLE_FONT_SCALE = 0.84;
 
@@ -3264,7 +3378,35 @@ const AppText = React.memo(
           };
     const isRtlLayout = isRtlLanguage(formattingLanguage);
     const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
-    const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
+    // Android must inherit the device/theme typeface. Besides respecting user-selected fonts,
+    // this avoids OEM rendering paths where a bundled font can disappear until a re-render.
+    // Flatten first so typography presets and explicit component styles cannot bypass the guard.
+    const shouldUseAndroidSystemTextTypeface = Platform.OS === "android";
+    let textBaseStyles = baseStyles;
+    if (shouldUseAndroidSystemTextTypeface && flattened.fontFamily) {
+      const androidSystemTextStyle = { ...flattened };
+      const androidSystemFontWeight = resolveAndroidSystemFontWeight(
+        androidSystemTextStyle.fontFamily,
+        androidSystemTextStyle.fontWeight
+      );
+      delete androidSystemTextStyle.fontFamily;
+      if (androidSystemFontWeight) {
+        androidSystemTextStyle.fontWeight = androidSystemFontWeight;
+      }
+      textBaseStyles = [androidSystemTextStyle];
+    }
+    const styleWithDirection = directionStyle ? [directionStyle, ...textBaseStyles] : textBaseStyles;
+    if (shouldUseAndroidSystemTextTypeface) {
+      return (
+        <RNText
+          ref={ref}
+          style={styleWithDirection.length ? styleWithDirection : style}
+          allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          {...textProps}
+        />
+      );
+    }
     if (flattened.fontFamily) {
       return (
         <RNText
@@ -3323,7 +3465,35 @@ const AppTextInput = React.memo(
     const flattened = baseStyles.length ? StyleSheet.flatten(baseStyles) || {} : {};
     const isRtlLayout = isRtlLanguage(formattingLanguage);
     const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
-    const styleWithDirection = directionStyle ? [directionStyle, ...baseStyles] : baseStyles;
+    // Keep Android EditText on its platform typeface. Samsung keyboards and Android 15/16 can
+    // leave controlled input state intact while failing to paint text that uses a custom font.
+    // Flatten first so even an explicitly supplied fontFamily cannot bypass this global guard.
+    const shouldUseAndroidSystemTypeface = Platform.OS === "android";
+    let inputBaseStyles = baseStyles;
+    if (shouldUseAndroidSystemTypeface && flattened.fontFamily) {
+      const androidSystemTypefaceStyle = { ...flattened };
+      const androidSystemFontWeight = resolveAndroidSystemFontWeight(
+        androidSystemTypefaceStyle.fontFamily,
+        androidSystemTypefaceStyle.fontWeight
+      );
+      delete androidSystemTypefaceStyle.fontFamily;
+      if (androidSystemFontWeight) {
+        androidSystemTypefaceStyle.fontWeight = androidSystemFontWeight;
+      }
+      inputBaseStyles = [androidSystemTypefaceStyle];
+    }
+    const styleWithDirection = directionStyle ? [directionStyle, ...inputBaseStyles] : inputBaseStyles;
+    if (shouldUseAndroidSystemTypeface) {
+      return (
+        <RNTextInput
+          ref={ref}
+          style={styleWithDirection.length ? styleWithDirection : style}
+          allowFontScaling={allowFontScaling}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          {...inputProps}
+        />
+      );
+    }
     if (flattened.fontFamily) {
       return (
         <RNTextInput
@@ -3378,19 +3548,31 @@ const getCelebrationMessages = (language, gender = "none") => {
     Object.values(entry)[0];
   return Array.isArray(variant) ? variant : [];
 };
-const RATING_PROMPT_SESSION_ID = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-const RATING_PROMPT_FIRST_SESSION_STATUSES = new Set(["pending", "active", "ended"]);
-const createInitialRatingPromptState = ({ firstSessionStatus = "pending" } = {}) => ({
+const createInitialRatingPromptState = () => ({
   firstOpenAt: new Date().toISOString(),
   completed: false,
   lastShownAt: null,
   lastAction: null,
   respondedAt: null,
   actionCount: 0,
-  actionCountStart: null,
   actionPrompted: false,
-  firstSessionStatus,
-  firstSessionId: null,
+});
+
+const RatingPromptStarIcon = React.memo(function RatingPromptStarIcon({
+  filled = false,
+  color,
+}) {
+  return (
+    <Svg width={30} height={30} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <SvgPath
+        d="M12 2.75l2.83 5.73 6.32.92-4.58 4.46 1.08 6.29L12 17.18l-5.65 2.97 1.08-6.29L2.85 9.4l6.32-.92L12 2.75z"
+        fill={filled ? color : "transparent"}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
 });
 
 const normalizeRetentionDayKeys = (value) => {
@@ -3677,10 +3859,10 @@ const getReportsShareTarget = ({
   if (!Number.isFinite(target) || target <= safePercent + 2) return null;
   return target;
 };
-const describeHistoryEntry = (entry, { t, formatLocalAmount }) => {
+const describeHistoryEntry = (entry, { t, formatLocalAmount, language = DEFAULT_LANGUAGE }) => {
   if (!entry) return t("historyUnknown");
   const { kind, meta = {} } = entry;
-  const title = meta.title || t("historyUnknown");
+  const title = resolveHistoryEntryTitle(entry, language, meta.title || t("historyUnknown"));
   switch (kind) {
     case "wish_added":
       return t("historyWishAdded", { title });
@@ -6160,40 +6342,58 @@ const IMPULSE_SEQUENCE_MIN_WEIGHT = 2;
 const IMPULSE_SEQUENCE_TOP_INSIGHTS = 2;
 const IMPULSE_SEQUENCE_RECENCY_DAYS = 21;
 const BASE_IMPULSE_CATEGORY_DEFS = {
-  food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", emoji: "🍜" },
-  rent: { id: "rent", ru: "Аренда жилья", en: "Rent", es: "Alquiler", fr: "Loyer", emoji: "🏡" },
-  utilities: { id: "utilities", ru: "Коммунальные", en: "Utilities", es: "Servicios", fr: "Charges", emoji: "💡" },
-  car: { id: "car", ru: "Машина", en: "Car", es: "Auto", fr: "Voiture", emoji: "🚗" },
+  food: { id: "food", ru: "Еда", en: "Food", es: "Comida", fr: "Nourriture", de: "Essen", pt: "Alimentação", it: "Cibo", ar: "الطعام", zh: "餐饮", ko: "음식", emoji: "🍜" },
+  rent: { id: "rent", ru: "Аренда жилья", en: "Rent", es: "Alquiler", fr: "Loyer", de: "Miete", pt: "Aluguel", it: "Affitto", ar: "الإيجار", zh: "房租", ko: "주거비", emoji: "🏡" },
+  utilities: { id: "utilities", ru: "Коммунальные", en: "Utilities", es: "Servicios", fr: "Charges", de: "Nebenkosten", pt: "Serviços públicos", it: "Utenze", ar: "المرافق", zh: "水电费", ko: "공과금", emoji: "💡" },
+  car: { id: "car", ru: "Машина", en: "Car", es: "Auto", fr: "Voiture", de: "Auto", pt: "Carro", it: "Auto", ar: "السيارة", zh: "汽车", ko: "자동차", emoji: "🚗" },
   mandatory: {
     id: "mandatory",
     ru: "Обязательные платежи",
     en: "Mandatory payments",
     es: "Pagos obligatorios",
     fr: "Paiements obligatoires",
+    de: "Pflichtzahlungen",
+    pt: "Pagamentos obrigatórios",
+    it: "Pagamenti obbligatori",
+    ar: "المدفوعات الإلزامية",
+    zh: "必要支出",
+    ko: "필수 지출",
     emoji: "🧾",
   },
-  home: { id: "home", ru: "Дом", en: "Home", es: "Hogar", fr: "Maison", emoji: "🏠" },
-  transport: { id: "transport", ru: "Транспорт", en: "Transport", es: "Transporte", fr: "Transport", emoji: "🚇" },
-  health: { id: "health", ru: "Здоровье", en: "Health", es: "Salud", fr: "Santé", emoji: "💊" },
-  beauty: { id: "beauty", ru: "Бьюти", en: "Beauty", es: "Belleza", fr: "Beauté", emoji: "💅" },
+  home: { id: "home", ru: "Дом", en: "Home", es: "Hogar", fr: "Maison", de: "Zuhause", pt: "Casa", it: "Casa", ar: "المنزل", zh: "家居", ko: "생활", emoji: "🏠" },
+  transport: { id: "transport", ru: "Транспорт", en: "Transport", es: "Transporte", fr: "Transport", de: "Verkehr", pt: "Transporte", it: "Trasporti", ar: "المواصلات", zh: "交通", ko: "교통", emoji: "🚇" },
+  health: { id: "health", ru: "Здоровье", en: "Health", es: "Salud", fr: "Santé", de: "Gesundheit", pt: "Saúde", it: "Salute", ar: "الصحة", zh: "健康", ko: "건강", emoji: "💊" },
+  beauty: { id: "beauty", ru: "Бьюти", en: "Beauty", es: "Belleza", fr: "Beauté", de: "Schönheit", pt: "Beleza", it: "Bellezza", ar: "الجمال", zh: "美容", ko: "뷰티", emoji: "💅" },
   fun: {
     id: "fun",
     ru: "Развлечения",
     en: "Entertainment",
     es: "Diversión",
     fr: "Divertissement",
+    de: "Unterhaltung",
+    pt: "Entretenimento",
+    it: "Intrattenimento",
+    ar: "الترفيه",
+    zh: "娱乐",
+    ko: "여가",
     emoji: "🎉",
   },
-  things: { id: "things", ru: "Покупки", en: "Shopping", es: "Compras", fr: "Achats", emoji: "🛍️" },
-  clothing: { id: "clothing", ru: "Одежда", en: "Clothing", es: "Ropa", fr: "Vêtements", emoji: "👕" },
-  education: { id: "education", ru: "Образование", en: "Education", es: "Educación", fr: "Éducation", emoji: "🎓" },
-  pets: { id: "pets", ru: "Питомцы", en: "Pets", es: "Mascotas", fr: "Animaux", emoji: "🐾" },
+  things: { id: "things", ru: "Покупки", en: "Shopping", es: "Compras", fr: "Achats", de: "Einkäufe", pt: "Compras", it: "Acquisti", ar: "التسوق", zh: "购物", ko: "쇼핑", emoji: "🛍️" },
+  clothing: { id: "clothing", ru: "Одежда", en: "Clothing", es: "Ropa", fr: "Vêtements", de: "Kleidung", pt: "Roupas", it: "Abbigliamento", ar: "الملابس", zh: "服装", ko: "의류", emoji: "👕" },
+  education: { id: "education", ru: "Образование", en: "Education", es: "Educación", fr: "Éducation", de: "Bildung", pt: "Educação", it: "Istruzione", ar: "التعليم", zh: "教育", ko: "교육", emoji: "🎓" },
+  pets: { id: "pets", ru: "Питомцы", en: "Pets", es: "Mascotas", fr: "Animaux", de: "Haustiere", pt: "Animais de estimação", it: "Animali domestici", ar: "الحيوانات الأليفة", zh: "宠物", ko: "반려동물", emoji: "🐾" },
   subscriptions: {
     id: "subscriptions",
     ru: "Подписки",
     en: "Subscriptions",
     es: "Suscripciones",
     fr: "Abonnements",
+    de: "Abonnements",
+    pt: "Assinaturas",
+    it: "Abbonamenti",
+    ar: "الاشتراكات",
+    zh: "订阅",
+    ko: "구독",
     emoji: "🔁",
   },
   vices: {
@@ -6202,6 +6402,12 @@ const BASE_IMPULSE_CATEGORY_DEFS = {
     en: "Small vices",
     es: "Pequeños vicios",
     fr: "Petits vices",
+    de: "Kleine Versuchungen",
+    pt: "Pequenos vícios",
+    it: "Piccoli vizi",
+    ar: "الرغبات الصغيرة",
+    zh: "小小诱惑",
+    ko: "작은 유혹",
     emoji: "⚡️",
   },
 };
@@ -8720,7 +8926,8 @@ const buildSavingsBreakdown = (
       const isIncomeSavings = entry?.kind === "income_savings";
       const resolvedTitle = isIncomeSavings
         ? incomeSavingsLabel
-        : (resolveTemplateTitle &&
+        : resolveHistoryEntryTitle(entry, language, "") ||
+          (resolveTemplateTitle &&
             resolveTemplateTitle(entry.meta?.templateId, entry.meta?.title || entry.title)) ||
           null;
       const baseTitle =
@@ -8906,6 +9113,7 @@ const buildSpendingBreakdown = (
       const timestamp = Number(entry.timestamp) || 0;
       if (!timestamp || timestamp < startMs || timestamp >= endMs) return;
       const resolvedTitle =
+        resolveHistoryEntryTitle(entry, language, "") ||
         (resolveTemplateTitle &&
           resolveTemplateTitle(entry.meta?.templateId, entry.meta?.title || entry.title)) ||
         null;
@@ -9499,6 +9707,29 @@ const getImpulseCategoryLabel = (id, language = "en") => {
   const entry = IMPULSE_CATEGORY_DEFS[id];
   if (!entry) return id;
   return `${entry.emoji} ${getImpulseCategoryName(id, language)}`;
+};
+
+const resolveHistoryQuickEntryCategoryId = (entry) => {
+  const meta = entry?.meta || {};
+  const explicitId =
+    typeof meta.quickEntryCategoryId === "string" ? meta.quickEntryCategoryId.trim() : "";
+  if (explicitId && IMPULSE_CATEGORY_DEFS[explicitId]) return explicitId;
+  const templateId = String(meta.templateId || meta.template_id || "");
+  const legacyCategoryId = typeof meta.category === "string" ? meta.category.trim() : "";
+  if (templateId.startsWith("coin_entry_") && IMPULSE_CATEGORY_DEFS[legacyCategoryId]) {
+    return legacyCategoryId;
+  }
+  return null;
+};
+
+const resolveHistoryEntryTitle = (entry, language = DEFAULT_LANGUAGE, fallback = "") => {
+  const categoryId = resolveHistoryQuickEntryCategoryId(entry);
+  if (categoryId) return getImpulseCategoryLabel(categoryId, language);
+  const storedTitle =
+    (typeof entry?.meta?.title === "string" && entry.meta.title.trim()) ||
+    (typeof entry?.title === "string" && entry.title.trim()) ||
+    "";
+  return storedTitle || fallback;
 };
 
 const RainOverlay = ({ colors }) => {
@@ -11659,7 +11890,7 @@ const LANGUAGE_OVERRIDES = {
       "Ce sont des cartes d'exemple suggérées. Continue de noter tes décisions pour en débloquer plus au niveau suivant.",
     saveCelebrateTitlePrefix: "Économisé sur :",
     goalCustomCreate: "Créer un objectif",
-    analyticsConsentAgree: "Aider Almost",
+    analyticsConsentAgree: "Autoriser les analyses produit",
     trackingConsentContinue: "Aider Almost",
   },
   de: {
@@ -14172,6 +14403,11 @@ function TemptationCardComponent({
 }) {
   const showMetaBadges = !hideMetaBadges;
   const safeInsets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const compactDecisionLayout = windowHeight <= 700;
+  const androidSystemBottomInset = resolveAndroidSystemBottomInset({
+    safeBottom: safeInsets.bottom,
+  });
   const { reduceMotion } = useMotionPreferences();
   const title = resolveTemptationTitle(item, language, titleOverride);
   const isCustomCard =
@@ -16165,10 +16401,15 @@ function TemptationCardComponent({
           <View
             style={[
               styles.temptationAmountModalRoot,
+              compactDecisionLayout && styles.temptationAmountModalRootCompact,
               {
                 backgroundColor: amountSliderModalBackground,
                 paddingTop: Math.max(18, safeInsets.top + 10),
-                paddingBottom: Math.max(18, safeInsets.bottom + 14),
+                paddingBottom: Math.max(
+                  compactDecisionLayout ? 10 : 18,
+                  safeInsets.bottom + (compactDecisionLayout ? 6 : 14),
+                  androidSystemBottomInset + (compactDecisionLayout ? 6 : 14)
+                ),
               },
             ]}
           >
@@ -16179,11 +16420,17 @@ function TemptationCardComponent({
                 { backgroundColor: amountSliderModalGlowColor },
               ]}
             />
-            <View style={styles.temptationAmountModalTopbar}>
+            <View
+              style={[
+                styles.temptationAmountModalTopbar,
+                compactDecisionLayout && styles.temptationAmountModalTopbarCompact,
+              ]}
+            >
               <View style={styles.temptationAmountModalIdentity}>
                 <View
                   style={[
                     styles.temptationAmountModalIcon,
+                    compactDecisionLayout && styles.temptationAmountModalIconCompact,
                     {
                       backgroundColor: isDarkTheme ? "rgba(255,255,255,0.08)" : "#FAF0E6",
                       borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.34 : 0.22),
@@ -16194,7 +16441,11 @@ function TemptationCardComponent({
                 </View>
                 <View style={styles.temptationAmountModalTitleBlock}>
                   <Text
-                    style={[styles.temptationAmountModalTitle, { color: colors.text }]}
+                    style={[
+                      styles.temptationAmountModalTitle,
+                      compactDecisionLayout && styles.temptationAmountModalTitleCompact,
+                      { color: colors.text },
+                    ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     allowAndroidAutoFit
@@ -16226,20 +16477,26 @@ function TemptationCardComponent({
             <ScrollView
               style={styles.temptationAmountModalScroll}
               contentContainerStyle={styles.temptationAmountModalScrollContent}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
               keyboardShouldPersistTaps="handled"
               scrollEnabled={!amountSliderDragging}
             >
               <View
                 style={[
                   styles.temptationAmountModalCard,
+                  compactDecisionLayout && styles.temptationAmountModalCardCompact,
                   {
                     backgroundColor: amountSliderModalCardBackground,
                     borderColor: amountSliderModalBorder,
                   },
                 ]}
               >
-                <View style={styles.temptationAmountModalHeroRow}>
+                <View
+                  style={[
+                    styles.temptationAmountModalHeroRow,
+                    compactDecisionLayout && styles.temptationAmountModalHeroRowCompact,
+                  ]}
+                >
                   <View style={styles.temptationAmountModalHeroText}>
                     <View style={[styles.temptationAmountPill, { backgroundColor: amountSliderAccentSoft }]}>
                       <Text
@@ -16253,7 +16510,11 @@ function TemptationCardComponent({
                       </Text>
                     </View>
                     <Text
-                      style={[styles.temptationAmountModalHeadline, { color: colors.text }]}
+                      style={[
+                        styles.temptationAmountModalHeadline,
+                        compactDecisionLayout && styles.temptationAmountModalHeadlineCompact,
+                        { color: colors.text },
+                      ]}
                       numberOfLines={2}
                       adjustsFontSizeToFit
                       allowAndroidAutoFit
@@ -16262,9 +16523,17 @@ function TemptationCardComponent({
                       {title}
                     </Text>
                   </View>
-                  <View style={styles.temptationAmountModalBadge}>
+                  <View
+                    style={[
+                      styles.temptationAmountModalBadge,
+                      compactDecisionLayout && styles.temptationAmountModalBadgeCompact,
+                    ]}
+                  >
                     <Text
-                      style={styles.temptationAmountModalBadgeText}
+                      style={[
+                        styles.temptationAmountModalBadgeText,
+                        compactDecisionLayout && styles.temptationAmountModalBadgeTextCompact,
+                      ]}
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.15}
                       ellipsizeMode="tail"
@@ -16275,7 +16544,8 @@ function TemptationCardComponent({
                 </View>
                 <View
                   style={[
-                    styles.temptationAmountMoodStage,
+                  styles.temptationAmountMoodStage,
+                  compactDecisionLayout && styles.temptationAmountMoodStageCompact,
                     {
                       backgroundColor: amountSliderMoodStageColor,
                       borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.38 : 0.24),
@@ -16284,14 +16554,19 @@ function TemptationCardComponent({
                 >
                   <View
                     style={[
-                      styles.temptationAmountMoodAura,
+                    styles.temptationAmountMoodAura,
+                    compactDecisionLayout && styles.temptationAmountMoodAuraCompact,
                       { backgroundColor: amountSliderMoodAuraColor },
                     ]}
                   />
                   <Animated.Image
                     key={`${amountSliderAction}-${amountSliderMoodIntensity > 0.72 ? "strong" : "soft"}`}
                     source={amountSliderCatSource}
-                    style={[styles.temptationAmountMoodCat, amountSliderCatMoodStyle]}
+                    style={[
+                      styles.temptationAmountMoodCat,
+                      compactDecisionLayout && styles.temptationAmountMoodCatCompact,
+                      amountSliderCatMoodStyle,
+                    ]}
                     resizeMode="contain"
                   />
                 </View>
@@ -16302,6 +16577,7 @@ function TemptationCardComponent({
                     disabled={!allowAmountManualInput}
                     style={[
                       styles.temptationAmountStatCard,
+                      compactDecisionLayout && styles.temptationAmountStatCardCompact,
                       {
                         backgroundColor: amountSliderModalMutedPanelBackground,
                         borderColor: amountSliderModalBorder,
@@ -16312,7 +16588,11 @@ function TemptationCardComponent({
                       {amountSliderImmediateStatLabel}
                     </Text>
                     <Text
-                      style={[styles.temptationAmountStatValue, { color: colors.text }]}
+                      style={[
+                        styles.temptationAmountStatValue,
+                        compactDecisionLayout && styles.temptationAmountStatValueCompact,
+                        { color: colors.text },
+                      ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       allowAndroidAutoFit
@@ -16324,6 +16604,7 @@ function TemptationCardComponent({
                   <View
                     style={[
                       styles.temptationAmountStatCard,
+                      compactDecisionLayout && styles.temptationAmountStatCardCompact,
                       {
                         backgroundColor: colorWithAlpha(
                           amountSliderAccent,
@@ -16344,7 +16625,11 @@ function TemptationCardComponent({
                       {amountSliderProjectionStatLabel}
                     </Text>
                     <Text
-                      style={[styles.temptationAmountStatValue, amountSliderProjectionValueStyle]}
+                      style={[
+                        styles.temptationAmountStatValue,
+                        compactDecisionLayout && styles.temptationAmountStatValueCompact,
+                        amountSliderProjectionValueStyle,
+                      ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       allowAndroidAutoFit
@@ -16463,10 +16748,16 @@ function TemptationCardComponent({
                 )}
               </View>
             </ScrollView>
-            <View style={styles.temptationAmountBottomDock}>
+            <View
+              style={[
+                styles.temptationAmountBottomDock,
+                compactDecisionLayout && styles.temptationAmountBottomDockCompact,
+              ]}
+            >
               <View
                 style={[
                   styles.temptationAmountSliderPanel,
+                  compactDecisionLayout && styles.temptationAmountSliderPanelCompact,
                   {
                     backgroundColor: amountSliderModalPanelBackground,
                     borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.32 : 0.24),
@@ -16537,6 +16828,7 @@ function TemptationCardComponent({
                 <TouchableOpacity
                   style={[
                     styles.temptationAmountModalActionButton,
+                    compactDecisionLayout && styles.temptationAmountModalActionButtonCompact,
                     amountSliderAction === "save"
                       ? [
                           styles.temptationAmountModalSaveButton,
@@ -16574,6 +16866,7 @@ function TemptationCardComponent({
                   <TouchableOpacity
                     style={[
                       styles.temptationAmountModalActionButton,
+                      compactDecisionLayout && styles.temptationAmountModalActionButtonCompact,
                       amountSliderAction === "spend"
                         ? [
                             styles.temptationAmountModalSpendButton,
@@ -17357,9 +17650,13 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
 }) {
   const scrollRef = useRef(null);
   const scrollHeightRef = useRef(0);
+  const scrollContentHeightRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
   const fieldLayoutsRef = useRef({});
   const activeFieldRef = useRef(null);
   const [focusedField, setFocusedField] = useState(null);
+  const [overflowCueVisible, setOverflowCueVisible] = useState(false);
+  const hasEditorItem = !!item;
   const normalizedKeyboardInset = Math.max(0, Number(keyboardInset) || 0);
   const normalizedTopSafeInset = Math.max(0, Number(topSafeInset) || 0);
   const keyboardAwareSheetHeight = useMemo(() => {
@@ -17394,6 +17691,30 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
     if (!Number.isFinite(layoutY)) return;
     fieldLayoutsRef.current[fieldKey] = layoutY;
   }, []);
+  const updateOverflowCue = useCallback(() => {
+    const viewportHeight = Math.max(0, scrollHeightRef.current || 0);
+    const contentHeight = Math.max(0, scrollContentHeightRef.current || 0);
+    if (viewportHeight <= 0 || contentHeight <= 0) return;
+    const offsetY = Math.max(0, scrollOffsetRef.current || 0);
+    const nextVisible =
+      contentHeight > viewportHeight + 8 &&
+      offsetY + viewportHeight < contentHeight - 12;
+    setOverflowCueVisible((current) => (current === nextVisible ? current : nextVisible));
+  }, []);
+  useLayoutEffect(() => {
+    scrollHeightRef.current = 0;
+    scrollContentHeightRef.current = 0;
+    scrollOffsetRef.current = 0;
+    setOverflowCueVisible(hasEditorItem);
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(updateOverflowCue);
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame != null) cancelAnimationFrame(secondFrame);
+    };
+  }, [hasEditorItem, item?.id, updateOverflowCue]);
   const scrollFocusedFieldIntoView = useCallback((fieldKey) => {
     if (!fieldKey) return;
     requestAnimationFrame(() => {
@@ -17486,9 +17807,19 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
         keyboardShouldPersistTaps="always"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
+        scrollEventThrottle={16}
         onLayout={(event) => {
           scrollHeightRef.current = event?.nativeEvent?.layout?.height || 0;
+          updateOverflowCue();
+        }}
+        onContentSizeChange={(_, height) => {
+          scrollContentHeightRef.current = height || 0;
+          updateOverflowCue();
+        }}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event?.nativeEvent?.contentOffset?.y || 0;
+          updateOverflowCue();
         }}
       >
         <View
@@ -17702,6 +18033,27 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      {overflowCueVisible ? (
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+          style={[
+            styles.temptationEditOverflowCue,
+            {
+              backgroundColor: colorWithAlpha(editorSheetSurface, 0.96),
+              borderColor: colorWithAlpha(colors.text, 0.16),
+            },
+          ]}
+        >
+          <Text
+            allowFontScaling={false}
+            style={[styles.temptationEditOverflowCueGlyph, { color: colors.text }]}
+          >
+            ⌄
+          </Text>
+        </View>
+      ) : null}
       <View
         style={[
           styles.temptationEditFooter,
@@ -18116,6 +18468,7 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
     t,
     language,
     playSound,
+    onPrimaryAction,
     progressStart = 0,
     progressEnd = 0,
   },
@@ -18317,7 +18670,7 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
           {
             backgroundColor: cardBg,
             borderColor: cardBorder,
-            opacity: cardOpacity,
+            opacity: resolveModalCompositeOpacity(cardOpacity),
             transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
           },
         ]}
@@ -18373,6 +18726,11 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
           </Text>
         ) : null}
         <View
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={`${isGoalComplete ? 100 : remainingActions}, ${
+            isGoalComplete ? t("goalJarDepositFilled") : t("goalJarDepositRemaining")
+          }`}
           style={[
             styles.goalDepositRemainingPill,
             {
@@ -18381,7 +18739,11 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
             },
           ]}
         >
-          <View style={styles.goalDepositCounterWrap}>
+          <View
+            style={styles.goalDepositCounterWrap}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+          >
             {countdownSlots.map((slot, index) => {
               if (slot.type === "digit") {
                 return (
@@ -18410,6 +18772,19 @@ const GoalDepositCelebration = forwardRef(function GoalDepositCelebration(
             {isGoalComplete ? t("goalJarDepositFilled") : t("goalJarDepositRemaining")}
           </Text>
         </View>
+        {onPrimaryAction ? (
+          <TouchableOpacity
+            style={[styles.saveCelebrationPrimaryButton, { backgroundColor: accent, borderColor: accent }]}
+            activeOpacity={0.86}
+            onPress={onPrimaryAction}
+            accessibilityRole="button"
+            accessibilityLabel={t("saveOverlayPrimaryCta")}
+          >
+            <Text style={[styles.saveCelebrationPrimaryButtonText, { color: colors.background }]}>
+              {t("saveOverlayPrimaryCta")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </Animated.View>
     </View>
   );
@@ -18929,6 +19304,8 @@ const DailyRewardModal = React.memo(
     const dailyRewardCoinPulseLoopRef = useRef(null);
     const dailyRewardHaloSpinLoopRef = useRef(null);
     const dailyRewardSfxTimersRef = useRef([]);
+    const dailyRewardClaimHandoffTimerRef = useRef(null);
+    const dailyRewardClaimRunnerRef = useRef(null);
     const dailyRewardPreview = useMemo(
       () => buildDailyRewardChestSchedule(dailyRewardBaseAmount || dailyRewardAmount),
       [dailyRewardAmount, dailyRewardBaseAmount]
@@ -18999,6 +19376,11 @@ const DailyRewardModal = React.memo(
       if (!dailyRewardSfxTimersRef.current.length) return;
       dailyRewardSfxTimersRef.current.forEach((timerId) => clearTimeout(timerId));
       dailyRewardSfxTimersRef.current = [];
+    }, []);
+    const clearDailyRewardClaimHandoffTimer = useCallback(() => {
+      if (dailyRewardClaimHandoffTimerRef.current == null) return;
+      clearTimeout(dailyRewardClaimHandoffTimerRef.current);
+      dailyRewardClaimHandoffTimerRef.current = null;
     }, []);
     const stopDailyRewardModalLoops = useCallback(() => {
       dailyRewardCoinPulseLoopRef.current?.stop?.();
@@ -19118,10 +19500,18 @@ const DailyRewardModal = React.memo(
           useNativeDriver: true,
         }),
       ]).start(() => {
+        const shouldClaimAfterHandoff = dailyRewardClaimPendingRef.current;
         dailyRewardClosePendingRef.current = false;
         onClose?.();
+        if (!shouldClaimAfterHandoff) return;
+        clearDailyRewardClaimHandoffTimer();
+        dailyRewardClaimHandoffTimerRef.current = setTimeout(() => {
+          dailyRewardClaimHandoffTimerRef.current = null;
+          dailyRewardClaimRunnerRef.current?.();
+        }, MODAL_CLOSE_SETTLE_MS + MODAL_HANDOFF_FRAME_SLACK_MS);
       });
     }, [
+      clearDailyRewardClaimHandoffTimer,
       clearDailyRewardSfxTimers,
       dailyRewardBackdropReveal,
       dailyRewardCollectFlash,
@@ -19150,11 +19540,17 @@ const DailyRewardModal = React.memo(
         dailyRewardClaimPendingRef.current = false;
       }
     }, [onDailyRewardClaim]);
+    dailyRewardClaimRunnerRef.current = runDailyRewardClaim;
     const handleDailyRewardModalDismiss = useCallback(() => {
       clearDailyRewardSfxTimers();
       if (!dailyRewardClaimPendingRef.current) return;
+      clearDailyRewardClaimHandoffTimer();
       runDailyRewardClaim();
-    }, [clearDailyRewardSfxTimers, runDailyRewardClaim]);
+    }, [
+      clearDailyRewardClaimHandoffTimer,
+      clearDailyRewardSfxTimers,
+      runDailyRewardClaim,
+    ]);
     const handleDailyRewardCollect = useCallback(() => {
       if (dailyRewardClosePendingRef.current) return;
       if (!dailyRewardReady) {
@@ -19190,14 +19586,12 @@ const DailyRewardModal = React.memo(
         }),
       ]).start();
       closeDailyRewardModalAnimated();
-      runDailyRewardClaim();
     }, [
       clearDailyRewardSfxTimers,
       closeDailyRewardModalAnimated,
       dailyRewardCollectFlash,
       dailyRewardReady,
       playSound,
-      runDailyRewardClaim,
     ]);
     useImperativeHandle(
       ref,
@@ -19223,8 +19617,13 @@ const DailyRewardModal = React.memo(
       () => () => {
         stopDailyRewardModalLoops();
         clearDailyRewardSfxTimers();
+        clearDailyRewardClaimHandoffTimer();
       },
-      [clearDailyRewardSfxTimers, stopDailyRewardModalLoops]
+      [
+        clearDailyRewardClaimHandoffTimer,
+        clearDailyRewardSfxTimers,
+        stopDailyRewardModalLoops,
+      ]
     );
 
     return (
@@ -19265,7 +19664,9 @@ const DailyRewardModal = React.memo(
                 {
                   backgroundColor: dailyRewardModalPalette.background,
                   borderColor: dailyRewardModalPalette.border,
-                  opacity: dailyRewardModalCardOpacity,
+                  opacity: resolveModalCompositeOpacity(
+                    dailyRewardModalCardOpacity
+                  ),
                   transform: [
                     { translateY: dailyRewardModalCardTranslateY },
                     { scale: dailyRewardModalCardScale },
@@ -20949,7 +21350,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
           </Text>
         )}
         {!expanded ? (
-          <View style={styles.savedHeroGoalMetaRow}>
+          <View
+            style={[
+              styles.savedHeroGoalMetaRow,
+              IS_SHORT_DEVICE && styles.savedHeroGoalMetaRowCompactFabClearance,
+            ]}
+          >
             <TouchableOpacity
               style={styles.savedHeroToggleButton}
               onPress={handleToggleExpanded}
@@ -21379,7 +21785,9 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
                 {
                   backgroundColor: savingsTrendModalPalette.background,
                   borderColor: savingsTrendModalPalette.border,
-                  opacity: savingsTrendModalCardOpacity,
+                  opacity: resolveModalCompositeOpacity(
+                    savingsTrendModalCardOpacity
+                  ),
                   transform: [
                     { translateY: savingsTrendModalCardTranslateY },
                     { scale: savingsTrendModalCardScale },
@@ -21671,7 +22079,10 @@ const BudgetHeroCard = React.memo(function BudgetHeroCard({
     : t("budgetWidgetSubtitle");
   const budgetLimitWarningColor = colors.warning;
   const translucentGlowColor = colorWithAlpha(accent, isDarkMode ? 0.25 : 0.2);
-  const budgetPremiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const budgetPremiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   const budgetPremiumBorder = colorWithAlpha(budgetPremiumAccent, isDarkMode ? 0.58 : 0.34);
   const budgetPremiumPillBackground =
     Platform.OS === "android"
@@ -21929,6 +22340,7 @@ const HomeSubscriptionWidgetCard = React.memo(function HomeSubscriptionWidgetCar
   timerText = "",
   palette,
   onPress = null,
+  onEmptyPress = null,
   onLayout = null,
   variant = "home",
   style = null,
@@ -21947,6 +22359,7 @@ const HomeSubscriptionWidgetCard = React.memo(function HomeSubscriptionWidgetCar
       onPress={onPress || undefined}
       onLayout={onLayout || undefined}
       disabled={typeof onPress !== "function"}
+      accessible={hasEntries || typeof onEmptyPress !== "function"}
       accessibilityRole="button"
       accessibilityLabel={t("subscriptionWidgetTitle")}
       accessibilityHint={t("subscriptionWidgetTapHint")}
@@ -22067,7 +22480,14 @@ const HomeSubscriptionWidgetCard = React.memo(function HomeSubscriptionWidgetCar
             );
           })
         ) : (
-          <View
+          <Pressable
+            onPress={(event) => {
+              event?.stopPropagation?.();
+              onEmptyPress?.();
+            }}
+            disabled={typeof onEmptyPress !== "function"}
+            accessibilityRole="button"
+            accessibilityLabel={t("subscriptionWidgetEmpty")}
             style={[
               styles.subscriptionWatchEmpty,
               { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
@@ -22080,7 +22500,7 @@ const HomeSubscriptionWidgetCard = React.memo(function HomeSubscriptionWidgetCar
               {t("subscriptionWidgetEmpty")}
             </Text>
             <Text style={[styles.subscriptionWatchChevron, { color: colors.muted }]}>›</Text>
-          </View>
+          </Pressable>
         )}
       </View>
 
@@ -22222,7 +22642,10 @@ const LockedFeatureOverlay = ({
     ? t("featureLockedLevelLabel", { level: unlockLevel })
     : "";
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   const textColor = premiumStyle
     ? isDarkMode
       ? "#EAF2FF"
@@ -22420,7 +22843,10 @@ const LockedFeatureCard = ({
   premiumStyle = false,
 }) => {
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   const premiumSurface = colorWithAlpha(premiumAccent, isDarkMode ? 0.2 : 0.12);
   const premiumBorder = colorWithAlpha(premiumAccent, isDarkMode ? 0.56 : 0.32);
   const baseLineColor = premiumStyle
@@ -23623,7 +24049,7 @@ function FridgeFreezeTransferOverlay({
             {
               backgroundColor: cardSurface,
               borderColor: cardBorder,
-              opacity: cardOpacity,
+              opacity: resolveModalCompositeOpacity(cardOpacity),
               transform: [
                 { translateX: cardTranslateX },
                 { translateY: cardTranslateY },
@@ -24380,7 +24806,10 @@ function ImpulseMapCard({
 
 function LockedImpulseMapPreview({ insights, colors, t, language, onPress = null }) {
   const isDarkMode = colors.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   const categoryLabel =
     insights?.hottestSpendCategory && insights.hottestSpendCategory.spendCount > 0
       ? getImpulseCategoryLabel(insights.hottestSpendCategory.id, language)
@@ -24448,7 +24877,10 @@ function PremiumLockedInsightCard({
   children,
 }) {
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   const premiumSurface =
     Platform.OS === "android"
       ? blendColors(colors?.card || "#FFFFFF", premiumAccent, isDarkMode ? 0.4 : 0.2)
@@ -24535,7 +24967,10 @@ function PremiumLockedInsightCard({
 
 function PremiumWeeklyPreviewMock({ colors, t, savedLabel, spentLabel, signalCount = 0 }) {
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   return (
     <View style={styles.premiumFomoMetricRow}>
       <View style={styles.premiumFomoMetric}>
@@ -24578,7 +25013,10 @@ function PremiumWeeklyPreviewMock({ colors, t, savedLabel, spentLabel, signalCou
 
 function PremiumBalancePreviewMock({ colors, t, balanceLabel, potentialLabel }) {
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
   return (
     <View style={styles.premiumFomoMetricRow}>
       <View style={styles.premiumFomoMetric}>
@@ -24623,10 +25061,21 @@ function BudgetLockedScreen({
   contentBottomPadding = 0,
   topInset = 0,
 }) {
+  const { fontScale } = useWindowDimensions();
+  const usesAccessibilityLayout = fontScale >= 1.25;
   const isDarkMode = colors?.background === THEMES.dark.background;
-  const premiumAccent = resolvePremiumUiAccent({ isDark: isDarkMode });
-  const screenPaddingTop = Math.max(16, topInset + 10);
-  const screenMinHeight = Math.max(560, SCREEN_HEIGHT - Math.max(160, contentBottomPadding));
+  const premiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkMode,
+    proAccent: colors?.primary,
+  });
+  const screenPaddingTop = usesAccessibilityLayout
+    ? Math.max(12, topInset + 8)
+    : IS_SHORT_DEVICE
+    ? Math.max(24, topInset + 40)
+    : Math.max(16, topInset + 10);
+  const screenMinHeight = usesAccessibilityLayout || IS_SHORT_DEVICE
+    ? 0
+    : Math.max(560, SCREEN_HEIGHT - Math.max(160, contentBottomPadding));
   const formatPreviewAmount = (valueUSD) =>
     formatCurrency(convertToCurrency(Math.max(0, Number(valueUSD) || 0), currency), currency);
   const previewMetrics = [
@@ -24649,17 +25098,20 @@ function BudgetLockedScreen({
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={[
         styles.budgetLockedScreenContent,
+        IS_SHORT_DEVICE && styles.budgetLockedScreenContentCompact,
+        usesAccessibilityLayout && styles.budgetLockedScreenContentAccessibility,
         {
           minHeight: screenMinHeight,
           paddingTop: screenPaddingTop,
-          paddingBottom: Math.max(32, contentBottomPadding),
+          paddingBottom: Math.max(MAIN_SCREEN_CONTENT_BOTTOM_PADDING, contentBottomPadding),
         },
       ]}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator
     >
       <View
         style={[
           styles.budgetLockedScreenHero,
+          usesAccessibilityLayout && styles.budgetLockedScreenHeroAccessibility,
           {
             backgroundColor:
               Platform.OS === "android"
@@ -24673,20 +25125,26 @@ function BudgetLockedScreen({
           pointerEvents="none"
           style={[styles.budgetLockedScreenGlow, { backgroundColor: colorWithAlpha(premiumAccent, 0.24) }]}
         />
-        <View style={styles.budgetLockedScreenHeader}>
+        <View
+          style={[
+            styles.budgetLockedScreenHeader,
+            usesAccessibilityLayout && styles.budgetLockedScreenHeaderAccessibility,
+          ]}
+        >
           <View style={styles.budgetLockedScreenTitleBlock}>
             <Text style={[styles.budgetLockedScreenTitle, { color: colors.text }]}>
               {t("premiumBalancePreviewTitle")}
             </Text>
             <Text style={[styles.budgetLockedScreenBody, { color: colors.muted }]}>
               {t("premiumBudgetScreenFomoBody", {
-                amount: formatPreviewAmount(availableToAllocateUSD + savedTotalUSD),
+                amount: formatPreviewAmount(savedTotalUSD),
               })}
             </Text>
           </View>
           <View
             style={[
               styles.budgetLockedScreenPill,
+              usesAccessibilityLayout && styles.budgetLockedScreenPillAccessibility,
               {
                 backgroundColor: colorWithAlpha(premiumAccent, isDarkMode ? 0.26 : 0.16),
                 borderColor: colorWithAlpha(premiumAccent, isDarkMode ? 0.62 : 0.36),
@@ -24774,8 +25232,8 @@ const HistoryModal = React.memo(function HistoryModal({
     [currency]
   );
   const describeHistory = useCallback(
-    (entry) => describeHistoryEntry(entry, { t, formatLocalAmount }),
-    [formatLocalAmount, t]
+    (entry) => describeHistoryEntry(entry, { t, formatLocalAmount, language }),
+    [formatLocalAmount, language, t]
   );
   const formatHistoryMeta = useCallback(
     (entry) => formatHistoryEntryMeta(entry, { t, locale }),
@@ -25391,6 +25849,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Hi Almost support, I found a bug:",
     bodySteps: "Steps to reproduce:",
     bodyContext: "Context:",
+    bodyDiagnostics: "Automatic diagnostics:",
     mailErrorTitle: "Could not open email",
     mailErrorMessage: "Please email {{email}} with a short description of the bug.",
   },
@@ -25411,6 +25870,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Здравствуйте, поддержка Almost. Я нашёл(ла) баг:",
     bodySteps: "Как повторить:",
     bodyContext: "Контекст:",
+    bodyDiagnostics: "Автоматическая диагностика:",
     mailErrorTitle: "Не удалось открыть почту",
     mailErrorMessage: "Напиши на {{email}} и коротко опиши баг.",
   },
@@ -25431,6 +25891,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Hola soporte de Almost, encontré un bug:",
     bodySteps: "Pasos para reproducirlo:",
     bodyContext: "Contexto:",
+    bodyDiagnostics: "Diagnóstico automático:",
     mailErrorTitle: "No se pudo abrir el email",
     mailErrorMessage: "Escribe a {{email}} con una descripción breve del bug.",
   },
@@ -25451,6 +25912,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Bonjour le support Almost, j'ai trouvé un bug :",
     bodySteps: "Étapes pour reproduire :",
     bodyContext: "Contexte :",
+    bodyDiagnostics: "Diagnostic automatique :",
     mailErrorTitle: "Impossible d'ouvrir l'email",
     mailErrorMessage: "Écris à {{email}} avec une courte description du bug.",
   },
@@ -25471,6 +25933,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Hallo Almost Support, ich habe einen Bug gefunden:",
     bodySteps: "Schritte zum Reproduzieren:",
     bodyContext: "Kontext:",
+    bodyDiagnostics: "Automatische Diagnose:",
     mailErrorTitle: "E-Mail konnte nicht geöffnet werden",
     mailErrorMessage: "Schreibe bitte an {{email}} mit einer kurzen Beschreibung des Bugs.",
   },
@@ -25491,6 +25954,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "مرحباً دعم Almost، وجدت خللاً:",
     bodySteps: "خطوات إعادة المشكلة:",
     bodyContext: "السياق:",
+    bodyDiagnostics: "التشخيص التلقائي:",
     mailErrorTitle: "تعذر فتح البريد",
     mailErrorMessage: "يرجى مراسلة {{email}} مع وصف قصير للخلل.",
   },
@@ -25511,6 +25975,7 @@ const BUG_REPORT_COPY = {
     bodyIntro: "Almost 支持团队你好，我发现了一个问题：",
     bodySteps: "复现步骤：",
     bodyContext: "上下文：",
+    bodyDiagnostics: "自动诊断信息：",
     mailErrorTitle: "无法打开邮件",
     mailErrorMessage: "请发邮件到 {{email}}，并简短描述这个问题。",
   },
@@ -25622,12 +26087,11 @@ const BugReportModal = React.memo(function BugReportModal({
   const submitDisabled = sending || !descriptionReady;
   const normalizedKeyboardInset = Math.max(0, Number(keyboardInset) || 0);
   const normalizedTopSafeInset = Math.max(0, Number(topSafeInset) || 0);
-  const keyboardAwareCardStyle = useMemo(() => {
-    if (!normalizedKeyboardInset) return null;
-    const availableHeight =
-      SCREEN_HEIGHT - normalizedKeyboardInset - normalizedTopSafeInset - (IS_SHORT_DEVICE ? 20 : 36);
-    return { maxHeight: Math.max(260, Math.round(Math.min(SCREEN_HEIGHT * 0.86, availableHeight))) };
-  }, [normalizedKeyboardInset, normalizedTopSafeInset]);
+  const modalVerticalInset = Math.max(IS_SHORT_DEVICE ? 8 : 12, normalizedTopSafeInset);
+  const modalSafeAreaStyle = useMemo(
+    () => ({ paddingTop: modalVerticalInset, paddingBottom: modalVerticalInset }),
+    [modalVerticalInset]
+  );
   const registerFieldLayout = useCallback((fieldKey, event) => {
     const layoutY = event?.nativeEvent?.layout?.y;
     if (!Number.isFinite(layoutY)) return;
@@ -25721,15 +26185,23 @@ const BugReportModal = React.memo(function BugReportModal({
         <TouchableWithoutFeedback onPress={handleClose}>
           <View style={styles.bugReportBackdrop} />
         </TouchableWithoutFeedback>
-        <View style={styles.bugReportModalWrap} pointerEvents="box-none">
-          <TouchableWithoutFeedback onPress={() => {}}>
-            <View
-              style={[
-                styles.bugReportModalCard,
-                keyboardAwareCardStyle,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
+        <KeyboardAvoidingView
+          style={styles.bugReportKeyboardAvoider}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+          pointerEvents="box-none"
+        >
+          <View
+            style={[styles.bugReportModalWrap, modalSafeAreaStyle]}
+            pointerEvents="box-none"
+          >
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View
+                style={[
+                  styles.bugReportModalCard,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
               <View style={styles.bugReportHeaderRow}>
                 <View style={styles.bugReportTitleBlock}>
                   <Text style={[styles.bugReportTitle, { color: colors.text }]}>
@@ -25844,9 +26316,10 @@ const BugReportModal = React.memo(function BugReportModal({
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -26748,7 +27221,7 @@ const HelpGuideModal = React.memo(function HelpGuideModal({
 
 const MENU_TOP_CONTENT_OFFSET = 24;
 const ANDROID_STATUS_GLASS_FADE_HEIGHT = 44;
-const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = 160;
+const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = IS_SHORT_DEVICE ? 12 : 24;
 
 function TycoonAutosaveModal({
   visible,
@@ -26900,7 +27373,7 @@ function TycoonAutosaveModal({
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              opacity: cardOpacity,
+              opacity: resolveModalCompositeOpacity(cardOpacity),
               transform: [{ translateY: cardTranslateY }],
             },
           ]}
@@ -27185,7 +27658,7 @@ function TycoonAutosaveHungryModal({
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              opacity: cardOpacity,
+              opacity: resolveModalCompositeOpacity(cardOpacity),
               transform: [{ translateY: cardTranslateY }],
             },
           ]}
@@ -27419,6 +27892,7 @@ const FeedScreen = React.memo(
   onSavingsBreakdownPress = () => {},
   onBudgetHeroPress = null,
   onSubscriptionWidgetPress = null,
+  onSubscriptionCreateTemptation = null,
   budgetAutoEnabled = true,
   budgetSavingsTransferredUSD = 0,
   budgetDebtTransferredUSD = 0,
@@ -27484,6 +27958,7 @@ const FeedScreen = React.memo(
   isPremiumUser = false,
   budgetSpeechDataRef = null,
   onScrollActivityChange = null,
+  onHeroExpandedChange = null,
   contentBottomPadding = MAIN_SCREEN_CONTENT_BOTTOM_PADDING,
   topInset = 0,
   goalJarAutoOpenRequestTick = 0,
@@ -27585,6 +28060,10 @@ const FeedScreen = React.memo(
   const heroCarouselRef = useRef(null);
   const [heroCarouselHeight, setHeroCarouselHeight] = useState(0);
   const [heroExpanded, setHeroExpanded] = useState(false);
+  const heroExpandedRef = useRef(false);
+  const heroExpandedChangeRef = useRef(onHeroExpandedChange);
+  heroExpandedChangeRef.current = onHeroExpandedChange;
+  const heroCarouselExpansionTransitionRef = useRef(false);
   const heroCarouselHintAnim = useRef(new Animated.Value(0)).current;
   const heroCarouselHintPlayedRef = useRef(false);
   const heroCarouselScrollX = useRef(new Animated.Value(0)).current;
@@ -27923,6 +28402,45 @@ const FeedScreen = React.memo(
     },
     [heroCarouselHintAnim]
   );
+  const pinHeroCarouselToPrimary = useCallback(() => {
+    const primaryLoopIndex = heroCarouselLoopIndexForReal(0);
+    heroCarouselDraggingRef.current = false;
+    heroCarouselAutoScrollingRef.current = false;
+    heroCarouselSnappingRef.current = false;
+    heroCarouselUserSwipedRef.current = false;
+    heroCarouselPremiumAttemptedRef.current = false;
+    stopHeroCarouselIdleWiggle();
+    setHeroCarouselIndexSafe(0);
+    scrollHeroCarouselToLoopIndex(primaryLoopIndex, false);
+  }, [
+    heroCarouselLoopIndexForReal,
+    scrollHeroCarouselToLoopIndex,
+    setHeroCarouselIndexSafe,
+    stopHeroCarouselIdleWiggle,
+  ]);
+  const handleHeroExpandedChange = useCallback(
+    (nextExpanded) => {
+      const expanded = !!nextExpanded;
+      heroExpandedRef.current = expanded;
+      heroExpandedChangeRef.current?.(expanded);
+      heroCarouselExpansionTransitionRef.current = true;
+      setHeroExpanded(expanded);
+      clearHeroCarouselRealignTimer();
+      pinHeroCarouselToPrimary();
+      heroCarouselRealignTimerRef.current = setTimeout(() => {
+        heroCarouselRealignTimerRef.current = null;
+        pinHeroCarouselToPrimary();
+        heroCarouselExpansionTransitionRef.current = false;
+      }, UI_MOTION.sheet);
+    },
+    [clearHeroCarouselRealignTimer, pinHeroCarouselToPrimary]
+  );
+  useEffect(
+    () => () => {
+      heroExpandedChangeRef.current?.(false);
+    },
+    []
+  );
   const startHeroCarouselIdleWiggle = useCallback(() => {
     if (heroCarouselIdleLoopRef.current) return;
     if (!shouldAnimateVisibleHero) return;
@@ -28197,6 +28715,7 @@ const FeedScreen = React.memo(
   );
   const handleHeroCarouselScrollBegin = useCallback(() => {
     clearHeroCarouselRealignTimer();
+    heroCarouselExpansionTransitionRef.current = false;
     heroCarouselDraggingRef.current = true;
     heroCarouselUserSwipedRef.current = true;
     heroCarouselWiggleDisabledRef.current = true;
@@ -28207,6 +28726,10 @@ const FeedScreen = React.memo(
     (event) => {
       heroCarouselDraggingRef.current = false;
       if (!heroCarouselPageWidth) return;
+      if (heroCarouselExpansionTransitionRef.current || heroExpandedRef.current) {
+        pinHeroCarouselToPrimary();
+        return;
+      }
       if (heroCarouselPremiumLocked) {
         const offsetX = Number(event?.nativeEvent?.contentOffset?.x) || 0;
         const lockedOffset = heroCarouselPageWidth * heroCarouselLoopIndexForReal(0);
@@ -28277,6 +28800,7 @@ const FeedScreen = React.memo(
       heroCarouselSnapThreshold,
       markHeroCarouselWidgetSeen,
       onHeroCarouselLocked,
+      pinHeroCarouselToPrimary,
       resolveHeroCarouselRealIndex,
       scrollHeroCarouselToLoopIndex,
       scheduleHeroCarouselIdleWiggle,
@@ -28683,6 +29207,7 @@ const FeedScreen = React.memo(
         const template = resolveTemplateCard(entry?.meta?.templateId);
         const entryTimestamp = normalizeTimestampMs(entry?.timestamp);
         const resolvedTitle =
+          resolveHistoryEntryTitle(entry, language, "") ||
           resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
           entry?.title ||
           t("defaultDealTitle");
@@ -28691,12 +29216,11 @@ const FeedScreen = React.memo(
         const amountUSD = Math.max(0, Number(entry?.meta?.amountUSD) || 0);
         const amountLocal = formatHeroLocalAmount(amountUSD);
         const prefix = isSpend ? "- " : "";
-        const resolvedEmoji = template?.emoji || (isSpend ? "🧾" : "🛒");
         const normalizedTitle = String(resolvedTitle || "").trim();
-        const displayTitle =
-          resolvedEmoji && normalizedTitle.startsWith(resolvedEmoji)
-            ? normalizedTitle.slice(resolvedEmoji.length).trimStart()
-            : normalizedTitle;
+        const { emoji: titleEmoji, title: titleWithoutEmoji } =
+          splitLeadingEmojiToken(normalizedTitle);
+        const resolvedEmoji = template?.emoji || titleEmoji || (isSpend ? "🧾" : "🛒");
+        const displayTitle = titleEmoji ? titleWithoutEmoji : normalizedTitle;
         return {
           id: entry.id,
           title: displayTitle || resolvedTitle,
@@ -28727,14 +29251,16 @@ const FeedScreen = React.memo(
   );
   const resolveEventTitle = useCallback(
     (entry) =>
+      resolveHistoryEntryTitle(entry, language, "") ||
       resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
       entry?.title ||
       t("defaultDealTitle"),
-    [resolveTemplateTitle, t]
+    [language, resolveTemplateTitle, t]
   );
   const resolveSpeechTitle = useCallback(
     (entry) => {
       const raw =
+        resolveHistoryEntryTitle(entry, language, "") ||
         resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
         entry?.title ||
         t("defaultDealTitle");
@@ -28743,7 +29269,7 @@ const FeedScreen = React.memo(
         .replace(/^\s+/, "")
         .trim();
     },
-    [resolveTemplateTitle, t]
+    [language, resolveTemplateTitle, t]
   );
   const stripEmoji = useCallback((value) => {
     if (!value) return "";
@@ -30485,6 +31011,18 @@ const FeedScreen = React.memo(
     homeSubscriptionTotalMonthlyUSD,
     onSubscriptionWidgetPress,
   ]);
+  const handleHomeSubscriptionCreatePress = useCallback(() => {
+    logEvent("subscription_watch_add_tapped", {
+      source: "home_carousel",
+      entry_count: homeSubscriptionEntries.length,
+      monthly_total_usd: Math.round(homeSubscriptionTotalMonthlyUSD * 100) / 100,
+    });
+    onSubscriptionCreateTemptation?.();
+  }, [
+    homeSubscriptionEntries.length,
+    homeSubscriptionTotalMonthlyUSD,
+    onSubscriptionCreateTemptation,
+  ]);
   useEffect(() => {
     if (!resolvedBudgetSpeechDataRef) {
       return;
@@ -30960,38 +31498,9 @@ const FeedScreen = React.memo(
     runLayoutAnimation();
     setArchiveExpanded((prev) => !prev);
   }, []);
-  const feedEmptyEntry = useMemo(() => ({ type: "feed_empty", id: "feed-empty" }), []);
-  const feedTailEntry = useMemo(() => ({ type: "feed_tail", id: "feed-tail" }), []);
-  const archiveHeaderEntry = useMemo(
-    () => ({ type: "archive_header", id: "archive-header" }),
-    []
-  );
-  const feedData = useMemo(() => {
-    const data = [];
-    if (feedEntries.length) {
-      data.push(...feedEntries);
-    } else {
-      data.push(feedEmptyEntry);
-    }
-    data.push(feedTailEntry);
-    data.push(archiveHeaderEntry);
-    if (archiveExpanded && archiveCount > 0) {
-      data.push(...archiveEntries);
-    }
-    return data;
-  }, [
-    archiveCount,
-    archiveEntries,
-    archiveExpanded,
-    archiveHeaderEntry,
-    feedEmptyEntry,
-    feedTailEntry,
-    feedEntries,
-  ]);
   useEffect(() => {
     const map = new Map();
-    feedData.forEach((entry, index) => {
-      if (entry?.type !== "card" && entry?.type !== "archive") return;
+    feedEntries.forEach((entry, index) => {
       const item = entry?.item;
       if (!item) return;
       const itemKey =
@@ -31010,7 +31519,7 @@ const FeedScreen = React.memo(
       }
     });
     feedIndexByTemplateRef.current = map;
-  }, [feedData]);
+  }, [feedEntries]);
   const resolveAssignedGoalLabel = useCallback(
     (goalId, assignedGoal) => {
       if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
@@ -31326,7 +31835,6 @@ const FeedScreen = React.memo(
       triggerSelectionHaptic();
       if (from === to) return;
       const reorderedVisibleKeys = (Array.isArray(data) ? data : [])
-        .filter((entry) => entry?.type === "card")
         .map((entry) => getFeedCardOrderKey(entry?.item))
         .filter(Boolean);
       if (reorderedVisibleKeys.length < 2) return;
@@ -31376,66 +31884,68 @@ const FeedScreen = React.memo(
   );
   const renderFeedItem = useCallback(
     ({ item: entry, drag, isActive }) => {
-      if (entry.type === "card") {
-        const orderKey = getFeedCardOrderKey(entry.item);
-        const tiltDirection =
-          orderKey && orderKey.charCodeAt(orderKey.length - 1) % 2 === 0 ? -1 : 1;
-        return (
-          <FeedDragLiftDecorator
-            reduceMotion={reduceMotion}
-            shadowColor={isDarkMode ? "#000000" : "#17213B"}
-            tiltDirection={tiltDirection}
-          >
-            {renderTemptationCard(entry, { drag, isDragActive: isActive })}
-          </FeedDragLiftDecorator>
-        );
-      }
-      if (entry.type === "archive") {
-        return renderTemptationCard(entry, { archived: true });
-      }
-      if (entry.type === "feed_tail") {
-        return feedTailPlaceholder;
-      }
-      if (entry.type === "archive_header") {
-        return (
-          <View style={styles.archiveSection}>
-            <FrequencySectionHeader
-              title={t("archiveSectionTitle")}
-              count={String(archiveCount)}
-              collapsed={!archiveExpanded}
-              onToggle={toggleArchiveExpanded}
-              colors={colors}
-              t={t}
-            />
-            {archiveExpanded && archiveCount === 0 ? (
-              <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
-                {t("archiveEmpty")}
-              </Text>
-            ) : null}
-          </View>
-        );
-      }
-      if (entry.type === "feed_empty") {
-        return (
-          <View style={styles.emptyState}>
-            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-              {t("feedEmptyTitle")}
-            </Text>
-            <Text style={[styles.emptyStateText, { color: colors.muted }]}>
-              {t("feedEmptySubtitle")}
-            </Text>
-          </View>
-        );
-      }
-      return null;
+      const orderKey = getFeedCardOrderKey(entry.item);
+      const tiltDirection =
+        orderKey && orderKey.charCodeAt(orderKey.length - 1) % 2 === 0 ? -1 : 1;
+      return (
+        <FeedDragLiftDecorator
+          reduceMotion={reduceMotion}
+          shadowColor={isDarkMode ? "#000000" : "#17213B"}
+          tiltDirection={tiltDirection}
+        >
+          {renderTemptationCard(entry, { drag, isDragActive: isActive })}
+        </FeedDragLiftDecorator>
+      );
     },
+    [isDarkMode, reduceMotion, renderTemptationCard]
+  );
+  const feedEmptyState = useMemo(
+    () => (
+      <View style={styles.emptyState}>
+        <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+          {t("feedEmptyTitle")}
+        </Text>
+        <Text style={[styles.emptyStateText, { color: colors.muted }]}>
+          {t("feedEmptySubtitle")}
+        </Text>
+      </View>
+    ),
+    [colors.muted, colors.text, t]
+  );
+  const feedFooter = useMemo(
+    () => (
+      <>
+        {feedTailPlaceholder}
+        <View style={styles.archiveSection}>
+          <FrequencySectionHeader
+            title={t("archiveSectionTitle")}
+            count={String(archiveCount)}
+            collapsed={!archiveExpanded}
+            onToggle={toggleArchiveExpanded}
+            colors={colors}
+            t={t}
+          />
+          {archiveExpanded && archiveCount === 0 ? (
+            <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
+              {t("archiveEmpty")}
+            </Text>
+          ) : null}
+        </View>
+        {archiveExpanded
+          ? archiveEntries.map((entry) => (
+              <React.Fragment key={entry.id}>
+                {renderTemptationCard(entry, { archived: true })}
+              </React.Fragment>
+            ))
+          : null}
+      </>
+    ),
     [
       archiveCount,
+      archiveEntries,
       archiveExpanded,
       colors,
       feedTailPlaceholder,
-      isDarkMode,
-      reduceMotion,
       renderTemptationCard,
       t,
       toggleArchiveExpanded,
@@ -31497,9 +32007,9 @@ const FeedScreen = React.memo(
         style={styles.feedList}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
-        data={feedData}
+        data={feedEntries}
         keyExtractor={feedKeyExtractor}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
         scrollEnabled={!feedScrollLocked}
         directionalLockEnabled
         nestedScrollEnabled
@@ -31509,6 +32019,8 @@ const FeedScreen = React.memo(
         ]}
         renderItem={renderFeedItem}
         renderPlaceholder={renderFeedPlaceholder}
+        ListEmptyComponent={feedEmptyState}
+        ListFooterComponent={feedFooter}
         onDragBegin={handleFeedDragBegin}
         onDragEnd={handleFeedDragEnd}
         activationDistance={12}
@@ -31580,6 +32092,7 @@ const FeedScreen = React.memo(
                           numberOfLines={1}
                           adjustsFontSizeToFit
                           allowAndroidAutoFit
+                          maxFontSizeMultiplier={1.1}
                           minimumFontScale={MIN_READABLE_FONT_SCALE}
                         >
                           {levelLabel}
@@ -31793,6 +32306,11 @@ const FeedScreen = React.memo(
                     accessibilityState={{ selected }}
                   >
                     <Text
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.68}
+                      maxFontSizeMultiplier={1.1}
+                      ellipsizeMode="clip"
                       style={[
                         styles.homeTodayTabText,
                         selected && styles.homeTodayTabTextSelected,
@@ -31932,7 +32450,7 @@ const FeedScreen = React.memo(
                             activeChallenge={activeChallenge}
                             onActiveChallengePress={onActiveChallengePress}
                             onAnchorChange={isClone ? null : onSavingsHeroAnchorChange}
-                            onExpandedChange={isClone ? null : setHeroExpanded}
+                            onExpandedChange={isClone ? null : handleHeroExpandedChange}
                             style={styles.heroCarouselSizedCard}
                           />
                       </Animated.View>
@@ -31984,6 +32502,7 @@ const FeedScreen = React.memo(
                         timerText={homeSubscriptionTimerText}
                         palette={homeSubscriptionWidgetPalette}
                         onPress={isClone ? null : handleHomeSubscriptionPress}
+                        onEmptyPress={isClone ? null : handleHomeSubscriptionCreatePress}
                         style={[itemHeight, styles.heroCarouselSizedCard]}
                       />
                     </Animated.View>
@@ -33185,15 +33704,18 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const isRtlLayout = isRtlLanguage(language);
   const safeAreaInsets = safeUseSafeAreaInsets();
   const progressContentBottomPadding = Math.max(
-    Math.max(0, Number(contentBottomPadding) || 0),
-    safeAreaInsets.bottom + FAB_CONTAINER_BOTTOM + FAB_BUTTON_SIZE + 32
+    MAIN_SCREEN_CONTENT_BOTTOM_PADDING,
+    Number(contentBottomPadding) || 0
   );
   const budgetLimitWarningColor = colors.warning;
   const budgetSuccessTextColor = colors.success || SAVE_ACTION_COLOR;
   const budgetErrorTextColor = colors.error || SPEND_ACTION_COLOR;
   const budgetLockedState = !isPremiumUser || !budgetAutoEnabled;
   const progressPremiumLocked = !isPremiumUser;
-  const budgetPremiumAccent = resolvePremiumUiAccent({ isDark: isDarkTheme });
+  const budgetPremiumAccent = resolvePremiumUiAccent({
+    isDark: isDarkTheme,
+    proAccent: colors?.primary,
+  });
   const budgetPremiumBorder = colorWithAlpha(budgetPremiumAccent, isDarkTheme ? 0.58 : 0.34);
   const budgetPremiumPillBackground =
     Platform.OS === "android"
@@ -33318,13 +33840,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const challengeAccentForeground =
     colors.onPrimary || resolveForegroundForColor(challengeAccent);
   const insightsAccent = progressPremiumLocked
-    ? resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme })
+    ? resolvePremiumUiAccent({
+        isDark: isDarkTheme,
+        themeId: theme,
+        proAccent: colors?.primary,
+      })
     : colors.text;
   const insightsAccentForeground = resolveForegroundForColor(insightsAccent);
   const insightsTextAccent = progressPremiumLocked
-    ? theme === PRO_THEME_ID && !isDarkTheme
-      ? "#6B21A8"
-      : insightsAccent
+    ? insightsAccent
     : colors.text;
   const insightsStatusColor = progressPremiumLocked ? insightsTextAccent : colors.muted;
   const insightsSurface = progressPremiumLocked
@@ -35646,7 +36170,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const describeCategoryHistory = useCallback(
     (entry) => {
       if (!entry) return t("historyUnknown");
-      const title = entry?.meta?.title || t("historyUnknown");
+      const title = resolveHistoryEntryTitle(
+        entry,
+        language,
+        entry?.meta?.title || t("historyUnknown")
+      );
       if (entry.kind === "refuse_spend") {
         return t("historyRefuseSpend", { title, amount: formatLocalAmount(entry.meta?.amountUSD) });
       }
@@ -35655,7 +36183,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       }
       return t("historyUnknown");
     },
-    [formatLocalAmount, t]
+    [formatLocalAmount, language, t]
   );
   const formatCategoryHistoryMeta = useCallback(
     (entry) => {
@@ -36704,14 +37232,28 @@ const ProgressScreen = React.memo(function ProgressScreen({
         automaticallyAdjustContentInsets={false}
         contentContainerStyle={{
           paddingBottom: progressContentBottomPadding,
-          gap: 16,
+          gap: IS_SHORT_DEVICE ? 10 : 16,
         }}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
         onScrollBeginDrag={closeChallengeSwipe}
       >
       <View>
-        <Text style={[styles.header, { color: colors.text }]}>{t("wishlistTitle")}</Text>
-        <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+        <Text
+          style={[
+            styles.header,
+            IS_SHORT_DEVICE && styles.progressCompactHeader,
+            { color: colors.text },
+          ]}
+        >
+          {t("wishlistTitle")}
+        </Text>
+        <Text
+          style={[
+            styles.purchasesSubtitle,
+            IS_SHORT_DEVICE && styles.progressCompactSubtitle,
+            { color: colors.muted },
+          ]}
+        >
           {t("progressTabSubtitle")}
         </Text>
       </View>
@@ -36770,6 +37312,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
         palette={subscriptionWidgetPalette}
         variant="insights"
         onPress={openSubscriptionModal}
+        onEmptyPress={handleSubscriptionCreateTemptation}
         onLayout={onSubscriptionWidgetLayout}
       />
       </View>
@@ -37293,7 +37836,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 <ScrollView
                   style={[styles.budgetWidgetList, { maxHeight: categoryListHeight }]}
                   contentContainerStyle={styles.budgetWidgetListContent}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator
                   nestedScrollEnabled
                 >
                   <View style={styles.budgetWidgetListHeader}>
@@ -38047,7 +38590,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
             <ScrollView
               style={[styles.progressAnalyticsScroll, { maxHeight: categoryListHeight }]}
               contentContainerStyle={styles.progressAnalyticsList}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
               nestedScrollEnabled
             >
               {progressAnalyticsRows.map((entry, index) => {
@@ -38706,7 +39249,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 <ScrollView
                   style={styles.subscriptionModalList}
                   contentContainerStyle={styles.subscriptionModalListContent}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator
                 >
                   {subscriptionModalEntries.map((entry) => (
                     <View
@@ -39014,7 +39557,9 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 { backgroundColor: colors.card, borderColor: colors.border },
                 { paddingBottom: Math.max(UI_SPACING.md, safeAreaInsets.bottom + UI_SPACING.sm) },
                 {
-                  opacity: potentialTrendCardOpacity,
+                  opacity: resolveModalCompositeOpacity(
+                    potentialTrendCardOpacity
+                  ),
                   transform: [
                     { translateY: potentialTrendCardTranslateY },
                     { scale: potentialTrendCardScale },
@@ -39521,7 +40066,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
               <ScrollView
                 style={styles.budgetModalSliderScroll}
                 scrollEnabled={budgetModalSliderScrollEnabled}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator
                 contentContainerStyle={styles.budgetModalSliderList}
               >
                 {budgetModalSliderRows.map((entry) => (
@@ -40342,7 +40887,7 @@ const FirstVisitScreenIntroModal = React.memo(function FirstVisitScreenIntroModa
               {
                 backgroundColor: cardBg,
                 borderColor: cardBorder,
-                opacity: cardOpacity,
+                opacity: resolveModalCompositeOpacity(cardOpacity),
                 transform: [
                   { translateY: cardTranslateY },
                   { scale: cardScale },
@@ -40564,13 +41109,13 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
               {
                 backgroundColor: cardBg,
                 borderColor: cardBorder,
-                opacity: backdropOpacity,
+                opacity: resolveModalCompositeOpacity(backdropOpacity),
                 transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
               },
             ]}
           >
             <ScrollView
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
               bounces={false}
               contentContainerStyle={styles.feedIntroScrollContent}
             >
@@ -41012,8 +41557,7 @@ const PendingScreen = React.memo(function PendingScreen({
   );
   const totalPendingLabel = formatCurrency(
     convertToCurrency(totalPendingUSD, currency),
-    currency,
-    { friendly: true }
+    currency
   );
   const fridgeHorizontalInset = Math.max(8, BASE_HORIZONTAL_PADDING - 6);
   const fridgeOpenRailWidth = 56;
@@ -41116,10 +41660,7 @@ const PendingScreen = React.memo(function PendingScreen({
   const fridgeExtendModalCancelText = colors.text;
   const fridgeExtendModalConfirmBg = fridgeAccent;
   const fridgeExtendModalConfirmText = fridgeOnAccent;
-  const fridgeBottomVisualGap = Math.max(
-    82,
-    Math.min(120, (Number(contentBottomPadding) || MAIN_SCREEN_CONTENT_BOTTOM_PADDING) - 56)
-  );
+  const fridgeBottomVisualGap = IS_SHORT_DEVICE ? 6 : 12;
   const fridgeIntroBackdropOpacity = fridgeIntroProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
@@ -41393,7 +41934,13 @@ const PendingScreen = React.memo(function PendingScreen({
                   <Text style={[styles.fridgeItemEmoji, { color: colors.text }]}>{cardEmoji}</Text>
                 </View>
                 <View style={styles.fridgeItemCopy}>
-                  <Text style={[styles.fridgeItemTitle, { color: colors.text }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.fridgeItemTitle, { color: colors.text }]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                    ellipsizeMode="tail"
+                  >
                     {cardTitle}
                   </Text>
                   <Text style={[styles.fridgeItemPrice, { color: colors.muted }]}>{priceLabel}</Text>
@@ -41611,7 +42158,7 @@ const PendingScreen = React.memo(function PendingScreen({
             </Text>
             <Text
               style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-              numberOfLines={1}
+              numberOfLines={2}
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >
@@ -41623,7 +42170,7 @@ const PendingScreen = React.memo(function PendingScreen({
             <Text style={[styles.fridgeSummaryCount, { color: colors.text }]}>{sorted.length}</Text>
             <Text
               style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-              numberOfLines={1}
+              numberOfLines={2}
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >
@@ -41642,7 +42189,7 @@ const PendingScreen = React.memo(function PendingScreen({
             </Text>
             <Text
               style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-              numberOfLines={1}
+              numberOfLines={2}
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >
@@ -41675,7 +42222,13 @@ const PendingScreen = React.memo(function PendingScreen({
                   </Text>
                 </View>
                 <View style={styles.fridgeNextPreviewCopy}>
-                  <Text style={[styles.fridgeNextPreviewTitle, { color: colors.text }]} numberOfLines={1}>
+                  <Text
+                    style={[styles.fridgeNextPreviewTitle, { color: colors.text }]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                    ellipsizeMode="tail"
+                  >
                     {nextPendingDisplay?.title || t("defaultDealTitle")}
                   </Text>
                   <Text style={[styles.fridgeNextPreviewPrice, { color: colors.muted }]} numberOfLines={1}>
@@ -41736,10 +42289,15 @@ const PendingScreen = React.memo(function PendingScreen({
             <ScrollView
               ref={scrollRef}
               scrollEnabled={fridgeOpen}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={fridgeOpen}
               contentContainerStyle={[
                 styles.fridgeShelfContent,
-                { paddingBottom: Math.max(140, Number(contentBottomPadding) || 0) },
+                {
+                  paddingBottom: Math.max(
+                    MAIN_SCREEN_CONTENT_BOTTOM_PADDING,
+                    Number(contentBottomPadding) || 0
+                  ),
+                },
               ]}
               style={styles.fridgeShelfScroll}
             >
@@ -41813,7 +42371,7 @@ const PendingScreen = React.memo(function PendingScreen({
                 </Text>
                 <Text
                   style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.75}
                 >
@@ -41832,7 +42390,7 @@ const PendingScreen = React.memo(function PendingScreen({
                 </Text>
                 <Text
                   style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.75}
                 >
@@ -41856,7 +42414,7 @@ const PendingScreen = React.memo(function PendingScreen({
                 </Text>
                 <Text
                   style={[styles.fridgeSummaryLabel, { color: colors.muted }]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                   adjustsFontSizeToFit
                   minimumFontScale={0.75}
                 >
@@ -41886,7 +42444,10 @@ const PendingScreen = React.memo(function PendingScreen({
                   <View style={styles.fridgeNextPreviewCopy}>
                     <Text
                       style={[styles.fridgeNextPreviewTitle, { color: colors.text }]}
-                      numberOfLines={1}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.82}
+                      ellipsizeMode="tail"
                     >
                       {nextPendingDisplay?.title || t("defaultDealTitle")}
                     </Text>
@@ -41997,7 +42558,9 @@ const PendingScreen = React.memo(function PendingScreen({
                   {
                     backgroundColor: fridgeIntroCardBg,
                     borderColor: fridgeIntroCardBorder,
-                    opacity: fridgeIntroCardOpacity,
+                    opacity: resolveModalCompositeOpacity(
+                      fridgeIntroCardOpacity
+                    ),
                     transform: [
                       { translateY: fridgeIntroCardTranslateY },
                       { scale: fridgeIntroCardScale },
@@ -42087,7 +42650,9 @@ const PendingScreen = React.memo(function PendingScreen({
                   {
                     backgroundColor: fridgeExtendModalCardBg,
                     borderColor: fridgeExtendModalCardBorder,
-                    opacity: fridgeExtendCardOpacity,
+                    opacity: resolveModalCompositeOpacity(
+                      fridgeExtendCardOpacity
+                    ),
                     transform: [
                       { translateY: fridgeExtendCardTranslateY },
                       { scale: fridgeExtendCardScale },
@@ -42408,6 +42973,7 @@ const CHALLENGE_STATUS_ORDER = {
   [CHALLENGE_STATUS.EXPIRED]: 3,
   [CHALLENGE_STATUS.CLAIMED]: 4,
 };
+const CHALLENGE_REMINDER_NOTIFICATION_KIND = "challenge_reminder";
 const CHALLENGE_REMINDER_WINDOWS = [
   { hour: 9, minute: 0 },
   { hour: 12, minute: 30 },
@@ -44073,13 +44639,27 @@ const RewardsScreen = React.memo(function RewardsScreen({
       automaticallyAdjustContentInsets={false}
       contentContainerStyle={{
         paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
-        gap: 16,
+        gap: IS_SHORT_DEVICE ? 10 : 16,
       }}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator
     >
       <View>
-        <Text style={[styles.header, { color: colors.text }]}>{t(titleKey)}</Text>
-        <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+        <Text
+          style={[
+            styles.header,
+            IS_SHORT_DEVICE && styles.progressCompactHeader,
+            { color: colors.text },
+          ]}
+        >
+          {t(titleKey)}
+        </Text>
+        <Text
+          style={[
+            styles.purchasesSubtitle,
+            IS_SHORT_DEVICE && styles.progressCompactSubtitle,
+            { color: colors.muted },
+          ]}
+        >
           {t(subtitleKey)}
         </Text>
       </View>
@@ -44837,7 +45417,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
           paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
           gap: IS_SHORT_DEVICE ? 10 : 12,
         }}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
       >
         <View>
           <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
@@ -45041,7 +45621,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     style={styles.budgetSheetScroll}
                     contentContainerStyle={styles.budgetSheetContent}
                     keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator
                   >
                   <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
                     {transferDraft.type === "debt"
@@ -45058,7 +45638,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
                       {t("totalLabel")}
                     </Text>
-                    <RNTextInput
+                    <TextInput
                       value={transferDraft.amount}
                       onChangeText={(amount) =>
                         setTransferDraft((prev) => ({
@@ -45213,7 +45793,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     style={styles.budgetSheetScroll}
                     contentContainerStyle={styles.budgetSheetContent}
                     keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator
                   >
                   <Text style={[styles.budgetProofModalTitle, { color: colors.text }]}>
                     {copy("budgetDebtSettingsTitle", "Debt plan")}
@@ -45222,7 +45802,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
                       {copy("budgetDebtAmountPlaceholder", "Debt amount")}
                     </Text>
-                    <RNTextInput
+                    <TextInput
                       value={debtDraft.amount}
                       onChangeText={(amount) => setDebtDraft((prev) => ({ ...prev, amount }))}
                       placeholder={copy("budgetDebtAmountPlaceholder", "Debt amount")}
@@ -45243,7 +45823,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
                       {copy("budgetDebtAprPlaceholder", "APR %, optional")}
                     </Text>
-                    <RNTextInput
+                    <TextInput
                       value={debtDraft.apr}
                       onChangeText={(apr) => setDebtDraft((prev) => ({ ...prev, apr }))}
                       placeholder={copy("budgetDebtAprPlaceholder", "APR %, optional")}
@@ -45264,7 +45844,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
                       {copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
                     </Text>
-                    <RNTextInput
+                    <TextInput
                       value={debtDraft.minPayment}
                       onChangeText={(minPayment) => setDebtDraft((prev) => ({ ...prev, minPayment }))}
                       placeholder={copy("budgetDebtMinPlaceholder", "Minimum monthly payment")}
@@ -45342,8 +45922,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onIncomeEntryOpen,
   soundEnabled = true,
   onSoundToggle,
-  appsFlyerPartnerSharingAllowed = true,
-  onAppsFlyerPartnerSharingToggle,
   spendReducesSavings = false,
   onSpendReductionToggle,
   tycoonModeEnabled = TYCOON_MODE_DEFAULT_ENABLED,
@@ -45378,19 +45956,81 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const isEditing = editMode !== "none";
   const isEditingIdentity = isEditing;
   const [profileSection, setProfileSection] = useState("overview");
+  const profileLanguageScrollRef = useRef(null);
+  const profileLanguageChipLayoutsRef = useRef({});
+  const profileLanguageViewportWidthRef = useRef(0);
+  const profileLanguageContentWidthRef = useRef(0);
+  const firstNameInputRef = useRef(null);
+  const lastNameInputRef = useRef(null);
+  const bioInputRef = useRef(null);
+  const profileEditFocusedRef = useRef(false);
+  const scrollProfileInputToKeyboard = useCallback(
+    (event, extraHeight = 24) => {
+      const target = event?.nativeEvent?.target;
+      if (!target) return;
+      requestAnimationFrame(() => {
+        const responder = scrollRef?.current?.getScrollResponder?.() || scrollRef?.current;
+        responder?.scrollResponderScrollNativeHandleToKeyboard?.(target, extraHeight, true);
+      });
+    },
+    [scrollRef]
+  );
+  useEffect(() => {
+    if (!isEditingIdentity) {
+      profileEditFocusedRef.current = false;
+      return undefined;
+    }
+    if (profileEditFocusedRef.current) return undefined;
+    profileEditFocusedRef.current = true;
+    setProfileSection("overview");
+    let frame = null;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      frame = requestAnimationFrame(() => firstNameInputRef.current?.focus());
+    });
+    return () => {
+      interaction?.cancel?.();
+      if (frame != null) cancelAnimationFrame(frame);
+    };
+  }, [isEditingIdentity]);
   const isDarkTheme = theme === "dark";
   const isProTheme = theme === PRO_THEME_ID;
   const { reduceMotion } = useMotionPreferences();
   const normalizedLanguageValue = normalizeLanguage(language || DEFAULT_LANGUAGE);
   const isProfileRtlLayout = isRtlLanguage(normalizedLanguageValue);
+  const scrollProfileLanguageIntoView = useCallback((languageCode, animated = true) => {
+    const itemLayout = profileLanguageChipLayoutsRef.current[languageCode];
+    const viewportWidth = profileLanguageViewportWidthRef.current;
+    const contentWidth = profileLanguageContentWidthRef.current;
+    if (!itemLayout || !(viewportWidth > 0) || !(contentWidth > 0)) return;
+    const maxOffset = Math.max(0, contentWidth - viewportWidth);
+    const centeredOffset = itemLayout.x + itemLayout.width / 2 - viewportWidth / 2;
+    const x = Math.max(0, Math.min(maxOffset, centeredOffset));
+    profileLanguageScrollRef.current?.scrollTo?.({ x, animated });
+  }, []);
+  useEffect(() => {
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        scrollProfileLanguageIntoView(normalizedLanguageValue, true);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame != null) cancelAnimationFrame(secondFrame);
+    };
+  }, [normalizedLanguageValue, profileSection, scrollProfileLanguageIntoView]);
   const isRomanceLocale = normalizedLanguageValue === "es" || normalizedLanguageValue === "fr";
   const reportsDisabled = !onReportsPress;
   const reportsLockedState = !!reportsLocked;
   const reportsPreparingState = !reportsLockedState && !!reportsPreparing;
   const reportsPremiumAccent = useMemo(() => {
     if (!reportsLockedState) return colors.muted;
-    return resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme });
-  }, [colors.muted, isDarkTheme, reportsLockedState, theme]);
+    return resolvePremiumUiAccent({
+      isDark: isDarkTheme,
+      themeId: theme,
+      proAccent: colors?.primary,
+    });
+  }, [colors.muted, colors.primary, isDarkTheme, reportsLockedState, theme]);
   const reportsPremiumBackground = useMemo(() => {
     if (Platform.OS === "android") {
       return blendColors(colors.card || "#FFFFFF", reportsPremiumAccent, isDarkTheme ? 0.34 : 0.22);
@@ -45498,12 +46138,20 @@ const ProfileScreen = React.memo(function ProfileScreen({
       const dark = theme === "dark";
       const pro = theme === PRO_THEME_ID;
       return {
-        background: dark ? "rgba(0,0,0,0.6)" : pro ? "#0C0C0C" : "rgba(255,255,255,0.92)",
-        border: dark ? "rgba(255,255,255,0.2)" : pro ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.08)",
-        icon: dark ? colors.card : pro ? "#FFFFFF" : colors.text,
+        background: dark
+          ? "rgba(0,0,0,0.6)"
+          : pro
+          ? colors.primary
+          : "rgba(255,255,255,0.92)",
+        border: dark
+          ? "rgba(255,255,255,0.2)"
+          : pro
+          ? colorWithAlpha(colors.onPrimary, 0.36)
+          : "rgba(0,0,0,0.08)",
+        icon: dark ? colors.card : pro ? colors.onPrimary : colors.text,
       };
     },
-    [theme, colors.card, colors.text]
+    [theme, colors.card, colors.onPrimary, colors.primary, colors.text]
   );
   const themeOptions = useMemo(
     () => {
@@ -45519,6 +46167,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
         key: `${PRO_THEME_ID}_${option.id}`,
         proAccentId: option.id,
         label: isPremiumUser ? resolveProAccentLabel(option, language) : t("themePro"),
+        accessibilityLabel: `${t("themePro")}: ${resolveProAccentLabel(option, language)}`,
         locked: !isPremiumUser,
         preview: resolveThemePreviewPalette(PRO_THEME_ID, option.id),
       }));
@@ -45526,7 +46175,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     },
     [isPremiumUser, language, proThemeAccentId, t]
   );
-  const describeHistory = (entry) => describeHistoryEntry(entry, { t, formatLocalAmount });
+  const describeHistory = (entry) =>
+    describeHistoryEntry(entry, { t, formatLocalAmount, language });
   const formatHistoryMeta = (entry) => formatHistoryEntryMeta(entry, { t, locale });
   const joinDateLabel = useMemo(() => {
     const stamp = profile.joinedAt;
@@ -45633,11 +46283,25 @@ const ProfileScreen = React.memo(function ProfileScreen({
     triggerHaptic();
     Linking.openURL(targetUrl).catch((error) => console.warn("manage subscriptions link", error));
   }, []);
-  const handleSupportPress = useCallback(() => {
+  const handleSupportPress = useCallback(async () => {
     triggerHaptic();
     logEvent("profile_support_clicked");
-    Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch((error) => console.warn("support mail", error));
-  }, []);
+    const supportUrl = `mailto:${SUPPORT_EMAIL}`;
+    const showSupportFallback = () => {
+      Alert.alert(t("supportLink"), t("supportHint"), [{ text: t("profileOk") || "OK" }]);
+    };
+    try {
+      const canOpenSupportMail = await Linking.canOpenURL(supportUrl);
+      if (!canOpenSupportMail) {
+        showSupportFallback();
+        return;
+      }
+      await Linking.openURL(supportUrl);
+    } catch (error) {
+      console.warn("support mail", error);
+      showSupportFallback();
+    }
+  }, [t]);
   const handleInstagramPress = useCallback(() => {
     triggerHaptic();
     logEvent("profile_instagram_clicked");
@@ -45651,6 +46315,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const profilePremiumAccent = resolvePremiumUiAccent({
     isDark: isDarkTheme,
     themeId: theme,
+    proAccent: colors?.primary,
   });
   const profilePremiumBadgeText = getReadableTextColor(profilePremiumAccent);
   const incomeSection = (
@@ -45879,6 +46544,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
         style={{ flex: 1 }}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
+        automaticallyAdjustKeyboardInsets={Platform.OS === "ios" && isEditingIdentity}
         contentContainerStyle={[
           styles.profileScrollContent,
           {
@@ -45890,7 +46556,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         removeClippedSubviews={Platform.OS === "android"}
         scrollEventThrottle={32}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator
       >
         <View style={[styles.profileSectionToolbar, isProfileRtlLayout && styles.profileRowRtl]}>
           <Text style={[styles.profileSectionToolbarTitle, { color: colors.text }]}>
@@ -45989,6 +46655,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 style={styles.profileAvatarWrap}
                 activeOpacity={isEditingIdentity ? 0.85 : 1}
                 onPress={() => isEditingIdentity && onPickImage?.()}
+                accessible={isEditingIdentity}
+                accessibilityRole={isEditingIdentity ? "button" : undefined}
+                accessibilityLabel={isEditingIdentity ? t("photoTapHint") : undefined}
+                accessibilityState={{ disabled: !isEditingIdentity }}
               >
                 <Image
                   source={resolvedAvatarUri ? { uri: resolvedAvatarUri } : fallbackAvatar}
@@ -46035,6 +46705,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 <View style={styles.profileInputField}>
                   <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputFirstName")}</Text>
                   <TextInput
+                    ref={firstNameInputRef}
                     style={[
                       styles.profileInput,
                       styles.profileInputHalf,
@@ -46044,11 +46715,16 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     onChangeText={(text) => onFieldChange("firstName", text)}
                     placeholder={t("inputFirstName")}
                     placeholderTextColor={colors.muted}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onFocus={(event) => scrollProfileInputToKeyboard(event, 24)}
+                    onSubmitEditing={() => lastNameInputRef.current?.focus()}
                   />
                 </View>
                 <View style={styles.profileInputField}>
                   <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputLastName")}</Text>
                   <TextInput
+                    ref={lastNameInputRef}
                     style={[
                       styles.profileInput,
                       styles.profileInputHalf,
@@ -46058,11 +46734,16 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     onChangeText={(text) => onFieldChange("lastName", text)}
                     placeholder={t("inputLastName")}
                     placeholderTextColor={colors.muted}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onFocus={(event) => scrollProfileInputToKeyboard(event, 36)}
+                    onSubmitEditing={() => bioInputRef.current?.focus()}
                   />
                 </View>
               </View>
               <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputMotto")}</Text>
               <TextInput
+                ref={bioInputRef}
                 style={[
                   styles.profileInput,
                   styles.profileBioInput,
@@ -46073,6 +46754,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 placeholder={t("inputMotto")}
                 multiline
                 placeholderTextColor={colors.muted}
+                textAlignVertical="top"
+                onFocus={(event) =>
+                  scrollProfileInputToKeyboard(event, IS_SHORT_DEVICE ? 112 : 84)
+                }
               />
             </>
           ) : (
@@ -46330,130 +47015,156 @@ const ProfileScreen = React.memo(function ProfileScreen({
             profileSection !== "settings" && styles.progressSectionHidden,
           ]}
         >
-          <View
-            style={[
-              styles.profileEditableGroup,
-              {
-                backgroundColor:
-                  colors.surfaceMuted || colorWithAlpha(colors.text, isDarkTheme ? 0.12 : 0.045),
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <View style={IS_SHORT_DEVICE ? styles.profileSettingsLeadCompact : null}>
             <View
               style={[
-                styles.profilePremiumSectionHeader,
-                isProfileRtlLayout && styles.profileRowRtl,
+                styles.profileEditableGroup,
+                {
+                  backgroundColor:
+                    colors.surfaceMuted || colorWithAlpha(colors.text, isDarkTheme ? 0.12 : 0.045),
+                  borderColor: colors.border,
+                },
               ]}
             >
-              <Text style={[styles.profilePremiumSectionTitle, { color: colors.text }]}>
-                {t("incomeEntryAmountLabel")}
-              </Text>
-              {!isPremiumUser ? (
-                <View
-                  style={[
-                    styles.profilePremiumBadge,
-                    { backgroundColor: profilePremiumAccent },
-                  ]}
-                >
-                  <Text
+              <View
+                style={[
+                  styles.profilePremiumSectionHeader,
+                  isProfileRtlLayout && styles.profileRowRtl,
+                ]}
+              >
+                <Text style={[styles.profilePremiumSectionTitle, { color: colors.text }]}>
+                  {t("incomeEntryAmountLabel")}
+                </Text>
+                {!isPremiumUser ? (
+                  <View
                     style={[
-                      styles.profilePremiumBadgeText,
-                      { color: profilePremiumBadgeText },
+                      styles.profilePremiumBadge,
+                      { backgroundColor: profilePremiumAccent },
                     ]}
                   >
-                    {t("featureLockedPremiumLabel")}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            {incomeSection}
-            <View style={[styles.profileEditableDivider, { backgroundColor: colors.border }]} />
-            {incomePaydaySection}
-          </View>
-
-          <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
-
-          <Text style={[styles.settingsTitle, { color: colors.text }]}>{t("settingsTitle")}</Text>
-          <>
-            <View style={styles.settingRow}>
-              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
-              <View style={[styles.settingChoices, styles.themeSettingChoices]}>
-                {themeOptions.map((option) => {
-                  const active =
-                    theme === option.id &&
-                    (option.id !== PRO_THEME_ID ||
-                      normalizeProThemeAccentId(proThemeAccentId) === option.proAccentId);
-                  const activeProChip = active && option.id === PRO_THEME_ID;
-                  const previewBorder = active
-                    ? colorWithAlpha(activeProChip ? colors.primary : colors.text, 0.42)
-                    : option.preview.border;
-                  const labelColor = active
-                    ? getReadableTextColor(activeProChip ? colors.primary : colors.text)
-                    : colors.text;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
+                    <Text
                       style={[
-                        styles.settingChip,
-                        styles.themeSettingChip,
-                        {
-                          backgroundColor: active ? (activeProChip ? colors.primary : colors.text) : "transparent",
-                          borderColor: colors.border,
-                          opacity: option.locked && !active ? 0.7 : 1,
-                        },
+                        styles.profilePremiumBadgeText,
+                        { color: profilePremiumBadgeText },
                       ]}
-                      onPress={() =>
-                        onThemeToggle(option.id, {
-                          proAccentId: option.proAccentId,
-                          openAccentPicker: false,
-                        })
-                      }
-                      activeOpacity={0.84}
-                      accessibilityRole="button"
-                      accessibilityLabel={option.label}
-                      accessibilityState={{ selected: active }}
                     >
-                      <View style={[styles.themePreviewPair, { borderColor: previewBorder }]}>
-                        <View
-                          style={[
-                            styles.themePreviewColor,
-                            { backgroundColor: option.preview.primary },
-                          ]}
-                        />
-                        <View
-                          style={[
-                            styles.themePreviewColor,
-                            { backgroundColor: option.preview.secondary },
-                          ]}
-                        />
-                      </View>
-                      <View style={styles.themeSettingTextBlock}>
-                        <Text style={[styles.themeSettingText, { color: labelColor }]} numberOfLines={1}>
-                          {option.label}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                      {t("featureLockedPremiumLabel")}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
+              {incomeSection}
+              <View style={[styles.profileEditableDivider, { backgroundColor: colors.border }]} />
+              {incomePaydaySection}
             </View>
-            {!isPremiumUser && (
-              <Text style={[styles.profileHintText, { color: colors.muted, marginTop: -6, marginBottom: 8 }]}>
-                {t("themeProLockedHint")}
-              </Text>
-            )}
-          </>
+
+            <View style={[styles.settingsDivider, { backgroundColor: colors.border }]} />
+
+            <View>
+              <Text style={[styles.settingsTitle, { color: colors.text }]}>{t("settingsTitle")}</Text>
+              <View style={styles.settingRow}>
+                <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("themeLabel")}</Text>
+                <View style={[styles.settingChoices, styles.themeSettingChoices]}>
+                  {themeOptions.map((option) => {
+                    const active =
+                      theme === option.id &&
+                      (option.id !== PRO_THEME_ID ||
+                        normalizeProThemeAccentId(proThemeAccentId) === option.proAccentId);
+                    const activeProChip = active && option.id === PRO_THEME_ID;
+                    const previewBorder = active
+                      ? colorWithAlpha(activeProChip ? colors.primary : colors.text, 0.42)
+                      : option.preview.border;
+                    const labelColor = active
+                      ? getReadableTextColor(activeProChip ? colors.primary : colors.text)
+                      : colors.text;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.settingChip,
+                          styles.themeSettingChip,
+                          {
+                            backgroundColor: active
+                              ? activeProChip
+                                ? colors.primary
+                                : colors.text
+                              : "transparent",
+                            borderColor: colors.border,
+                            opacity: option.locked && !active ? 0.7 : 1,
+                          },
+                        ]}
+                        onPress={() =>
+                          onThemeToggle(option.id, {
+                            proAccentId: option.proAccentId,
+                            openAccentPicker: false,
+                          })
+                        }
+                        activeOpacity={0.84}
+                        accessibilityRole="button"
+                        accessibilityLabel={option.accessibilityLabel || option.label}
+                        accessibilityState={{ selected: active }}
+                      >
+                        <View style={[styles.themePreviewPair, { borderColor: previewBorder }]}>
+                          <View
+                            style={[
+                              styles.themePreviewColor,
+                              { backgroundColor: option.preview.primary },
+                            ]}
+                          />
+                          <View
+                            style={[
+                              styles.themePreviewColor,
+                              { backgroundColor: option.preview.secondary },
+                            ]}
+                          />
+                        </View>
+                        <View style={styles.themeSettingTextBlock}>
+                          <Text
+                            style={[styles.themeSettingText, { color: labelColor }]}
+                            numberOfLines={1}
+                          >
+                            {option.label}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+              {!isPremiumUser && (
+                <Text
+                  style={[
+                    styles.profileHintText,
+                    { color: colors.muted, marginTop: -6, marginBottom: 8 },
+                  ]}
+                >
+                  {t("themeProLockedHint")}
+                </Text>
+              )}
+            </View>
+          </View>
         <View style={styles.settingRow}>
           <Text style={[styles.settingLabel, { color: colors.muted }]}>
             {t("languageLabel")} <Text style={{ fontSize: 16 }}>{isRtlLanguage(language) ? "←" : "→"}</Text>
           </Text>
-          <View style={styles.settingCurrencyScrollWrapper}>
+          <View style={[styles.settingCurrencyScrollWrapper, styles.settingLanguageScrollWrapper]}>
             <ScrollView
+              ref={profileLanguageScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={styles.settingCurrencyScroll}
-              contentContainerStyle={styles.settingCurrencyScrollContent}
+              style={[styles.settingCurrencyScroll, styles.settingLanguageScroll]}
+              contentContainerStyle={[
+                styles.settingCurrencyScrollContent,
+                styles.settingLanguageScrollContent,
+              ]}
+              onLayout={(event) => {
+                profileLanguageViewportWidthRef.current = event.nativeEvent.layout.width;
+                scrollProfileLanguageIntoView(normalizedLanguageValue, false);
+              }}
+              onContentSizeChange={(width) => {
+                profileLanguageContentWidthRef.current = width;
+                scrollProfileLanguageIntoView(normalizedLanguageValue, false);
+              }}
             >
               {SUPPORTED_LANGUAGES.map((lng) => {
                 const active = normalizeLanguage(language) === lng;
@@ -46471,6 +47182,12 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     accessibilityRole="button"
                     accessibilityLabel={LANGUAGE_NATIVE_LABELS[lng] || t(getLanguageLabelKey(lng))}
                     accessibilityState={{ selected: active }}
+                    onLayout={(event) => {
+                      profileLanguageChipLayoutsRef.current[lng] = event.nativeEvent.layout;
+                      if (active) {
+                        scrollProfileLanguageIntoView(lng, false);
+                      }
+                    }}
                   >
                     <Text
                       style={{
@@ -46646,49 +47363,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </Pressable>
           </View>
         </View>
-        {Platform.OS === "android" || Platform.OS === "ios" ? (
-          <View style={styles.settingRow}>
-            <View style={styles.settingRowContent}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.settingLabel, { color: colors.muted }]}>
-                  {t("appsflyerPartnerSharingLabel")}
-                </Text>
-                <Text style={[styles.profileHintText, { color: colors.muted }]}>
-                  {t("appsflyerPartnerSharingHint")}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() =>
-                  onAppsFlyerPartnerSharingToggle?.(!appsFlyerPartnerSharingAllowed)
-                }
-                accessibilityRole="switch"
-                accessibilityLabel={t("appsflyerPartnerSharingLabel")}
-                accessibilityState={{ checked: appsFlyerPartnerSharingAllowed }}
-                style={[
-                  styles.settingToggle,
-                  {
-                    backgroundColor: appsFlyerPartnerSharingAllowed
-                      ? colors.text
-                      : colorWithAlpha(colors.text, 0.15),
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.settingToggleHandle,
-                    {
-                      backgroundColor: appsFlyerPartnerSharingAllowed
-                        ? colors.background
-                        : colors.card,
-                      transform: [{ translateX: appsFlyerPartnerSharingAllowed ? 20 : 0 }],
-                    },
-                  ]}
-                />
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
         <TouchableOpacity
           style={[styles.resetButton, { borderColor: colors.border }]}
           onPress={onResetData}
@@ -46774,6 +47448,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
           ]}
           activeOpacity={0.85}
           onPress={handleSupportPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("supportLink")}. ${t("supportHint")}`}
         >
           <Text style={[styles.profileLinkText, { color: colors.text }]}>{t("supportLink")}</Text>
           <Text style={[styles.profileLinkHint, { color: colors.muted }]}>{t("supportHint")}</Text>
@@ -46789,15 +47465,7 @@ function AppContent() {
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
   const viewportLayoutKey = `${Math.round(viewportWidth)}x${Math.round(viewportHeight)}`;
-  const [fontsLoaded, fontsError] = safeUseFonts({
-    Inter_300Light,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
-    Inter_900Black,
-  });
+  const [fontsLoaded, fontsError] = safeUseFonts(APP_CUSTOM_FONTS);
   const soundsRef = useRef({});
   const soundLoadPromisesRef = useRef({});
   const soundCooldownRef = useRef({});
@@ -46805,6 +47473,7 @@ function AppContent() {
   const soundPlayInFlightRef = useRef({});
   const soundLastPlayedAtRef = useRef(0);
   const soundModeReadyRef = useRef(false);
+  const soundModePromiseRef = useRef(null);
   const budgetSpeechDataRef = useRef(null);
   const resolvedBudgetSpeechDataRef =
     typeof budgetSpeechDataRef === "undefined" ? null : budgetSpeechDataRef;
@@ -46824,6 +47493,33 @@ function AppContent() {
       1
     );
   }, []);
+  const ensureSoundModeReady = useCallback(async () => {
+    if (!AudioModule) return false;
+    if (soundModeReadyRef.current) return true;
+    if (soundModePromiseRef.current) return soundModePromiseRef.current;
+    const interruptionModeIOS = resolveInterruptionModeIOS();
+    const interruptionModeAndroid = resolveInterruptionModeAndroid();
+    const modePromise = AudioModule.setAudioModeAsync({
+      playsInSilentModeIOS: false,
+      interruptionModeIOS,
+      interruptionModeAndroid,
+      shouldDuckAndroid: true,
+      staysActiveInBackground: false,
+    })
+      .then(() => {
+        soundModeReadyRef.current = true;
+        return true;
+      })
+      .catch((error) => {
+        console.warn("sound mode", error);
+        return false;
+      })
+      .finally(() => {
+        soundModePromiseRef.current = null;
+      });
+    soundModePromiseRef.current = modePromise;
+    return modePromise;
+  }, [resolveInterruptionModeAndroid, resolveInterruptionModeIOS]);
   const stopAllSounds = useCallback(() => {
     Object.values(soundsRef.current).forEach((sound) => {
       sound?.stopAsync?.()?.catch?.(() => {});
@@ -46884,22 +47580,7 @@ function AppContent() {
       soundCooldownRef.current[key] = now;
     }
     soundPlayInFlightRef.current[key] = true;
-    if (!soundModeReadyRef.current) {
-      const interruptionModeIOS = resolveInterruptionModeIOS();
-      const interruptionModeAndroid = resolveInterruptionModeAndroid();
-      try {
-        await AudioModule.setAudioModeAsync({
-          playsInSilentModeIOS: false,
-          interruptionModeIOS,
-          interruptionModeAndroid,
-          shouldDuckAndroid: true,
-          staysActiveInBackground: false,
-        });
-        soundModeReadyRef.current = true;
-      } catch (error) {
-        console.warn("sound mode", error);
-      }
-    }
+    await ensureSoundModeReady();
     const volume = SOUND_VOLUMES[key] ?? 0.8;
     let sound = soundsRef.current[key];
     if (!sound) {
@@ -46920,7 +47601,7 @@ function AppContent() {
     } finally {
       soundPlayInFlightRef.current[key] = false;
     }
-  }, [loadSoundForKey, soundEnabled]);
+  }, [ensureSoundModeReady, loadSoundForKey, soundEnabled]);
   useEffect(() => {
     return () => {
       Object.values(soundsRef.current).forEach((sound) => {
@@ -46929,6 +47610,7 @@ function AppContent() {
       soundsRef.current = {};
       soundLoadPromisesRef.current = {};
       soundPlayInFlightRef.current = {};
+      soundModePromiseRef.current = null;
       soundBusyUntilRef.current = {};
       soundCooldownRef.current = {};
     };
@@ -46944,7 +47626,9 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
+  const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);
   const [bugReportVisible, setBugReportVisible] = useState(false);
+  const bugReportOpenedAtRef = useRef(null);
   const [helpGuideVisible, setHelpGuideVisible] = useState(false);
   const [screenIntroState, setScreenIntroState] = useState({ visible: false, tab: null });
   const screenIntroStatusRef = useRef({});
@@ -50158,18 +50842,20 @@ function AppContent() {
   const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
   const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
+  const [ratingPromptStep, setRatingPromptStep] = useState("rating");
+  const [ratingPromptRating, setRatingPromptRating] = useState(0);
+  const [ratingPromptFeedback, setRatingPromptFeedback] = useState("");
+  const [ratingPromptFeedbackSubmitting, setRatingPromptFeedbackSubmitting] = useState(false);
+  const [ratingPromptFeedbackError, setRatingPromptFeedbackError] = useState("");
+  const ratingPromptFeedbackLength = Array.from(ratingPromptFeedback.trim()).length;
+  const ratingPromptFeedbackValid =
+    ratingPromptFeedbackLength >= RATING_PROMPT_FEEDBACK_MIN_LENGTH;
   const ratingPromptCompleted =
-    ratingPromptState.completed || ratingPromptState.lastAction === "rate";
-  const ratingPromptActionBase = ratingPromptState.actionCountStart;
-  const ratingPromptActionCount = Math.max(
-    0,
-    (Number(ratingPromptState.actionCount) || 0) -
-      (Number.isFinite(ratingPromptActionBase) ? ratingPromptActionBase : 0)
-  );
+    ratingPromptState.completed ||
+    ratingPromptState.lastAction === "rate" ||
+    ratingPromptState.lastAction === "feedback";
+  const ratingPromptActionCount = Math.max(0, Number(ratingPromptState.actionCount) || 0);
   const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
-  const ratingPromptFirstSessionEligible =
-    ratingPromptState.firstSessionStatus === "active" &&
-    ratingPromptState.firstSessionId === RATING_PROMPT_SESSION_ID;
   const ratingPromptCatFloat = useRef(new Animated.Value(0)).current;
   const ratingPromptCatBob = ratingPromptCatFloat.interpolate({
     inputRange: [0, 1],
@@ -50697,6 +51383,11 @@ function AppContent() {
   const showRatingPrompt = useCallback(
     (source = "actions") => {
       if (ratingPromptVisible) return;
+      setRatingPromptStep("rating");
+      setRatingPromptRating(0);
+      setRatingPromptFeedback("");
+      setRatingPromptFeedbackError("");
+      setRatingPromptFeedbackSubmitting(false);
       setRatingPromptVisible(true);
       updateRatingPromptState((prev) => ({
         ...prev,
@@ -50759,36 +51450,6 @@ function AppContent() {
       const platform = isAndroid ? "android" : "ios";
       const primaryUrl = isAndroid ? ANDROID_REVIEW_URL : IOS_REVIEW_URL;
       const fallbackUrl = isAndroid ? ANDROID_REVIEW_WEB_URL : IOS_REVIEW_WEB_URL;
-      const shouldUseNativeReviewPrompt = isAndroid || resolvedSource !== "rating_prompt_modal";
-      let shouldOpenStoreUrl = true;
-      try {
-        if (
-          shouldUseNativeReviewPrompt &&
-          StoreReview &&
-          typeof StoreReview.isAvailableAsync === "function"
-        ) {
-          const available = await StoreReview.isAvailableAsync();
-          if (available && typeof StoreReview.requestReview === "function") {
-            const startedAt = Date.now();
-            logEvent("store_review_prompt_requested", {
-              source: resolvedSource,
-              platform,
-            });
-            await StoreReview.requestReview();
-            const elapsedMs = Date.now() - startedAt;
-            if (!isAndroid || elapsedMs > 1200) {
-              shouldOpenStoreUrl = false;
-            }
-          }
-        }
-      } catch (error) {
-        logStoreReviewWarning("store review prompt", error);
-        shouldOpenStoreUrl = true;
-      }
-
-      if (!shouldOpenStoreUrl) {
-        return true;
-      }
       if (!primaryUrl && !fallbackUrl) {
         return false;
       }
@@ -50799,12 +51460,12 @@ function AppContent() {
           logEvent("store_review_redirect", {
             source: resolvedSource,
             platform,
-            method: "native",
+            method: "store",
           });
           if (resolvedSource === "rating_prompt" || resolvedSource === "rating_prompt_modal") {
             logEvent("rating_prompt_store_redirect", {
               platform,
-              method: "native",
+              method: "store",
             });
           }
           await Linking.openURL(primaryUrl);
@@ -50874,8 +51535,26 @@ function AppContent() {
     },
     [normalizeStoreReviewSource, queueStoreReviewModalGuard, triggerStoreReview]
   );
+  const resolveRatingPromptCopy = useCallback(
+    (key, replacements = {}) => {
+      const resolved = resolveTranslationValueForLanguage(language, key);
+      const base = Array.isArray(resolved) ? resolved[0] : resolved;
+      let text = String(base ?? key);
+      Object.entries(replacements).forEach(([token, value]) => {
+        text = text.replace(`{{${token}}}`, String(value));
+      });
+      return text;
+    },
+    [language]
+  );
   const handleRatingPromptLater = useCallback(() => {
+    if (ratingPromptFeedbackSubmitting) return;
+    Keyboard.dismiss();
     setRatingPromptVisible(false);
+    setRatingPromptStep("rating");
+    setRatingPromptRating(0);
+    setRatingPromptFeedback("");
+    setRatingPromptFeedbackError("");
     const respondedAt = new Date().toISOString();
     updateRatingPromptState((prev) => ({
       ...prev,
@@ -50884,8 +51563,33 @@ function AppContent() {
       respondedAt,
     }));
     logEvent("rating_prompt_action", { action: "later" });
-  }, [logEvent, updateRatingPromptState]);
+  }, [ratingPromptFeedbackSubmitting, updateRatingPromptState]);
+  const handleRatingPromptSelect = useCallback((rating) => {
+    const normalizedRating = Math.max(1, Math.min(5, Math.round(Number(rating) || 0)));
+    setRatingPromptRating(normalizedRating);
+    setRatingPromptFeedbackError("");
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+  const handleRatingPromptFeedbackChange = useCallback((value) => {
+    setRatingPromptFeedback(value);
+    setRatingPromptFeedbackError("");
+  }, []);
+  const handleRatingPromptFeedbackBack = useCallback(() => {
+    if (ratingPromptFeedbackSubmitting) return;
+    Keyboard.dismiss();
+    setRatingPromptStep("rating");
+    setRatingPromptFeedbackError("");
+  }, [ratingPromptFeedbackSubmitting]);
   const handleRatingPromptConfirm = useCallback(() => {
+    if (ratingPromptRating < 1 || ratingPromptRating > 5) return;
+    if (ratingPromptRating < RATING_PROMPT_STORE_THRESHOLD) {
+      setRatingPromptStep("feedback");
+      setRatingPromptFeedbackError("");
+      logEvent("rating_prompt_action", {
+        action: `feedback_requested_${ratingPromptRating}`,
+      });
+      return;
+    }
     setRatingPromptVisible(false);
     const respondedAt = new Date().toISOString();
     updateRatingPromptState((prev) => ({
@@ -50894,9 +51598,73 @@ function AppContent() {
       lastAction: "rate",
       respondedAt,
     }));
-    logEvent("rating_prompt_action", { action: "rate" });
+    logEvent("rating_prompt_action", { action: `rate_${ratingPromptRating}` });
     requestStoreReviewWhenReady("rating_prompt_modal");
-  }, [logEvent, requestStoreReviewWhenReady, updateRatingPromptState]);
+  }, [
+    ratingPromptRating,
+    requestStoreReviewWhenReady,
+    updateRatingPromptState,
+  ]);
+  const handleRatingPromptFeedbackSubmit = useCallback(async () => {
+    if (ratingPromptFeedbackSubmitting) return false;
+    const trimmedFeedback = ratingPromptFeedback.trim();
+    if (ratingPromptFeedbackLength < RATING_PROMPT_FEEDBACK_MIN_LENGTH) {
+      setRatingPromptFeedbackError("ratingPromptFeedbackTooShort");
+      return false;
+    }
+    setRatingPromptFeedbackSubmitting(true);
+    setRatingPromptFeedbackError("");
+    const platformLabel = Platform.OS === "android" ? "Android" : "iOS";
+    const subject = resolveRatingPromptCopy("ratingPromptFeedbackMailSubject", {
+      rating: ratingPromptRating,
+    });
+    const body = [
+      resolveRatingPromptCopy("ratingPromptFeedbackMailIntro", {
+        rating: ratingPromptRating,
+      }),
+      "",
+      trimmedFeedback,
+      "",
+      resolveRatingPromptCopy("ratingPromptFeedbackMailFooter", {
+        platform: platformLabel,
+        language,
+      }),
+    ].join("\n");
+    const url = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    try {
+      await Linking.openURL(url);
+      const respondedAt = new Date().toISOString();
+      updateRatingPromptState((prev) => ({
+        ...prev,
+        completed: true,
+        lastAction: "feedback",
+        respondedAt,
+      }));
+      logEvent("rating_prompt_action", {
+        action: `feedback_mail_opened_${ratingPromptRating}`,
+      });
+      setRatingPromptVisible(false);
+      setRatingPromptStep("rating");
+      setRatingPromptFeedback("");
+      setRatingPromptFeedbackError("");
+      return true;
+    } catch (error) {
+      logStoreReviewWarning("rating feedback mail", error);
+      setRatingPromptFeedbackError("ratingPromptFeedbackSendError");
+      return false;
+    } finally {
+      setRatingPromptFeedbackSubmitting(false);
+    }
+  }, [
+    language,
+    logStoreReviewWarning,
+    ratingPromptFeedback,
+    ratingPromptFeedbackLength,
+    ratingPromptFeedbackSubmitting,
+    ratingPromptRating,
+    resolveRatingPromptCopy,
+    updateRatingPromptState,
+  ]);
   const resetLevelShareCardReadiness = useCallback(() => {
     levelShareCanvasLayoutReadyRef.current = false;
     levelShareAssetLoadStateRef.current = { cat: false, logo: false };
@@ -51882,8 +52650,9 @@ function AppContent() {
     } else {
       triggerHaptic();
     }
-    setTamagotchiClosing(true);
-    setTamagotchiVisible(false);
+    // The skin picker is a child sheet. Keep the Almi parent mounted so Done
+    // returns to the same interaction state instead of dismissing both layers.
+    setTamagotchiClosing(false);
     if (tamagotchiToyFlightTimerRef.current) {
       clearTimeout(tamagotchiToyFlightTimerRef.current);
       tamagotchiToyFlightTimerRef.current = null;
@@ -52242,25 +53011,6 @@ function AppContent() {
             : FIRST_SESSION_DURATION_BUCKETS.GT_15_SEC;
         persistFirstSessionDurationBucket(resolvedBucket);
       }
-      if (
-        nextState === "background" &&
-        onboardingStep === "done" &&
-        ratingPromptHydrated
-      ) {
-        updateRatingPromptState((prev) => {
-          if (
-            prev.firstSessionStatus !== "active" ||
-            prev.firstSessionId !== RATING_PROMPT_SESSION_ID
-          ) {
-            return prev;
-          }
-          return {
-            ...prev,
-            firstSessionStatus: "ended",
-            firstSessionId: null,
-          };
-        });
-      }
       if (nextState !== "active") {
         flushPersistQueue(true);
         Keyboard.dismiss();
@@ -52319,8 +53069,6 @@ function AppContent() {
     flushPersistQueue,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentHydrated,
-    onboardingStep,
-    ratingPromptHydrated,
     setDailyChallengePromptGate,
     pendingFocusDigest,
     persistFirstSessionDurationBucket,
@@ -52332,46 +53080,9 @@ function AppContent() {
     setKeyboardInset,
     setKeyboardVisible,
     triggerWidgetRefresh,
-    updateRatingPromptState,
-  ]);
-  const ratingPromptActionGateReady =
-    onboardingStep === "done" && tutorialSeen && temptationTutorialCompleted;
-  const ratingPromptActionBaseReady =
-    ratingPromptActionGateReady &&
-    ratingPromptFirstSessionEligible &&
-    Number.isFinite(ratingPromptActionBase);
-  useEffect(() => {
-    if (!ratingPromptHydrated) return;
-    if (!ratingPromptActionGateReady) return;
-    updateRatingPromptState((prev) => {
-      if (prev.completed || prev.actionPrompted) return prev;
-      if (prev.firstSessionStatus === "pending") {
-        const baseline = Math.max(0, Number(prev.actionCount) || 0);
-        return {
-          ...prev,
-          actionCountStart: baseline,
-          firstSessionStatus: "active",
-          firstSessionId: RATING_PROMPT_SESSION_ID,
-        };
-      }
-      if (
-        prev.firstSessionStatus !== "active" ||
-        prev.firstSessionId !== RATING_PROMPT_SESSION_ID ||
-        Number.isFinite(prev.actionCountStart)
-      ) {
-        return prev;
-      }
-      const baseline = Math.max(0, Number(prev.actionCount) || 0);
-      return { ...prev, actionCountStart: baseline };
-    });
-  }, [
-    ratingPromptActionGateReady,
-    ratingPromptHydrated,
-    updateRatingPromptState,
   ]);
   const ratingPromptActionEligible =
     ratingPromptHydrated &&
-    ratingPromptActionBaseReady &&
     !ratingPromptCompleted &&
     !ratingPromptVisible &&
     !ratingPromptActionPrompted &&
@@ -52380,15 +53091,6 @@ function AppContent() {
     if (!ratingPromptActionEligible) return;
     queueRatingPrompt("actions");
   }, [queueRatingPrompt, ratingPromptActionEligible]);
-  useEffect(() => {
-    if (ratingPromptFirstSessionEligible || ratingPromptVisible) return;
-    ratingPromptQueuedRef.current = false;
-    ratingPromptSourceRef.current = null;
-    if (ratingPromptCheckTimerRef.current) {
-      clearTimeout(ratingPromptCheckTimerRef.current);
-      ratingPromptCheckTimerRef.current = null;
-    }
-  }, [ratingPromptFirstSessionEligible, ratingPromptVisible]);
   useEffect(() => {
     if (!ratingPromptVisible) return;
     if (!ratingPromptQueuedRef.current) return;
@@ -53249,6 +53951,21 @@ function AppContent() {
     },
     [activeTab, fabMenuVisible, fabTutorialVisible, setFabScrollHidden]
   );
+  const handleFeedHeroExpandedChange = useCallback(
+    (expanded) => {
+      const nextExpanded = !!expanded;
+      setFeedHeroExpanded(nextExpanded);
+      if (nextExpanded) {
+        closeFabMenu();
+      }
+    },
+    [closeFabMenu]
+  );
+  useEffect(() => {
+    if (activeTab !== "feed") {
+      setFeedHeroExpanded(false);
+    }
+  }, [activeTab]);
   useEffect(() => {
     if (activeTab === "profile" && fabMenuVisible) {
       closeFabMenu();
@@ -53810,6 +54527,7 @@ function AppContent() {
   const [addCategoryName, setAddCategoryName] = useState("");
   const [addCategoryEmoji, setAddCategoryEmoji] = useState("✨");
   const [addCategoryError, setAddCategoryError] = useState(false);
+  const addCategoryEmojiInputRef = useRef(null);
   const [categoryEditId, setCategoryEditId] = useState("savings");
   const [categoryEditName, setCategoryEditName] = useState("");
   const [categoryEditEmoji, setCategoryEditEmoji] = useState(DEFAULT_SAVINGS_CATEGORY_DEF.emoji);
@@ -53981,8 +54699,26 @@ function AppContent() {
     startupHardLockPendingBeforePaywall,
   ]);
   const safeAreaInsets = safeUseSafeAreaInsets();
-  const iosTabInset = Platform.OS === "ios" ? Math.max((safeAreaInsets.bottom || 0) - 8, 0) : 0;
-  const androidNavInset = Platform.OS === "android" ? Math.max(safeAreaInsets.bottom || 0, 0) : 0;
+  const iosPlatformMajorVersion =
+    Platform.OS === "ios" ? Number.parseInt(String(Platform.Version).split(".")[0], 10) : 0;
+  const legacyIosTabBarMinimumInset =
+    Platform.OS === "ios" &&
+    Number.isFinite(iosPlatformMajorVersion) &&
+    iosPlatformMajorVersion > 0 &&
+    iosPlatformMajorVersion < 26
+      ? 12
+      : 0;
+  const iosTabInset =
+    Platform.OS === "ios"
+      ? Math.max((safeAreaInsets.bottom || 0) - 8, legacyIosTabBarMinimumInset)
+      : 0;
+  const androidNavInset =
+    Platform.OS === "android"
+      ? resolveAndroidSystemBottomInset({
+          safeBottom: safeAreaInsets.bottom,
+          viewportHeight,
+        })
+      : 0;
   const tabBarBottomInset = Platform.OS === "ios" ? iosTabInset : androidNavInset;
   const iosFabShiftLeft = Platform.OS === "ios" ? 8 : 0;
   const iosFabShiftDown = Platform.OS === "ios" ? 6 : 0;
@@ -53990,9 +54726,15 @@ function AppContent() {
   const fabContainerBottom = FAB_CONTAINER_BOTTOM - iosFabShiftDown;
   const tabBarBaseHeight = isCompactAndroid ? TAB_BAR_BASE_HEIGHT_COMPACT : TAB_BAR_BASE_HEIGHT;
   const resolvedTabBarHeight = tabBarHeight || tabBarBottomInset + tabBarBaseHeight;
-  const screenContentBottomPadding = MAIN_SCREEN_CONTENT_BOTTOM_PADDING;
   const androidTabBarExtra = isCompactAndroid ? 4 : 12;
   const tabBarTopPadding = isCompactAndroid ? 10 : 18;
+  const screenContentEndGap = IS_SHORT_DEVICE ? 12 : 24;
+  const fabViewportOverlap = Math.max(
+    0,
+    fabContainerBottom + tabBarBottomInset + FAB_BUTTON_SIZE - resolvedTabBarHeight
+  );
+  const screenContentBottomPadding = resolvedTabBarHeight + screenContentEndGap;
+  const screenFabContentBottomPadding = screenContentBottomPadding + fabViewportOverlap;
   const tabButtonVerticalPadding = isCompactAndroid ? 10 : 14;
   const tabLabelTopMargin = isCompactAndroid ? 4 : 6;
   const tutorialOverlayInset = resolvedTabBarHeight;
@@ -54163,9 +54905,6 @@ function AppContent() {
     ].join(" ");
   }, [fabTutorialCutout]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
-  const [appsFlyerPartnerSharingAllowed, setAppsFlyerPartnerSharingAllowed] = useState(false);
-  const [appsFlyerPartnerSharingHydrated, setAppsFlyerPartnerSharingHydrated] = useState(false);
-  const appsFlyerPartnerSharingPreferencePresentRef = useRef(false);
   const [iosTrackingStatus, setIosTrackingStatus] = useState(null);
   const [iosTrackingResolved, setIosTrackingResolved] = useState(Platform.OS !== "ios");
   const profileSelectionRef = useRef({ gender: null, persona: null });
@@ -55524,6 +56263,9 @@ function AppContent() {
     () => resolveThemeColors(theme, proThemeAccentId),
     [proThemeAccentId, theme]
   );
+  const ratingPromptAccent = colors.primary || colors.text;
+  const ratingPromptOnAccent = colors.onPrimary || resolveForegroundForColor(ratingPromptAccent);
+  const ratingPromptStarColor = colors.warning || "#8B5A16";
   const barsThemeReady = themeHydrated || themeBootstrapReady;
   useEffect(() => {
     if (!canUpdateWidgetStorage()) return;
@@ -56508,7 +57250,11 @@ function AppContent() {
     : [0.84, 0.56, 0.72, 0.9, 0.63];
   const tutorialIsDarkTheme = theme === "dark";
   const tutorialIsProTheme = theme === PRO_THEME_ID;
-  const tutorialCardBackground = tutorialIsDarkTheme ? "#0E1626" : tutorialIsProTheme ? "#EEF1FF" : "#F8FAFF";
+  const tutorialCardBackground = tutorialIsDarkTheme
+    ? "#0E1626"
+    : tutorialIsProTheme
+    ? colors.primarySurface
+    : "#F8FAFF";
   const tutorialCardBorderColor = tutorialIsDarkTheme
     ? "rgba(255,255,255,0.12)"
     : tutorialIsProTheme
@@ -56517,21 +57263,27 @@ function AppContent() {
   const tutorialFeatureBackground = tutorialIsDarkTheme
     ? "rgba(255,255,255,0.08)"
     : tutorialIsProTheme
-    ? "rgba(255,255,255,0.96)"
+    ? colors.card
     : "rgba(255,255,255,0.92)";
   const tutorialFeatureBorderColor = tutorialIsDarkTheme
     ? "rgba(255,255,255,0.2)"
     : tutorialIsProTheme
     ? colorWithAlpha(proThemeAccentColor, 0.24)
     : "rgba(18,26,45,0.08)";
-  const tutorialFeatureTextColor = tutorialIsDarkTheme ? "#E9F0FF" : tutorialIsProTheme ? "#24347C" : "#17223F";
+  const tutorialFeatureTextColor = tutorialIsDarkTheme
+    ? "#E9F0FF"
+    : tutorialIsProTheme
+    ? colors.text
+    : "#17223F";
   const tutorialDotInactiveColor = tutorialIsDarkTheme
     ? "rgba(255,255,255,0.18)"
     : tutorialIsProTheme
     ? colorWithAlpha(proThemeAccentColor, 0.2)
     : "rgba(11,22,48,0.14)";
   const tutorialPrimaryButtonBg = tutorialIsProTheme ? proThemeAccentColor : colors.text;
-  const tutorialPrimaryButtonTextColor = tutorialIsProTheme ? "#FFFFFF" : colors.background;
+  const tutorialPrimaryButtonTextColor = tutorialIsProTheme
+    ? colors.onPrimary
+    : colors.background;
   useEffect(() => {
     if (!tutorialContext || !activeTutorialStep) {
       tutorialCardEntrance.setValue(0);
@@ -60086,7 +60838,9 @@ function AppContent() {
     if (
       !premiumState.isPremium &&
       isMonetizationSoftPaywallExperimentGroup &&
-      !premiumSoftPaywallShown
+      !premiumSoftPaywallShown &&
+      Math.max(0, Number(temptationSaveActionCountRef.current) || 0) >=
+        MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT
     ) {
       premiumSoftPaywallTriggerRef.current = resolveGroupCSoftPaywallTrigger(
         "first_save_after_onboarding"
@@ -60652,6 +61406,7 @@ function AppContent() {
     return filtered.slice(0, 3).map((entry) => {
       const entryTimestamp = normalizeTimestampMs(entry?.timestamp);
       const resolvedTitle =
+        resolveHistoryEntryTitle(entry, language, "") ||
         resolveTemplateTitle(entry?.meta?.templateId, entry?.meta?.title) ||
         entry?.title ||
         t("defaultDealTitle");
@@ -61413,8 +62168,13 @@ function AppContent() {
     [dailySummaryCurrency]
   );
   const describeDailySummaryHistoryEntry = useCallback(
-    (entry) => describeHistoryEntry(entry, { t, formatLocalAmount: formatDailySummaryHistoryAmount }),
-    [formatDailySummaryHistoryAmount, t]
+    (entry) =>
+      describeHistoryEntry(entry, {
+        t,
+        formatLocalAmount: formatDailySummaryHistoryAmount,
+        language,
+      }),
+    [formatDailySummaryHistoryAmount, language, t]
   );
   const formatDailySummaryHistoryMeta = useCallback(
     (entry) => formatHistoryEntryMeta(entry, { t, locale: getFormatLocale(language) }),
@@ -62575,6 +63335,19 @@ function AppContent() {
   const scheduleChallengeReminders = useCallback(
     async (challengeId, def, startAt, expiresAt) => {
       if (!def?.reminderOffsetsHours?.length) return [];
+      const normalizedStartAt = Number(startAt);
+      const normalizedExpiresAt =
+        expiresAt === null || expiresAt === undefined || expiresAt === ""
+          ? null
+          : Number(expiresAt);
+      if (
+        !challengeId ||
+        startAt === null ||
+        startAt === undefined ||
+        !Number.isFinite(normalizedStartAt)
+      ) {
+        return [];
+      }
       const permitted = await ensureNotificationPermission({ request: false });
       if (!permitted) return [];
       const copy = getChallengeCopy(def, language);
@@ -62592,19 +63365,30 @@ function AppContent() {
           : [];
       for (let index = 0; index < def.reminderOffsetsHours.length; index += 1) {
         const offsetHours = def.reminderOffsetsHours[index];
-        const triggerTime = startAt + offsetHours * 60 * 60 * 1000;
+        const triggerTime = normalizedStartAt + offsetHours * 60 * 60 * 1000;
         if (!Number.isFinite(triggerTime) || triggerTime <= Date.now()) continue;
-        if (expiresAt && triggerTime >= expiresAt) continue;
+        if (Number.isFinite(normalizedExpiresAt) && triggerTime >= normalizedExpiresAt) continue;
         const slot = windows[index % (windows.length || 1)];
         let scheduledTime = alignReminderSlotTime(triggerTime, slot, jitterMinutes);
-        if (expiresAt && scheduledTime >= expiresAt) {
+        if (Number.isFinite(normalizedExpiresAt) && scheduledTime >= normalizedExpiresAt) {
           scheduledTime = triggerTime + jitterMinutes * 60 * 1000;
         }
         if (!Number.isFinite(scheduledTime)) continue;
-        if (expiresAt && scheduledTime >= expiresAt) continue;
+        if (Number.isFinite(normalizedExpiresAt) && scheduledTime >= normalizedExpiresAt) continue;
+        const dedupeKey = `${CHALLENGE_REMINDER_NOTIFICATION_KIND}:${challengeId}:${normalizedStartAt}:${index}`;
         try {
           const scheduledEntry = await scheduleNotificationWithCooldown({
-            content: { title, body },
+            content: {
+              title,
+              body,
+              data: {
+                kind: CHALLENGE_REMINDER_NOTIFICATION_KIND,
+                challengeId,
+                challengeStartedAt: normalizedStartAt,
+                reminderIndex: index,
+                dedupeKey,
+              },
+            },
             trigger: new Date(scheduledTime),
           });
           const notificationId = scheduledEntry?.id;
@@ -62669,6 +63453,7 @@ function AppContent() {
             backgroundColor: statusGlassBackgroundColor,
             theme,
             blurAvailable: statusBlurAvailable,
+            solid: true,
           }
         : null,
     [
@@ -62801,6 +63586,7 @@ function AppContent() {
     return "";
   }, [overlay?.message]);
   const saveCelebrationRef = useRef(null);
+  const saveOverlayRewardDeliveredKeyRef = useRef(null);
   const saveOverlayShownAtRef = useRef(0);
   const [saveOverlayPhaseState, setSaveOverlayPhaseState] = useState({
     key: "",
@@ -62809,7 +63595,7 @@ function AppContent() {
   const saveOverlayPhase =
     saveOverlayPhaseState.key === saveOverlayKey
       ? saveOverlayPhaseState.phase
-      : saveOverlayGoalTitle
+      : saveOverlayGoalTitle && !saveOverlayPayload?.isFirstSaveAction
       ? "jar"
       : "classic";
   useEffect(() => {
@@ -62817,9 +63603,9 @@ function AppContent() {
     saveOverlayShownAtRef.current = Date.now();
     setSaveOverlayPhaseState({
       key: saveOverlayKey,
-      phase: saveOverlayGoalTitle ? "jar" : "classic",
+      phase: saveOverlayGoalTitle && !saveOverlayPayload?.isFirstSaveAction ? "jar" : "classic",
     });
-  }, [overlay?.type, saveOverlayGoalTitle, saveOverlayKey]);
+  }, [overlay?.type, saveOverlayGoalTitle, saveOverlayKey, saveOverlayPayload?.isFirstSaveAction]);
   const overlaySoundKeyRef = useRef(null);
   const overlaySoundTimersRef = useRef([]);
   const clearOverlaySoundTimers = useCallback(() => {
@@ -63082,12 +63868,24 @@ function AppContent() {
       const tutorialFlowActive =
         feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
         feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
+      const firstSaveFlowActive = saveOverlayPayload?.isFirstSaveAction === true;
+      const rewardAmount = Math.max(0, Number(saveOverlayPayload?.coinReward) || 0);
+      const rewardReveal = saveOverlayPayload?.onRevealReward;
+      const revealSaveOverlayRewardOnce = () => {
+        if (rewardAmount <= 0 || typeof rewardReveal !== "function") return false;
+        if (saveOverlayRewardDeliveredKeyRef.current === saveOverlayKey) return false;
+        saveOverlayRewardDeliveredKeyRef.current = saveOverlayKey;
+        rewardReveal();
+        return true;
+      };
       const shouldDelayStreakForReminder =
         tutorialFlowActive &&
         (frequencyReminderPrompt.visible ||
           frequencyReminderPriorityLockRef.current);
-      if (tutorialFlowActive) {
-        pendingSaveStreakAfterReminderRef.current = shouldDelayStreakForReminder;
+      if (tutorialFlowActive || firstSaveFlowActive) {
+        pendingSaveStreakAfterReminderRef.current = firstSaveFlowActive
+          ? false
+          : shouldDelayStreakForReminder;
         triggerPendingLevelCelebrate();
         dismissOverlay({
           clearQueue: false,
@@ -63095,16 +63893,10 @@ function AppContent() {
           analyticsSource: "save_overlay",
           analyticsValue: normalizedActionSource,
         });
-        const rewardAmount = Math.max(0, Number(saveOverlayPayload?.coinReward) || 0);
-        const rewardReveal = saveOverlayPayload?.onRevealReward;
-        if (rewardAmount > 0) {
-          triggerOverlayState("health", {
-            amount: rewardAmount,
-            title: t("goalJarRewardChestTitle"),
-            closedSubtitle: t("goalJarRewardChestClosed"),
-            openedSubtitle: t("goalJarRewardChestOpened"),
-            onRevealReward: typeof rewardReveal === "function" ? rewardReveal : undefined,
-          });
+        if (rewardAmount > 0 && typeof rewardReveal === "function") {
+          // The save card already summarizes the chest reward. Deliver it here
+          // so first-save/onboarding reinforcement stays inside one blocker.
+          revealSaveOverlayRewardOnce();
         }
         if (
           frequencyReminderPriorityLockRef.current &&
@@ -63113,7 +63905,9 @@ function AppContent() {
         ) {
           frequencyReminderPriorityLockRef.current = false;
         }
-        if (!shouldDelayStreakForReminder) {
+        if (firstSaveFlowActive) {
+          pendingUsageStreakRef.current = null;
+        } else if (!shouldDelayStreakForReminder) {
           queueUsageStreakOverlay("save");
         }
         return;
@@ -63125,15 +63919,14 @@ function AppContent() {
         analyticsSource: "save_overlay",
         analyticsValue: normalizedActionSource,
       });
-      const rewardAmount = Math.max(0, Number(saveOverlayPayload?.coinReward) || 0);
-      const rewardReveal = saveOverlayPayload?.onRevealReward;
       if (rewardAmount > 0) {
         triggerOverlayState("health", {
           amount: rewardAmount,
           title: t("goalJarRewardChestTitle"),
           closedSubtitle: t("goalJarRewardChestClosed"),
           openedSubtitle: t("goalJarRewardChestOpened"),
-          onRevealReward: typeof rewardReveal === "function" ? rewardReveal : undefined,
+          onRevealReward:
+            typeof rewardReveal === "function" ? revealSaveOverlayRewardOnce : undefined,
         });
       }
       if (
@@ -65054,33 +65847,10 @@ function AppContent() {
     const resetCounterAtStart = resetCounterRef.current;
     let resolvedHealthPoints = null;
     let resolvedInstallDateMs = 0;
-    let tutorialRaw = null;
-    let temptationTutorialRaw = null;
-    try {
-      tutorialRaw = await AsyncStorage.getItem(STORAGE_KEYS.TUTORIAL);
-    } catch (error) {
-      console.warn("tutorial hydrate", error);
-    }
-    try {
-      temptationTutorialRaw = await AsyncStorage.getItem(STORAGE_KEYS.TEMPTATION_TUTORIAL);
-    } catch (error) {
-      console.warn("temptation tutorial hydrate", error);
-    }
-    setTutorialSeen(true);
-    setTutorialHydrated(true);
-    if (tutorialRaw !== "done") {
-      AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
-    }
-    setTemptationTutorialStatus("done");
-    setTemptationTutorialSeen(true);
-    setTemptationTutorialCompleted(true);
-    setTemptationTutorialQueued(false);
-    if (temptationTutorialRaw !== "done") {
-      AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-    }
-    setTemptationTutorialHydrated(true);
     try {
       const hydrationKeys = [
+        STORAGE_KEYS.TUTORIAL,
+        STORAGE_KEYS.TEMPTATION_TUTORIAL,
         STORAGE_KEYS.WISHES,
         STORAGE_KEYS.PENDING,
         STORAGE_KEYS.PURCHASES,
@@ -65113,8 +65883,6 @@ function AppContent() {
         STORAGE_KEYS.TEMPTATION_INTERACTIONS,
         STORAGE_KEYS.REWARDS_CELEBRATED,
         STORAGE_KEYS.ANALYTICS_OPT_OUT,
-        STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED,
-        STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED,
         STORAGE_KEYS.TEMPTATION_GOALS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED,
@@ -65199,6 +65967,21 @@ function AppContent() {
 	      ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
+      const tutorialRaw = storedMap[STORAGE_KEYS.TUTORIAL] ?? null;
+      const temptationTutorialRaw = storedMap[STORAGE_KEYS.TEMPTATION_TUTORIAL] ?? null;
+      setTutorialSeen(true);
+      setTutorialHydrated(true);
+      if (tutorialRaw !== "done") {
+        AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
+      }
+      setTemptationTutorialStatus("done");
+      setTemptationTutorialSeen(true);
+      setTemptationTutorialCompleted(true);
+      setTemptationTutorialQueued(false);
+      if (temptationTutorialRaw !== "done") {
+        AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
+      }
+      setTemptationTutorialHydrated(true);
       const wishesRaw = storedMap[STORAGE_KEYS.WISHES] ?? null;
       const pendingRaw = storedMap[STORAGE_KEYS.PENDING] ?? null;
       const purchasesRaw = storedMap[STORAGE_KEYS.PURCHASES] ?? null;
@@ -65231,10 +66014,6 @@ function AppContent() {
       const temptationInteractionsRaw = storedMap[STORAGE_KEYS.TEMPTATION_INTERACTIONS] ?? null;
       const rewardsCelebratedRaw = storedMap[STORAGE_KEYS.REWARDS_CELEBRATED] ?? null;
       const analyticsOptOutRaw = storedMap[STORAGE_KEYS.ANALYTICS_OPT_OUT] ?? null;
-      const appsFlyerPartnerSharingRaw =
-        storedMap[STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED] ??
-        storedMap[STORAGE_KEYS.ANDROID_APPSFLYER_ENABLED] ??
-        null;
       const goalMapRaw = storedMap[STORAGE_KEYS.TEMPTATION_GOALS] ?? null;
       const customTemptationsRaw = storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS] ?? null;
       const customTemptationsCreatedRaw =
@@ -65959,50 +66738,29 @@ function AppContent() {
       setMonetizationTrialLockedHydrated(true);
       setMonetizationOnboardingLocked(isTruthyStorageValue(monetizationOnboardingLockedRaw));
       setMonetizationOnboardingLockedHydrated(true);
-      const freshRatingPromptFirstSessionStatus =
-        onboardingRaw === "done" ? "ended" : "pending";
-      let normalizedRatingPrompt = createInitialRatingPromptState({
-        firstSessionStatus: freshRatingPromptFirstSessionStatus,
-      });
+      let normalizedRatingPrompt = createInitialRatingPromptState();
       let ratingPromptNeedsRewrite = false;
       if (ratingPromptRaw) {
         try {
           const parsed = JSON.parse(ratingPromptRaw);
-          const fallback = createInitialRatingPromptState({
-            firstSessionStatus: freshRatingPromptFirstSessionStatus,
-          });
+          const fallback = createInitialRatingPromptState();
           const parsedLastAction = typeof parsed?.lastAction === "string" ? parsed.lastAction : null;
           const normalizedCompleted = parsedLastAction
-            ? parsedLastAction === "rate"
+            ? parsedLastAction === "rate" || parsedLastAction === "feedback"
             : Boolean(parsed?.completed);
           const rawActionCountStart = parsed?.actionCountStart;
           const parsedActionCountStart =
             rawActionCountStart === null || rawActionCountStart === undefined
               ? null
               : Number(rawActionCountStart);
-          const normalizedActionCountStart =
+          const legacyActionCountStart =
             parsedActionCountStart !== null &&
             Number.isFinite(parsedActionCountStart) &&
             parsedActionCountStart >= 0
               ? parsedActionCountStart
-              : null;
-          const rawFirstSessionStatus = parsed?.firstSessionStatus;
-          const rawFirstSessionId =
-            typeof parsed?.firstSessionId === "string" ? parsed.firstSessionId : null;
-          let normalizedFirstSessionStatus = RATING_PROMPT_FIRST_SESSION_STATUSES.has(
-            rawFirstSessionStatus
-          )
-            ? rawFirstSessionStatus
-            : "ended";
-          if (
-            (normalizedFirstSessionStatus === "pending" && onboardingRaw === "done") ||
-            (normalizedFirstSessionStatus === "active" &&
-              rawFirstSessionId !== RATING_PROMPT_SESSION_ID)
-          ) {
-            normalizedFirstSessionStatus = "ended";
-          }
-          const normalizedFirstSessionId =
-            normalizedFirstSessionStatus === "active" ? rawFirstSessionId : null;
+              : 0;
+          const rawActionCount = Math.max(0, Number(parsed?.actionCount) || 0);
+          const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);
           normalizedRatingPrompt = {
             firstOpenAt:
               typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
@@ -66010,11 +66768,8 @@ function AppContent() {
             lastShownAt: typeof parsed?.lastShownAt === "string" ? parsed.lastShownAt : null,
             lastAction: parsedLastAction,
             respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
-            actionCount: Math.max(0, Number(parsed?.actionCount) || 0),
-            actionCountStart: normalizedActionCountStart,
+            actionCount: normalizedActionCount,
             actionPrompted: Boolean(parsed?.actionPrompted),
-            firstSessionStatus: normalizedFirstSessionStatus,
-            firstSessionId: normalizedFirstSessionId,
           };
           ratingPromptNeedsRewrite =
             normalizedRatingPrompt.firstOpenAt !== parsed?.firstOpenAt ||
@@ -66022,16 +66777,14 @@ function AppContent() {
             normalizedRatingPrompt.lastAction !== parsed?.lastAction ||
             normalizedRatingPrompt.respondedAt !== parsed?.respondedAt ||
             normalizedRatingPrompt.completed !== Boolean(parsed?.completed) ||
-            normalizedRatingPrompt.actionCount !== Math.max(0, Number(parsed?.actionCount) || 0) ||
-            normalizedRatingPrompt.actionCountStart !== rawActionCountStart ||
+            normalizedRatingPrompt.actionCount !== rawActionCount ||
             normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted) ||
-            normalizedRatingPrompt.firstSessionStatus !== rawFirstSessionStatus ||
-            normalizedRatingPrompt.firstSessionId !== rawFirstSessionId;
+            Object.prototype.hasOwnProperty.call(parsed, "actionCountStart") ||
+            Object.prototype.hasOwnProperty.call(parsed, "firstSessionStatus") ||
+            Object.prototype.hasOwnProperty.call(parsed, "firstSessionId");
         } catch (error) {
           console.warn("rating prompt hydrate", error);
-          normalizedRatingPrompt = createInitialRatingPromptState({
-            firstSessionStatus: freshRatingPromptFirstSessionStatus,
-          });
+          normalizedRatingPrompt = createInitialRatingPromptState();
           ratingPromptNeedsRewrite = true;
         }
       } else {
@@ -66541,18 +67294,6 @@ function AppContent() {
           ? analyticsOptOutRaw === "1" || analyticsOptOutRaw === "true"
           : null
       );
-      const hasAppsFlyerPreference =
-        appsFlyerPartnerSharingRaw === "1" ||
-        appsFlyerPartnerSharingRaw === "0" ||
-        appsFlyerPartnerSharingRaw === "true" ||
-        appsFlyerPartnerSharingRaw === "false";
-      appsFlyerPartnerSharingPreferencePresentRef.current = hasAppsFlyerPreference;
-      setAppsFlyerPartnerSharingAllowed(
-        hasAppsFlyerPreference
-          ? appsFlyerPartnerSharingRaw === "1" || appsFlyerPartnerSharingRaw === "true"
-          : false
-      );
-      setAppsFlyerPartnerSharingHydrated(true);
       if (goalMapRaw) {
         try {
           setTemptationGoalMap(JSON.parse(goalMapRaw));
@@ -66926,10 +67667,7 @@ function AppContent() {
     } catch (error) {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => prev);
-      appsFlyerPartnerSharingPreferencePresentRef.current = false;
-      setAppsFlyerPartnerSharingAllowed(false);
-      setAppsFlyerPartnerSharingHydrated(true);
-      setRatingPromptState(createInitialRatingPromptState({ firstSessionStatus: "ended" }));
+      setRatingPromptState(createInitialRatingPromptState());
       setTamagotchiGreetingDayKey(null);
       setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
@@ -69480,17 +70218,6 @@ useEffect(() => {
     queuePersist(STORAGE_KEYS.ANALYTICS_OPT_OUT, analyticsOptOut ? "1" : "0");
   }, [queuePersist, analyticsOptOut]);
   useEffect(() => {
-    if (!appsFlyerPartnerSharingHydrated) return;
-    Promise.all([
-      setAppsFlyerPartnerSharingAllowedFlag(appsFlyerPartnerSharingAllowed),
-      setRevenueCatAppsFlyerSharingAllowedSafe(appsFlyerPartnerSharingAllowed),
-    ]).catch(() => {});
-    queuePersist(
-      STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED,
-      appsFlyerPartnerSharingAllowed ? "1" : "0"
-    );
-  }, [appsFlyerPartnerSharingAllowed, appsFlyerPartnerSharingHydrated, queuePersist]);
-  useEffect(() => {
     if (Platform.OS !== "ios" || !iosTrackingResolved) return;
     setAppsFlyerAdvertisingIdEnabledFlag(isTrackingStatusGranted(iosTrackingStatus)).catch(
       () => {}
@@ -70432,31 +71159,11 @@ useEffect(() => {
       nextEnabled ? "0" : "1"
     ).catch(() => {});
     if (nextEnabled) {
-      if (!appsFlyerPartnerSharingPreferencePresentRef.current) {
-        appsFlyerPartnerSharingPreferencePresentRef.current = true;
-        setAppsFlyerPartnerSharingAllowed(true);
-        setAppsFlyerPartnerSharingHydrated(true);
-        void Promise.all([
-          setAppsFlyerPartnerSharingAllowedFlag(true),
-          setRevenueCatAppsFlyerSharingAllowedSafe(true),
-          AsyncStorage.setItem(STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED, "1"),
-        ]).catch(() => {});
-      }
       await logEvent("consent_analytics_enabled", {
         enabled: true,
         source: consentSource,
       });
       await requestTrackingTransparencyIfNeeded();
-    } else {
-      appsFlyerPartnerSharingPreferencePresentRef.current = true;
-      setAppsFlyerPartnerSharingAllowed(false);
-      setAppsFlyerPartnerSharingHydrated(true);
-      void Promise.all([
-        setAppsFlyerPartnerSharingAllowedFlag(false),
-        setRevenueCatAppsFlyerSharingAllowedSafe(false),
-        setAppsFlyerAdvertisingIdEnabledFlag(false),
-        AsyncStorage.setItem(STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED, "0"),
-      ]).catch(() => {});
     }
     if (onboardingStep === "analyticsConsent") {
       goToOnboardingStep("persona");
@@ -71203,6 +71910,7 @@ useEffect(() => {
         basePriceUSD: normalizedAmountUSD,
         categories: [category],
         impulseCategoryOverride: category,
+        quickEntryCategoryId: category,
       };
       const entryContext = coinEntryContextRef.current || {};
       const entrySource = entryContext.source || "unknown";
@@ -72220,7 +72928,6 @@ useEffect(() => {
         }
         return status;
       }
-      void initAttribution({ timeToWaitForATTUserAuthorization: 60 }).catch(() => {});
       const result = await requester();
       const nextStatus = result?.status || status || null;
       setIosTrackingStatus(nextStatus);
@@ -72694,9 +73401,11 @@ useEffect(() => {
   const markFirstSaveGoalJarPending = useCallback(() => {
     if (!firstSaveGoalJarHydrated) return false;
     if (firstSaveGoalJarStatusRef.current !== "none") return false;
-    firstSaveGoalJarStatusRef.current = "pending";
-    setFirstSaveGoalJarStatus("pending");
-    queuePersist(STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS, "pending");
+    // The save celebration already introduces the jar. Keep the detail screen
+    // reachable from the home card without forcing another first-save modal.
+    firstSaveGoalJarStatusRef.current = "shown";
+    setFirstSaveGoalJarStatus("shown");
+    queuePersist(STORAGE_KEYS.FIRST_SAVE_GOAL_JAR_STATUS, "shown");
     return true;
   }, [firstSaveGoalJarHydrated, queuePersist]);
 
@@ -72865,10 +73574,13 @@ useEffect(() => {
     if (weeklyReward) {
       streakPayload.weeklyReward = weeklyReward;
     }
-    pendingUsageStreakRef.current = {
-      source: normalizedAction,
-      payload: streakPayload,
-    };
+    const isFirstUsageAction = !lastDate && previousCount === 0 && Math.max(0, Number(prev.total) || 0) === 0;
+    if (!isFirstUsageAction) {
+      pendingUsageStreakRef.current = {
+        source: normalizedAction,
+        payload: streakPayload,
+      };
+    }
     logEvent("usage_streak_logged", {
       current_streak: nextSnapshot.current,
       previous_streak: previousCount,
@@ -73152,15 +73864,6 @@ useEffect(() => {
     },
     [logEvent, stopAllSounds, triggerHaptic]
   );
-  const handleAppsFlyerPartnerSharingToggle = useCallback(
-    (enabled) => {
-      const nextValue = !!enabled;
-      triggerHaptic();
-      setAppsFlyerPartnerSharingAllowed(nextValue);
-    },
-    [triggerHaptic]
-  );
-
   const normalizeHistoryGoalId = useCallback(
     (goalId) => {
       if (!goalId || typeof goalId !== "string") return null;
@@ -74840,10 +75543,47 @@ useEffect(() => {
             })
           : null;
         const scheduledNextCheckAt = Number(prevEntry.nextCheckAt) || 0;
-        const nextCheckAt = scheduledNextCheckAt > 0 ? scheduledNextCheckAt : resetNextCheckAt;
+        const previousManualSkipTargetAt =
+          Math.max(0, Number(prevEntry.manualAutosaveSkipTargetAt) || 0);
+        const previousTimerResetAt = Math.max(0, Number(prevEntry.lastTimerResetAt) || 0);
+        const frequencyIntervalMs = frequency
+          ? resolveFrequencyIntervalMs(frequency, frequencyCustom)
+          : null;
+        const repeatsActiveManualTimer =
+          !preserveFrequencyTimer &&
+          previousManualSkipTargetAt > 0 &&
+          previousTimerResetAt > 0 &&
+          Number.isFinite(frequencyIntervalMs) &&
+          frequencyIntervalMs > 0 &&
+          now - previousTimerResetAt < frequencyIntervalMs;
+        const cycleAnchorNextCheckAt =
+          repeatsActiveManualTimer && previousManualSkipTargetAt > 0
+            ? previousManualSkipTargetAt
+            : scheduledNextCheckAt;
+        const skippedCycleNextCheckAt =
+          !preserveFrequencyTimer && frequency && cycleAnchorNextCheckAt > now
+            ? buildResetNextCheckAtForFrequency({
+                fromTimestamp: cycleAnchorNextCheckAt,
+                frequencyId: frequency,
+                customFrequency: frequencyCustom,
+                reminderHour: reminderTime.hour,
+                reminderMinute: reminderTime.minute,
+                weeklyDay,
+                monthlyDay,
+                weeklyDays,
+                monthlyDays,
+              })
+            : null;
+        const nextCheckAt =
+          Number.isFinite(skippedCycleNextCheckAt) && Number.isFinite(resetNextCheckAt)
+            ? Math.max(skippedCycleNextCheckAt, resetNextCheckAt)
+            : Number.isFinite(skippedCycleNextCheckAt)
+            ? skippedCycleNextCheckAt
+            : resetNextCheckAt;
         const manualAutosaveSkipTargetAt =
-          !preserveFrequencyTimer && frequency && nextCheckAt ? nextCheckAt : null;
-        const shouldInitializeFrequencyTimer = scheduledNextCheckAt <= 0 && !!nextCheckAt;
+          !preserveFrequencyTimer && frequency && cycleAnchorNextCheckAt > 0
+            ? cycleAnchorNextCheckAt
+            : null;
         const normalizedAmount = Number(amountUSD);
         const resolvedAmount =
           Number.isFinite(normalizedAmount) && normalizedAmount > 0
@@ -74867,11 +75607,7 @@ useEffect(() => {
             : null,
           intervalMs: preserveFrequencyTimer ? prevEntry.intervalMs ?? null : intervalMs || null,
           nextCheckAt: preserveFrequencyTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,
-          lastTimerResetAt: preserveFrequencyTimer
-            ? prevEntry.lastTimerResetAt ?? null
-            : shouldInitializeFrequencyTimer
-            ? now
-            : prevEntry.lastTimerResetAt ?? null,
+          lastTimerResetAt: preserveFrequencyTimer ? prevEntry.lastTimerResetAt ?? null : now,
           missedCycles: preserveFrequencyTimer ? Math.max(0, Number(prevEntry.missedCycles) || 0) : 0,
           lastMissedCheckAt: preserveFrequencyTimer ? prevEntry.lastMissedCheckAt ?? null : null,
           manualAutosaveSkipTargetAt: preserveFrequencyTimer
@@ -75518,7 +76254,7 @@ useEffect(() => {
     frequencyReminderPrompt.visible,
     trackModalShown,
   ]);
-  const handleFrequencyReminderPromptSave = useCallback(() => {
+  const handleFrequencyReminderPromptSave = useCallback(async () => {
     const templateId = frequencyReminderPrompt.templateId;
     if (!templateId) {
       closeFrequencyReminderPrompt("save_without_template");
@@ -75556,6 +76292,33 @@ useEffect(() => {
     ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
     const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
     const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+    const notificationsPermitted = await ensureNotificationPermission({ request: true });
+    if (!notificationsPermitted) {
+      trackModalAction(
+        "frequency_reminder_prompt",
+        "permission_denied",
+        frequencyReminderPrompt.source || "pending",
+        selectedFrequencyValue
+      );
+      setTemptationInteractions((prev) => {
+        const prevEntry = prev?.[templateId];
+        if (!prevEntry) return prev;
+        return {
+          ...(prev || {}),
+          [templateId]: {
+            ...prevEntry,
+            nextCheckAt: null,
+            frequencyReminderId: null,
+            frequencyReminderIds: [],
+            frequencyReminderScheduledAt: null,
+            frequencyReminderLocale: null,
+            frequencyReminderPlanKey: null,
+          },
+        };
+      });
+      closeFrequencyReminderPrompt("permission_denied");
+      return;
+    }
     applyFrequencySelectionToTemplate(
       templateId,
       frequency,
@@ -75569,6 +76332,7 @@ useEffect(() => {
         monthlyDays,
         markPromptShown: true,
         markManualConfigured: true,
+        notificationsPermitted: true,
       }
     );
     trackModalAction(
@@ -75582,6 +76346,7 @@ useEffect(() => {
     applyFrequencySelectionToTemplate,
     buildFrequencyAnalyticsValue,
     closeFrequencyReminderPrompt,
+    ensureNotificationPermission,
     frequencyReminderPrompt.frequency,
     frequencyReminderPrompt.frequencyCustom,
     frequencyReminderPrompt.reminderHour,
@@ -75593,6 +76358,7 @@ useEffect(() => {
     frequencyReminderPrompt.source,
     frequencyReminderPrompt.templateId,
     frequencyReminderPrompt.title,
+    setTemptationInteractions,
     trackModalAction,
   ]);
   const openFrequencyReminderPromptFromPending = useCallback((pendingPayload) => {
@@ -76094,9 +76860,24 @@ useEffect(() => {
     : "";
   const goalLinkTemplateId = goalLinkPrompt.item ? resolveTemptationTemplateId(goalLinkPrompt.item) : null;
   const goalLinkCurrentGoalId = goalLinkTemplateId ? resolveTemptationGoalId(goalLinkTemplateId) : null;
+  const recordRatingPromptAction = useCallback(
+    (action) => {
+      if (!ratingPromptHydrated) return;
+      if (!RATING_PROMPT_ACTION_TYPES.has(action)) return;
+      updateRatingPromptState((prev) => {
+        if (prev.completed || prev.actionPrompted) return prev;
+        const currentCount = Math.max(0, Number(prev.actionCount) || 0);
+        return {
+          ...prev,
+          actionCount: currentCount + 1,
+        };
+      });
+    },
+    [ratingPromptHydrated, updateRatingPromptState]
+  );
   const executeSpend = useCallback(
     (item, overrideAmountUSD = null, options = null) => {
-      if (!item) return;
+      if (!item) return false;
       const skipFrequencyReminderPrompt = options?.skipFrequencyReminderPrompt === true;
       const skipMonetizationTrialLimit = options?.skipMonetizationTrialLimit === true;
       const preserveFrequencyTimer = options?.preserveFrequencyTimer === true;
@@ -76120,7 +76901,7 @@ useEffect(() => {
         priceUSD = overrideAmount;
       }
       priceUSD = clampTransactionAmountUSD(priceUSD);
-      if (priceUSD <= 0) return;
+      if (priceUSD <= 0) return false;
       const safeSavedTotalUSD = clampSavedBalanceUSD(savedTotalUSD);
       if (
         !skipMonetizationTrialLimit &&
@@ -76128,7 +76909,7 @@ useEffect(() => {
           savedAmountUSD: safeSavedTotalUSD,
         })
       ) {
-        return;
+        return false;
       }
       if (!skipMonetizationTrialLimit) {
         incrementMonetizationTrialActionCountRef();
@@ -76156,6 +76937,7 @@ useEffect(() => {
         amountUSD: priceUSD,
         templateId: templateId || item.id,
         category: spendCategory,
+        quickEntryCategoryId: item?.quickEntryCategoryId || null,
       });
       registerUsageStreakAction("spend", spendTimestamp);
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
@@ -76202,6 +76984,8 @@ useEffect(() => {
       if (!isEssentialSpendCategory) {
         queueHomeSpeech("spend");
       }
+      recordRatingPromptAction("spend");
+      return true;
     },
     [
       buildTemptationActionTitle,
@@ -76214,6 +76998,7 @@ useEffect(() => {
       logHistoryEvent,
       logImpulseEvent,
       recordTemptationInteraction,
+      recordRatingPromptAction,
       registerFocusLoss,
       registerUsageStreakAction,
       requestMascotAnimation,
@@ -76234,13 +77019,24 @@ useEffect(() => {
     const item = spendPrompt.item;
     const amountUSD = spendPrompt.amountUSD;
     const skipFrequencyReminderPrompt = spendPrompt.skipFrequencyReminderPrompt === true;
+    const pendingResolutionId = item?.pendingResolutionId || null;
+    const pendingResolutionNotificationId = item?.pendingResolutionNotificationId || null;
     spendExecutionLockRef.current = true;
     closeSpendPrompt();
     // Avoid modal stacking race on iOS by waiting for close animation.
     InteractionManager.runAfterInteractions(() => {
       try {
         triggerStormEffect();
-        executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });
+        const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });
+        if (!spendCommitted) return;
+        if (pendingResolutionNotificationId) {
+          safeNotifications
+            .cancelScheduledNotificationAsync(pendingResolutionNotificationId)
+            .catch((error) => console.warn("cancel reminder", error));
+        }
+        if (pendingResolutionId) {
+          setPendingList((prev) => prev.filter((entry) => entry.id !== pendingResolutionId));
+        }
       } finally {
         spendExecutionLockRef.current = false;
       }
@@ -76269,42 +77065,13 @@ useEffect(() => {
     [profile.currency, profile.persona]
   );
 
-  const recordRatingPromptAction = useCallback(
-    (action) => {
-      if (!ratingPromptHydrated) return;
-      if (!RATING_PROMPT_ACTION_TYPES.has(action)) return;
-      updateRatingPromptState((prev) => {
-        if (prev.completed || prev.actionPrompted) return prev;
-        const canActivateFirstSession =
-          prev.firstSessionStatus === "pending" && ratingPromptActionGateReady;
-        const isActiveFirstSession =
-          prev.firstSessionStatus === "active" &&
-          prev.firstSessionId === RATING_PROMPT_SESSION_ID;
-        if (!canActivateFirstSession && !isActiveFirstSession) return prev;
-        const currentCount = Math.max(0, Number(prev.actionCount) || 0);
-        const nextCount = currentCount + 1;
-        const hasBase = Number.isFinite(prev.actionCountStart);
-        const nextBase = hasBase ? prev.actionCountStart : currentCount;
-        return {
-          ...prev,
-          actionCount: nextCount,
-          actionCountStart: nextBase,
-          firstSessionStatus: "active",
-          firstSessionId: RATING_PROMPT_SESSION_ID,
-        };
-      });
-    },
-    [ratingPromptActionGateReady, ratingPromptHydrated, updateRatingPromptState]
-  );
-
   const logTemptationAction = useCallback(
     (action, item, extra = {}) => {
       if (!item || !action) return;
-      recordRatingPromptAction(action);
       maybeLogDayMilestone(action);
       logEvent("temptation_action", buildTemptationPayload(item, { action, ...extra }));
     },
-    [buildTemptationPayload, maybeLogDayMilestone, recordRatingPromptAction]
+    [buildTemptationPayload, maybeLogDayMilestone]
   );
 
   const scheduleImpulseReminder = useCallback(
@@ -76472,20 +77239,58 @@ useEffect(() => {
       if (challengesHydrated) {
         const updates = new Map();
         const entries = Object.entries(challengesState || {});
+        const legacyChallengeSignatures = new Set();
+        Object.entries(TRANSLATIONS).forEach(([translationLanguage, dictionary]) => {
+          const titleTemplate =
+            dictionary?.challengeReminderTitle || TRANSLATIONS.en?.challengeReminderTitle;
+          const bodyTemplate =
+            dictionary?.challengeReminderBody || TRANSLATIONS.en?.challengeReminderBody;
+          if (!titleTemplate || !bodyTemplate) return;
+          CHALLENGE_DEFS.forEach((challengeDef) => {
+            const challengeCopy = getChallengeCopy(challengeDef, translationLanguage);
+            const challengeTitle = challengeCopy.title || challengeDef.id;
+            legacyChallengeSignatures.add(
+              buildNotificationContentSignature({
+                title: renderTemplateString(titleTemplate, { title: challengeTitle }),
+                body: renderTemplateString(bodyTemplate, { title: challengeTitle }),
+              })
+            );
+          });
+        });
+        const challengeNotificationIds = new Set(
+          entries.flatMap(([, entry]) =>
+            Array.isArray(entry?.reminderNotificationIds) ? entry.reminderNotificationIds : []
+          )
+        );
+        try {
+          const scheduledNotifications =
+            await safeNotifications.getAllScheduledNotificationsAsync({ force: true });
+          (Array.isArray(scheduledNotifications) ? scheduledNotifications : []).forEach(
+            (notification) => {
+              const data = notification?.content?.data || {};
+              const signature = buildNotificationContentSignature(notification?.content);
+              const isChallengeReminder =
+                data.kind === CHALLENGE_REMINDER_NOTIFICATION_KIND ||
+                legacyChallengeSignatures.has(signature);
+              if (!isChallengeReminder) return;
+              const id = notification?.identifier || notification?.id;
+              if (id) challengeNotificationIds.add(id);
+            }
+          );
+        } catch (error) {
+          console.warn("challenge reminder cleanup", error);
+        }
+        if (challengeNotificationIds.size) {
+          await Promise.all(
+            [...challengeNotificationIds].map((id) =>
+              safeNotifications.cancelScheduledNotificationAsync(id).catch(() => {})
+            )
+          );
+        }
         for (const [challengeId, entry] of entries) {
           if (!entry || entry.status !== CHALLENGE_STATUS.ACTIVE) continue;
           const def = CHALLENGE_DEF_MAP[challengeId];
           if (!def) continue;
-          const existingIds = Array.isArray(entry.reminderNotificationIds)
-            ? entry.reminderNotificationIds
-            : [];
-          if (existingIds.length) {
-            await Promise.all(
-              existingIds.map((id) =>
-                safeNotifications.cancelScheduledNotificationAsync(id).catch(() => {})
-              )
-            );
-          }
           const reminderIds = await scheduleChallengeReminders(
             challengeId,
             def,
@@ -76497,14 +77302,25 @@ useEffect(() => {
         if (updates.size) {
           setChallengesState((prev) => {
             const next = { ...(prev || {}) };
+            let changed = false;
             updates.forEach((ids, challengeId) => {
               if (!next[challengeId]) return;
+              const previousIds = Array.isArray(next[challengeId].reminderNotificationIds)
+                ? next[challengeId].reminderNotificationIds
+                : [];
+              if (
+                previousIds.length === ids.length &&
+                previousIds.every((id, index) => id === ids[index])
+              ) {
+                return;
+              }
               next[challengeId] = {
                 ...next[challengeId],
                 reminderNotificationIds: ids,
               };
+              changed = true;
             });
-            return next;
+            return changed ? next : prev;
           });
         }
       }
@@ -76687,15 +77503,18 @@ useEffect(() => {
       console.warn("push locale resync", error);
     });
   }, [language, languageHydrated, resyncPushNotificationsForLanguage]);
+  const resyncPushNotificationsRef = useRef(resyncPushNotificationsForLanguage);
+  useEffect(() => {
+    resyncPushNotificationsRef.current = resyncPushNotificationsForLanguage;
+  }, [resyncPushNotificationsForLanguage]);
   useEffect(() => {
     if (startupHardLockPendingBeforePaywall) return;
     if (notificationPermissionGranted !== true) return;
-    resyncPushNotificationsForLanguage().catch((error) => {
+    resyncPushNotificationsRef.current().catch((error) => {
       console.warn("push resync after monetization unlock", error);
     });
   }, [
     notificationPermissionGranted,
-    resyncPushNotificationsForLanguage,
     startupHardLockPendingBeforePaywall,
   ]);
 
@@ -77279,6 +78098,8 @@ useEffect(() => {
         const totalSavedForCardUSD = Math.max(0, (refuseStatsEntry.totalUSD || 0) + priceUSD);
         const totalSavedForCardLocal = convertToCurrency(totalSavedForCardUSD, currencyCode);
         const savedAmountLabel = formatCurrency(totalSavedForCardLocal, currencyCode);
+        const isFirstSaveAction =
+          Math.max(0, Number(temptationSaveActionCountRef.current) || 0) === 0;
         let saveOverlayPayload = {
           overlayKey: `save_${saveTimestamp}_${templateId || item?.id || "item"}`,
           title,
@@ -77289,6 +78110,7 @@ useEffect(() => {
           }),
           savedAmountLabel,
           saveCount: nextRefuseCount,
+          isFirstSaveAction,
         };
         if (targetWishSnapshot && targetWishSnapshot.targetUSD > 0 && priceUSD > 0) {
           const previousSavedUSD = targetWishSnapshot.savedUSD || 0;
@@ -77450,6 +78272,7 @@ useEffect(() => {
           coinReward,
           currency: profile.currency || DEFAULT_PROFILE.currency,
           category: resolvedCategory,
+          quickEntryCategoryId: item?.quickEntryCategoryId || null,
         });
         registerUsageStreakAction("save", saveTimestamp);
         logEvent(
@@ -77464,6 +78287,7 @@ useEffect(() => {
           goal_id: normalizedTargetGoalId || null,
           price_usd: priceUSD,
         });
+        recordRatingPromptAction("save");
         if (!isEssentialSaveCategory) {
           logImpulseEvent("save", item, priceUSD, title);
         }
@@ -77473,7 +78297,7 @@ useEffect(() => {
         if (!suppressSaveOverlay) {
           ensureOverlayEnvironmentReady();
           triggerOverlayState("save", saveOverlayPayloadWithReward);
-          if (Math.max(0, Number(temptationSaveActionCountRef.current) || 0) === 0) {
+          if (isFirstSaveAction) {
             markFirstSaveGoalJarPending();
           }
         }
@@ -77675,6 +78499,7 @@ useEffect(() => {
       refuseStats,
       logImpulseEvent,
       logTemptationAction,
+      recordRatingPromptAction,
       dailySaveLimitState,
       enforceMonetizationTrialActionLimit,
       incrementMonetizationTrialActionCountRef,
@@ -78323,10 +79148,16 @@ useEffect(() => {
   const closeAddCategoryModal = useCallback(() => {
     setAddCategoryModalVisible(false);
     setAddCategoryError(false);
-    if (resumeManageCategoriesAfterAdd) {
+    if (Platform.OS !== "ios" && resumeManageCategoriesAfterAdd) {
       setResumeManageCategoriesAfterAdd(false);
       setManageCategoriesVisible(true);
     }
+  }, [resumeManageCategoriesAfterAdd]);
+
+  const handleAddCategoryModalDismiss = useCallback(() => {
+    if (!resumeManageCategoriesAfterAdd) return;
+    setResumeManageCategoriesAfterAdd(false);
+    setManageCategoriesVisible(true);
   }, [resumeManageCategoriesAfterAdd]);
 
   const handleAddCategorySave = useCallback(() => {
@@ -78416,13 +79247,6 @@ useEffect(() => {
       return acc;
     }, []);
   }, [customCategories, language, removedCategories, savingsCategoryOverride, categoryDefOverrides]);
-
-  const categoryManagerListHeight = useMemo(() => {
-    const rowHeight = 52;
-    const maxVisible = 6;
-    const visibleCount = Math.max(1, Math.min(categoryManagerList.length, maxVisible));
-    return Math.min(rowHeight * visibleCount, SCREEN_HEIGHT * 0.4);
-  }, [categoryManagerList.length]);
 
   const resolveCategoryEditLabel = useCallback(
     (categoryId) => {
@@ -79691,6 +80515,10 @@ useEffect(() => {
       );
       const markPromptShown = options?.markPromptShown === true;
       const markManualConfigured = options?.markManualConfigured === true;
+      const notificationsPermitted =
+        typeof options?.notificationsPermitted === "boolean"
+          ? options.notificationsPermitted
+          : notificationPermissionGranted === true;
       if (frequency === "biweekly") {
         frequency = "custom";
         frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
@@ -79714,7 +80542,7 @@ useEffect(() => {
         const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
         const intervalMs = frequency === "custom" ? customIntervalMs || null : null;
         const nextCheckAt =
-          fromTimestamp > 0
+          notificationsPermitted && fromTimestamp > 0
             ? buildResetNextCheckAtForFrequency({
                 fromTimestamp,
                 frequencyId: frequency,
@@ -79734,7 +80562,7 @@ useEffect(() => {
             frequency: frequency || null,
             frequencyCustom: frequency === "custom" ? frequencyCustom || null : null,
             intervalMs,
-            nextCheckAt: nextCheckAt ?? prevEntry.nextCheckAt ?? null,
+            nextCheckAt: notificationsPermitted ? nextCheckAt ?? prevEntry.nextCheckAt ?? null : null,
             templateTitle: templateTitle || prevEntry.templateTitle || null,
             firstTimerConfiguredAt: prevEntry.firstTimerConfiguredAt || firstConfiguredAt,
             frequencyReminderHour: reminderTime.hour,
@@ -79759,7 +80587,7 @@ useEffect(() => {
         };
       });
     },
-    [setTemptationInteractions]
+    [notificationPermissionGranted, setTemptationInteractions]
   );
 
   const propagateTemptationEdit = useCallback(
@@ -80263,12 +81091,14 @@ useEffect(() => {
   const handlePendingDecision = useCallback(
     (pendingItem, decision) => {
       if (!pendingItem) return;
-      if (pendingItem.notificationId) {
-        safeNotifications
-          .cancelScheduledNotificationAsync(pendingItem.notificationId)
-          .catch((error) => console.warn("cancel reminder", error));
+      if (decision !== "spend") {
+        if (pendingItem.notificationId) {
+          safeNotifications
+            .cancelScheduledNotificationAsync(pendingItem.notificationId)
+            .catch((error) => console.warn("cancel reminder", error));
+        }
+        setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
       }
-      setPendingList((prev) => prev.filter((entry) => entry.id !== pendingItem.id));
       const template = findTemplateById(pendingItem.templateId);
       const templateFallbackTitle =
         resolveLanguageMapValue(template?.title, language) || template?.title?.en || "Goal";
@@ -80294,6 +81124,8 @@ useEffect(() => {
         priceUSD,
         basePriceUSD: template?.basePriceUSD || priceUSD,
         categories: template?.categories || pendingItem.categories || [],
+        pendingResolutionId: pendingItem.id,
+        pendingResolutionNotificationId: pendingItem.notificationId || null,
       };
       if (decision === "want") {
         const targetUSD = pendingItem.priceUSD || template?.basePriceUSD || 0;
@@ -82365,6 +83197,7 @@ useEffect(() => {
 
   const cancelProfileEdit = () => {
     triggerHaptic();
+    Keyboard.dismiss();
     setProfileDraft(profile);
     setProfileEditMode("none");
   };
@@ -82648,6 +83481,7 @@ useEffect(() => {
   const openBugReport = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     logEvent("bug_report_fab_clicked", { screen: activeTab });
+    bugReportOpenedAtRef.current = Date.now();
     setBugReportVisible(true);
   }, [activeTab]);
   const closeBugReport = useCallback(() => {
@@ -82802,6 +83636,42 @@ useEffect(() => {
     },
     [activeTab]
   );
+  const bugReportScreenContext = useMemo(() => {
+    if (activeTab === "cart") {
+      return {
+        screen: `cart/${progressHubPane}`,
+        details: `hub_pane=${progressHubPane}, section=${progressSection}`,
+      };
+    }
+    if (activeTab === "feed") {
+      return {
+        screen: "feed",
+        details: `hero_carousel_index=${heroCarouselIndex}, hero_carousel_locked=${heroCarouselLocked}`,
+      };
+    }
+    if (activeTab === "pending") {
+      return {
+        screen: "pending",
+        details: `fridge_open=${fridgeDoorOpen}, feature_locked=${!thinkingUnlocked}`,
+      };
+    }
+    if (activeTab === "purchases") {
+      return {
+        screen: "budget",
+        details: `budget_access=${premiumState.isPremium ? "full" : "locked"}`,
+      };
+    }
+    return { screen: activeTab || "unknown", details: null };
+  }, [
+    activeTab,
+    fridgeDoorOpen,
+    heroCarouselIndex,
+    heroCarouselLocked,
+    premiumState.isPremium,
+    progressHubPane,
+    progressSection,
+    thinkingUnlocked,
+  ]);
   const handleBugReportFilled = useCallback(() => {
     logEvent("bug_report_form_filled", { screen: activeTab });
   }, [activeTab]);
@@ -82815,7 +83685,26 @@ useEffect(() => {
         has_steps: trimmedSteps.length > 0,
         description_length: trimmedDescription.length,
       });
-      const platformVersion = Platform.Version ? ` ${Platform.Version}` : "";
+      let diagnostics = "";
+      try {
+        diagnostics = await collectBugReportDiagnostics({
+          screen: bugReportScreenContext.screen,
+          screenDetails: bugReportScreenContext.details,
+          appLanguage: language,
+          theme,
+          themeAccent: theme === PRO_THEME_ID ? proThemeAccentId : null,
+          accessTier: premiumAccessResolved
+            ? premiumState.isPremium
+              ? "premium"
+              : "free"
+            : "resolving",
+          reduceMotion,
+          reportOpenedAt: bugReportOpenedAtRef.current,
+          appState: appStateRef.current,
+        });
+      } catch (error) {
+        console.warn("bug report diagnostics", error);
+      }
       const body = [
         copy.bodyIntro,
         "",
@@ -82824,11 +83713,8 @@ useEffect(() => {
         copy.bodySteps,
         trimmedSteps || "-",
         "",
-        copy.bodyContext,
-        `Screen: ${activeTab}`,
-        `Platform: ${Platform.OS}${platformVersion}`,
-        `Language: ${language}`,
-        `Time: ${new Date().toISOString()}`,
+        copy.bodyDiagnostics,
+        diagnostics,
       ].join("\n");
       const url = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(copy.subject)}&body=${encodeURIComponent(body)}`;
       try {
@@ -82844,7 +83730,16 @@ useEffect(() => {
         return false;
       }
     },
-    [activeTab, language]
+    [
+      activeTab,
+      bugReportScreenContext,
+      language,
+      premiumAccessResolved,
+      premiumState.isPremium,
+      proThemeAccentId,
+      reduceMotion,
+      theme,
+    ]
   );
   const bugReportFabVisible =
     activeTab !== "profile" &&
@@ -82975,7 +83870,7 @@ useEffect(() => {
             onSubscriptionPaymentAction={handleSubscriptionPaymentAction}
             onFreeDayCardLayout={handleProgressFreeDayCardLayout}
             onImpulseMapLockedPress={handleImpulseMapLockedPress}
-            contentBottomPadding={screenContentBottomPadding}
+            contentBottomPadding={screenFabContentBottomPadding}
             topInset={topSafeInset}
             keyboardOffset={keyboardModalOffset}
             progressSection={progressSection}
@@ -82998,14 +83893,20 @@ useEffect(() => {
             language={language}
             catCuriousSource={tamagotchiAnimations.curious}
             isPremiumUser={premiumState.isPremium}
-            premiumAccent={resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme })}
+            premiumAccent={resolvePremiumUiAccent({
+              isDark: isDarkTheme,
+              themeId: theme,
+              proAccent: colors?.primary,
+            })}
             onPremiumShelvesPress={handlePendingPremiumShelvesPress}
             onOpenChange={setFridgeDoorOpen}
             locked={!thinkingUnlocked}
             onItemLayout={registerPendingCardLayout}
             scrollRef={pendingScrollRef}
             playSound={playSound}
-            contentBottomPadding={screenContentBottomPadding}
+            contentBottomPadding={
+              fridgeDoorOpen ? screenFabContentBottomPadding : screenContentBottomPadding
+            }
             topInset={topSafeInset}
           />
         );
@@ -83068,8 +83969,6 @@ useEffect(() => {
             currencyValue={profile.currency || DEFAULT_PROFILE.currency}
             soundEnabled={soundEnabled}
             onSoundToggle={handleSoundToggle}
-            appsFlyerPartnerSharingAllowed={appsFlyerPartnerSharingAllowed}
-            onAppsFlyerPartnerSharingToggle={handleAppsFlyerPartnerSharingToggle}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
             tycoonModeEnabled={tycoonSettings?.enabled !== false}
@@ -83176,6 +84075,7 @@ useEffect(() => {
             onSavingsBreakdownPress={openSavingsBreakdown}
             onBudgetHeroPress={handleBudgetHeroPress}
             onSubscriptionWidgetPress={requestProgressSubscriptionFocus}
+            onSubscriptionCreateTemptation={handleSubscriptionQuickCustomCreate}
             savingsHeroRef={savingsHeroRef}
             heroCarouselIndex={heroCarouselIndex}
             heroCarouselLocked={heroCarouselLocked}
@@ -83238,10 +84138,11 @@ useEffect(() => {
             onTamagotchiHungrySpeech={markTamagotchiHungrySpeech}
             budgetSpeechDataRef={resolvedBudgetSpeechDataRef}
             onScrollActivityChange={handleFeedScrollActivity}
+            onHeroExpandedChange={handleFeedHeroExpandedChange}
             showDayTwoIncomePrompt={showDayTwoIncomePrompt}
             onDayTwoIncomePromptPress={handleDayTwoIncomePromptPress}
             onDayTwoIncomePromptDismiss={dismissDayTwoIncomePrompt}
-            contentBottomPadding={screenContentBottomPadding}
+            contentBottomPadding={screenFabContentBottomPadding}
             topInset={topSafeInset}
             goalJarAutoOpenRequestTick={
               firstSaveGoalJarStatus === "pending" || firstSaveGoalJarStatus === "opening"
@@ -83372,6 +84273,7 @@ useEffect(() => {
           backgroundColor: onboardingBackground,
           theme,
           blurAvailable: statusBlurAvailable,
+          solid: true,
           layerStyle: styles.statusGlassModalLayer,
         }
       : null;
@@ -83402,6 +84304,7 @@ useEffect(() => {
 	                  backgroundColor={onboardingBackground}
 	                  theme={theme}
 	                  blurAvailable={statusBlurAvailable}
+	                  solid
 	                />
 	              )}
 	              <StatusBar
@@ -83461,23 +84364,6 @@ useEffect(() => {
 	        style={[styles.appBackground, { backgroundColor: colors.background, direction: appLayoutDirection }]}
 	        onTouchStart={handleRootTouchStart}
 	      >
-	          {__DEV__ && (
-	            <View
-	              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: Math.max(12, topSafeInset + 4),
-                right: 12,
-                zIndex: 999999,
-                backgroundColor: "#D92D20",
-                borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-              }}
-            >
-              <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>ROOT</Text>
-            </View>
-          )}
 		          <View
 		            style={[
 		              styles.appShell,
@@ -83497,6 +84383,7 @@ useEffect(() => {
 	                  backgroundColor={statusGlassBackgroundColor}
 	                  theme={theme}
 	                  blurAvailable={statusBlurAvailable}
+	                  solid
 	                />
 	              )}
 	              {startupLogoVisible && (
@@ -83514,7 +84401,9 @@ useEffect(() => {
                   <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
                 </View>
               )}
-              <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>{renderActiveScreen()}</View>
+              <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>
+                {renderActiveScreen()}
+              </View>
               <HelpGuideFab
                 visible={helpGuideFabVisible}
                 topInset={topSafeInset}
@@ -85027,69 +85916,334 @@ useEffect(() => {
           </Modal>
         )}
         {!startupHardLockPendingBeforePaywall && ratingPromptVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={handleRatingPromptLater}>
-              <View style={styles.ratingPromptBackdrop}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <View
-                    style={[
-                      styles.ratingPromptCard,
-                      { backgroundColor: colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Animated.View
-                      style={[styles.ratingPromptCatWrap, { transform: [{ translateY: ratingPromptCatBob }] }]}
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={handleRatingPromptLater}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={styles.ratingPromptKeyboardAvoider}
+            >
+              <TouchableWithoutFeedback
+                onPress={
+                  ratingPromptStep === "feedback" ? () => Keyboard.dismiss() : handleRatingPromptLater
+                }
+              >
+                <View style={styles.ratingPromptBackdrop}>
+                  <TouchableWithoutFeedback onPress={() => {}}>
+                    <View
+                      style={[
+                        styles.ratingPromptCard,
+                        {
+                          backgroundColor: colors.surfaceElevated || colors.card,
+                          borderColor: colors.border,
+                        },
+                      ]}
                     >
-                      <Image
-                        source={tamagotchiAnimations?.cry || CLASSIC_TAMAGOTCHI_ANIMATIONS.cry}
-                        style={styles.ratingPromptCat}
-                        resizeMode="contain"
-                      />
-                    </Animated.View>
-                    <Text style={[styles.ratingPromptTitle, { color: colors.text }]}>
-                      {t("ratingPromptTitle")}
-                    </Text>
-                    <Text style={[styles.ratingPromptBody, { color: colors.muted }]}>
-                      {t("ratingPromptBody")}
-                    </Text>
-                    <View style={styles.ratingPromptActions}>
-                      <TouchableOpacity
-                        style={[styles.ratingPromptSecondary, { borderColor: colors.border }]}
-                        activeOpacity={0.85}
-                        onPress={handleRatingPromptLater}
+                      <ScrollView
+                        style={styles.ratingPromptScroll}
+                        contentContainerStyle={styles.ratingPromptContent}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
                       >
-                        <Text
-                          style={[styles.ratingPromptSecondaryText, { color: colors.muted }]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          allowAndroidAutoFit
-                          minimumFontScale={MIN_READABLE_FONT_SCALE}
-                          maxFontSizeMultiplier={1.2}
-                        >
-                          {t("ratingPromptLater")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.ratingPromptPrimary, { backgroundColor: colors.text }]}
-                        activeOpacity={0.92}
-                        onPress={handleRatingPromptConfirm}
+                      <Animated.View
+                        style={[
+                          styles.ratingPromptCatWrap,
+                          { transform: [{ translateY: ratingPromptCatBob }] },
+                        ]}
                       >
-                        <Text
-                          style={[styles.ratingPromptPrimaryText, { color: colors.background }]}
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
-                          allowAndroidAutoFit
-                          minimumFontScale={MIN_READABLE_FONT_SCALE}
-                          maxFontSizeMultiplier={1.2}
-                        >
-                          {t("ratingPromptAction")}
-                        </Text>
-                      </TouchableOpacity>
+                        <Image
+                          source={
+                            ratingPromptStep === "feedback"
+                              ? tamagotchiAnimations?.sad || CLASSIC_TAMAGOTCHI_ANIMATIONS.sad
+                              : tamagotchiAnimations?.idle || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle
+                          }
+                          style={[
+                            styles.ratingPromptCat,
+                            ratingPromptStep === "feedback"
+                              ? styles.ratingPromptCatFeedback
+                              : null,
+                          ]}
+                          resizeMode="contain"
+                        />
+                      </Animated.View>
+                      <Text style={[styles.ratingPromptTitle, { color: colors.text }]}>
+                        {t(
+                          ratingPromptStep === "feedback"
+                            ? "ratingPromptFeedbackTitle"
+                            : "ratingPromptTitle"
+                        )}
+                      </Text>
+                      <Text style={[styles.ratingPromptBody, { color: colors.muted }]}>
+                        {t(
+                          ratingPromptStep === "feedback"
+                            ? "ratingPromptFeedbackBody"
+                            : "ratingPromptBody"
+                        )}
+                      </Text>
+
+                      {ratingPromptStep === "rating" ? (
+                        <>
+                          <View
+                            style={styles.ratingPromptStars}
+                            accessibilityRole="radiogroup"
+                          >
+                            {[1, 2, 3, 4, 5].map((star) => {
+                              const selected = star <= ratingPromptRating;
+                              return (
+                                <TouchableOpacity
+                                  key={star}
+                                  activeOpacity={0.78}
+                                  onPress={() => handleRatingPromptSelect(star)}
+                                  accessibilityRole="radio"
+                                  accessibilityState={{ selected: star === ratingPromptRating }}
+                                  accessibilityLabel={t("ratingPromptStarLabel", { count: star })}
+                                  style={[
+                                    styles.ratingPromptStarButton,
+                                    {
+                                      borderColor: selected
+                                        ? ratingPromptStarColor
+                                        : colors.border,
+                                      backgroundColor: selected
+                                        ? colorWithAlpha(ratingPromptStarColor, 0.14)
+                                        : colors.surfaceMuted || colors.background,
+                                    },
+                                  ]}
+                                >
+                                  <RatingPromptStarIcon
+                                    filled={selected}
+                                    color={selected ? ratingPromptStarColor : colors.muted}
+                                  />
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                          <Text
+                            style={[
+                              styles.ratingPromptHint,
+                              {
+                                color:
+                                  ratingPromptRating > 0 ? colors.text : colors.muted,
+                              },
+                            ]}
+                          >
+                            {ratingPromptRating > 0
+                              ? t("ratingPromptSelectedRating", {
+                                  rating: ratingPromptRating,
+                                })
+                              : t("ratingPromptSelectHint")}
+                          </Text>
+                          {ratingPromptRating > 0 ? (
+                            <Text style={[styles.ratingPromptRouteHint, { color: colors.muted }]}>
+                              {t(
+                                ratingPromptRating >= RATING_PROMPT_STORE_THRESHOLD
+                                  ? "ratingPromptStoreHint"
+                                  : "ratingPromptFeedbackHint"
+                              )}
+                            </Text>
+                          ) : null}
+                          <View style={styles.ratingPromptActions}>
+                            <TouchableOpacity
+                              style={[
+                                styles.ratingPromptSecondary,
+                                { borderColor: colors.border },
+                              ]}
+                              activeOpacity={0.85}
+                              onPress={handleRatingPromptLater}
+                            >
+                              <Text
+                                style={[
+                                  styles.ratingPromptSecondaryText,
+                                  { color: colors.muted },
+                                ]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                allowAndroidAutoFit
+                                minimumFontScale={MIN_READABLE_FONT_SCALE}
+                                maxFontSizeMultiplier={1.2}
+                              >
+                                {t("ratingPromptLater")}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.ratingPromptPrimary,
+                                {
+                                  backgroundColor:
+                                    ratingPromptRating > 0
+                                      ? ratingPromptAccent
+                                      : colors.surfaceMuted || colors.background,
+                                },
+                              ]}
+                              activeOpacity={0.92}
+                              disabled={ratingPromptRating <= 0}
+                              onPress={handleRatingPromptConfirm}
+                              accessibilityState={{ disabled: ratingPromptRating <= 0 }}
+                            >
+                              <Text
+                                style={[
+                                  styles.ratingPromptPrimaryText,
+                                  {
+                                    color:
+                                      ratingPromptRating > 0
+                                        ? ratingPromptOnAccent
+                                        : colors.disabled || colors.muted,
+                                  },
+                                ]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                allowAndroidAutoFit
+                                minimumFontScale={MIN_READABLE_FONT_SCALE}
+                                maxFontSizeMultiplier={1.2}
+                              >
+                                {t("ratingPromptContinue")}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      ) : (
+                        <>
+                          <TextInput
+                            value={ratingPromptFeedback}
+                            onChangeText={handleRatingPromptFeedbackChange}
+                            placeholder={t("ratingPromptFeedbackPlaceholder")}
+                            placeholderTextColor={colors.muted}
+                            accessibilityLabel={t("ratingPromptFeedbackPlaceholder")}
+                            multiline
+                            maxLength={1200}
+                            textAlignVertical="top"
+                            autoFocus
+                            editable={!ratingPromptFeedbackSubmitting}
+                            style={[
+                              styles.ratingPromptFeedbackInput,
+                              {
+                                color: colors.text,
+                                borderColor: ratingPromptFeedbackError
+                                  ? colors.error
+                                  : colors.border,
+                                backgroundColor: colors.surfaceMuted || colors.background,
+                              },
+                            ]}
+                          />
+                          <View style={styles.ratingPromptFeedbackMeta}>
+                            <Text
+                              style={[
+                                styles.ratingPromptFeedbackMinimum,
+                                {
+                                  color: ratingPromptFeedbackValid
+                                    ? colors.success
+                                    : colors.muted,
+                                },
+                              ]}
+                            >
+                              {t("ratingPromptFeedbackMinimum", {
+                                count: RATING_PROMPT_FEEDBACK_MIN_LENGTH,
+                              })}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.ratingPromptFeedbackCounter,
+                                { color: colors.muted },
+                              ]}
+                            >
+                              {t("ratingPromptFeedbackCounter", {
+                                current: ratingPromptFeedbackLength,
+                                minimum: RATING_PROMPT_FEEDBACK_MIN_LENGTH,
+                              })}
+                            </Text>
+                          </View>
+                          {ratingPromptFeedbackError ? (
+                            <Text
+                              accessibilityLiveRegion="polite"
+                              style={[styles.ratingPromptError, { color: colors.error }]}
+                            >
+                              {t(ratingPromptFeedbackError, {
+                                count: RATING_PROMPT_FEEDBACK_MIN_LENGTH,
+                                email: SUPPORT_EMAIL,
+                              })}
+                            </Text>
+                          ) : null}
+                          <View style={styles.ratingPromptActions}>
+                            <TouchableOpacity
+                              style={[
+                                styles.ratingPromptSecondary,
+                                { borderColor: colors.border },
+                              ]}
+                              activeOpacity={0.85}
+                              disabled={ratingPromptFeedbackSubmitting}
+                              onPress={handleRatingPromptFeedbackBack}
+                            >
+                              <Text
+                                style={[
+                                  styles.ratingPromptSecondaryText,
+                                  { color: colors.muted },
+                                ]}
+                                numberOfLines={1}
+                                adjustsFontSizeToFit
+                                allowAndroidAutoFit
+                                minimumFontScale={MIN_READABLE_FONT_SCALE}
+                                maxFontSizeMultiplier={1.2}
+                              >
+                                {t("ratingPromptFeedbackBack")}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.ratingPromptPrimary,
+                                {
+                                  backgroundColor:
+                                    ratingPromptFeedbackValid &&
+                                    !ratingPromptFeedbackSubmitting
+                                      ? ratingPromptAccent
+                                      : colors.surfaceMuted || colors.background,
+                                },
+                              ]}
+                              activeOpacity={0.92}
+                              disabled={
+                                !ratingPromptFeedbackValid || ratingPromptFeedbackSubmitting
+                              }
+                              onPress={handleRatingPromptFeedbackSubmit}
+                              accessibilityState={{
+                                disabled:
+                                  !ratingPromptFeedbackValid ||
+                                  ratingPromptFeedbackSubmitting,
+                                busy: ratingPromptFeedbackSubmitting,
+                              }}
+                            >
+                              {ratingPromptFeedbackSubmitting ? (
+                                <ActivityIndicator size="small" color={ratingPromptOnAccent} />
+                              ) : (
+                                <Text
+                                  style={[
+                                    styles.ratingPromptPrimaryText,
+                                    {
+                                      color: ratingPromptFeedbackValid
+                                        ? ratingPromptOnAccent
+                                        : colors.disabled || colors.muted,
+                                    },
+                                  ]}
+                                  numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  allowAndroidAutoFit
+                                  minimumFontScale={MIN_READABLE_FONT_SCALE}
+                                  maxFontSizeMultiplier={1.2}
+                                >
+                                  {t("ratingPromptFeedbackSend")}
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        </>
+                      )}
+                      </ScrollView>
                     </View>
-                  </View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
+                  </TouchableWithoutFeedback>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </Modal>
         )}
         {!startupHardLockPendingBeforePaywall && levelShareModal.visible && (
@@ -85214,7 +86368,11 @@ useEffect(() => {
           </Modal>
         )}
         {barsThemeReady && (
-          <View pointerEvents="box-none" style={styles.mainTabBarOverlay}>
+          <View
+            pointerEvents="box-none"
+            collapsable={false}
+            style={styles.mainTabBarOverlay}
+          >
             <LiquidGlassTabBar
               availableTabs={availableTabs}
               activeTab={activeTab}
@@ -85224,6 +86382,10 @@ useEffect(() => {
               isDarkTheme={isDarkTheme}
               isProTheme={isProTheme}
               proThemeAccentColor={proThemeAccentColor}
+              proThemeMutedColor={colors.muted}
+              proThemeOnAccentColor={colors.onPrimary}
+              proThemeSurfaceColor={colors.surfaceMuted}
+              proThemeBorderColor={colors.primaryBorder}
               tutorialIsTemptation={tutorialIsTemptation}
               tutorialHighlightTabs={tutorialHighlightTabs}
               isCompactAndroid={isCompactAndroid}
@@ -85250,6 +86412,7 @@ useEffect(() => {
           !didYouKnowVisible &&
           activeTab !== "profile" &&
           activeTab !== "purchases" &&
+          !(activeTab === "feed" && feedHeroExpanded) &&
           !(activeTab === "cart" && progressHubPane === "rewards") &&
           !(activeTab === "pending" && (!thinkingUnlocked || !fridgeDoorOpen)) && (
           <Animated.View
@@ -85309,7 +86472,7 @@ useEffect(() => {
                 <LiquidGlassFabOrb
                   size={FAB_BUTTON_SIZE}
                   icon={fabMainIcon}
-                  iconColor={isDarkTheme ? colors.text : "#000000"}
+                  iconColor={isDarkTheme || isProTheme ? colors.text : "#000000"}
                   isDarkTheme={isDarkTheme}
                   isProTheme={isProTheme}
                   proThemeAccentColor={proThemeAccentColor}
@@ -85397,7 +86560,7 @@ useEffect(() => {
           onChange={handleNewPendingChange}
           onSubmit={handleNewPendingSubmit}
           onCancel={handleNewPendingCancel}
-          titleText={newPendingModal.pendingId ? t("priceEditTitle") : null}
+          titleText={newPendingModal.pendingId ? t("temptationEditTitle") : null}
           subtitleText={newPendingModal.pendingId ? "" : null}
           submitText={newPendingModal.pendingId ? t("priceEditSave") : null}
           keyboardOffset={keyboardModalOffset}
@@ -85702,7 +86865,9 @@ useEffect(() => {
                   tutorialCardPositionStyle,
                   { backgroundColor: tutorialCardBackground, borderColor: tutorialCardBorderColor },
                   {
-                    opacity: tutorialCardOpacity,
+                    opacity: resolveModalCompositeOpacity(
+                      tutorialCardOpacity
+                    ),
                     transform: [{ translateY: tutorialCardTranslateY }, { scale: tutorialCardScale }],
                   },
                 ]}
@@ -85966,6 +87131,7 @@ useEffect(() => {
         >
           <Animated.View
             pointerEvents={tamagotchiVisible ? "auto" : "none"}
+            accessibilityViewIsModal={tamagotchiVisible}
             style={[
               styles.tamagotchiBackdrop,
               { backgroundColor: colors.background },
@@ -86075,6 +87241,8 @@ useEffect(() => {
                           onPress={closeTamagotchiOverlay}
                           accessibilityRole="button"
                           accessibilityLabel={t("onboardingBack")}
+                          testID="tamagotchi-back-button"
+                          nativeID="tamagotchi-back-button"
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           activeOpacity={0.9}
                         >
@@ -86096,7 +87264,9 @@ useEffect(() => {
                           ]}
                           onPress={openSkinPicker}
                           accessibilityRole="button"
-                          accessibilityLabel={t("tamagotchiOutfitsLabel")}
+                          accessibilityLabel={t("tamagotchiSkinsShortLabel")}
+                          testID="tamagotchi-skins-button"
+                          nativeID="tamagotchi-skins-button"
                           activeOpacity={0.86}
                         >
                           <Image
@@ -87069,10 +88239,12 @@ useEffect(() => {
           statusBarTranslucent
           onRequestClose={closeSkinPicker}
         >
-          <TouchableWithoutFeedback onPress={closeSkinPicker}>
+          <TouchableWithoutFeedback onPress={closeSkinPicker} accessible={false}>
             <View style={styles.skinPickerBackdrop}>
-              <TouchableWithoutFeedback onPress={() => {}}>
+              <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
                 <View
+                  accessible={false}
+                  accessibilityViewIsModal
                   style={[
                     styles.skinPickerCard,
                     { backgroundColor: colors.card, borderColor: colors.border },
@@ -87090,6 +88262,8 @@ useEffect(() => {
                       onPress={closeSkinPicker}
                       accessibilityRole="button"
                       accessibilityLabel={t("budgetModalClose")}
+                      testID="tamagotchi-skins-done-button"
+                      nativeID="tamagotchi-skins-done-button"
                       activeOpacity={0.86}
                     >
                       <Text style={[styles.skinPickerCloseButtonText, { color: colors.text }]}>
@@ -87098,8 +88272,10 @@ useEffect(() => {
                     </TouchableOpacity>
                   </View>
                   <ScrollView
+                    style={styles.skinPickerScroll}
                     contentContainerStyle={styles.skinPickerList}
-                    showsVerticalScrollIndicator={false}
+                    showsVerticalScrollIndicator
+                    nestedScrollEnabled
                   >
                     {TAMAGOTCHI_SKIN_OPTIONS.map((skin) => {
                       const active = skin.id === tamagotchiSkinId;
@@ -87998,9 +89174,20 @@ useEffect(() => {
           </Modal>
             )}
             {overlay?.type === "save" && (
-          <Modal visible transparent animationType="none" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={() => handleSaveOverlayPress("backdrop")}>
-              <View style={styles.saveOverlay}>
+          <Modal
+            visible
+            transparent
+            animationType="none"
+            statusBarTranslucent
+            onRequestClose={() => handleSaveOverlayPress("backdrop")}
+          >
+              <View style={styles.saveOverlay} accessibilityViewIsModal>
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => handleSaveOverlayPress("backdrop")}
+                  accessible={false}
+                  importantForAccessibility="no"
+                />
                 <View
                   style={[
                     styles.overlayDim,
@@ -88016,6 +89203,7 @@ useEffect(() => {
                     language={language}
                     payload={saveOverlayPayload}
                     playSound={playSound}
+                    onPrimaryAction={() => handleSaveOverlayPress("primary")}
                     progressStart={saveOverlayProgressStart}
                     progressEnd={saveOverlayProgressEnd}
                   />
@@ -88040,7 +89228,6 @@ useEffect(() => {
                   />
                 )}
               </View>
-            </TouchableWithoutFeedback>
           </Modal>
             )}
             {overlay?.type === "custom_temptation" && (
@@ -88110,18 +89297,29 @@ useEffect(() => {
           </Modal>
             )}
             {overlay?.type === "usage_streak" && (
-          <Modal visible transparent animationType="none" statusBarTranslucent>
-            <TouchableWithoutFeedback onPress={dismissOverlay}>
-              <View style={styles.overlayFullScreen}>
+          <Modal
+            visible
+            transparent
+            animationType="none"
+            statusBarTranslucent
+            onRequestClose={dismissOverlay}
+          >
+              <View style={styles.overlayFullScreen} accessibilityViewIsModal>
+                <Pressable
+                  style={StyleSheet.absoluteFill}
+                  onPress={dismissOverlay}
+                  accessible={false}
+                  importantForAccessibility="no"
+                />
                 <UsageStreakCelebration
                   colors={colors}
                   payload={overlay.message}
                   t={t}
                   language={language}
                   mascotHappySource={tamagotchiAnimations.happy}
+                  onDismiss={dismissOverlay}
                 />
               </View>
-            </TouchableWithoutFeedback>
           </Modal>
             )}
             {overlay?.type === "usage_streak_weekly_reward" && (
@@ -88448,7 +89646,11 @@ useEffect(() => {
           onAbandonedOfferWheelEvent={handlePremiumAbandonedOfferWheelEvent}
           onClose={closePremiumPaywall}
           colors={colors}
-          premiumAccent={resolvePremiumUiAccent({ isDark: isDarkTheme, themeId: theme })}
+          premiumAccent={resolvePremiumUiAccent({
+            isDark: isDarkTheme,
+            themeId: theme,
+            proAccent: colors?.primary,
+          })}
           statusBarOverlay={statusGlassModalOverlayElement}
         />
 
@@ -88869,10 +90071,25 @@ useEffect(() => {
               style={[styles.progressCategoryModalWrap, modalKeyboardPaddingStyle]}
               pointerEvents="box-none"
             >
-              <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
+              <View
+                style={[
+                  styles.priceModalCard,
+                  styles.categoryManagerCard,
+                  { backgroundColor: colors.card },
+                ]}
+                accessibilityViewIsModal
+                importantForAccessibility="yes"
+                accessible={false}
+              >
                 <Text style={[styles.priceModalTitle, { color: colors.text }]}>
                   {t("manageCategoriesTitle")}
                 </Text>
+                <ScrollView
+                  style={styles.categoryManagerBodyScroll}
+                  contentContainerStyle={styles.categoryManagerBodyContent}
+                  showsVerticalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                >
                 <View
                   style={[
                     styles.categoryManagerLimitCard,
@@ -88993,15 +90210,7 @@ useEffect(() => {
                     </TouchableOpacity>
                   </View>
                 </View>
-                <ScrollView
-                  style={[
-                    styles.categoryManagerList,
-                    { borderColor: colors.border, height: categoryManagerListHeight },
-                  ]}
-                  contentContainerStyle={styles.categoryManagerListContent}
-                  showsVerticalScrollIndicator
-                  keyboardShouldPersistTaps="handled"
-                >
+                <View style={[styles.categoryManagerList, { borderColor: colors.border }]}>
                   <TouchableOpacity
                     style={[
                       styles.categoryManagerAddButton,
@@ -89058,6 +90267,8 @@ useEffect(() => {
                         <Pressable
                           style={styles.categoryManagerRowInfo}
                           onPress={() => handleCategorySelect(entry.id)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isActive }}
                         >
                           <Text style={styles.categoryManagerEmoji}>{entry.emoji}</Text>
                           <Text
@@ -89087,6 +90298,7 @@ useEffect(() => {
                       </View>
                     );
                   })}
+                </View>
                 </ScrollView>
                 <View style={styles.priceModalButtons}>
                   <TouchableOpacity
@@ -89107,11 +90319,23 @@ useEffect(() => {
           transparent
           animationType="fade"
           statusBarTranslucent
+          onRequestClose={closeAddCategoryModal}
+          onDismiss={handleAddCategoryModalDismiss}
         >
-          <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeAddCategoryModal)}>
-            <View style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View style={[styles.priceModalCard, { backgroundColor: colors.card }]}>
+          <TouchableWithoutFeedback
+            accessible={false}
+            onPress={() => dismissKeyboardOrRun(closeAddCategoryModal)}
+          >
+            <View
+              style={[styles.priceModalBackdrop, modalKeyboardPaddingStyle]}
+              accessibilityViewIsModal
+              importantForAccessibility="yes"
+            >
+              <TouchableWithoutFeedback accessible={false} onPress={() => {}}>
+                <View
+                  style={[styles.priceModalCard, { backgroundColor: colors.card }]}
+                  accessible={false}
+                >
                   <Text style={[styles.priceModalTitle, { color: colors.text }]}>
                     {t("addCategoryModalTitle")}
                   </Text>
@@ -89134,11 +90358,16 @@ useEffect(() => {
                     }}
                     placeholder={t("addCategoryNameLabel")}
                     placeholderTextColor={colors.muted}
+                    accessibilityLabel={t("addCategoryNameLabel")}
+                    autoFocus
+                    returnKeyType="next"
+                    onSubmitEditing={() => addCategoryEmojiInputRef.current?.focus()}
                   />
                   <Text style={[styles.priceModalLabel, { color: colors.muted }]}>
                     {t("addCategoryEmojiLabel")}
                   </Text>
                   <TextInput
+                    ref={addCategoryEmojiInputRef}
                     style={[
                       styles.priceModalInput,
                       {
@@ -89153,9 +90382,15 @@ useEffect(() => {
                     placeholderTextColor={colors.muted}
                     selectTextOnFocus
                     maxLength={EMOJI_INPUT_MAX_LENGTH}
+                    accessibilityLabel={t("addCategoryEmojiLabel")}
+                    returnKeyType="done"
+                    onSubmitEditing={handleAddCategorySave}
                   />
                   {addCategoryError && (
-                    <Text style={[styles.priceModalDeleteText, { color: "#E15555" }]}>
+                    <Text
+                      style={[styles.priceModalDeleteText, { color: "#E15555" }]}
+                      accessibilityRole="alert"
+                    >
                       {t("addCategoryError")}
                     </Text>
                   )}
@@ -89163,6 +90398,8 @@ useEffect(() => {
                     <TouchableOpacity
                       style={[styles.priceModalPrimary, { backgroundColor: colors.text }]}
                       onPress={handleAddCategorySave}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("addCategorySave")}
                     >
                       <Text style={[styles.priceModalPrimaryText, { color: colors.background }]}>
                         {t("addCategorySave")}
@@ -89171,6 +90408,8 @@ useEffect(() => {
                     <TouchableOpacity
                       style={[styles.priceModalSecondary, { borderColor: colors.border }]}
                       onPress={closeAddCategoryModal}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("addCategoryCancel")}
                     >
                       <Text style={[styles.priceModalSecondaryText, { color: colors.muted }]}>
                         {t("addCategoryCancel")}
@@ -89303,9 +90542,9 @@ const StatusGlass = React.memo(
     const tailStopPercent = safeStopPercent + fadeRangePercent * 0.93;
     const nearClearStopPercent = safeStopPercent + fadeRangePercent * 0.985;
     const toPercent = (value) => `${Math.max(0, Math.min(100, value)).toFixed(2)}%`;
-    const overlayTopOpacity = isAndroidStatusGlass ? (solid ? 0.92 : 0.86) : 0.7;
-    const overlaySoftTopOpacity = isAndroidStatusGlass ? (solid ? 0.88 : 0.8) : 0.68;
-    const overlaySafeOpacity = isAndroidStatusGlass ? (solid ? 0.82 : 0.72) : solid ? 0.63 : 0.6;
+    const overlayTopOpacity = solid ? 1 : isAndroidStatusGlass ? 0.86 : 0.7;
+    const overlaySoftTopOpacity = solid ? 1 : isAndroidStatusGlass ? 0.8 : 0.68;
+    const overlaySafeOpacity = solid ? 1 : isAndroidStatusGlass ? 0.72 : 0.6;
     const overlayUpperOpacity = isAndroidStatusGlass ? (solid ? 0.58 : 0.48) : solid ? 0.53 : 0.5;
     const overlayUpperMidOpacity = isAndroidStatusGlass ? (solid ? 0.43 : 0.34) : solid ? 0.45 : 0.41;
     const overlayMidOpacity = isAndroidStatusGlass ? (solid ? 0.3 : 0.23) : solid ? 0.35 : 0.31;
@@ -89556,6 +90795,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: UI_ELEVATION.sticky + 1,
+    elevation: UI_ELEVATION.sticky + 1,
   },
   androidModalHost: {
     ...StyleSheet.absoluteFillObject,
@@ -90328,10 +91569,10 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   heroCarousel: {
-    marginTop: UI_SPACING.sm,
+    marginTop: IS_SHORT_DEVICE ? UI_SPACING.xs : UI_SPACING.sm,
   },
   homeTodaySection: {
-    marginTop: UI_SPACING.md,
+    marginTop: IS_SHORT_DEVICE ? UI_SPACING.xs : UI_SPACING.md,
   },
   homeTodayTabs: {
     flexDirection: "row",
@@ -90341,9 +91582,9 @@ const styles = StyleSheet.create({
   homeTodayTab: {
     flex: 1,
     minWidth: 0,
-    minHeight: 52,
+    minHeight: IS_SHORT_DEVICE ? UI_TOUCH_TARGET.current : 52,
     paddingHorizontal: 4,
-    paddingVertical: 8,
+    paddingVertical: IS_SHORT_DEVICE ? 4 : 8,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -90352,7 +91593,14 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   homeTodayTabText: {
-    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "500", textAlign: "center" }),
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 14 : 15,
+      lineHeight: IS_SHORT_DEVICE ? 18 : 20,
+      fontWeight: "500",
+      textAlign: "center",
+    }),
+    width: "100%",
+    flexShrink: 1,
   },
   homeTodayTabTextSelected: {
     fontWeight: "700",
@@ -91061,6 +92309,7 @@ const styles = StyleSheet.create({
   skinPickerCard: {
     width: "100%",
     maxWidth: 540,
+    height: "78%",
     maxHeight: "78%",
     borderTopLeftRadius: UI_RADIUS.sheet,
     borderTopRightRadius: UI_RADIUS.sheet,
@@ -91097,6 +92346,10 @@ const styles = StyleSheet.create({
   },
   skinPickerSubtitle: {
     ...createBodyText({ fontSize: 15 }),
+  },
+  skinPickerScroll: {
+    flex: 1,
+    minHeight: 0,
   },
   skinPickerList: {
     paddingVertical: UI_SPACING.xxs,
@@ -94552,6 +95805,9 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     marginTop: 6,
   },
+  savedHeroGoalMetaRowCompactFabClearance: {
+    paddingRight: FAB_BUTTON_SIZE + UI_SPACING.md,
+  },
   savedHeroGoalMetaActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -94828,6 +96084,9 @@ const styles = StyleSheet.create({
   dailySummaryHint: {
     ...createSecondaryText({ textAlign: "center" }),
   },
+  ratingPromptKeyboardAvoider: {
+    flex: 1,
+  },
   ratingPromptBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -94838,10 +96097,17 @@ const styles = StyleSheet.create({
   ratingPromptCard: {
     width: "100%",
     maxWidth: 360,
+    maxHeight: "92%",
     borderRadius: 26,
-    padding: 24,
-    gap: 16,
     borderWidth: 1,
+    overflow: "hidden",
+  },
+  ratingPromptScroll: {
+    width: "100%",
+  },
+  ratingPromptContent: {
+    padding: 24,
+    gap: 14,
   },
   ratingPromptCatWrap: {
     alignItems: "center",
@@ -94850,12 +96116,63 @@ const styles = StyleSheet.create({
     width: 130,
     height: 130,
   },
+  ratingPromptCatFeedback: {
+    width: 86,
+    height: 86,
+  },
   ratingPromptTitle: {
     ...TYPOGRAPHY.blockTitle,
     textAlign: "center",
   },
   ratingPromptBody: {
     ...createBodyText({ fontSize: 15, textAlign: "center" }),
+  },
+  ratingPromptStars: {
+    flexDirection: "row",
+    gap: 6,
+    width: "100%",
+  },
+  ratingPromptStarButton: {
+    flex: 1,
+    minWidth: 48,
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ratingPromptHint: {
+    ...createBodyText({ fontSize: 14, fontWeight: "700", textAlign: "center" }),
+  },
+  ratingPromptRouteHint: {
+    ...createSecondaryText({ fontSize: 12, textAlign: "center" }),
+  },
+  ratingPromptFeedbackInput: {
+    ...createBodyText({ fontSize: 15 }),
+    minHeight: 112,
+    maxHeight: 180,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  ratingPromptFeedbackMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  ratingPromptFeedbackMinimum: {
+    ...createSecondaryText({ fontSize: 12 }),
+    flexShrink: 1,
+  },
+  ratingPromptFeedbackCounter: {
+    ...createSecondaryText({ fontSize: 12 }),
+    fontVariant: ["tabular-nums"],
+  },
+  ratingPromptError: {
+    ...createSecondaryText({ fontSize: 13, textAlign: "center" }),
+    fontWeight: "700",
   },
   ratingPromptActions: {
     flexDirection: "row",
@@ -94865,7 +96182,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 18,
     paddingVertical: 12,
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
   },
   ratingPromptSecondaryText: {
@@ -94875,7 +96194,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 18,
     paddingVertical: 12,
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "center",
+    justifyContent: "center",
   },
   ratingPromptPrimaryText: {
     ...createCtaText({ fontSize: 15 }),
@@ -96805,12 +98126,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: BASE_HORIZONTAL_PADDING,
     justifyContent: "center",
   },
+  budgetLockedScreenContentCompact: {
+    flexGrow: 1,
+    justifyContent: "flex-start",
+  },
+  budgetLockedScreenContentAccessibility: {
+    flexGrow: 1,
+    justifyContent: "flex-start",
+  },
   budgetLockedScreenHero: {
     borderRadius: 28,
     borderWidth: 1.5,
     padding: IS_SHORT_DEVICE ? 18 : 22,
     gap: IS_SHORT_DEVICE ? 14 : 18,
     overflow: "hidden",
+  },
+  budgetLockedScreenHeroAccessibility: {
+    padding: 16,
+    gap: 12,
   },
   budgetLockedScreenGlow: {
     position: "absolute",
@@ -96825,6 +98158,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
+  },
+  budgetLockedScreenHeaderAccessibility: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    gap: 10,
   },
   budgetLockedScreenTitleBlock: {
     flex: 1,
@@ -96845,6 +98184,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     flexShrink: 0,
+  },
+  budgetLockedScreenPillAccessibility: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
   },
   budgetLockedScreenPillText: {
     ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
@@ -98023,8 +99366,8 @@ const styles = StyleSheet.create({
   progressInsightsSpotlight: {
     borderRadius: UI_RADIUS.card,
     borderWidth: 1,
-    padding: UI_SPACING.md,
-    gap: UI_SPACING.sm,
+    padding: IS_SHORT_DEVICE ? UI_SPACING.sm : UI_SPACING.md,
+    gap: IS_SHORT_DEVICE ? UI_SPACING.xs : UI_SPACING.sm,
   },
   progressInsightsSpotlightHeader: {
     flexDirection: "row",
@@ -98056,7 +99399,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressInsightsSpotlightTitle: {
-    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "800" }),
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 18 : 20,
+      lineHeight: IS_SHORT_DEVICE ? 22 : 25,
+      fontWeight: "800",
+    }),
     flexShrink: 1,
   },
   progressInsightsSpotlightBadge: {
@@ -98072,7 +99419,10 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 11, lineHeight: 14 }),
   },
   progressInsightsSpotlightBody: {
-    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 12 : 13,
+      lineHeight: IS_SHORT_DEVICE ? 17 : 18,
+    }),
     opacity: 0.78,
   },
   progressInsightsSpotlightChevron: {
@@ -98086,7 +99436,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressInsightsFeatureChip: {
-    minHeight: 30,
+    minHeight: IS_SHORT_DEVICE ? 28 : 30,
     borderRadius: UI_RADIUS.control,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -98107,10 +99457,10 @@ const styles = StyleSheet.create({
   },
   progressOverviewGoalRow: {
     minHeight: UI_TOUCH_TARGET.current,
-    padding: UI_SPACING.md,
+    padding: IS_SHORT_DEVICE ? UI_SPACING.sm : UI_SPACING.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: UI_SPACING.md,
+    gap: IS_SHORT_DEVICE ? UI_SPACING.sm : UI_SPACING.md,
   },
   progressOverviewGoalCopy: {
     flex: 1,
@@ -99888,6 +101238,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 18,
   },
+  temptationAmountModalRootCompact: {
+    paddingHorizontal: 14,
+  },
   temptationAmountModalGlow: {
     position: "absolute",
     right: -58,
@@ -99902,6 +101255,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     marginBottom: 12,
+  },
+  temptationAmountModalTopbarCompact: {
+    gap: 8,
+    marginBottom: 6,
   },
   temptationAmountModalIdentity: {
     flex: 1,
@@ -99918,6 +101275,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  temptationAmountModalIconCompact: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+  },
   temptationAmountModalEmoji: {
     fontSize: 26,
     lineHeight: 32,
@@ -99932,6 +101294,10 @@ const styles = StyleSheet.create({
     fontSize: 23,
     lineHeight: 28,
     fontWeight: "900",
+  },
+  temptationAmountModalTitleCompact: {
+    fontSize: 21,
+    lineHeight: 25,
   },
   temptationAmountModalSubtitle: {
     ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
@@ -99973,10 +101339,18 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  temptationAmountModalCardCompact: {
+    borderRadius: 20,
+    padding: 10,
+    gap: 8,
+  },
   temptationAmountModalHeroRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  temptationAmountModalHeroRowCompact: {
+    gap: 8,
   },
   temptationAmountModalHeroText: {
     flex: 1,
@@ -99987,6 +101361,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 29,
     fontWeight: "900",
+  },
+  temptationAmountModalHeadlineCompact: {
+    fontSize: 21,
+    lineHeight: 25,
   },
   temptationAmountModalBadge: {
     minWidth: 104,
@@ -99999,6 +101377,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
+  temptationAmountModalBadgeCompact: {
+    minWidth: 92,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+  },
   temptationAmountModalBadgeText: {
     color: "#FFFFFF",
     width: "100%",
@@ -100009,6 +101393,10 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     includeFontPadding: false,
   },
+  temptationAmountModalBadgeTextCompact: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
   temptationAmountSliderPanel: {
     borderWidth: 1,
     borderRadius: 20,
@@ -100016,6 +101404,13 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
     gap: 6,
+  },
+  temptationAmountSliderPanelCompact: {
+    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 6,
+    gap: 4,
   },
   temptationAmountMoodStage: {
     minHeight: 152,
@@ -100025,15 +101420,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  temptationAmountMoodStageCompact: {
+    minHeight: 104,
+    borderRadius: 20,
+  },
   temptationAmountMoodAura: {
     position: "absolute",
     width: 170,
     height: 170,
     borderRadius: 85,
   },
+  temptationAmountMoodAuraCompact: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+  },
   temptationAmountMoodCat: {
     width: 140,
     height: 140,
+  },
+  temptationAmountMoodCatCompact: {
+    width: 108,
+    height: 108,
   },
   temptationAmountStats: {
     flexDirection: "row",
@@ -100048,6 +101456,12 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     gap: 4,
   },
+  temptationAmountStatCardCompact: {
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 2,
+  },
   temptationAmountStatLabel: {
     ...createCtaText({ fontSize: 12 }),
     opacity: 0.9,
@@ -100057,6 +101471,10 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
+  },
+  temptationAmountStatValueCompact: {
+    fontSize: 22,
+    lineHeight: 27,
   },
   temptationAmountProgressTrack: {
     height: 10,
@@ -100116,6 +101534,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingTop: 12,
   },
+  temptationAmountBottomDockCompact: {
+    gap: 6,
+    paddingTop: 8,
+  },
   temptationAmountModalActionButton: {
     flex: 1,
     minHeight: Platform.OS === "ios" ? 54 : 56,
@@ -100136,6 +101558,10 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 4 },
       },
     }),
+  },
+  temptationAmountModalActionButtonCompact: {
+    minHeight: 48,
+    borderRadius: 14,
   },
   temptationAmountModalSaveButton: {
     backgroundColor: "rgba(46,184,115,0.22)",
@@ -101744,7 +103170,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: "flex-start",
     justifyContent: "center",
-    paddingHorizontal: 10,
+    paddingHorizontal: 4,
   },
   fridgeSummaryCellPrimary: {
     flex: 1.45,
@@ -101759,6 +103185,8 @@ const styles = StyleSheet.create({
   fridgeSummaryLabel: {
     ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "700" }),
     marginTop: 3,
+    width: "100%",
+    flexShrink: 1,
   },
   fridgeSummaryDivider: {
     width: StyleSheet.hairlineWidth,
@@ -101782,7 +103210,7 @@ const styles = StyleSheet.create({
   fridgeNextPreview: {
     width: "100%",
     maxWidth: 360,
-    minHeight: 68,
+    minHeight: 82,
     borderWidth: 1,
     borderRadius: UI_RADIUS.card,
     padding: 10,
@@ -101807,6 +103235,7 @@ const styles = StyleSheet.create({
   },
   fridgeNextPreviewTitle: {
     ...createBodyText({ fontSize: 15, lineHeight: 19, fontWeight: "800" }),
+    flexShrink: 1,
   },
   fridgeNextPreviewPrice: {
     ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
@@ -102045,6 +103474,7 @@ const styles = StyleSheet.create({
   },
   fridgeItemTitle: {
     ...createBodyText({ fontSize: 15, lineHeight: 19, fontWeight: "800", flex: 1 }),
+    flexShrink: 1,
   },
   fridgeCountdownPill: {
     borderWidth: 1,
@@ -102802,6 +104232,14 @@ const styles = StyleSheet.create({
   purchasesSubtitle: {
     marginBottom: 16,
   },
+  progressCompactHeader: {
+    fontSize: 27,
+    lineHeight: 32,
+    marginBottom: 6,
+  },
+  progressCompactSubtitle: {
+    marginBottom: 4,
+  },
   progressCard: {
     borderRadius: 26,
     padding: 18,
@@ -102996,13 +104434,13 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 13, lineHeight: 17, textAlign: "center" }),
   },
   progressSectionGroup: {
-    gap: 16,
+    gap: IS_SHORT_DEVICE ? 10 : 16,
   },
   progressSectionHidden: {
     display: "none",
   },
   progressDestinationTabs: {
-    minHeight: 60,
+    minHeight: IS_SHORT_DEVICE ? 52 : 60,
     borderRadius: 14,
     padding: 4,
     flexDirection: "row",
@@ -103135,8 +104573,8 @@ const styles = StyleSheet.create({
   },
   challengeCard: {
     borderRadius: 16,
-    padding: 16,
-    gap: 12,
+    padding: IS_SHORT_DEVICE ? 12 : 16,
+    gap: IS_SHORT_DEVICE ? 10 : 12,
     borderWidth: 1,
     position: "relative",
   },
@@ -103241,9 +104679,9 @@ const styles = StyleSheet.create({
   },
   dailyChallengeWidget: {
     borderRadius: 16,
-    padding: 16,
+    padding: IS_SHORT_DEVICE ? 12 : 16,
     borderWidth: 1,
-    gap: 16,
+    gap: IS_SHORT_DEVICE ? 10 : 16,
   },
   dailyChallengeWidgetHeader: {
     flexDirection: "row",
@@ -104109,6 +105547,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 40,
   },
+  profileSettingsLeadCompact: {
+    flexDirection: "column-reverse",
+  },
   profileEditableGroup: {
     borderWidth: 1,
     borderRadius: 16,
@@ -104315,6 +105756,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingRight: 40,
+  },
+  settingLanguageScrollWrapper: {
+    marginRight: 0,
+    paddingRight: 0,
+  },
+  settingLanguageScroll: {
+    direction: "ltr",
+  },
+  settingLanguageScrollContent: {
+    direction: "ltr",
+    paddingHorizontal: 12,
+    paddingRight: 12,
   },
   incomeCalendarGrid: {
     flexDirection: "row",
@@ -104650,11 +106103,13 @@ const styles = StyleSheet.create({
   },
   bugReportModalRoot: {
     flex: 1,
-    justifyContent: "center",
   },
   bugReportBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  bugReportKeyboardAvoider: {
+    flex: 1,
   },
   bugReportModalWrap: {
     flex: 1,
@@ -104668,6 +106123,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     padding: 16,
+    maxHeight: "100%",
   },
   bugReportHeaderRow: {
     flexDirection: "row",
@@ -104706,6 +106162,7 @@ const styles = StyleSheet.create({
   },
   bugReportFieldsScroll: {
     flexShrink: 1,
+    minHeight: 0,
     maxHeight: SCREEN_HEIGHT * 0.58,
   },
   bugReportFieldsScrollContent: {
@@ -104734,6 +106191,7 @@ const styles = StyleSheet.create({
   },
   bugReportActions: {
     flexDirection: "row",
+    flexShrink: 0,
     gap: 10,
     marginTop: 2,
   },
@@ -106537,6 +107995,9 @@ const styles = StyleSheet.create({
   coinEntryOverlayRoot: {
     flex: 1,
   },
+  coinEntryOverlayPreparing: {
+    opacity: 0,
+  },
   coinEntryBackdropVisual: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -106633,6 +108094,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   coinSliderWrapper: {
+    position: "relative",
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
@@ -109419,6 +110881,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
     maxHeight: SCREEN_HEIGHT * 0.88,
+    position: "relative",
   },
   temptationEditHeader: {
     minHeight: 60,
@@ -109590,6 +111053,25 @@ const styles = StyleSheet.create({
     paddingBottom: UI_SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  temptationEditOverflowCue: {
+    position: "absolute",
+    right: 8,
+    bottom: 80,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 3,
+    elevation: 3,
+  },
+  temptationEditOverflowCueGlyph: {
+    fontSize: 21,
+    lineHeight: 23,
+    fontWeight: "800",
+    textAlign: "center",
+  },
   temptationEditSave: {
     minHeight: 52,
     borderRadius: UI_RADIUS.control,
@@ -109640,10 +111122,21 @@ const styles = StyleSheet.create({
   categoryManagerList: {
     borderWidth: 1,
     borderRadius: 18,
-    maxHeight: Math.min(280, SCREEN_HEIGHT * 0.45),
+    overflow: "hidden",
   },
-  categoryManagerListContent: {
-    paddingVertical: 4,
+  categoryManagerCard: {
+    maxHeight: SCREEN_HEIGHT * 0.9,
+    padding: IS_SHORT_DEVICE ? 14 : 20,
+    gap: IS_SHORT_DEVICE ? 10 : 16,
+  },
+  categoryManagerBodyScroll: {
+    width: "100%",
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  categoryManagerBodyContent: {
+    gap: IS_SHORT_DEVICE ? 10 : 16,
+    paddingBottom: 4,
   },
   categoryManagerAddButton: {
     marginTop: 8,
@@ -109652,6 +111145,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     paddingVertical: 10,
+    minHeight: UI_TOUCH_TARGET.current,
     alignItems: "center",
   },
   categoryManagerAddButtonText: {
@@ -109725,6 +111219,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   categoryManagerRow: {
+    minHeight: UI_TOUCH_TARGET.current,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -110418,6 +111913,11 @@ const styles = StyleSheet.create({
   languageTermsInlineLink: {
     textDecorationLine: "underline",
     fontWeight: "600",
+  },
+  languageTermsLinkButton: {
+    alignSelf: "flex-start",
+    minHeight: 32,
+    justifyContent: "center",
   },
   languageTermsButton: {
     borderWidth: 1,
@@ -111721,6 +113221,10 @@ function CoinEntryModal({
   const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
+  const systemBottomInset = resolveAndroidSystemBottomInset({
+    safeBottom: safeInsets.bottom,
+    viewportHeight,
+  });
   const compactLayout = viewportHeight < 740 || viewportWidth < 360;
   const coinSize = Math.round(
     Math.max(144, Math.min(compactLayout ? 152 : 176, viewportWidth * 0.44))
@@ -111774,6 +113278,8 @@ function CoinEntryModal({
   const [manualValue, setManualValue] = useState("");
   const [manualError, setManualError] = useState("");
   const [manualExactLocal, setManualExactLocal] = useState(null);
+  const [coinCutoutFrame, setCoinCutoutFrame] = useState(null);
+  const [coinPresentationReady, setCoinPresentationReady] = useState(true);
   const [flightCoinAsset, setFlightCoinAsset] = useState(HEALTH_COIN_TIERS[0]?.asset || null);
   const [flightDirection, setFlightDirection] = useState("save");
   const preferredAction =
@@ -111788,6 +113294,7 @@ function CoinEntryModal({
   const flightScale = useRef(new Animated.Value(0.4)).current;
   const flightOpacity = useRef(new Animated.Value(0)).current;
   const flightSpin = useRef(new Animated.Value(0)).current;
+  const coinEntryCardRef = useRef(null);
   const coinCircleRef = useRef(null);
   const closingRef = useRef(false);
   const dismissingRef = useRef(false);
@@ -111805,6 +113312,7 @@ function CoinEntryModal({
   const tossingRef = useRef(false);
   const lastCoinTapRef = useRef(0);
   const lastAmountTapRef = useRef(0);
+  const coinPresentationReadyRef = useRef(true);
   const touchStartValueRef = useRef(0.25);
   const touchStartPageYRef = useRef(0);
   const sliderGestureRef = useRef({
@@ -111847,7 +113355,14 @@ function CoinEntryModal({
     []
   );
   const startRevealAnimation = useCallback(() => {
-    if (!visible || revealStartedRef.current) return;
+    if (
+      !visible ||
+      revealStartedRef.current ||
+      !coinPresentationReady ||
+      !coinPresentationReadyRef.current
+    ) {
+      return;
+    }
     revealStartedRef.current = true;
     if (reduceMotion) {
       revealAnim.setValue(1);
@@ -111868,7 +113383,7 @@ function CoinEntryModal({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [cardAnim, reduceMotion, revealAnim, visible]);
+  }, [cardAnim, coinPresentationReady, reduceMotion, revealAnim, visible]);
   useEffect(() => {
     return () => {
       if (sliderRafRef.current) {
@@ -111884,14 +113399,52 @@ function CoinEntryModal({
   useEffect(() => {
     setTrackHeight(coinSize);
   }, [coinSize]);
+  const measureCoinCutout = useCallback(() => {
+    const cardNode = coinEntryCardRef.current;
+    const coinNode = coinCircleRef.current;
+    if (!cardNode?.measureInWindow || !coinNode?.measureInWindow) return;
+    cardNode.measureInWindow((cardX, cardY, cardWidth, cardHeight) => {
+      if (
+        ![cardX, cardY, cardWidth, cardHeight].every(Number.isFinite) ||
+        cardWidth <= 0 ||
+        cardHeight <= 0
+      ) {
+        return;
+      }
+      coinNode.measureInWindow((coinX, coinY, coinWidth, coinHeight) => {
+        if (
+          ![coinX, coinY, coinWidth, coinHeight].every(Number.isFinite) ||
+          coinWidth <= 0 ||
+          coinHeight <= 0
+        ) {
+          return;
+        }
+        setCoinCutoutFrame({
+          width: cardWidth,
+          height: cardHeight,
+          centerX: coinX - cardX + coinWidth / 2,
+          centerY: coinY - cardY + coinHeight / 2,
+          radius: Math.max(coinWidth, coinHeight) / 2 + 1,
+        });
+        cardAnim.setValue(0);
+        revealAnim.setValue(0);
+        coinPresentationReadyRef.current = true;
+        setCoinPresentationReady(true);
+      });
+    });
+  }, [cardAnim, revealAnim]);
   useLayoutEffect(() => {
     if (!visible) return;
+    const prepareIosCutout = Platform.OS === "ios" && !reduceTransparency;
     revealAnim.stopAnimation();
     cardAnim.stopAnimation();
     cardExitAnim.stopAnimation();
     revealAnim.setValue(0);
-    cardAnim.setValue(0);
+    cardAnim.setValue(prepareIosCutout ? 1 : 0);
     cardExitAnim.setValue(0);
+    coinPresentationReadyRef.current = !prepareIosCutout;
+    setCoinCutoutFrame(null);
+    setCoinPresentationReady(!prepareIosCutout);
     closeTintOpacity.setValue(0);
     flightOpacity.setValue(0);
     flightScale.setValue(0.4);
@@ -111929,6 +113482,7 @@ function CoinEntryModal({
     flightOpacity,
     flightScale,
     flightSpin,
+    reduceTransparency,
     revealAnim,
     updateSliderValue,
     visible,
@@ -112011,11 +113565,7 @@ function CoinEntryModal({
   const isDarkTheme = colors.background === THEMES.dark.background;
   const isProTheme = colors.primary !== THEMES.light.primary && !isDarkTheme;
   const coinSymbolColor = isDarkTheme ? "rgba(247,249,255,0.84)" : "rgba(16,27,69,0.5)";
-  const coinGlassTint = isProTheme
-    ? colorWithAlpha(colors.primary, 0.12)
-    : coinHasValue
-    ? "rgba(247,196,93,0.08)"
-    : "rgba(255,255,255,0.08)";
+  const coinIosNativeEffectOpacity = 0.52;
   const coinFallbackColor = isDarkTheme
     ? "rgba(9,15,28,0.3)"
     : isProTheme
@@ -112028,7 +113578,7 @@ function CoinEntryModal({
     ? colorWithAlpha(colors.primary, 0.24)
     : "rgba(255,255,255,0.78)";
   const sheetMaxHeight = Math.max(360, viewportHeight - Math.max(safeInsets.top, 8) - 8);
-  const sheetBottomPadding = Math.max(UI_SPACING.sm, safeInsets.bottom + UI_SPACING.xs);
+  const sheetBottomPadding = Math.max(UI_SPACING.sm, systemBottomInset + UI_SPACING.xs);
   const errorColor = colors.error || SPEND_ACTION_COLOR;
   const spendButtonColor = colors.error || COIN_ENTRY_SPEND_BACKGROUND;
   const saveButtonColor = colors.success || COIN_ENTRY_SAVE_BACKGROUND;
@@ -112039,6 +113589,7 @@ function CoinEntryModal({
     ? colors.onPrimary || resolveForegroundForColor(colors.primary)
     : colors.background;
   const sheetSurfaceColor = colors.surfaceElevated || colors.card;
+  const useCoinSurfaceCutout = Platform.OS === "ios" && !reduceTransparency;
   const coinTranslateX = directionAnim.interpolate({
     inputRange: [-3, -1, 0, 1, 3],
     outputRange: [-viewportWidth, -48, 0, 48, viewportWidth],
@@ -112053,12 +113604,12 @@ function CoinEntryModal({
   });
   const cardEnterTranslateY = cardAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [sheetMaxHeight + Math.max(24, safeInsets.bottom), 0],
+    outputRange: [sheetMaxHeight + Math.max(24, systemBottomInset), 0],
     extrapolate: "clamp",
   });
   const cardExitTranslateY = cardExitAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, sheetMaxHeight + Math.max(24, safeInsets.bottom)],
+    outputRange: [0, sheetMaxHeight + Math.max(24, systemBottomInset)],
     extrapolate: "clamp",
   });
   const cardTranslateY = Animated.add(cardEnterTranslateY, cardExitTranslateY);
@@ -112590,8 +114141,15 @@ function CoinEntryModal({
       hardwareAccelerated
     >
       <View
-        style={styles.coinEntryOverlayRoot}
+        style={[
+          styles.coinEntryOverlayRoot,
+          Platform.OS === "ios" && !coinPresentationReady
+            ? styles.coinEntryOverlayPreparing
+            : null,
+        ]}
+        pointerEvents={Platform.OS === "ios" && !coinPresentationReady ? "none" : "auto"}
         accessibilityViewIsModal
+        accessibilityElementsHidden={Platform.OS === "ios" && !coinPresentationReady}
         importantForAccessibility="yes"
       >
         <Animated.View
@@ -112648,17 +114206,52 @@ function CoinEntryModal({
         </Animated.View>
         <View style={styles.coinEntrySheetLayer} pointerEvents="box-none">
           <Animated.View
+            ref={coinEntryCardRef}
             style={[
               styles.coinEntryCard,
               {
                 maxHeight: sheetMaxHeight,
-                backgroundColor: sheetSurfaceColor,
+                backgroundColor: useCoinSurfaceCutout ? "transparent" : sheetSurfaceColor,
                 borderBottomLeftRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
                 borderBottomRightRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
                 transform: [{ translateY: cardTranslateY }],
               },
             ]}
           >
+            {useCoinSurfaceCutout && coinCutoutFrame ? (
+              <Svg
+                pointerEvents="none"
+                width={coinCutoutFrame.width}
+                height={coinCutoutFrame.height}
+                style={StyleSheet.absoluteFillObject}
+              >
+                <Defs>
+                  <Mask id="coinEntrySurfaceCutoutMask">
+                    <SvgRect
+                      x={0}
+                      y={0}
+                      width={coinCutoutFrame.width}
+                      height={coinCutoutFrame.height}
+                      fill="#FFFFFF"
+                    />
+                    <SvgCircle
+                      cx={coinCutoutFrame.centerX}
+                      cy={coinCutoutFrame.centerY}
+                      r={coinCutoutFrame.radius}
+                      fill="#000000"
+                    />
+                  </Mask>
+                </Defs>
+                <SvgRect
+                  x={0}
+                  y={0}
+                  width={coinCutoutFrame.width}
+                  height={coinCutoutFrame.height}
+                  fill={sheetSurfaceColor}
+                  mask="url(#coinEntrySurfaceCutoutMask)"
+                />
+              </Svg>
+            ) : null}
             <View style={styles.coinEntryUpperContent}>
                 <View
                   style={[
@@ -112729,6 +114322,9 @@ function CoinEntryModal({
                   onLayout={(event) => {
                     const { height } = event.nativeEvent.layout;
                     if (height) setTrackHeight(height);
+                    if (useCoinSurfaceCutout) {
+                      requestAnimationFrame(measureCoinCutout);
+                    }
                   }}
                   accessible
                   accessibilityRole="adjustable"
@@ -112756,13 +114352,13 @@ function CoinEntryModal({
                     <PlatformGlassBackground
                       style={StyleSheet.absoluteFillObject}
                       isDarkTheme={isDarkTheme}
-                      glassEffectStyle="clear"
-                      tintColor={coinGlassTint}
+                      glassEffectStyle="regular"
                       fallbackColor={coinFallbackColor}
                       solidFallbackColor={coinSolidFallback}
                       borderColor="transparent"
                       androidIntensity={36}
-                      iosFallbackIntensity={58}
+                      iosFallbackIntensity={36}
+                      nativeEffectOpacity={coinIosNativeEffectOpacity}
                     />
                     <View
                       pointerEvents="none"
@@ -112895,6 +114491,7 @@ function CoinEntryModal({
                 {
                   paddingBottom: sheetBottomPadding,
                   borderTopColor: colors.separator || colors.border,
+                  backgroundColor: sheetSurfaceColor,
                 },
               ]}
             >
@@ -115132,6 +116729,8 @@ function TermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLi
           <TouchableOpacity
             style={[styles.termsLinkButton, { borderColor: colors.border }]}
             onPress={onOpenLink}
+            accessibilityRole="link"
+            accessibilityLabel={t("termsViewFull")}
           >
             <Text style={[styles.termsLinkText, { color: colors.text }]}>{t("termsViewFull")}</Text>
           </TouchableOpacity>
@@ -115638,6 +117237,14 @@ function AnalyticsConsentScreen({
 }) {
   const fade = useFadeIn();
   const safeAreaInsets = safeUseSafeAreaInsets();
+  const titleKey =
+    Platform.OS === "android" ? "analyticsConsentAndroidTitle" : "analyticsConsentTitle";
+  const bodyKey =
+    Platform.OS === "android" ? "analyticsConsentAndroidBody" : "analyticsConsentBody";
+  const agreeKey =
+    Platform.OS === "android" ? "analyticsConsentAndroidAgree" : "analyticsConsentAgree";
+  const skipKey =
+    Platform.OS === "android" ? "analyticsConsentAndroidSkip" : "analyticsConsentSkip";
   const resolvedBottomInset = Math.max(
     Number(bottomInset) || 0,
     Number(safeAreaInsets.bottom) || 0
@@ -115683,7 +117290,7 @@ function AnalyticsConsentScreen({
                 { color: ONBOARDING_GLASS_THEME.textPrimary },
               ]}
             >
-              {t("analyticsConsentTitle")}
+              {t(titleKey)}
             </Text>
             <Text
               style={[
@@ -115691,7 +117298,7 @@ function AnalyticsConsentScreen({
                 { color: ONBOARDING_GLASS_THEME.textSecondary },
               ]}
             >
-              {t("analyticsConsentBody")}
+              {t(bodyKey)}
             </Text>
             <OnboardingScaleButton
               style={[
@@ -115700,10 +117307,10 @@ function AnalyticsConsentScreen({
               ]}
               onPress={onAgree}
               accessibilityRole="button"
-              accessibilityLabel={t("analyticsConsentAgree")}
+              accessibilityLabel={t(agreeKey)}
             >
               <Text style={[styles.analyticsConsentPrimaryText, { color: "#FFFFFF" }]}>
-                {t("analyticsConsentAgree")}
+                {t(agreeKey)}
               </Text>
             </OnboardingScaleButton>
             <OnboardingScaleButton
@@ -115713,7 +117320,7 @@ function AnalyticsConsentScreen({
               ]}
               onPress={onSkip}
               accessibilityRole="button"
-              accessibilityLabel={t("analyticsConsentSkip")}
+              accessibilityLabel={t(skipKey)}
             >
               <Text
                 style={[
@@ -115721,7 +117328,7 @@ function AnalyticsConsentScreen({
                   { color: ONBOARDING_GLASS_THEME.textSecondary },
                 ]}
               >
-                {t("analyticsConsentSkip")}
+                {t(skipKey)}
               </Text>
             </OnboardingScaleButton>
           </View>
@@ -116073,14 +117680,21 @@ function LanguageScreen({
         >
           <View style={styles.languageTermsBlock}>
             <Text style={[styles.languageTermsNote, { color: ONBOARDING_GLASS_THEME.textSecondary }]}>
-              {languageTermsHint}{" "}
+              {languageTermsHint}
+            </Text>
+            <Pressable
+              style={styles.languageTermsLinkButton}
+              onPress={() => onShowTerms?.()}
+              accessibilityRole="link"
+              accessibilityLabel={t("languageTermsLink")}
+              hitSlop={8}
+            >
               <Text
                 style={[styles.languageTermsInlineLink, { color: ONBOARDING_GLASS_THEME.textPrimary }]}
-                onPress={() => onShowTerms?.()}
               >
                 {t("languageTermsLink")}
               </Text>
-            </Text>
+            </Pressable>
           </View>
         </Animated.View>
       </OnboardingScrollView>
@@ -116135,6 +117749,7 @@ function LogoSplash({ onDone }) {
     </View>
   );
 }
+
 const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
   const isDarkMode = colors.background === THEMES.dark.background;
   const levelNumber = Math.max(1, Number(message) || 1);
@@ -116324,8 +117939,20 @@ const LevelUpCelebration = ({ colors, message, t, onSharePress }) => {
                 transform: [{ translateY: badgeFloatY }],
               },
             ]}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={t("progressHeroLevel", { level: levelNumber })}
           >
-            <Text style={[styles.levelBadgeText, { color: palette.badgeText }]}>LEVEL {levelNumber}</Text>
+            <Text
+              style={[styles.levelBadgeText, { color: palette.badgeText }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              allowAndroidAutoFit
+              minimumFontScale={0.76}
+              maxFontSizeMultiplier={1.3}
+            >
+              LEVEL {levelNumber}
+            </Text>
           </Animated.View>
           {levelCatAsset ? (
             <Animated.Image
@@ -117227,6 +118854,8 @@ const SaveCelebration = forwardRef(function SaveCelebration(
                 ]}
                 activeOpacity={0.86}
                 onPress={onPrimaryAction}
+                accessibilityRole="button"
+                accessibilityLabel={t("saveOverlayPrimaryCta")}
               >
                 <Text
                   style={[
@@ -117279,7 +118908,13 @@ const SaveCelebration = forwardRef(function SaveCelebration(
                 </Text>
               </View>
             </View>
-            <View style={styles.saveCounterRow}>
+            <View
+              style={styles.saveCounterRow}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={`${displayActions}, ${countdownTitle}`}
+            >
+              <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={styles.saveCounterRow}>
               {countdownSlots.map((slot, index) => {
                 if (slot.type === "digit") {
                   return (
@@ -117306,6 +118941,7 @@ const SaveCelebration = forwardRef(function SaveCelebration(
                 }
                 return <View key={`${slot.key}-space`} style={styles.saveCounterSpace} />;
               })}
+              </View>
             </View>
             {goalPrefix && goalDisplay ? (
               <>
@@ -117326,6 +118962,8 @@ const SaveCelebration = forwardRef(function SaveCelebration(
                 ]}
                 activeOpacity={0.86}
                 onPress={onCountdownAction}
+                accessibilityRole="button"
+                accessibilityLabel={t("saveOverlayNextCta")}
               >
                 <Text
                   style={[
@@ -117960,7 +119598,11 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
         {...ANDROID_STABLE_ALPHA_PROPS}
         style={[
           styles.chestRewardCard,
-          { backgroundColor: cardBg, borderColor: cardBorder, opacity: entryOpacity },
+          {
+            backgroundColor: cardBg,
+            borderColor: cardBorder,
+            opacity: resolveModalCompositeOpacity(entryOpacity),
+          },
           { transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
         ]}
       >
@@ -118776,7 +120418,10 @@ const UsageStreakWeeklyRewardCelebration = ({
         style={[
           styles.usageStreakWeeklyCard,
           { backgroundColor: cardBg, borderColor: cardBorder },
-          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
+          {
+            opacity: resolveModalCompositeOpacity(entryOpacity),
+            transform: [{ translateY: entryTranslate }, { scale: cardScale }],
+          },
         ]}
       >
         <Svg
@@ -119100,7 +120745,10 @@ const StreakPledgeRewardCelebration = ({ colors, payload, t, language, onClose }
         style={[
           styles.streakPledgeRewardCard,
           { backgroundColor: cardBg, borderColor: cardBorder },
-          { opacity: entryOpacity, transform: [{ translateY: entryTranslate }, { scale: cardScale }] },
+          {
+            opacity: resolveModalCompositeOpacity(entryOpacity),
+            transform: [{ translateY: entryTranslate }, { scale: cardScale }],
+          },
         ]}
       >
         <Svg
@@ -119354,6 +121002,7 @@ const UsageStreakCelebration = ({
   t,
   language,
   mascotHappySource,
+  onDismiss,
 }) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const rawCount = Number(data.count);
@@ -119669,8 +121318,17 @@ const UsageStreakCelebration = ({
             </AnimatedText>
           )}
         </Animated.View>
-        <Animated.View style={[styles.usageStreakNumberWrap, { transform: [{ scale: numberScale }] }]}>
-          <View style={styles.usageStreakCounterRow}>
+        <Animated.View
+          style={[styles.usageStreakNumberWrap, { transform: [{ scale: numberScale }] }]}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={`${displayCount}, ${dayLabel}`}
+        >
+          <View
+            style={styles.usageStreakCounterRow}
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+          >
             {counterSlots.map((slot, index) => {
               if (slot.type === "digit") {
                 return (
@@ -119697,7 +121355,13 @@ const UsageStreakCelebration = ({
             })}
           </View>
         </Animated.View>
-        <Text style={[styles.usageStreakNumberLabel, { color: colors.text }]}>{dayLabel}</Text>
+        <Text
+          style={[styles.usageStreakNumberLabel, { color: colors.text }]}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+        >
+          {dayLabel}
+        </Text>
         <View style={styles.usageStreakWeekRow}>
           {weekLabels.map((label, index) => {
             const isMissedDay = missed && index === mondayIndex;
@@ -119746,6 +121410,19 @@ const UsageStreakCelebration = ({
         <Text style={[styles.usageStreakHint, { color: colors.muted }]}>
           {t("usageStreakSubtitle")}
         </Text>
+        {onDismiss ? (
+          <TouchableOpacity
+            style={[styles.saveCelebrationPrimaryButton, { backgroundColor: accent, borderColor: accent }]}
+            onPress={onDismiss}
+            activeOpacity={0.86}
+            accessibilityRole="button"
+            accessibilityLabel={t("profileOk")}
+          >
+            <Text style={[styles.saveCelebrationPrimaryButtonText, { color: isDarkTheme ? "#111111" : "#FFFFFF" }]}>
+              {t("profileOk")}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );

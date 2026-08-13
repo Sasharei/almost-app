@@ -51,7 +51,7 @@ const LiquidGlassPillButton = React.memo(function LiquidGlassPillButton({
   disabled = false,
   isDarkTheme = false,
   isProTheme = false,
-  proThemeAccentColor = "#4E6BFF",
+  proThemeAccentColor = "#3E4FD7",
   style,
   textStyle,
   activeOpacity = 0.85,

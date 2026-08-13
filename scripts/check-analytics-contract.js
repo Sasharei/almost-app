@@ -15,10 +15,7 @@ const {
   normalizeAppsFlyerInstallAttribution,
   normalizeAttributionValue,
 } = require("../src/analytics/attributionPolicy");
-const {
-  canEnableMetaAdvertiserTracking,
-  shouldWaitForAttPrompt,
-} = require("../src/analytics/consentPolicy");
+const { canEnableMetaAdvertiserTracking } = require("../src/analytics/consentPolicy");
 const {
   ALMOST_RELEASE_SCOPE,
   assertAlmostReleaseScope,
@@ -151,8 +148,8 @@ assert(
 const appsFlyerOnboardingPayload = filterDestinationParams(
   {
     analytics_schema_version: "2",
-    app_version: "7.0.4",
-    build_number: "116",
+    app_version: "7.1.0",
+    build_number: "119",
     platform: "ios",
     experiment_id: "none",
     experiment_variant: "none",
@@ -171,6 +168,36 @@ assert(
     !("goal_id" in appsFlyerOnboardingPayload) &&
     !("start_balance" in appsFlyerOnboardingPayload),
   "AppsFlyer onboarding payload must remove persona, goal, and financial details."
+);
+const appsFlyerPaywallCtaPayload = filterDestinationParams(
+  {
+    analytics_schema_version: "2",
+    app_version: "7.1.0",
+    build_number: "119",
+    platform: "ios",
+    experiment_id: "none",
+    experiment_variant: "none",
+    install_id_present: true,
+    kind: "hard",
+    feature: "premium",
+    plan: "yearly",
+    view_index: 1,
+    product_id: "almost_premium_yearly",
+    has_trial: true,
+    trial_days: 7,
+    price: 29.99,
+    revenue: 29.99,
+  },
+  contract.premium_paywall_primary_tapped,
+  DESTINATIONS.APPSFLYER
+);
+["plan", "product_id", "has_trial", "trial_days", "price", "revenue"].forEach(
+  (paramName) => {
+    assert(
+      !(paramName in appsFlyerPaywallCtaPayload),
+      `AppsFlyer paywall CTA payload must remove ${paramName}.`
+    );
+  }
 );
 [
   "premium_trial_started",
@@ -211,8 +238,8 @@ const validPurchaseValidation = validateEventAgainstContract(
   "premium_purchase_result",
   {
     analytics_schema_version: "2",
-    app_version: "7.0.4",
-    build_number: "116",
+    app_version: "7.1.0",
+    build_number: "119",
     platform: "ios",
     experiment_id: "none",
     experiment_variant: "none",
@@ -236,8 +263,8 @@ assert(
     "premium_purchase_result",
     {
       analytics_schema_version: "2",
-      app_version: "7.0.4",
-      build_number: "116",
+      app_version: "7.1.0",
+      build_number: "119",
       platform: "ios",
       experiment_id: "none",
       experiment_variant: "none",
@@ -300,21 +327,18 @@ assert(
   "AppsFlyer customerUserId must be set before initSdk."
 );
 assert(
-  indexSource.includes("const attWaitSeconds = shouldWaitForAttPrompt({") &&
-    indexSource.includes("timeToWaitForATTUserAuthorization: attWaitSeconds") &&
-    indexSource.includes("void initAttribution({") &&
-    !indexSource.includes("deferUntilAttPrompt") &&
-    !analyticsSource.includes("deferUntilAttPrompt"),
-  "Fresh iOS installs must start AppsFlyer immediately with a finite ATT wait window."
+  indexSource.includes("await setAppScopedInstallIdentity(premiumInstallId);") &&
+    indexSource.includes("void initAttribution().catch((error) => {") &&
+    indexSource.indexOf("await setAppScopedInstallIdentity(premiumInstallId);") <
+      indexSource.indexOf("void initAttribution().catch((error) => {") &&
+    !indexSource.includes("timeToWaitForATTUserAuthorization") &&
+    !analyticsSource.includes("timeToWaitForATTUserAuthorization"),
+  "AppsFlyer must start immediately after the app-scoped install identity, without waiting for ATT."
 );
 assert(
-  appSource.includes(
-    "void initAttribution({ timeToWaitForATTUserAuthorization: 60 }).catch(() => {});"
-  ) &&
-    appSource.indexOf(
-      "void initAttribution({ timeToWaitForATTUserAuthorization: 60 }).catch(() => {});"
-    ) < appSource.indexOf("const result = await requester();"),
-  "The ATT prompt must not wait for the AppsFlyer init callback."
+  !appSource.includes("initAttribution(") &&
+    appSource.includes("const result = await requester();"),
+  "The ATT prompt must control IDFA only and must not control AppsFlyer initialization."
 );
 assert(
   analyticsSource.includes("APPSFLYER_FIRST_TOUCH_STORAGE_KEY") &&
@@ -332,16 +356,36 @@ assert(
   "The raw install ID must not be duplicated into RevenueCat custom attributes."
 );
 assert(
-  purchasesSource.includes(
-    '"$appsflyerSharingFilter": revenueCatAppsFlyerSharingAllowed ? "" : "all"'
-  ) &&
-    purchasesSource.includes("let revenueCatAppsFlyerSharingAllowed = false;") &&
+  analyticsSource.includes("appsFlyer.setSharingFilterForPartners([]);") &&
+    !analyticsSource.includes('setSharingFilterForPartners(["all"])') &&
+    !analyticsSource.includes("setAppsFlyerPartnerSharingAllowed") &&
+    purchasesSource.includes('"$appsflyerSharingFilter": ""') &&
+    !purchasesSource.includes('"$appsflyerSharingFilter": "all"') &&
     purchasesSource.includes("await Purchases.syncAttributesAndOfferingsIfNeeded();") &&
-    appSource.includes(
-      "setRevenueCatAppsFlyerSharingAllowedSafe(appsFlyerPartnerSharingAllowed)"
+    purchasesSource.includes("await clearRevenueCatAppsFlyerSharingFilterSafe();") &&
+    !appSource.includes("APPSFLYER_PARTNER_SHARING_ALLOWED") &&
+    !indexSource.includes("APPSFLYER_PARTNER_SHARING_ALLOWED") &&
+    !appSource.includes("ANDROID_APPSFLYER_ENABLED") &&
+    !indexSource.includes("ANDROID_APPSFLYER_ENABLED"),
+  "AppsFlyer and RevenueCat partner postbacks must stay enabled and ignore legacy opt-out keys."
+);
+assert(
+  analyticsSource.includes(
+    "ensureAppsFlyerPartnerSharingEnabled();\n  syncAppsFlyerAdvertisingIdCollection();\n  return initAppsFlyerSdk();"
+  ),
+  "AppsFlyer partner sharing and ATT-limited IDFA state must be applied before initSdk."
+);
+assert(
+  analyticsSource.includes("let appsFlyerAdvertisingIdEnabled = false;") &&
+    analyticsSource.includes(
+      "appsFlyer.disableAdvertisingIdentifier(!appsFlyerAdvertisingIdEnabled);"
     ) &&
-    indexSource.includes("let partnerSharingAllowed = false;"),
-  "RevenueCat and AppsFlyer partner sharing must default off and follow the saved preference."
+    appSource.includes(
+      "setAppsFlyerAdvertisingIdEnabledFlag(isTrackingStatusGranted(iosTrackingStatus))"
+    ) &&
+    appSource.includes("await setAppsFlyerAdvertisingIdEnabledFlag(granted);") &&
+    !appSource.includes("setAppsFlyerAdvertisingIdEnabledFlag(true)"),
+  "IDFA collection must default off and only follow the actual iOS ATT status."
 );
 assert(
   appSource.includes('onboardingStep === "analyticsConsent"') &&
@@ -399,30 +443,6 @@ assert(
   );
 });
 assert(
-  shouldWaitForAttPrompt({
-    platform: "ios",
-    onboardingComplete: false,
-    trackingStatus: "undetermined",
-  }),
-  "Fresh iOS installs awaiting ATT must use the finite AppsFlyer ATT wait window."
-);
-assert(
-  shouldWaitForAttPrompt({
-    platform: "ios",
-    onboardingComplete: false,
-    trackingStatus: null,
-  }),
-  "Fresh iOS installs with unresolved ATT status must still use the finite wait fallback."
-);
-assert(
-  !shouldWaitForAttPrompt({
-    platform: "ios",
-    onboardingComplete: true,
-    trackingStatus: "undetermined",
-  }),
-  "Existing users without a planned ATT prompt must not delay AppsFlyer."
-);
-assert(
   !appSource.includes("setAdvertiserTrackingEnabled(true)"),
   "Meta advertiser tracking must never be enabled with an unconditional true literal."
 );
@@ -464,5 +484,5 @@ if (failures.length) {
 }
 
 console.log(
-  `[OK] Analytics contract passed (${eventNames.length} event names, ${trackedLiteralNames.size} tracked literals, default-deny routing, attribution/ATT/dedup policy).`
+  `[OK] Analytics contract passed (${eventNames.length} event names, ${trackedLiteralNames.size} tracked literals, default-deny routing, always-on attribution/ATT/dedup policy).`
 );

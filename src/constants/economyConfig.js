@@ -53,6 +53,8 @@ export const CUSTOM_TEMPTATION_SAMPLE_USD = 7.5;
 
 export const RATING_PROMPT_ACTION_THRESHOLD = 2;
 export const RATING_PROMPT_ACTION_TYPES = new Set(["save", "spend"]);
+export const RATING_PROMPT_STORE_THRESHOLD = 4;
+export const RATING_PROMPT_FEEDBACK_MIN_LENGTH = 5;
 
 export const ANDROID_REVIEW_URL = "market://details?id=com.sasarei.almostclean";
 export const ANDROID_REVIEW_WEB_URL = "https://play.google.com/store/apps/details?id=com.sasarei.almostclean";
