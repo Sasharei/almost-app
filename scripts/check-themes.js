@@ -28,6 +28,23 @@ const REQUIRED_THEME_TOKENS = [
   "overlay",
   "shadow",
 ];
+const PRO_THEME_PALETTE_TOKENS = [
+  "background",
+  "card",
+  "text",
+  "muted",
+  "border",
+  "surface",
+  "surfaceMuted",
+  "surfaceElevated",
+  "separator",
+  "disabled",
+  "primarySurface",
+  "primarySurfaceStrong",
+  "primaryBorder",
+  "overlay",
+  "shadow",
+];
 const MIN_TEXT_CONTRAST = 4.5;
 const MIN_UI_CONTRAST = 3;
 
@@ -148,15 +165,6 @@ function contrast(left, right) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-function mixColors(left, right, ratio) {
-  const amount = Math.max(0, Math.min(1, Number(ratio) || 0));
-  return {
-    r: left.r * (1 - amount) + right.r * amount,
-    g: left.g * (1 - amount) + right.g * amount,
-    b: left.b * (1 - amount) + right.b * amount,
-  };
-}
-
 function requireContrast(errors, label, foreground, background, minimum) {
   const ratio = contrast(foreground, background);
   if (ratio < minimum) {
@@ -214,11 +222,9 @@ function main() {
   }
 
   const accentIds = new Set();
+  const accentColors = new Set();
+  const paletteSignatures = new Set();
   const proTheme = themes[proThemeId];
-  const proBackground = parseHexColor(proTheme?.background);
-  const proCard = parseHexColor(proTheme?.card);
-  const proText = parseHexColor(proTheme?.text);
-  const proMuted = parseHexColor(proTheme?.muted);
   for (const option of accentOptions) {
     if (!option.id) {
       errors.push("A PRO theme accent option is missing id.");
@@ -232,11 +238,54 @@ function main() {
     const onAccentColor = parseHexColor(option.onAccent);
     if (!accentColor) {
       errors.push(`PRO_THEME_ACCENT_OPTIONS.${option.id}.accent must be a #RGB or #RRGGBB color.`);
+    } else {
+      const normalizedAccent = option.accent.toUpperCase();
+      if (accentColors.has(normalizedAccent)) {
+        errors.push(`Duplicate PRO theme accent color: ${option.accent}.`);
+      }
+      accentColors.add(normalizedAccent);
     }
     if (!onAccentColor) {
       errors.push(`PRO_THEME_ACCENT_OPTIONS.${option.id}.onAccent must be a #RGB or #RRGGBB color.`);
     }
+    if (!option.palette || typeof option.palette !== "object" || Array.isArray(option.palette)) {
+      errors.push(`PRO_THEME_ACCENT_OPTIONS.${option.id}.palette must define a complete PRO palette.`);
+      continue;
+    }
+
+    for (const token of PRO_THEME_PALETTE_TOKENS) {
+      if (!parseHexColor(option.palette[token])) {
+        errors.push(
+          `PRO_THEME_ACCENT_OPTIONS.${option.id}.palette.${token} must be a #RGB or #RRGGBB color.`
+        );
+      }
+    }
+
+    const paletteSignature = PRO_THEME_PALETTE_TOKENS.map(
+      (token) => String(option.palette[token] || "").toUpperCase()
+    ).join("|");
+    if (paletteSignatures.has(paletteSignature)) {
+      errors.push(`PRO theme ${option.id} duplicates another complete palette.`);
+    }
+    paletteSignatures.add(paletteSignature);
+
     if (accentColor && onAccentColor) {
+      const resolvedTheme = {
+        ...proTheme,
+        ...option.palette,
+        primary: option.accent,
+        onPrimary: option.onAccent,
+      };
+      const resolvedColors = {};
+      for (const token of REQUIRED_THEME_TOKENS) {
+        const parsed = parseHexColor(resolvedTheme[token]);
+        if (!parsed) {
+          errors.push(`Resolved PRO ${option.id}.${token} must be a #RGB or #RRGGBB color.`);
+          continue;
+        }
+        resolvedColors[token] = parsed;
+      }
+
       requireContrast(
         errors,
         `PRO_THEME_ACCENT_OPTIONS.${option.id} onAccent on accent`,
@@ -244,39 +293,44 @@ function main() {
         accentColor,
         MIN_TEXT_CONTRAST
       );
-      if (proBackground && proCard && proText && proMuted) {
-        const resolvedBackground = mixColors(proBackground, accentColor, 0.04);
-        const resolvedText = mixColors(proText, accentColor, 0.025);
-        const resolvedMuted = mixColors(proMuted, accentColor, 0.06);
+      if (Object.keys(resolvedColors).length !== REQUIRED_THEME_TOKENS.length) continue;
+
+      ["background", "card", "surface", "surfaceMuted", "surfaceElevated"].forEach(
+        (surfaceToken) => {
+          requireContrast(
+            errors,
+            `PRO ${option.id} text on ${surfaceToken}`,
+            resolvedColors.text,
+            resolvedColors[surfaceToken],
+            MIN_TEXT_CONTRAST
+          );
+          requireContrast(
+            errors,
+            `PRO ${option.id} muted on ${surfaceToken}`,
+            resolvedColors.muted,
+            resolvedColors[surfaceToken],
+            MIN_TEXT_CONTRAST
+          );
+        }
+      );
+      ["background", "card", "primarySurface"].forEach((surfaceToken) => {
         requireContrast(
           errors,
-          `PRO ${option.id} text on background`,
-          resolvedText,
-          resolvedBackground,
-          MIN_TEXT_CONTRAST
-        );
-        requireContrast(
-          errors,
-          `PRO ${option.id} text on card`,
-          resolvedText,
-          proCard,
-          MIN_TEXT_CONTRAST
-        );
-        requireContrast(
-          errors,
-          `PRO ${option.id} muted on background`,
-          resolvedMuted,
-          resolvedBackground,
-          MIN_TEXT_CONTRAST
-        );
-        requireContrast(
-          errors,
-          `PRO ${option.id} accent on background`,
-          accentColor,
-          resolvedBackground,
+          `PRO ${option.id} primary on ${surfaceToken}`,
+          resolvedColors.primary,
+          resolvedColors[surfaceToken],
           MIN_UI_CONTRAST
         );
-      }
+      });
+      ["success", "warning", "error", "info"].forEach((token) => {
+        requireContrast(
+          errors,
+          `PRO ${option.id} ${token} on background`,
+          resolvedColors[token],
+          resolvedColors.background,
+          MIN_UI_CONTRAST
+        );
+      });
     }
   }
 
@@ -286,10 +340,20 @@ function main() {
   ]);
   requireSourceFragments(errors, "src/components/LiquidGlassTabBar.js", "Liquid tab bar", [
     "isDarkTheme={isDarkTheme}",
+    "activeColorHex={isProTheme ? proThemeAccentColor : \"\"}",
+    "surfaceColorHex={isProTheme ? proThemeSurfaceColor : \"\"}",
   ]);
   requireSourceFragments(errors, "ios/Almost/NativeLiquidTabBarManager.swift", "Native liquid tab bar", [
     "@objc var isDarkTheme: Bool",
+    "@objc var activeColorHex: NSString",
+    "@objc var surfaceColorHex: NSString",
+    "@objc var badgeTextColorHex: NSString",
     ".systemChromeMaterialDark",
+  ]);
+  requireSourceFragments(errors, "ios/Almost/NativeLiquidTabBarBridge.m", "Native liquid tab bar bridge", [
+    "RCT_EXPORT_VIEW_PROPERTY(activeColorHex, NSString)",
+    "RCT_EXPORT_VIEW_PROPERTY(surfaceColorHex, NSString)",
+    "RCT_EXPORT_VIEW_PROPERTY(badgeTextColorHex, NSString)",
   ]);
 
   if (errors.length > 0) {

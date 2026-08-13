@@ -8,6 +8,16 @@ These rules are mandatory for every Codex change in this repository.
 - Do not run commands that implicitly launch a simulator or emulator, including `npm run ios`, `npm run android`, `expo run:ios`, `expo run:android`, `react-native run-ios`, or `react-native run-android`, unless the user has explicitly asked for that launch.
 - Static checks, dependency installation, CocoaPods installation, and non-launching build commands remain allowed when they are needed for the requested work.
 
+## P0 Attribution and Revenue Safety Gate
+
+- Treat install attribution and approved subscription/revenue postbacks as release-critical infrastructure on both iOS and Android. Never make them depend on product-analytics consent, settings hydration, onboarding choices, profile toggles, or a stored legacy preference.
+- ATT controls access to IDFA only. An undetermined, denied, restricted, unavailable, or delayed ATT result must never delay or disable AppsFlyer startup, install reporting, SKAN/privacy-preserving attribution, or partner postbacks.
+- Keep AppsFlyer partner postbacks enabled for every configured network. Runtime code must clear partner filters before SDK initialization and must never introduce an `all` sharing block, a default-off partner-sharing state, or a user setting that can suppress install postbacks.
+- Keep RevenueCat as the single server-side owner of subscription and purchase lifecycle postbacks to AppsFlyer. Never restore a RevenueCat AppsFlyer sharing block, and never add a duplicate client-side `af_purchase` path.
+- Advertising-network payloads must remain allowlisted and privacy-minimized. Do not send saved-item content, goals, personal-finance amounts, or other sensitive product data; ATT-gated identifiers may be used only after the corresponding platform authorization.
+- Any change to analytics, attribution, consent, onboarding, settings, purchases, native SDK configuration, or storage migration must preserve these invariants on both platforms. Before declaring the change complete, run `npm run check:analytics-contract`, `npm run check:native-analytics-config`, and the normal repository verification gates. Do not weaken or remove these attribution assertions without the user's explicit approval.
+- When a release changes this infrastructure, validate fresh-install and purchase/subscription paths in an actual release build on both iOS and Android before rollout. Debug builds are not sufficient evidence when attribution is disabled in development.
+
 ## Localization Gate
 
 - After every code change, run `npm run check:localization`.

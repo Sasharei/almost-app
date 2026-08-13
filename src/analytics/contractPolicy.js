@@ -76,15 +76,7 @@ const EVENT_OVERRIDES = Object.freeze({
   premium_paywall_primary_tapped: {
     destinations: [...PRODUCT_DESTINATIONS, DESTINATIONS.APPSFLYER],
     required_params: ["kind", "feature", "plan", "view_index", "product_id", "has_trial"],
-    appsflyer_params: [
-      "kind",
-      "feature",
-      "plan",
-      "view_index",
-      "product_id",
-      "has_trial",
-      "trial_days",
-    ],
+    appsflyer_params: ["kind", "feature", "view_index"],
   },
   premium_purchase_result: {
     required_params: [

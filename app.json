@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost",
     "slug": "almost_clean",
-    "version": "7.0.4",
+    "version": "7.1.0",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -17,10 +17,13 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "116",
+      "buildNumber": "124",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UILaunchScreen": {
+          "UIColorName": "LaunchScreenBackground"
+        },
         "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
         "AttributionCopyEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
@@ -65,7 +68,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 116,
+      "versionCode": 119,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
@@ -127,7 +130,10 @@
           "shouldUseStrictMode": false,
           "preferAppsFlyerBackupRules": false
         }
-      ]
+      ],
+      "expo-localization",
+      "@sentry/react-native",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

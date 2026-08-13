@@ -38,6 +38,8 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
   private static let tabIconSymbolConfig = UIImage.SymbolConfiguration(pointSize: 21, weight: .regular)
 
   private var tabModels: [NativeTabItemModel] = []
+  private var needsResolvedWidthItemInstallation = false
+  private var installedTabBarWidth: CGFloat = 0
 
   @objc var items: NSArray = [] {
     didSet {
@@ -64,6 +66,26 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     }
   }
 
+  @objc var activeColorHex: NSString = "" {
+    didSet { applyPresentationMode() }
+  }
+
+  @objc var inactiveColorHex: NSString = "" {
+    didSet { applyPresentationMode() }
+  }
+
+  @objc var surfaceColorHex: NSString = "" {
+    didSet { applyPresentationMode() }
+  }
+
+  @objc var borderColorHex: NSString = "" {
+    didSet { applyPresentationMode() }
+  }
+
+  @objc var badgeTextColorHex: NSString = "" {
+    didSet { applyPresentationMode() }
+  }
+
   @objc var onTabPress: RCTBubblingEventBlock?
 
   override init(frame: CGRect) {
@@ -82,7 +104,7 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     clipsToBounds = true
     tabBar.translatesAutoresizingMaskIntoConstraints = false
     tabBar.delegate = self
-    tabBar.itemPositioning = .automatic
+    tabBar.itemPositioning = .fill
     tabBar.isTranslucent = true
     tabBar.clipsToBounds = true
     addSubview(tabBar)
@@ -95,6 +117,19 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     ])
 
     applyPresentationMode()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+
+    guard #available(iOS 26.0, *) else { return }
+    let resolvedWidth = tabBar.bounds.width
+    guard resolvedWidth > 0 else { return }
+
+    if abs(installedTabBarWidth - resolvedWidth) > 0.5 {
+      needsResolvedWidthItemInstallation = true
+    }
+    installItemsAtResolvedWidthIfNeeded()
   }
 
   private func applyItems() {
@@ -122,6 +157,35 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       )
     }
 
+    if #available(iOS 26.0, *) {
+      // React creates native views at zero width and applies their props before
+      // the first layout pass. iOS 26 can retain the resulting compressed title
+      // constraints until a selection or hierarchy query forces another layout.
+      // Install the public UITabBar items only after Auto Layout resolves width.
+      needsResolvedWidthItemInstallation = true
+      setNeedsLayout()
+      installItemsAtResolvedWidthIfNeeded()
+      return
+    }
+
+    installNativeItems()
+  }
+
+  private func installItemsAtResolvedWidthIfNeeded() {
+    guard needsResolvedWidthItemInstallation else { return }
+    let resolvedWidth = tabBar.bounds.width
+    guard resolvedWidth > 0 else { return }
+
+    // Clear the flag before setItems because UIKit may synchronously re-enter
+    // layout while it creates the item views.
+    needsResolvedWidthItemInstallation = false
+    installedTabBarWidth = resolvedWidth
+    installNativeItems()
+    tabBar.setNeedsLayout()
+    tabBar.layoutIfNeeded()
+  }
+
+  private func installNativeItems() {
     let nativeItems: [UITabBarItem] = tabModels.enumerated().map { index, model in
       let item: UITabBarItem
       if selectorOnly {
@@ -144,8 +208,13 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
         item.badgeValue = model.badgeValue
       }
       item.tag = index
+      item.accessibilityLabel = model.title
       return item
     }
+
+    // Keep the original, proven ownership model: UITabBar owns material,
+    // icons, titles, badges, selection, accessibility and taps. There is no
+    // private-frame probing and no second title or hit-target layer to race it.
     tabBar.setItems(nativeItems, animated: false)
     applySelectedItem(animated: false)
   }
@@ -217,6 +286,9 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       appearance.backgroundEffect = nil
       appearance.backgroundColor = .clear
       appearance.shadowColor = .clear
+      appearance.stackedItemPositioning = .fill
+      appearance.stackedItemWidth = 0
+      appearance.stackedItemSpacing = 0
 
       let setTransparent: (UITabBarItemAppearance) -> Void = { itemAppearance in
         itemAppearance.normal.iconColor = .clear
@@ -248,28 +320,51 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       return
     }
 
-    let activeColor = isDarkTheme
+    let defaultActiveColor = isDarkTheme
       ? UIColor(red: 238.0 / 255.0, green: 241.0 / 255.0, blue: 246.0 / 255.0, alpha: 1)
       : UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 1)
-    let inactiveColor = isDarkTheme
+    let defaultInactiveColor = isDarkTheme
       ? UIColor(red: 158.0 / 255.0, green: 168.0 / 255.0, blue: 186.0 / 255.0, alpha: 1)
       : UIColor(red: 100.0 / 255.0, green: 109.0 / 255.0, blue: 128.0 / 255.0, alpha: 1)
-
+    let activeColor = Self.color(from: activeColorHex, fallback: defaultActiveColor)
+    let inactiveColor = Self.color(from: inactiveColorHex, fallback: defaultInactiveColor)
+    let badgeTextColor = Self.color(from: badgeTextColorHex, fallback: .white)
     let appearance = UITabBarAppearance()
     appearance.configureWithTransparentBackground()
-    appearance.backgroundEffect = UIBlurEffect(
-      style: isDarkTheme ? .systemChromeMaterialDark : .systemChromeMaterialLight
-    )
-    appearance.backgroundColor = isDarkTheme
-      ? UIColor(red: 13.0 / 255.0, green: 17.0 / 255.0, blue: 24.0 / 255.0, alpha: 0.72)
-      : UIColor(white: 1, alpha: 0.46)
-    appearance.shadowColor = isDarkTheme
-      ? UIColor(white: 1, alpha: 0.12)
-      : UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 0.1)
+    appearance.stackedItemPositioning = .fill
+    appearance.stackedItemWidth = 0
+    appearance.stackedItemSpacing = 0
 
+    if #available(iOS 26.0, *) {
+      // iOS 26 owns the Liquid Glass material. Adding a second full-width blur
+      // behind it creates the grey side lobes seen in the failed QA captures.
+      appearance.backgroundEffect = nil
+      appearance.backgroundColor = .clear
+      appearance.shadowColor = .clear
+    } else {
+      let hasCustomSurface = Self.isValidHexColor(surfaceColorHex)
+      let hasCustomBorder = Self.isValidHexColor(borderColorHex)
+      appearance.backgroundEffect = UIBlurEffect(
+        style: isDarkTheme ? .systemChromeMaterialDark : .systemChromeMaterialLight
+      )
+      appearance.backgroundColor = isDarkTheme
+        ? UIColor(red: 13.0 / 255.0, green: 17.0 / 255.0, blue: 24.0 / 255.0, alpha: 0.72)
+        : Self.color(from: surfaceColorHex, fallback: .white)
+          .withAlphaComponent(hasCustomSurface ? 0.74 : 0.46)
+      appearance.shadowColor = isDarkTheme
+        ? UIColor(white: 1, alpha: 0.12)
+        : Self.color(
+            from: borderColorHex,
+            fallback: UIColor(red: 14.0 / 255.0, green: 23.0 / 255.0, blue: 40.0 / 255.0, alpha: 1)
+          ).withAlphaComponent(hasCustomBorder ? 0.46 : 0.1)
+    }
+
+    let badgePositionAdjustment = UIOffset(horizontal: -2, vertical: 6)
     let setColors: (UITabBarItemAppearance) -> Void = { itemAppearance in
       itemAppearance.normal.iconColor = inactiveColor
       itemAppearance.selected.iconColor = activeColor
+      itemAppearance.disabled.iconColor = inactiveColor.withAlphaComponent(0.45)
+      itemAppearance.focused.iconColor = activeColor
 
       itemAppearance.normal.titleTextAttributes = [
         .foregroundColor: inactiveColor,
@@ -279,8 +374,31 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
         .foregroundColor: activeColor,
         .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
       ]
+      itemAppearance.disabled.titleTextAttributes = [
+        .foregroundColor: inactiveColor.withAlphaComponent(0.45),
+        .font: UIFont.systemFont(ofSize: 10, weight: .regular)
+      ]
+      itemAppearance.focused.titleTextAttributes = [
+        .foregroundColor: activeColor,
+        .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+      ]
+
+      itemAppearance.normal.badgeBackgroundColor = activeColor
+      itemAppearance.selected.badgeBackgroundColor = activeColor
+      itemAppearance.disabled.badgeBackgroundColor = activeColor.withAlphaComponent(0.45)
+      itemAppearance.focused.badgeBackgroundColor = activeColor
+      itemAppearance.normal.badgeTextAttributes = [.foregroundColor: badgeTextColor]
+      itemAppearance.selected.badgeTextAttributes = [.foregroundColor: badgeTextColor]
+      itemAppearance.disabled.badgeTextAttributes = [.foregroundColor: badgeTextColor]
+      itemAppearance.focused.badgeTextAttributes = [.foregroundColor: badgeTextColor]
+      itemAppearance.normal.badgePositionAdjustment = badgePositionAdjustment
+      itemAppearance.selected.badgePositionAdjustment = badgePositionAdjustment
+      itemAppearance.disabled.badgePositionAdjustment = badgePositionAdjustment
+      itemAppearance.focused.badgePositionAdjustment = badgePositionAdjustment
       itemAppearance.normal.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
       itemAppearance.selected.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
+      itemAppearance.disabled.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
+      itemAppearance.focused.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
     }
 
     setColors(appearance.stackedLayoutAppearance)
@@ -293,6 +411,30 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     }
     tabBar.tintColor = activeColor
     tabBar.unselectedItemTintColor = inactiveColor
+
+    if #available(iOS 26.0, *) {
+      needsResolvedWidthItemInstallation = true
+      setNeedsLayout()
+    }
+  }
+
+  private static func isValidHexColor(_ rawValue: NSString) -> Bool {
+    let value = String(rawValue).trimmingCharacters(in: .whitespacesAndNewlines)
+    let hex = value.hasPrefix("#") ? String(value.dropFirst()) : value
+    guard hex.count == 6 else { return false }
+    return UInt64(hex, radix: 16) != nil
+  }
+
+  private static func color(from rawValue: NSString, fallback: UIColor) -> UIColor {
+    let value = String(rawValue).trimmingCharacters(in: .whitespacesAndNewlines)
+    let hex = value.hasPrefix("#") ? String(value.dropFirst()) : value
+    guard hex.count == 6, let packed = UInt64(hex, radix: 16) else { return fallback }
+    return UIColor(
+      red: CGFloat((packed >> 16) & 0xFF) / 255.0,
+      green: CGFloat((packed >> 8) & 0xFF) / 255.0,
+      blue: CGFloat(packed & 0xFF) / 255.0,
+      alpha: 1
+    )
   }
 
   private static func symbolName(for key: String) -> String {

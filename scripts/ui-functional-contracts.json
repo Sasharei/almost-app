@@ -65,6 +65,8 @@
         "onPress={() => handleHeroCarouselTabPress(index)}",
         "onScrollBeginDrag={handleHeroCarouselScrollBegin}",
         "onMomentumScrollEnd={handleHeroCarouselScrollEnd}",
+        "if (heroCarouselExpansionTransitionRef.current || heroExpandedRef.current) {",
+        "onExpandedChange={isClone ? null : handleHeroExpandedChange}",
         "onPress={() => handleFeedCategoryFilterPress(option.id)}",
         "onPress={handleDayTwoIncomePromptPress}",
         "onPress={handleDayTwoIncomePromptDismiss}"
@@ -122,10 +124,6 @@
         "onPress={() => setProfileSection(\"settings\")}",
         "onPress={() => onFieldChange?.(\"incomePayday\", day)}",
         "{t(\"incomePaydayValue\", { day: incomePayday })}",
-        "{t(\"appsflyerPartnerSharingLabel\")}",
-        "{t(\"appsflyerPartnerSharingHint\")}",
-        "onAppsFlyerPartnerSharingToggle?.(!appsFlyerPartnerSharingAllowed)",
-        "accessibilityState={{ checked: appsFlyerPartnerSharingAllowed }}",
         "onThemeToggle(option.id"
       ]
     },
@@ -152,6 +150,21 @@
       ]
     },
     {
+      "id": "temptation-manual-frequency-timer-reset",
+      "description": "A manual save or spend advances the active frequency window and restarts its countdown, while automatic confirmation preserves the already advanced schedule.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const repeatsActiveManualTimer =",
+        "now - previousTimerResetAt < frequencyIntervalMs;",
+        "const cycleAnchorNextCheckAt =",
+        "const skippedCycleNextCheckAt =",
+        "fromTimestamp: cycleAnchorNextCheckAt,",
+        "? Math.max(skippedCycleNextCheckAt, resetNextCheckAt)",
+        "lastTimerResetAt: preserveFrequencyTimer ? prevEntry.lastTimerResetAt ?? null : now,",
+        "preserveFrequencyTimer: true,"
+      ]
+    },
+    {
       "id": "fabric-text-autofit-readable-floor",
       "description": "Auto-fit text keeps an absolute readable minimum under Fabric instead of falling through to the native 4-point fallback.",
       "file": "App.js",
@@ -164,17 +177,38 @@
     },
     {
       "id": "fabric-text-autofit-platform-units",
-      "description": "The Fabric auto-fit floor accounts for accessibility scaling and converts Android points to native pixels.",
+      "description": "The Fabric auto-fit floor accounts for accessibility scaling, never shrinks readable text below 11 points, and converts Android points to native pixels.",
       "file": "src/utils/textAutoFit.js",
       "requiredFragments": [
         "if (!globalThis?.nativeFabricUIManager) return undefined;",
         "PixelRatio.getFontScale()",
+        "const DEFAULT_MINIMUM_READABLE_FONT_SIZE = 11;",
+        "Math.min(\n    scaledBaseFontSize,",
         "minimumPointSize * Math.max(1, Number(PixelRatio.get()) || 1)"
       ]
     },
     {
+      "id": "fabric-text-autofit-native-prop-patch",
+      "description": "The React Native text host accepts the absolute Fabric auto-fit floor and the postinstall step reapplies that fix after dependency installation.",
+      "file": "scripts/apply-patches.js",
+      "requiredFragments": [
+        "patches/react-native/Libraries/Text/TextNativeComponent.js",
+        "node_modules/react-native/Libraries/Text/TextNativeComponent.js"
+      ]
+    },
+    {
+      "id": "fabric-text-autofit-native-prop-registration",
+      "description": "The patched React Native text view config forwards absolute minimum and maximum font sizes to Fabric instead of silently dropping them.",
+      "file": "patches/react-native/Libraries/Text/TextNativeComponent.js",
+      "requiredFragments": [
+        "minimumFontScale: true,",
+        "minimumFontSize: true,",
+        "maximumFontSize: true,"
+      ]
+    },
+    {
       "id": "temptation-feed-manual-order",
-      "description": "Feed cards keep all existing actions and native vertical scrolling while long-press drag reordering uses stable keys, persists the user order, and honors reduced motion.",
+      "description": "Feed cards keep all existing actions and native vertical scrolling while long-press drag reordering uses stable keys, persists the user order, honors reduced motion, and excludes the level gate and archive from every drop target.",
       "file": "App.js",
       "requiredFragments": [
         "const FEED_CARD_ORDER_STORAGE_KEY = \"@almost_feed_card_order\";",
@@ -182,6 +216,11 @@
         "const orderedProducts = useMemo(() => {",
         "const syncFeedScrollOffsetFromEvent = useCallback(",
         "<DraggableFlatList",
+        "data={feedEntries}",
+        "ListEmptyComponent={feedEmptyState}",
+        "ListFooterComponent={feedFooter}",
+        "{feedTailPlaceholder}",
+        "archiveEntries.map((entry) => (",
         "activationDistance={12}",
         "onLongPress={handleCardLongPress}",
         "onLongPress={canDragCard ? drag : null}",
@@ -276,6 +315,23 @@
       ]
     },
     {
+      "id": "android-daily-reward-modal-handoff",
+      "description": "Daily reward collection closes and settles its calendar modal before starting the shared chest overlay, while complex Android modal cards avoid whole-tree alpha flicker.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const resolveModalCompositeOpacity = (opacity) =>",
+        "const dailyRewardClaimHandoffTimerRef = useRef(null);",
+        "const shouldClaimAfterHandoff = dailyRewardClaimPendingRef.current;",
+        "dailyRewardClaimRunnerRef.current?.();",
+        "MODAL_CLOSE_SETTLE_MS + MODAL_HANDOFF_FRAME_SLACK_MS",
+        "opacity: resolveModalCompositeOpacity(\n                    dailyRewardModalCardOpacity",
+        "opacity: resolveModalCompositeOpacity(entryOpacity)"
+      ],
+      "requiredPatterns": [
+        "const handleDailyRewardCollect = useCallback\\(\\(\\) => \\{[\\s\\S]*?closeDailyRewardModalAnimated\\(\\);\\s*\\},"
+      ]
+    },
+    {
       "id": "tamagotchi-menu-actions",
       "description": "The Tamagotchi redesign preserves every care, reward, customization, navigation, gesture, and celebration action.",
       "file": "App.js",
@@ -301,13 +357,13 @@
         "disabled={tamagotchiIsFull}",
         "onPress={startParty}",
         "onRequestClose={closeSkinPicker}",
-        "<TouchableWithoutFeedback onPress={closeSkinPicker}>",
+        "<TouchableWithoutFeedback onPress={closeSkinPicker} accessible={false}>",
         "onPress={() => handleSkinSelect(skin.id)}",
         "const skinLoadFailed = pending && skin.isRemote && skinLoadState === \"error\";",
         "showCatCustomizationPaywall"
       ],
       "requiredPatterns": [
-        "const openSkinPicker = useCallback\\(\\(\\) => \\{[\\s\\S]*?setTamagotchiVisible\\(false\\);[\\s\\S]*?setSkinPickerVisible\\(true\\);",
+        "const openSkinPicker = useCallback\\(\\(\\) => \\{[\\s\\S]*?setTamagotchiClosing\\(false\\);[\\s\\S]*?setSkinPickerVisible\\(true\\);",
         "const handleSkinSelect = useCallback\\([\\s\\S]*?if \\(!catCustomizationUnlocked\\) \\{[\\s\\S]*?logEvent\\(\"premium_gate_blocked\"[\\s\\S]*?setSkinPickerVisible\\(false\\);[\\s\\S]*?setTimeout\\(showCatCustomizationPaywall, 180\\);"
       ]
     },
@@ -390,6 +446,10 @@
         "onManagePress({ source: \"manage_button\" })",
         "onTermsPress({ source: \"terms_link\" })",
         "onPrivacyPress({ source: \"privacy_link\" })",
+        "const PAYWALL_SCROLL_EVENT_THRESHOLD_Y = 96;",
+        "onScrollPastThreshold = () => {},",
+        "onScrollPastThreshold({ offsetY });",
+        "onScroll={handleMainScroll}",
         "<AbandonedOfferWheel",
         "source: \"abandoned_wheel_claim\"",
         "onClose(\"abandoned_wheel_declined\")"
@@ -679,7 +739,12 @@
       "requiredFragments": [
         "<HomeSubscriptionWidgetCard",
         "onPress={isClone ? null : handleHomeSubscriptionPress}",
+        "onEmptyPress={isClone ? null : handleHomeSubscriptionCreatePress}",
         "onPress={openSubscriptionModal}",
+        "onEmptyPress={handleSubscriptionCreateTemptation}",
+        "accessible={hasEntries || typeof onEmptyPress !== \"function\"}",
+        "event?.stopPropagation?.();",
+        "onSubscriptionCreateTemptation={handleSubscriptionQuickCustomCreate}",
         "onPress={() => handleSubscriptionAutoImportOpen(\"modal_button\")}",
         "onPress={handleSubscriptionCreateTemptation}",
         "onPress={handleSubscriptionAutoImportConfirm}",
@@ -760,6 +825,20 @@
       ]
     },
     {
+      "id": "fridge-spend-transaction-and-content",
+      "description": "Canceling a Fridge spend keeps the item, confirmed spend removes it only after the transaction commits, the editor uses temptation copy, and the summary preserves the exact amount.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (decision !== \"spend\") {",
+        "pendingResolutionId: pendingItem.id",
+        "const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });",
+        "if (!spendCommitted) return;",
+        "entry.id !== pendingResolutionId",
+        "titleText={newPendingModal.pendingId ? t(\"temptationEditTitle\") : null}",
+        "const totalPendingLabel = formatCurrency(\n    convertToCurrency(totalPendingUSD, currency),\n    currency\n  );"
+      ]
+    },
+    {
       "id": "fridge-item-create-actions",
       "description": "The Fridge item modal keeps dismiss, name, amount, emoji, freeze-duration, create, and edit-mode behavior wired to the existing callbacks.",
       "file": "App.js",
@@ -778,26 +857,105 @@
       ]
     },
     {
-      "id": "rating-prompt-actions",
-      "description": "The localized store-rating prompt stays limited to the second save/spend action of the first post-onboarding session and keeps dismissal and store-review actions wired.",
+      "id": "android-text-rendering-safety",
+      "description": "Every App.js text surface uses the shared Text wrapper, which removes custom font families on Android so device and theme typefaces remain native while scaling, localization, auto-fit, and RTL direction are preserved.",
       "file": "App.js",
       "requiredFragments": [
-        "ratingPromptState.firstSessionStatus === \"active\"",
+        "const APP_CUSTOM_FONTS =",
+        "Platform.OS === \"android\"",
+        "const [fontsLoaded, fontsError] = safeUseFonts(APP_CUSTOM_FONTS);",
+        "const INTER_FONT_WEIGHT_BY_FAMILY = Object.freeze({",
+        "[INTER_FONTS.light]: \"300\"",
+        "[INTER_FONTS.regular]: \"400\"",
+        "[INTER_FONTS.medium]: \"500\"",
+        "[INTER_FONTS.semiBold]: \"600\"",
+        "[INTER_FONTS.bold]: \"700\"",
+        "[INTER_FONTS.extraBold]: \"800\"",
+        "[INTER_FONTS.black]: \"900\"",
+        "const resolveAndroidSystemFontWeight = (fontFamily, fontWeight) =>",
+        "const shouldUseAndroidSystemTextTypeface = Platform.OS === \"android\";",
+        "const androidSystemTextStyle = { ...flattened };",
+        "androidSystemTextStyle.fontWeight = androidSystemFontWeight;",
+        "delete androidSystemTextStyle.fontFamily;",
+        "const Text = AppText;"
+      ],
+      "requiredPatterns": [
+        "const AppText = React\\.memo\\([\\s\\S]*if \\(shouldUseAndroidSystemTextTypeface\\) \\{[\\s\\S]*<RNText\\b[\\s\\S]*const Text = AppText;(?![\\s\\S]*<RNText\\b)"
+      ]
+    },
+    {
+      "id": "android-text-input-rendering-safety",
+      "description": "Every editable surface uses the shared TextInput wrapper, which removes custom font families from Android EditText while preserving controlled values, handlers, scaling, localization, and RTL direction.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const shouldUseAndroidSystemTypeface = Platform.OS === \"android\";",
+        "const androidSystemTypefaceStyle = { ...flattened };",
+        "androidSystemTypefaceStyle.fontWeight = androidSystemFontWeight;",
+        "delete androidSystemTypefaceStyle.fontFamily;",
+        "const TextInput = AppTextInput;"
+      ],
+      "requiredPatterns": [
+        "const AppTextInput = React\\.memo\\([\\s\\S]*if \\(shouldUseAndroidSystemTypeface\\) \\{[\\s\\S]*<RNTextInput[\\s\\S]*const TextInput = AppTextInput;(?![\\s\\S]*<RNTextInput)"
+      ]
+    },
+    {
+      "id": "android-premium-story-system-typeface",
+      "description": "The standalone premium story screen keeps bundled Inter off Android while preserving every intended weight on the native device typeface.",
+      "file": "src/components/PremiumUnlockStories.js",
+      "requiredFragments": [
+        "const getPlatformFontStyle = (fontFamily, fontWeight) =>",
+        "Platform.OS === \"android\" ? { fontWeight } : { fontFamily };",
+        "...getPlatformFontStyle(\"Inter_700Bold\", \"700\"),",
+        "...getPlatformFontStyle(\"Inter_400Regular\", \"400\"),",
+        "...getPlatformFontStyle(\"Inter_800ExtraBold\", \"800\"),",
+        "...getPlatformFontStyle(\"Inter_500Medium\", \"500\"),",
+        "...getPlatformFontStyle(\"Inter_600SemiBold\", \"600\"),"
+      ]
+    },
+    {
+      "id": "rating-prompt-actions",
+      "description": "The localized, app-owned rating prompt is queued after the second successful save/spend across app sessions, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "file": "App.js",
+      "requiredFragments": [
         "ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD",
         "queueRatingPrompt(\"actions\")",
+        "actionCount: currentCount + 1,",
+        "recordRatingPromptAction(\"spend\");",
+        "recordRatingPromptAction(\"save\");",
+        "if (canShowRatingPromptNowRef.current()) {",
+        "ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);",
+        "const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);",
         "onPress={handleRatingPromptLater}",
         "onPress={handleRatingPromptConfirm}",
+        "onPress={() => handleRatingPromptSelect(star)}",
+        "ratingPromptRating >= RATING_PROMPT_STORE_THRESHOLD",
+        "setRatingPromptStep(\"feedback\")",
+        "onChangeText={handleRatingPromptFeedbackChange}",
+        "ratingPromptFeedbackLength < RATING_PROMPT_FEEDBACK_MIN_LENGTH",
+        "onPress={handleRatingPromptFeedbackSubmit}",
+        "`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`",
+        "setRatingPromptFeedbackError(\"ratingPromptFeedbackSendError\")",
+        "parsedLastAction === \"rate\" || parsedLastAction === \"feedback\"",
+        "requestStoreReviewWhenReady(\"rating_prompt_modal\")",
         "{t(\"ratingPromptLater\")}",
-        "{t(\"ratingPromptAction\")}"
+        "{t(\"ratingPromptContinue\")}",
+        "{t(\"ratingPromptFeedbackSend\")}"
+      ],
+      "requiredPatterns": [
+        "^(?![\\s\\S]*(?:expo-store-review|\\.requestReview\\())",
+        "^(?![\\s\\S]*ratingPromptActionGateReady)",
+        "^(?![\\s\\S]*RATING_PROMPT_SESSION_ID)"
       ]
     },
     {
       "id": "rating-prompt-second-action-threshold",
-      "description": "The store-rating action trigger remains the second save or spend decision.",
+      "description": "The rating trigger remains the second successful save or spend decision across sessions, with four stars as the store threshold and five visible characters as the feedback minimum.",
       "file": "src/constants/economyConfig.js",
       "requiredFragments": [
         "export const RATING_PROMPT_ACTION_THRESHOLD = 2;",
-        "export const RATING_PROMPT_ACTION_TYPES = new Set([\"save\", \"spend\"]);"
+        "export const RATING_PROMPT_ACTION_TYPES = new Set([\"save\", \"spend\"]);",
+        "export const RATING_PROMPT_STORE_THRESHOLD = 4;",
+        "export const RATING_PROMPT_FEEDBACK_MIN_LENGTH = 5;"
       ]
     },
     {
@@ -829,14 +987,12 @@
     },
     {
       "id": "ios-attribution-starts-before-att",
-      "description": "The app-scoped install identity and AppsFlyer privacy state hydrate before the React root; fresh iOS installs start the SDK immediately with a finite ATT wait window.",
+      "description": "The app-scoped install identity is set before the React root and AppsFlyer starts immediately without waiting for ATT.",
       "file": "index.js",
       "requiredFragments": [
         "const premiumInstallId = await ensurePremiumInstallId();",
         "await setAppScopedInstallIdentity(premiumInstallId);",
-        "const attWaitSeconds = shouldWaitForAttPrompt({",
-        "void initAttribution({",
-        "timeToWaitForATTUserAuthorization: attWaitSeconds"
+        "void initAttribution().catch((error) => {"
       ],
       "requiredPatterns": [
         "bootstrapAttribution\\(\\)[\\s\\S]*registerRootComponent\\(App\\)"
@@ -844,42 +1000,596 @@
     },
     {
       "id": "appsflyer-independent-privacy-controls",
-      "description": "AppsFlyer launch attribution, ATT-controlled advertising ID access, and partner postback sharing remain independently controlled.",
+      "description": "AppsFlyer attribution and partner postbacks stay always on while ATT exclusively controls advertising ID access.",
       "file": "analytics.js",
       "requiredFragments": [
-        "export const initAttribution = async ({",
-        "timeToWaitForATTUserAuthorization = 0,",
+        "let appsFlyerAdvertisingIdEnabled = false;",
+        "export const initAttribution = async () => syncAppsFlyerAttribution();",
         "if (!normalizeAttributionValue(appsFlyerCustomerUserId)) {",
-        "appsFlyer.setSharingFilterForPartners(appsFlyerPartnerSharingAllowed ? [] : [\"all\"]);",
+        "appsFlyer.setSharingFilterForPartners([]);",
         "appsFlyer.disableAdvertisingIdentifier(!appsFlyerAdvertisingIdEnabled);",
-        "export const setAppsFlyerPartnerSharingAllowed = async (allowed = true) => {",
         "export const setAppsFlyerAdvertisingIdEnabled = async (enabled = false) => {"
+      ],
+      "requiredPatterns": [
+        "const syncAppsFlyerAttribution = async \\(\\) => \\{[\\s\\S]*ensureAppsFlyerPartnerSharingEnabled\\(\\);[\\s\\S]*syncAppsFlyerAdvertisingIdCollection\\(\\);[\\s\\S]*return initAppsFlyerSdk\\(\\);"
       ]
     },
     {
       "id": "revenuecat-appsflyer-sharing-filter",
-      "description": "The partner-sharing preference also controls RevenueCat AppsFlyer S2S postbacks and explicitly synchronizes the subscriber attribute.",
+      "description": "RevenueCat always clears legacy AppsFlyer sharing blocks and synchronizes the subscriber attribute so approved financial lifecycle postbacks can reach configured partners.",
       "file": "src/monetization/purchasesClient.js",
       "requiredFragments": [
-        "let revenueCatAppsFlyerSharingAllowed = false;",
-        "export const setRevenueCatAppsFlyerSharingAllowedSafe = async (allowed = true) => {",
-        "\"$appsflyerSharingFilter\": revenueCatAppsFlyerSharingAllowed ? \"\" : \"all\"",
+        "export const clearRevenueCatAppsFlyerSharingFilterSafe = async () => {",
+        "\"$appsflyerSharingFilter\": \"\"",
         "await Purchases.syncAttributesAndOfferingsIfNeeded();",
-        "await setRevenueCatAppsFlyerSharingAllowedSafe("
+        "await clearRevenueCatAppsFlyerSharingFilterSafe();"
+      ]
+    },
+    {
+      "id": "revenuecat-write-once-attribution",
+      "description": "RevenueCat attribution preserves immutable identifiers for existing customers, writes final identifiers once for new customers, and serializes concurrent sync requests without blocking AppsFlyer partner postbacks.",
+      "file": "src/monetization/purchasesClient.js",
+      "requiredFragments": [
+        "customerInfo?.firstSeen",
+        "REVENUECAT_IMMUTABLE_ATTRIBUTION_NEW_CUSTOMER_WINDOW_MS",
+        "existing_customer_identifiers_preserved",
+        "existing_customer_attribution_preserved",
+        "REVENUECAT_IMMUTABLE_ATTRIBUTION_FIELD_PREFIX",
+        "revenueCatDeviceIdentifiersSyncPromise",
+        "revenueCatImmutableAttributionSyncQueue",
+        "automaticDeviceIdentifierCollectionEnabled: false",
+        "fieldsSet.includes(\"appsFlyerId\") || skippedFields.includes(\"appsFlyerId\")"
       ]
     },
     {
       "id": "ios-consent-state-separation",
-      "description": "Analytics consent is persisted directly, ATT only updates IDFA access, and partner sharing uses its own stored preference.",
+      "description": "Optional product analytics consent is persisted separately, ATT only updates IDFA access, and neither choice disables install or purchase attribution.",
       "file": "App.js",
       "requiredFragments": [
         "setAnalyticsOptOutFlag(analyticsOptOut).catch(() => {});",
-        "STORAGE_KEYS.APPSFLYER_PARTNER_SHARING_ALLOWED",
         "setAppsFlyerAdvertisingIdEnabledFlag(isTrackingStatusGranted(iosTrackingStatus))",
-        "setAppsFlyerPartnerSharingAllowedFlag(appsFlyerPartnerSharingAllowed)",
-        "setRevenueCatAppsFlyerSharingAllowedSafe(appsFlyerPartnerSharingAllowed)",
+        "await setAppsFlyerAdvertisingIdEnabledFlag(granted);",
         "setAnalyticsOptOutState(",
         ": null"
+      ]
+    },
+    {
+      "id": "qa-remediation-interactive-surface-parity",
+      "description": "QA accessibility and layout remediation preserves onboarding continuation and terms access, Quick Entry submission and cancellation, save-overlay progression, and profile-photo selection.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={() => onShowTerms?.()}",
+        "onPress={onContinue}",
+        "onSubmit={handleCoinEntrySubmit}",
+        "onCancel={handleCoinEntryClose}",
+        "const handleSaveOverlayPress = useCallback(",
+        "handleSaveOverlayPress(\"primary\")",
+        "onPress={() => isEditingIdentity && onPickImage?.()}"
+      ]
+    },
+    {
+      "id": "profile-support-and-theme-actions",
+      "description": "Profile keeps support contact, every theme selection, and the underlying theme-change callback reachable while accessibility labels remain distinct.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const handleSupportPress = useCallback(",
+        "const canOpenSupportMail = await Linking.canOpenURL(supportUrl);",
+        "Alert.alert(t(\"supportLink\"), t(\"supportHint\")",
+        "onPress={handleSupportPress}",
+        "onThemeToggle(option.id, {",
+        "proAccentId: option.proAccentId",
+        "accessibilityLabel: `${t(\"themePro\")}: ${resolveProAccentLabel(option, language)}`",
+        "accessibilityLabel={option.accessibilityLabel || option.label}",
+        "accessibilityState={{ selected: active }}"
+      ]
+    },
+    {
+      "id": "custom-category-modal-actions",
+      "description": "Custom-category creation keeps its name and emoji inputs, validation, save, cancel, backdrop dismissal, and return to the category manager wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const openAddCategoryModal = useCallback(",
+        "setResumeManageCategoriesAfterAdd(manageCategoriesVisible);",
+        "const closeAddCategoryModal = useCallback(",
+        "const handleAddCategorySave = useCallback(",
+        "value={addCategoryName}",
+        "value={addCategoryEmoji}",
+        "onPress={handleAddCategorySave}",
+        "onPress={closeAddCategoryModal}",
+        "dismissKeyboardOrRun(closeAddCategoryModal)",
+        "accessibilityViewIsModal",
+        "onRequestClose={closeAddCategoryModal}",
+        "onDismiss={handleAddCategoryModalDismiss}",
+        "onSubmitEditing={() => addCategoryEmojiInputRef.current?.focus()}",
+        "onSubmitEditing={handleAddCategorySave}"
+      ]
+    },
+    {
+      "id": "first-save-recap-and-reward",
+      "description": "The first save still records the transaction, presents one save recap, grants its earned reward exactly once, and keeps later monetization eligibility without stacking a reward modal in the tutorial flow.",
+      "file": "App.js",
+      "requiredFragments": [
+        "triggerOverlayState(\"save\", saveOverlayPayloadWithReward);",
+        "const isFirstSaveAction =",
+        "isFirstSaveAction,",
+        "markFirstSaveGoalJarPending();",
+        "const handleSaveOverlayPress = useCallback(",
+        "const firstSaveFlowActive = saveOverlayPayload?.isFirstSaveAction === true;",
+        "if (tutorialFlowActive || firstSaveFlowActive) {",
+        "first-save/onboarding reinforcement stays inside one blocker.",
+        "pendingUsageStreakRef.current = null;",
+        "saveOverlayRewardDeliveredKeyRef.current === saveOverlayKey",
+        "revealSaveOverlayRewardOnce();",
+        "const MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT = 2;",
+        "if (totalSaveActionCount < MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT) return;"
+      ]
+    },
+    {
+      "id": "qa-compact-safe-edge-layout",
+      "description": "Scrollable screens continue behind the floating bottom navigation, reserve its measured height in transparent scroll tails, keep the status safe area opaque, and leave compact paywall disclosures in scroll flow.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>",
+        "const screenContentBottomPadding = resolvedTabBarHeight + screenContentEndGap;",
+        "solid: true,",
+        "const overlayTopOpacity = solid ? 1",
+        "const overlaySafeOpacity = solid ? 1"
+      ]
+    },
+    {
+      "id": "bottom-tab-label-readability",
+      "description": "Fallback and native iOS tab labels shrink within their item instead of collapsing to an ellipsis, while the full localized label remains exposed to accessibility.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "adjustsFontSizeToFit",
+        "minimumFontScale={0.72}",
+        "ellipsizeMode=\"clip\"",
+        "accessibilityLabel={tabLabel}"
+      ]
+    },
+    {
+      "id": "ios-native-tab-label-readability",
+      "description": "The iOS 26 bar passes localized items, selection, theme colors and taps directly to one interactive native UITabBar without a cross-platform overlay.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "<NativeLiquidTabBar",
+        "items={tabPayload}",
+        "selectedKey={activeTab}",
+        "isDarkTheme={isDarkTheme}",
+        "activeColorHex={isProTheme ? proThemeAccentColor : \"\"}",
+        "inactiveColorHex={isProTheme ? proThemeMutedColor : \"\"}",
+        "badgeTextColorHex={isProTheme ? proThemeOnAccentColor : \"\"}",
+        "onTabPress={onTabPress}",
+        "prevProps.proThemeMutedColor === nextProps.proThemeMutedColor",
+        "prevProps.proThemeOnAccentColor === nextProps.proThemeOnAccentColor",
+        "prevProps.proThemeSurfaceColor === nextProps.proThemeSurfaceColor",
+        "prevProps.proThemeBorderColor === nextProps.proThemeBorderColor"
+      ]
+    },
+    {
+      "id": "ios-native-tab-visual-ownership",
+      "description": "One equal-width UITabBar owns every iOS 26 material, icon, localized title and badge, and installs its public items only after the first nonzero native layout resolves their width.",
+      "file": "ios/Almost/NativeLiquidTabBarManager.swift",
+      "requiredFragments": [
+        "tabBar.itemPositioning = .fill",
+        "override func layoutSubviews()",
+        "installItemsAtResolvedWidthIfNeeded()",
+        "guard resolvedWidth > 0 else { return }",
+        "appearance.stackedItemPositioning = .fill",
+        "title: model.title,",
+        "item.accessibilityLabel = model.title",
+        "item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)",
+        "item.imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)",
+        "item.badgeValue = model.badgeValue",
+        ".foregroundColor: inactiveColor,",
+        ".foregroundColor: activeColor,",
+        "appearance.backgroundEffect = nil",
+        "tabBar.setItems(nativeItems, animated: false)"
+      ]
+    },
+    {
+      "id": "ios-native-tab-direct-routing",
+      "description": "The same native UITabBar items that render the menu own selection and route each localized tab exactly once back to React.",
+      "file": "ios/Almost/NativeLiquidTabBarManager.swift",
+      "requiredFragments": [
+        "tabBar.delegate = self",
+        "tabBar.isUserInteractionEnabled = !selectorOnly",
+        "func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem)",
+        "if let resolvedIndex = tabBar.items?.firstIndex(of: item)",
+        "selectedKey = model.key as NSString",
+        "onTabPress?([\"key\": model.key])",
+        "item.tag = index"
+      ]
+    },
+    {
+      "id": "premium-paywall-compact-scroll-flow",
+      "description": "The compact paywall preserves the full hero artwork, keeps every secondary action in document flow, and overlays only the opaque purchase control above a measured transparent scroll tail.",
+      "file": "src/components/PremiumPaywallModalV2.js",
+      "requiredFragments": [
+        "heroHeight: 144,",
+        "resizeMode=\"contain\"",
+        "style={styles.planList}",
+        "<View style={styles.scrollFooter}>",
+        "onRestorePress({ source: \"restore_button\" })",
+        "onManagePress({ source: \"manage_button\" })",
+        "onTermsPress({ source: \"terms_link\" })",
+        "onPrivacyPress({ source: \"privacy_link\" })",
+        "const transparentScrollTail =",
+        "{ paddingBottom: transparentScrollTail }",
+        "onLayout={handleStickyFooterLayout}",
+        "position: \"absolute\"",
+        "const PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER = 1.35;",
+        "const PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE = 1.25;",
+        "const isAccessibilityText = fontScale >= PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE;",
+        "key={dynamicTypeLayoutKey}",
+        "maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}",
+        "isAccessibilityText ? styles.secondaryButtonsColumn : null",
+        "height: compactTier.ctaHeight,",
+        "maxFontSizeMultiplier={PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER}",
+        "isAccessibilityText ? styles.planTitleRowAccessibility : null",
+        "isAccessibilityText ? styles.planValueBadgeAccessibility : null",
+        "isAccessibilityText ? styles.planMainRowAccessibility : null",
+        "isAccessibilityText ? styles.planPriceBlockAccessibility : null",
+        "maxFontSizeMultiplier={1}",
+        "minimumFontScale={0.9}",
+        "adjustsFontSizeToFit",
+        "onPress={handlePrimaryPress}"
+      ]
+    },
+    {
+      "id": "compact-bottom-viewport-reservation",
+      "description": "The floating bottom navigation overlays a continuing screen layer while each scroll surface reserves the measured bar height plus a small end gap and an independent FAB-overlap allowance.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>",
+        "const screenContentEndGap = IS_SHORT_DEVICE ? 12 : 24;",
+        "const screenContentBottomPadding = resolvedTabBarHeight + screenContentEndGap;",
+        "const screenFabContentBottomPadding = screenContentBottomPadding + fabViewportOverlap;",
+        "contentBottomPadding={screenFabContentBottomPadding}"
+      ]
+    },
+    {
+      "id": "compact-fridge-viewport-actions",
+      "description": "The compact Fridge owns only a small visual end gap, keeps an overflow affordance, and preserves edit, extend, resolve, delete, premium, and door-toggle actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const fridgeBottomVisualGap = IS_SHORT_DEVICE ? 6 : 12;",
+        "showsVerticalScrollIndicator",
+        "onPress={onEdit ? () => onEdit(item) : undefined}",
+        "onPress={onExtend ? () => openFridgeExtendModal(item) : undefined}",
+        "onPress={() => onResolve(item, \"spend\")}",
+        "onPress={() => onResolve(item, \"decline\")}",
+        "onDelete={onDelete ? () => onDelete(item) : undefined}",
+        "onPress={onPremiumShelvesPress}",
+        "onPress={handleToggleFridge}"
+      ]
+    },
+    {
+      "id": "compact-feed-expanded-hero-fab",
+      "description": "Expanding the Saved hero reports its state to the app so the global FAB stays hidden until collapse without changing hero or FAB actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onHeroExpandedChange = null,",
+        "heroExpandedChangeRef.current?.(expanded);",
+        "const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);",
+        "onHeroExpandedChange={handleFeedHeroExpandedChange}",
+        "activeTab === \"feed\" && feedHeroExpanded"
+      ]
+    },
+    {
+      "id": "compact-feed-collapsed-hero-fab-clearance",
+      "description": "The collapsed Saved hero keeps its Details target outside the global FAB hit area while retaining the same expansion handler and minimum touch target.",
+      "file": "App.js",
+      "requiredFragments": [
+        "IS_SHORT_DEVICE && styles.savedHeroGoalMetaRowCompactFabClearance",
+        "paddingRight: FAB_BUTTON_SIZE + UI_SPACING.md,",
+        "style={styles.savedHeroToggleButton}",
+        "onPress={handleToggleExpanded}",
+        "minHeight: UI_TOUCH_TARGET.current"
+      ]
+    },
+    {
+      "id": "bottom-tab-hit-testing-priority",
+      "description": "The interactive iOS 26 UITabBar owns native tab hits directly while the legacy/Android fallback retains its accessible React Native Pressables.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "if (shouldUseNativeOnly) {",
+        "<NativeLiquidTabBar",
+        "style={StyleSheet.absoluteFill}",
+        "onTabPress={onTabPress}",
+        "<Pressable",
+        "onPress={() => onTabPress?.(tab)}",
+        "accessibilityRole=\"tab\"",
+        "accessibilityLabel={tabLabel}",
+        "accessibilityState={{ selected: isActive }}"
+      ]
+    },
+    {
+      "id": "bottom-tab-native-overlay-host",
+      "description": "The floating navigation host remains a concrete top-level native view above the active screen while preserving transparent pointer routing outside its children.",
+      "file": "App.js",
+      "requiredFragments": [
+        "pointerEvents=\"box-none\"",
+        "collapsable={false}",
+        "style={styles.mainTabBarOverlay}",
+        "zIndex: UI_ELEVATION.sticky + 1,",
+        "onTabPress={handleTabChange}"
+      ]
+    },
+    {
+      "id": "compact-profile-theme-nav-clearance",
+      "description": "On short devices Profile places theme controls before the taller income block so Dynamic Type targets remain fully above the floating navigation without changing theme actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "style={IS_SHORT_DEVICE ? styles.profileSettingsLeadCompact : null}",
+        "flexDirection: \"column-reverse\",",
+        "onThemeToggle(option.id, {",
+        "accessibilityLabel={option.accessibilityLabel || option.label}",
+        "accessibilityState={{ selected: active }}"
+      ]
+    },
+    {
+      "id": "legacy-ios-tabbar-bottom-clearance",
+      "description": "Legacy iOS fallback navigation keeps a minimum physical-bottom clearance while home-indicator safe area remains the larger single inset owner.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const legacyIosTabBarMinimumInset =",
+        "iosPlatformMajorVersion < 26",
+        "Math.max((safeAreaInsets.bottom || 0) - 8, legacyIosTabBarMinimumInset)"
+      ]
+    },
+    {
+      "id": "compact-category-manager-scroll",
+      "description": "The category manager uses one visible vertical scroll owner while add, edit, delete, select, save, cancel, and done actions remain wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "style={styles.categoryManagerBodyScroll}",
+        "contentContainerStyle={styles.categoryManagerBodyContent}",
+        "showsVerticalScrollIndicator",
+        "onPress={openAddCategoryModal}",
+        "onPress={() => handleCategorySelect(entry.id)}",
+        "onPress={() => confirmCategoryDelete(entry.id)}",
+        "onPress={handleCategoryEditSave}",
+        "onPress={handleCategoryEditCancel}",
+        "onPress={closeManageCategoriesModal}"
+      ]
+    },
+    {
+      "id": "compact-decision-surface-actions",
+      "description": "The fullscreen Save/Spend decision surface exposes scroll overflow and compact decoration while retaining close, amount, slider, goal, budget, timer, Save, and Spend actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const compactDecisionLayout = windowHeight <= 700;",
+        "styles.temptationAmountModalRootCompact",
+        "showsVerticalScrollIndicator",
+        "onPress={closeAmountSlider}",
+        "onPress={openAmountManual}",
+        "onPress={handleAmountCategoryBudgetPress}",
+        "onPress={handleAmountGoalPress}",
+        "onPress={handleAmountTimerPress}",
+        "onPress={() => handleAmountModalActionPress(\"save\")}",
+        "onPress={() => handleAmountModalActionPress(\"spend\")}",
+        "onLayout={handleAmountSliderTrackLayout}"
+      ]
+    },
+    {
+      "id": "profile-edit-keyboard-targeting",
+      "description": "Profile identity editing opens the visible Overview editor, focuses the first field, targets each field above the keyboard, and keeps save, cancel, and field updates wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const firstNameInputRef = useRef(null);",
+        "automaticallyAdjustKeyboardInsets={Platform.OS === \"ios\" && isEditingIdentity}",
+        "firstNameInputRef.current?.focus()",
+        "scrollResponderScrollNativeHandleToKeyboard",
+        "onSubmitEditing={() => lastNameInputRef.current?.focus()}",
+        "onSubmitEditing={() => bioInputRef.current?.focus()}",
+        "setProfileSection(\"overview\");",
+        "Keyboard.dismiss();"
+      ]
+    },
+    {
+      "id": "bottom-tab-badge-geometry",
+      "description": "The fallback tab badge is anchored to a fixed icon slot instead of the full button.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "style={styles.tabIconSlot}",
+        "styles.badge",
+        "accessibilityLabel={tabLabel}"
+      ]
+    },
+    {
+      "id": "ios-native-tab-badge-geometry",
+      "description": "Every native tab item appearance applies the same public badge offset while native items retain their full accessibility labels.",
+      "file": "ios/Almost/NativeLiquidTabBarManager.swift",
+      "requiredFragments": [
+        "let badgePositionAdjustment = UIOffset(horizontal: -2, vertical: 6)",
+        "normal.badgePositionAdjustment = badgePositionAdjustment",
+        "selected.badgePositionAdjustment = badgePositionAdjustment",
+        "disabled.badgePositionAdjustment = badgePositionAdjustment",
+        "focused.badgePositionAdjustment = badgePositionAdjustment",
+        "item.accessibilityLabel = model.title"
+      ]
+    },
+    {
+      "id": "android-release-bridgeless-reflection",
+      "description": "R8 preserves the React Native bridgeless feature-flag method name that Expo resolves through reflection during release cold launch.",
+      "file": "android/app/proguard-rules.pro",
+      "requiredFragments": [
+        "-keepclassmembers class com.facebook.react.internal.featureflags.ReactNativeFeatureFlags {",
+        "public static boolean enableBridgelessArchitecture();"
+      ]
+    },
+    {
+      "id": "notification-trigger-api-normalization",
+      "description": "Every notification scheduling path is normalized through the typed Expo Notifications trigger API, including date, interval, recurring calendar, and Android channel-aware triggers.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const normalizeNotificationTriggerInput = (trigger, content = null) => {",
+        "type: NOTIFICATION_TRIGGER_TYPES.date, date: trigger",
+        "type: NOTIFICATION_TRIGGER_TYPES.timeInterval",
+        "type: NOTIFICATION_TRIGGER_TYPES.daily",
+        "trigger: normalizeNotificationTriggerInput(payload.trigger, payload.content)"
+      ]
+    },
+    {
+      "id": "cold-start-bootstrap-continuity",
+      "description": "Cold launch restores the animated Almost wordmark for both onboarding and returning users while storage hydration selects the correct destination behind it.",
+      "file": "App.js",
+      "requiredFragments": [
+        "function LogoSplash({ onDone })",
+        "const word = \"Almost\";",
+        "setText(word.slice(0, index));",
+        "SplashScreen.hideAsync().catch(() => {});",
+        "const startupLogoVisible =",
+        "const startupLogoAnimationVisible = startupLogoVisible && startupLogoReady;",
+        "{startupLogoAnimationVisible ? <LogoSplash onDone={handleStartupLogoComplete} /> : null}",
+        "if (onboardingDisplayStep === \"logo\") {",
+        "onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;",
+        "goToOnboardingStep(\"done\", { recordHistory: false, resetHistory: true });"
+      ]
+    },
+    {
+      "id": "cold-start-native-window-continuity",
+      "description": "The iOS host owns a white scene-aware key window and yields long enough for its first Core Animation commit before React initialization blocks the Release main thread.",
+      "file": "ios/Almost/AppDelegate.swift",
+      "requiredFragments": [
+        "let bootstrapWindow = Self.makeBootstrapWindow(for: application)",
+        "bootstrapWindow.backgroundColor = .white",
+        "bootstrapWindow.rootViewController = NativeBootstrapViewController()",
+        "bootstrapWindow.makeKeyAndVisible()",
+        "let didFinishLaunching = super.application(",
+        "DispatchQueue.main.asyncAfter(deadline: .now() + 0.05)",
+        "factory.startReactNative("
+      ]
+    },
+    {
+      "id": "budget-locked-accessibility-layout",
+      "description": "The locked Budget screen stacks title and Premium badge at accessibility font scales while preserving its preview, scroll path, and Premium CTA.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const usesAccessibilityLayout = fontScale >= 1.25;",
+        "usesAccessibilityLayout && styles.budgetLockedScreenHeaderAccessibility",
+        "usesAccessibilityLayout && styles.budgetLockedScreenPillAccessibility",
+        "showsVerticalScrollIndicator",
+        "onPress={onPress}",
+        "accessibilityLabel={t(\"premiumBudgetScreenCta\")}"
+      ]
+    },
+    {
+      "id": "almi-skins-scroll-and-semantics",
+      "description": "Almi Back, Skins, and Done stay individually exposed while the constrained skins sheet scrolls to every option without changing selection or close actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"tamagotchi-back-button\"",
+        "testID=\"tamagotchi-skins-button\"",
+        "testID=\"tamagotchi-skins-done-button\"",
+        "accessibilityLabel={t(\"tamagotchiSkinsShortLabel\")}",
+        "style={styles.skinPickerScroll}",
+        "showsVerticalScrollIndicator",
+        "onPress={openSkinPicker}",
+        "onPress={closeSkinPicker}",
+        "setTamagotchiClosing(false);",
+        "onPress={() => handleSkinSelect(skin.id)}"
+      ]
+    },
+    {
+      "id": "temptation-editor-overflow-affordance",
+      "description": "The temptation editor exposes both a native scroll indicator and a persistent pre-scroll continuation cue while retaining close, save, delete, and field callbacks.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const [overflowCueVisible, setOverflowCueVisible] = useState(false);",
+        "if (viewportHeight <= 0 || contentHeight <= 0) return;",
+        "useLayoutEffect(() => {",
+        "setOverflowCueVisible(hasEditorItem);",
+        "onContentSizeChange={(_, height) => {",
+        "styles.temptationEditOverflowCue,",
+        "onPress={onEditCancel}",
+        "onPress={onEditSave}",
+        "onPress={onEditDelete}"
+      ]
+    },
+    {
+      "id": "compact-feed-tab-dynamic-type",
+      "description": "The Feed widget rail keeps localized labels within two balanced lines at accessibility sizes while preserving each tab action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={() => handleHeroCarouselTabPress(index)}",
+        "numberOfLines={2}",
+        "minimumFontScale={0.68}",
+        "maxFontSizeMultiplier={1.1}",
+        "ellipsizeMode=\"clip\""
+      ]
+    },
+    {
+      "id": "profile-language-selected-card-containment",
+      "description": "The localized language rail measures and centers the selected card with stable LTR scroll coordinates while retaining every language action and selected state.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const profileLanguageScrollRef = useRef(null);",
+        "const scrollProfileLanguageIntoView = useCallback((languageCode, animated = true) => {",
+        "profileLanguageScrollRef.current?.scrollTo?.({ x, animated });",
+        "ref={profileLanguageScrollRef}",
+        "onPress={() => onLanguageChange(lng)}",
+        "accessibilityState={{ selected: active }}",
+        "styles.settingLanguageScrollContent"
+      ]
+    },
+    {
+      "id": "fridge-pending-title-readability",
+      "description": "Closed previews and open Fridge items retain edit and decision actions while allowing pending titles to settle across two readable lines.",
+      "file": "App.js",
+      "requiredFragments": [
+        "style={[styles.fridgeItemTitle, { color: colors.text }]}\n                    numberOfLines={2}",
+        "style={[styles.fridgeNextPreviewTitle, { color: colors.text }]}\n                    numberOfLines={2}",
+        "onPress={onEdit ? () => onEdit(item) : undefined}",
+        "onPress={() => onResolve(item, \"spend\")}",
+        "onPress={() => onResolve(item, \"decline\")}"
+      ]
+    },
+    {
+      "id": "ios-audio-mode-single-flight",
+      "description": "Almi sound interactions preserve sound playback while serializing native audio-mode initialization into one shared operation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const soundModePromiseRef = useRef(null);",
+        "const ensureSoundModeReady = useCallback(async () => {",
+        "if (soundModePromiseRef.current) return soundModePromiseRef.current;",
+        "await ensureSoundModeReady();",
+        "await sound.playAsync();"
+      ]
+    },
+    {
+      "id": "fridge-summary-label-readability",
+      "description": "Closed and open Fridge summaries allow two-line auto-fit labels without changing the door, edit, extend, or decision actions.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const FRIDGE_DOOR_COUNTER_LABELS = {",
+        "style={[styles.fridgeSummaryLabel, { color: colors.muted }]}\n              numberOfLines={2}",
+        "adjustsFontSizeToFit",
+        "minimumFontScale={0.75}",
+        "onPress={handleToggleFridge}"
+      ]
+    },
+    {
+      "id": "bug-report-form-actions-and-diagnostics",
+      "description": "The bug-report flow keeps open, cancel, validation, description/steps input, email submission, failure recovery, privacy-safe automatic diagnostics, and keyboard-accessible fields and actions wired on iOS and Android.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={openBugReport}",
+        "onClose={closeBugReport}",
+        "onFilled={handleBugReportFilled}",
+        "onSubmit={handleBugReportSubmit}",
+        "onChangeText={handleDescriptionChange}",
+        "onChangeText={handleStepsChange}",
+        "Alert.alert(copy.validationTitle, copy.validationMessage);",
+        "await Linking.openURL(url);",
+        "copy.mailErrorMessage.replace(\"{{email}}\", SUPPORT_EMAIL)",
+        "collectBugReportDiagnostics({",
+        "<KeyboardAvoidingView",
+        "behavior={Platform.OS === \"ios\" ? \"padding\" : \"height\"}",
+        "style={styles.bugReportKeyboardAvoider}",
+        "style={[styles.bugReportModalWrap, modalSafeAreaStyle]}",
+        "maxHeight: \"100%\""
       ]
     }
   ]

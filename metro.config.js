@@ -1,43 +1,16 @@
 const os = require("os");
-const path = require("path");
-const exclusionList = require("metro-config/private/defaults/exclusionList").default;
 const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
 
-config.watchFolders = [path.resolve(__dirname)];
-const projectRoot = path.resolve(__dirname);
-const escapeForRegex = (value) =>
-  value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&").replace(/[/\\]/g, "[/\\\\]");
-const blockFolders = [
-  ["android", "build"],
-  ["android", "app", "build"],
-  ["android", ".gradle"],
-  ["android", "gradle"],
-  ["ios", "build"],
-  ["ios", "DerivedData"],
-  ["dist"],
-  ["build"],
-  [".git"],
-  [".expo"],
-  [".idea"],
-];
-const extraBlockPatterns = blockFolders.map((segments) => {
-  const fullPath = path.join(projectRoot, ...segments);
-  return new RegExp(`${escapeForRegex(fullPath)}[/\\\\].*`);
-});
-
 config.resolver = {
   ...config.resolver,
   disableHierarchicalLookup: false,
-  blockList: exclusionList([
-    ...(Array.isArray(config.resolver?.blockList)
-      ? config.resolver.blockList
-      : config.resolver?.blockList
-      ? [config.resolver.blockList]
-      : []),
-    ...extraBlockPatterns,
-  ]),
+  // Watchman repeatedly recrawls this native project while Gradle writes build
+  // outputs, which can leave Metro with an incomplete dependency map. The
+  // deterministic Node crawler is slower on a cold cache but reliable for CI
+  // and release bundles.
+  useWatchman: false,
 };
 config.transformer = {
   ...config.transformer,

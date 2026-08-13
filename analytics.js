@@ -763,7 +763,6 @@ const APPSFLYER_FIRST_TOUCH_STORAGE_KEY =
 const APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY =
   "@almost/analytics/appsflyer-revenuecat-confirmed-v1";
 const ATTRIBUTION_SYNC_START_MS = Date.now();
-const IOS_ATT_WAIT_SECONDS = 60;
 const EVENT_CONTRACT = buildEventContract(EVENT_DEFINITIONS);
 
 assertDefaultDenyRouting(EVENT_CONTRACT);
@@ -784,9 +783,7 @@ let performanceUnavailableLogged = false;
 let appsFlyerInitialized = false;
 let appsFlyerInitPromise = null;
 let appsFlyerCustomerUserId = null;
-let appsFlyerAttWaitSeconds = 0;
-let appsFlyerPartnerSharingAllowed = true;
-let appsFlyerAdvertisingIdEnabled = null;
+let appsFlyerAdvertisingIdEnabled = false;
 let appsFlyerInstallAttribution = {};
 let appsFlyerConversionDataListener = null;
 let appsFlyerConversionDataPromise = null;
@@ -1028,9 +1025,6 @@ const initAppsFlyerSdk = async () => {
     };
     if (Platform.OS === "ios" && APPSFLYER_APP_ID) {
       options.appId = APPSFLYER_APP_ID;
-      if (appsFlyerAttWaitSeconds > 0) {
-        options.timeToWaitForATTUserAuthorization = appsFlyerAttWaitSeconds;
-      }
     }
     appsFlyerInitPromise = new Promise((resolve) => {
       try {
@@ -1062,12 +1056,12 @@ const initAppsFlyerSdk = async () => {
   return appsFlyerInitPromise;
 };
 
-const syncAppsFlyerPartnerSharing = () => {
+const ensureAppsFlyerPartnerSharingEnabled = () => {
   if (!hasAppsFlyer() || typeof appsFlyer.setSharingFilterForPartners !== "function") return;
   try {
-    appsFlyer.setSharingFilterForPartners(appsFlyerPartnerSharingAllowed ? [] : ["all"]);
+    appsFlyer.setSharingFilterForPartners([]);
   } catch (error) {
-    console.warn("AppsFlyer partner sharing toggle failed:", error?.message || error);
+    console.warn("AppsFlyer partner sharing enable failed:", error?.message || error);
   }
 };
 
@@ -1084,7 +1078,7 @@ const syncAppsFlyerAdvertisingIdCollection = () => {
 
 const syncAppsFlyerAttribution = async () => {
   if (!shouldUseAppsFlyer()) return false;
-  syncAppsFlyerPartnerSharing();
+  ensureAppsFlyerPartnerSharingEnabled();
   syncAppsFlyerAdvertisingIdCollection();
   return initAppsFlyerSdk();
 };
@@ -1228,21 +1222,7 @@ export const setAppScopedInstallIdentity = async (installId) => {
   return true;
 };
 
-export const initAttribution = async ({
-  timeToWaitForATTUserAuthorization = 0,
-} = {}) => {
-  const requestedWait = Math.max(
-    0,
-    Math.min(
-      IOS_ATT_WAIT_SECONDS,
-      Math.floor(Number(timeToWaitForATTUserAuthorization) || 0)
-    )
-  );
-  if (!appsFlyerInitialized && !appsFlyerInitPromise) {
-    appsFlyerAttWaitSeconds = Platform.OS === "ios" ? requestedWait : 0;
-  }
-  return syncAppsFlyerAttribution();
-};
+export const initAttribution = async () => syncAppsFlyerAttribution();
 
 const getAppsFlyerUIDSafe = () =>
   new Promise((resolve) => {
@@ -1369,7 +1349,7 @@ export const initAnalytics = async () => {
       present: hasAppsFlyer(),
       initialized: appsFlyerInitialized,
       enabled: shouldUseAppsFlyer(),
-      partnerSharingAllowed: appsFlyerPartnerSharingAllowed,
+      partnerSharingAllowed: true,
       analyticsEnabled: isAnalyticsEnabled(),
     });
   }
@@ -1388,11 +1368,6 @@ export const setAnalyticsOptOut = async (optOut) => {
   await syncAmplitudeCollection();
   await syncPerformanceCollection();
   if (!analyticsOptedOut) await syncProductAnalyticsInstallIdentity();
-};
-
-export const setAppsFlyerPartnerSharingAllowed = async (allowed = true) => {
-  appsFlyerPartnerSharingAllowed = allowed !== false;
-  syncAppsFlyerPartnerSharing();
 };
 
 export const setAppsFlyerAdvertisingIdEnabled = async (enabled = false) => {

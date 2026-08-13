@@ -11,4 +11,11 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Expo reads this React Native flag by its source method name. If R8 renames the
+# method, Expo takes the bridge path while React Native is already bridgeless and
+# ReactActivity tries to install a null root view during cold launch.
+-keepclassmembers class com.facebook.react.internal.featureflags.ReactNativeFeatureFlags {
+    public static boolean enableBridgelessArchitecture();
+}
+
 # Add any project specific keep options here:

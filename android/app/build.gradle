@@ -15,6 +15,10 @@ abstract class ReactModalHostStabilityVisitorFactory
         "com.facebook.react.views.modal.ReactModalHostView"
     private static final String TARGET_INTERNAL_NAME =
         "com/facebook/react/views/modal/ReactModalHostView"
+    private static final String EDGE_TO_EDGE_FLAG_OWNER =
+        "com/facebook/react/views/view/WindowUtilKt"
+    private static final String STATUS_BAR_HEIGHT_SETTER =
+        'access$setStatusBarHeight$cp'
     private static final Map<String, Map<String, String>> GUARDED_SETTERS = [
         setStatusBarTranslucent: [
             field: "statusBarTranslucent",
@@ -60,6 +64,26 @@ abstract class ReactModalHostStabilityVisitorFactory
                     signature,
                     exceptions
                 )
+                if (name == STATUS_BAR_HEIGHT_SETTER && descriptor == "(I)V") {
+                    return new MethodVisitor(Opcodes.ASM9, nextMethodVisitor) {
+                        @Override
+                        void visitCode() {
+                            super.visitCode()
+                            Label keepLegacyInset = new Label()
+                            mv.visitMethodInsn(
+                                Opcodes.INVOKESTATIC,
+                                EDGE_TO_EDGE_FLAG_OWNER,
+                                "isEdgeToEdgeFeatureFlagOn",
+                                "()Z",
+                                false
+                            )
+                            mv.visitJumpInsn(Opcodes.IFEQ, keepLegacyInset)
+                            mv.visitInsn(Opcodes.ICONST_0)
+                            mv.visitVarInsn(Opcodes.ISTORE, 0)
+                            mv.visitLabel(keepLegacyInset)
+                        }
+                    }
+                }
                 Map<String, String> guardedSetter = GUARDED_SETTERS[name]
                 if (
                     guardedSetter == null ||
@@ -249,8 +273,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 116
-        versionName "7.0.4"
+        versionCode 119
+        versionName "7.1.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId
