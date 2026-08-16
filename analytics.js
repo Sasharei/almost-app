@@ -23,10 +23,18 @@ const {
 const {
   getElapsedBucket,
   hasCampaignFields,
-  mergeWriteOnceAttribution,
   normalizeAppsFlyerInstallAttribution,
   normalizeAttributionValue,
 } = require("./src/analytics/attributionPolicy");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  ATTRIBUTION_SYNC_RESULTS,
+  createAttributionStateMachine,
+} = require("./src/analytics/attributionStateMachine");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  runDeduplicatedPurchase,
+} = require("./src/analytics/purchaseDedupPolicy");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   ALMOST_RELEASE_SCOPE,
@@ -191,7 +199,19 @@ const EVENT_DEFINITIONS = {
   ],
   temptation_deleted: ["temptation_id", "is_custom", "price"],
   temptation_viewed: ["temptation_id", "category", "price"],
-  temptation_decision: ["temptation_id", "decision", "price", "balance_before", "saving_target_id"],
+  temptation_decision: [
+    "temptation_id",
+    "decision",
+    "price",
+    "balance_before",
+    "saving_target_id",
+    "series_progress",
+    "series_total",
+    "reward_mode",
+    "first_resolution",
+    "series_completed",
+  ],
+  next_decision_coach: ["action", "was_visible", "series_progress", "series_total"],
   temptation_action: ["item_id", "price_usd", "categories", "persona", "currency", "action", "goal_id"],
   save_daily_limit_blocked: ["temptation_id", "day_key", "save_count_day", "save_limit_day"],
   save_guard_triggered: ["temptation_id", "save_count_5m", "save_window_ms"],
@@ -286,8 +306,6 @@ const EVENT_DEFINITIONS = {
   reports_closed: ["tab", "has_data"],
   daily_summary_open_requested: ["source"],
   did_you_know_seen: ["tip_id", "muted"],
-  feed_first_tutorial_step: ["step"],
-  feed_first_tutorial_completed: ["source"],
   pending_extended: ["pending_id", "reminder_ms", "reminder_option", "source"],
   premium_backend_validation_result: ["source", "product_id", "result", "reason", "status"],
   screen_intro_shown: ["screen"],
@@ -758,10 +776,14 @@ const AMPLITUDE_API_KEY =
   process.env.AMPLITUDE_API_KEY || "df42f60f7c184d85c3406cb63d49f066";
 const GA4_PURCHASE_DEDUP_STORAGE_KEY = "@almost/analytics/ga4-purchase-transaction-ids-v1";
 const GA4_PURCHASE_DEDUP_MAX_IDS = 200;
-const APPSFLYER_FIRST_TOUCH_STORAGE_KEY =
+const APPSFLYER_LEGACY_FIRST_TOUCH_STORAGE_KEY =
   "@almost/analytics/appsflyer-first-touch-v1";
-const APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY =
+const APPSFLYER_REVENUECAT_ATTRIBUTION_STATE_STORAGE_KEY =
+  "@almost/analytics/appsflyer-revenuecat-attribution-v2";
+const APPSFLYER_LEGACY_REVENUECAT_CONFIRMED_STORAGE_KEY =
   "@almost/analytics/appsflyer-revenuecat-confirmed-v1";
+const REVENUECAT_LEGACY_ATTRIBUTION_FIELD_PREFIX =
+  "@almost/revenuecat/immutable-attribution-field-v1/";
 const ATTRIBUTION_SYNC_START_MS = Date.now();
 const EVENT_CONTRACT = buildEventContract(EVENT_DEFINITIONS);
 
@@ -792,9 +814,20 @@ let amplitudeInitialized = false;
 let amplitudeInitPromise = null;
 let ga4PurchaseLogQueue = Promise.resolve();
 let analyticsInstallIdentity = null;
-let revenueCatAppsFlyerIdConfirmed = false;
 let revenueCatAttributionSyncAttempt = 0;
 const analyticsContractErrorCounts = new Map();
+
+const appsFlyerRevenueCatAttributionState = createAttributionStateMachine({
+  storage: AsyncStorage,
+  storageKey: APPSFLYER_REVENUECAT_ATTRIBUTION_STATE_STORAGE_KEY,
+  legacyStorageKey: APPSFLYER_LEGACY_FIRST_TOUCH_STORAGE_KEY,
+  legacyDeliveryKeyForField: (field) =>
+    `${REVENUECAT_LEGACY_ATTRIBUTION_FIELD_PREFIX}${field}`,
+  unsafeLegacyConfirmationKeys: [
+    APPSFLYER_LEGACY_REVENUECAT_CONFIRMED_STORAGE_KEY,
+  ],
+  syncAttribution: syncPurchasesAttributionSafe,
+});
 
 const isAnalyticsEnabled = () => baseEnabled && analyticsConsentGranted && !analyticsOptedOut;
 const isAppsFlyerConfigured = () => {
@@ -934,30 +967,22 @@ const syncAmplitudeCollection = async () => {
 
 const readStoredAppsFlyerFirstTouch = async () => {
   try {
-    const raw = await AsyncStorage.getItem(APPSFLYER_FIRST_TOUCH_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    return await appsFlyerRevenueCatAttributionState.readPayload();
   } catch (error) {
     console.warn("AppsFlyer first-touch read failed:", error?.message || error);
     return {};
   }
 };
 
-const persistAppsFlyerFirstTouch = async (incoming = {}) => {
-  const existing = await readStoredAppsFlyerFirstTouch();
-  const merged = mergeWriteOnceAttribution(existing, incoming);
-  appsFlyerInstallAttribution = merged;
-  if (JSON.stringify(existing) === JSON.stringify(merged)) return merged;
+const persistAppsFlyerFirstTouch = async (incoming = {}, source = "runtime") => {
   try {
-    await AsyncStorage.setItem(
-      APPSFLYER_FIRST_TOUCH_STORAGE_KEY,
-      JSON.stringify(merged)
-    );
+    const merged = await appsFlyerRevenueCatAttributionState.merge(incoming, { source });
+    appsFlyerInstallAttribution = merged;
+    return merged;
   } catch (error) {
     console.warn("AppsFlyer first-touch write failed:", error?.message || error);
+    return readStoredAppsFlyerFirstTouch();
   }
-  return merged;
 };
 
 const ensureAppsFlyerConversionDataListener = () => {
@@ -971,7 +996,7 @@ const ensureAppsFlyerConversionDataListener = () => {
   try {
     appsFlyerConversionDataListener = appsFlyer.onInstallConversionData((payload) => {
       const normalized = normalizeAppsFlyerInstallAttribution(payload);
-      persistAppsFlyerFirstTouch(normalized)
+      persistAppsFlyerFirstTouch(normalized, "conversion_callback")
         .then((firstTouch) => {
           if (resolveAppsFlyerConversionData) {
             resolveAppsFlyerConversionData(firstTouch);
@@ -1218,7 +1243,10 @@ export const setAppScopedInstallIdentity = async (installId) => {
   analyticsInstallIdentity = normalized;
   appsFlyerCustomerUserId = normalized;
   await syncAppsFlyerCustomerUserId();
-  await syncProductAnalyticsInstallIdentity();
+  // Product analytics must never sit on the AppsFlyer startup critical path.
+  void syncProductAnalyticsInstallIdentity().catch((error) => {
+    console.warn("Product analytics install identity sync failed:", error?.message || error);
+  });
   return true;
 };
 
@@ -1281,14 +1309,6 @@ export const syncAppsFlyerAttributionToRevenueCat = async ({
 } = {}) => {
   revenueCatAttributionSyncAttempt += 1;
   const attempt = revenueCatAttributionSyncAttempt;
-  if (!revenueCatAppsFlyerIdConfirmed) {
-    try {
-      const confirmed = await AsyncStorage.getItem(
-        APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY
-      );
-      revenueCatAppsFlyerIdConfirmed = confirmed === "1";
-    } catch (_error) {}
-  }
   const initialized = await initAttribution();
   let appsFlyerId = null;
   if (initialized) {
@@ -1303,23 +1323,16 @@ export const syncAppsFlyerAttributionToRevenueCat = async ({
     appsFlyerId: normalizeAttributionValue(appsFlyerId),
     ...firstTouch,
   };
-  const syncResult = await syncPurchasesAttributionSafe(attribution);
-  if (syncResult?.appsFlyerIdSet) {
-    revenueCatAppsFlyerIdConfirmed = true;
-    AsyncStorage.setItem(
-      APPSFLYER_REVENUECAT_CONFIRMED_STORAGE_KEY,
-      "1"
-    ).catch(() => {});
-  }
-  const hasProviderId = !!attribution.appsFlyerId;
-  const hasCampaign = hasCampaignFields(firstTouch);
-  const result = syncResult?.appsFlyerIdSet
-    ? syncResult?.failedFields?.length
-      ? "partial"
-      : "success"
-    : hasProviderId
-    ? "failed"
-    : "missing_provider_id";
+  const triggerReason = String(reason || "manual");
+  const syncResult = await appsFlyerRevenueCatAttributionState.sync(attribution, {
+    source: triggerReason,
+    force: ["conversion_callback", "purchase_preflight", "revenuecat_bootstrap"].includes(
+      triggerReason
+    ),
+  });
+  const hasProviderId = syncResult?.hasProviderId === true;
+  const hasCampaign = syncResult?.hasCampaignFields === true;
+  const result = syncResult?.status || ATTRIBUTION_SYNC_RESULTS.failedRetryable;
   logEvent("attribution_sync_result", {
     provider: "appsflyer",
     result,
@@ -1331,10 +1344,10 @@ export const syncAppsFlyerAttributionToRevenueCat = async ({
   }).catch(() => {});
   return {
     ...syncResult,
-    reason: syncResult?.reason || String(reason || "manual"),
+    reason: triggerReason,
     hasProviderId,
     hasCampaignFields: hasCampaign,
-    confirmed: revenueCatAppsFlyerIdConfirmed,
+    appsFlyerIdSet: syncResult?.confirmed === true,
   };
 };
 
@@ -1407,33 +1420,6 @@ export const logEvent = async (eventName, params = {}) => {
   return { ok: true, destinations: contract.destinations };
 };
 
-const readLoggedGa4PurchaseIds = async () => {
-  try {
-    const raw = await AsyncStorage.getItem(GA4_PURCHASE_DEDUP_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((value) => String(value || "").trim()).filter(Boolean);
-  } catch (error) {
-    console.warn("GA4 purchase dedup read failed:", error?.message || error);
-    return [];
-  }
-};
-
-const rememberLoggedGa4PurchaseId = async (transactionId, previousIds = []) => {
-  const nextIds = [
-    ...previousIds.filter((value) => value !== transactionId),
-    transactionId,
-  ].slice(-GA4_PURCHASE_DEDUP_MAX_IDS);
-  try {
-    await AsyncStorage.setItem(GA4_PURCHASE_DEDUP_STORAGE_KEY, JSON.stringify(nextIds));
-    return true;
-  } catch (error) {
-    console.warn("GA4 purchase dedup write failed:", error?.message || error);
-    return false;
-  }
-};
-
 const logCommercePurchaseInternal = async ({
   transactionId,
   value,
@@ -1455,10 +1441,6 @@ const logCommercePurchaseInternal = async ({
   }
   if (!normalizedProductId) return { ok: false, reason: "missing_product_id" };
 
-  const previousIds = await readLoggedGa4PurchaseIds();
-  if (previousIds.includes(normalizedTransactionId)) {
-    return { ok: true, duplicate: true, transactionId: normalizedTransactionId };
-  }
   const client = getAnalyticsClient();
   if (!client || typeof client.logPurchase !== "function") {
     return { ok: false, reason: "analytics_unavailable" };
@@ -1475,22 +1457,18 @@ const logCommercePurchaseInternal = async ({
     item.item_category = normalizedPlan;
   }
   try {
-    await client.logPurchase({
-      transaction_id: normalizedTransactionId,
-      value: normalizedValue,
-      currency: normalizedCurrency,
-      items: [item],
-    });
-    const dedupPersisted = await rememberLoggedGa4PurchaseId(
-      normalizedTransactionId,
-      previousIds
-    );
-    return {
-      ok: true,
-      duplicate: false,
-      dedupPersisted,
+    return await runDeduplicatedPurchase({
+      storage: AsyncStorage,
+      storageKey: GA4_PURCHASE_DEDUP_STORAGE_KEY,
+      maxIds: GA4_PURCHASE_DEDUP_MAX_IDS,
       transactionId: normalizedTransactionId,
-    };
+      emit: () => client.logPurchase({
+        transaction_id: normalizedTransactionId,
+        value: normalizedValue,
+        currency: normalizedCurrency,
+        items: [item],
+      }),
+    });
   } catch (error) {
     console.warn("Failed to log GA4 purchase:", error?.message || error);
     return { ok: false, reason: "log_failed", error };

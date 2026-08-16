@@ -37,6 +37,7 @@ export const PREMIUM_FEATURE_KEYS = {
   customTemptationCards: "customTemptationCards",
   unlimitedChallenges: "unlimitedChallenges",
   proTheme: "proTheme",
+  temptationAutoCollect: "temptationAutoCollect",
 };
 
 export const FALLBACK_PRICES_BY_CURRENCY = {
@@ -161,6 +162,32 @@ const FEATURE_TITLE_BY_LANGUAGE = {
   zh: "这个功能可帮助你找回那些常常悄悄流失的钱",
 };
 
+const APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE = {
+  ru: "Кастомизация приложения: кот и цветные темы",
+  en: "App customization: cat skins and color themes",
+  es: "Personalización de la app: skins del gato y temas de color",
+  fr: "Personnalisation de l’app : skins du chat et thèmes colorés",
+  de: "App-Anpassung: Katzen-Skins und Farbthemen",
+  pt: "Personalização do app: visuais do gato e temas coloridos",
+  it: "Personalizzazione dell’app: skin del gatto e temi colorati",
+  ar: "تخصيص التطبيق: أشكال القط والسمات الملونة",
+  zh: "应用个性化：猫咪外观与彩色主题",
+  ko: "앱 꾸미기: 고양이 스킨과 컬러 테마",
+};
+
+const TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE = {
+  ru: "Автосбор искушений по расписанию с быстрым подтверждением",
+  en: "Scheduled temptation auto-collect with quick confirmation",
+  es: "Recolección automática programada con confirmación rápida",
+  fr: "Collecte automatique planifiée avec confirmation rapide",
+  de: "Geplante automatische Sammlung mit schneller Bestätigung",
+  pt: "Coleta automática agendada com confirmação rápida",
+  it: "Raccolta automatica programmata con conferma rapida",
+  ar: "جمع تلقائي مجدول للإغراءات مع تأكيد سريع",
+  zh: "按计划自动收集诱惑卡片并快速确认",
+  ko: "예약된 유혹 자동 수집과 빠른 확인",
+};
+
 const BASE_FEATURES_BY_LANGUAGE = {
   ru: [
     "Умная аналитика бюджета и лимиты по категориям",
@@ -168,12 +195,11 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Неограниченное количество целей",
     "Impulse-карта с триггерами и точками срыва",
     "Неограниченные карточки искушений",
-    "Больше челленджей и наград",
+    TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.ru,
     "Home Screen виджеты и слайдер",
     "Мгновенная разблокировка всех функций, закрытых уровнем",
     "Неограниченное количество кастомных категорий",
     "Расширенная очередь карточек «Думаю»",
-    "Кастомизация кота + полная кастомизация Pro-темы",
   ],
   en: [
     "Smart budget analytics with category limits",
@@ -181,12 +207,11 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Unlimited goals",
     "Impulse map with trigger and slip-zone insights",
     "Unlimited temptation cards",
-    "More challenges and rewards",
+    TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.en,
     "Home screen widgets and slider",
     "Instant unlock of all level-gated features",
     "Unlimited custom categories",
     "Extended Think queue",
-    "Cat customization + full Pro theme customization",
   ],
   es: [
     "Analítica inteligente del presupuesto con límites por categoría",
@@ -194,12 +219,11 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Metas ilimitadas",
     "Mapa de impulsos con disparadores y zonas de riesgo",
     "Tarjetas de tentación ilimitadas",
-    "Más desafíos y recompensas",
+    TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.es,
     "Widgets y deslizador en pantalla de inicio",
     "Desbloqueo instantáneo de todas las funciones por nivel",
     "Categorías personalizadas ilimitadas",
     "Cola de \"Pensar\" ampliada",
-    "Personalización del gato + personalización completa del tema Pro",
   ],
   fr: [
     "Analyse intelligente du budget avec limites par catégorie",
@@ -207,18 +231,26 @@ const BASE_FEATURES_BY_LANGUAGE = {
     "Objectifs illimités",
     "Carte des impulsions avec déclencheurs et zones à risque",
     "Cartes de tentation illimitées",
-    "Plus de défis et de récompenses",
+    TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.fr,
     "Widgets et curseur sur l'écran d'accueil",
     "Déverrouillage instantané de toutes les fonctions bloquées par niveau",
     "Catégories personnalisées illimitées",
     "File \"Je réfléchis\" étendue",
-    "Personnalisation du chat + personnalisation complète du thème Pro",
   ],
 };
 
 BASE_FEATURES_BY_LANGUAGE.de = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.pt = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.it = [...BASE_FEATURES_BY_LANGUAGE.en];
 BASE_FEATURES_BY_LANGUAGE.ar = [...BASE_FEATURES_BY_LANGUAGE.en];
 BASE_FEATURES_BY_LANGUAGE.zh = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.ko = [...BASE_FEATURES_BY_LANGUAGE.en];
+BASE_FEATURES_BY_LANGUAGE.de[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.de;
+BASE_FEATURES_BY_LANGUAGE.pt[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.pt;
+BASE_FEATURES_BY_LANGUAGE.it[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.it;
+BASE_FEATURES_BY_LANGUAGE.ar[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.ar;
+BASE_FEATURES_BY_LANGUAGE.zh[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.zh;
+BASE_FEATURES_BY_LANGUAGE.ko[5] = TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.ko;
 
 const FEATURE_NAME_BY_KEY = {
   catCustomization: {
@@ -299,6 +331,18 @@ const FEATURE_NAME_BY_KEY = {
     es: "personalización completa del tema Pro",
     fr: "personnalisation complète du thème Pro",
   },
+  temptationAutoCollect: {
+    ru: "автосбор искушений",
+    en: "temptation auto-collect",
+    es: "recolección automática de tentaciones",
+    fr: "collecte automatique des tentations",
+    de: "automatische Versuchungssammlung",
+    pt: "coleta automática de tentações",
+    it: "raccolta automatica delle tentazioni",
+    ar: "الجمع التلقائي للإغراءات",
+    zh: "诱惑卡片自动收集",
+    ko: "유혹 자동 수집",
+  },
 };
 
 const COMPARISON_ROWS_BY_LANGUAGE = {
@@ -331,6 +375,17 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
         "Отчёты показывают конкретные шаги по вашим категориям, а не общие советы.",
     },
     {
+      id: "temptationAutoCollect",
+      label: TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.ru,
+      featureKeys: [PREMIUM_FEATURE_KEYS.temptationAutoCollect],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Автосбор помогает не пропустить повторяющиеся траты на {{amount}} за {{days}} дней.",
+      lossSubtitle:
+        "Almost сам собирает просроченные карточки, а вы одним экраном подтверждаете сохранения и траты.",
+    },
+    {
       id: "multipleGoals",
       label: "Неограниченные цели",
       featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
@@ -350,13 +405,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
         "Карта показывает, где и в какие моменты вы чаще срываетесь, чтобы перехватить трату до оплаты.",
     },
     {
-      id: "unlimitedChallenges",
-      label: "Больше челленджей и наград",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      id: "catCustomization",
+      label: APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE.ru,
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
       free: false,
       premium: true,
-      lossTitle: "Челленджи усиливают дисциплину: регулярные участники сохраняют заметно больше уже в первые недели.",
-      lossSubtitle: "Больше челленджей = больше точек контроля, где вы не даёте деньгам утечь.",
+      interactive: false,
+      isCosmetic: true,
     },
     {
       id: "customTemptationCards",
@@ -404,15 +459,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossTitle: "Без очереди «Думаю» сложнее переждать импульс, и лишние траты случаются чаще.",
       lossSubtitle: "Отложенные решения дают время остыть и не терять деньги на эмоциях.",
     },
-    {
-      id: "catCustomization",
-      label: "Кастомизация кота + Pro‑тема",
-      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
-      free: false,
-      premium: true,
-      isCosmetic: true,
-      interactive: false,
-    },
   ],
   en: [
     {
@@ -442,6 +488,17 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Reports give clear next steps based on your own categories and behavior.",
     },
     {
+      id: "temptationAutoCollect",
+      label: TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.en,
+      featureKeys: [PREMIUM_FEATURE_KEYS.temptationAutoCollect],
+      free: false,
+      premium: true,
+      lossTitle:
+        "Auto-collect helps catch {{amount}} in recurring spending over {{days}} days.",
+      lossSubtitle:
+        "Almost gathers overdue cards, then you confirm saved and spent outcomes in one review.",
+    },
+    {
       id: "multipleGoals",
       label: "Unlimited goals",
       featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
@@ -462,14 +519,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
         "It shows when and where urges spike so you can stop overspending before checkout.",
     },
     {
-      id: "unlimitedChallenges",
-      label: "More challenges and rewards",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      id: "catCustomization",
+      label: APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE.en,
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
       free: false,
       premium: true,
-      lossTitle:
-        "Challenge-driven routines improve discipline: active users typically keep more money in the first weeks.",
-      lossSubtitle: "More challenges mean more checkpoints where spending gets interrupted.",
+      interactive: false,
+      isCosmetic: true,
     },
     {
       id: "customTemptationCards",
@@ -517,15 +573,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossTitle: "Without a longer Think queue, impulse urges are harder to cool off in time.",
       lossSubtitle: "Delayed decisions create a pause that protects your budget.",
     },
-    {
-      id: "catCustomization",
-      label: "Cat skins + Pro theme",
-      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
-      free: false,
-      premium: true,
-      isCosmetic: true,
-      interactive: false,
-    },
   ],
   es: [
     {
@@ -555,6 +602,17 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Los informes te dan pasos claros según tus categorías y hábitos.",
     },
     {
+      id: "temptationAutoCollect",
+      label: TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.es,
+      featureKeys: [PREMIUM_FEATURE_KEYS.temptationAutoCollect],
+      free: false,
+      premium: true,
+      lossTitle:
+        "La recolección automática ayuda a detectar {{amount}} en gastos recurrentes durante {{days}} días.",
+      lossSubtitle:
+        "Almost reúne las tarjetas vencidas y confirmas ahorros y gastos en una sola revisión.",
+    },
+    {
       id: "multipleGoals",
       label: "Metas ilimitadas",
       featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
@@ -574,14 +632,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Muestra cuándo y dónde suben los impulsos para frenar el gasto antes de pagar.",
     },
     {
-      id: "unlimitedChallenges",
-      label: "Más desafíos y recompensas",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      id: "catCustomization",
+      label: APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE.es,
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
       free: false,
       premium: true,
-      lossTitle:
-        "Las rutinas con desafíos mejoran la disciplina: los usuarios activos suelen retener más dinero en las primeras semanas.",
-      lossSubtitle: "Más desafíos significan más puntos de control para frenar gastos.",
+      interactive: false,
+      isCosmetic: true,
     },
     {
       id: "customTemptationCards",
@@ -629,15 +686,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossTitle: "Sin una cola «Pensar» más larga, es más difícil enfriar impulsos a tiempo.",
       lossSubtitle: "Aplazar decisiones crea una pausa que protege tu presupuesto.",
     },
-    {
-      id: "catCustomization",
-      label: "Skins del gato + tema Pro",
-      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
-      free: false,
-      premium: true,
-      isCosmetic: true,
-      interactive: false,
-    },
   ],
   fr: [
     {
@@ -667,6 +715,17 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Les rapports donnent des actions concrètes selon tes catégories et habitudes.",
     },
     {
+      id: "temptationAutoCollect",
+      label: TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE.fr,
+      featureKeys: [PREMIUM_FEATURE_KEYS.temptationAutoCollect],
+      free: false,
+      premium: true,
+      lossTitle:
+        "La collecte automatique aide à repérer {{amount}} de dépenses récurrentes sur {{days}} jours.",
+      lossSubtitle:
+        "Almost rassemble les cartes échues, puis tu confirmes économies et dépenses en une seule revue.",
+    },
+    {
       id: "multipleGoals",
       label: "Objectifs illimités",
       featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
@@ -686,14 +745,13 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossSubtitle: "Elle montre quand et où les envies montent pour arrêter les dépenses avant le paiement.",
     },
     {
-      id: "unlimitedChallenges",
-      label: "Plus de défis et de récompenses",
-      featureKeys: [PREMIUM_FEATURE_KEYS.unlimitedChallenges],
+      id: "catCustomization",
+      label: APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE.fr,
+      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
       free: false,
       premium: true,
-      lossTitle:
-        "Les routines basées sur des défis améliorent la discipline : les utilisateurs actifs gardent généralement plus d'argent dès les premières semaines.",
-      lossSubtitle: "Plus de défis = plus de points de contrôle pour interrompre les dépenses.",
+      interactive: false,
+      isCosmetic: true,
     },
     {
       id: "customTemptationCards",
@@ -741,15 +799,6 @@ const COMPARISON_ROWS_BY_LANGUAGE = {
       lossTitle: "Sans file «Je réfléchis» plus longue, il est plus difficile de laisser retomber l'impulsion à temps.",
       lossSubtitle: "Reporter une décision crée une pause qui protège ton budget.",
     },
-    {
-      id: "catCustomization",
-      label: "Skins du chat + thème Pro",
-      featureKeys: [PREMIUM_FEATURE_KEYS.catCustomization, PREMIUM_FEATURE_KEYS.proTheme],
-      free: false,
-      premium: true,
-      isCosmetic: true,
-      interactive: false,
-    },
   ],
 };
 
@@ -759,9 +808,26 @@ const cloneComparisonRows = (rows = []) =>
     featureKeys: Array.isArray(row?.featureKeys) ? [...row.featureKeys] : row?.featureKeys,
   }));
 
-COMPARISON_ROWS_BY_LANGUAGE.de = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
-COMPARISON_ROWS_BY_LANGUAGE.ar = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
-COMPARISON_ROWS_BY_LANGUAGE.zh = cloneComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en);
+const cloneLocalizedComparisonRows = (rows = [], language = "en") =>
+  cloneComparisonRows(rows).map((row) => {
+    if (row?.id === "catCustomization") {
+      return { ...row, label: APP_CUSTOMIZATION_FEATURE_BY_LANGUAGE[language] };
+    }
+    if (row?.id === "temptationAutoCollect") {
+      return {
+        ...row,
+        label: TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE[language],
+      };
+    }
+    return row;
+  });
+
+COMPARISON_ROWS_BY_LANGUAGE.de = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "de");
+COMPARISON_ROWS_BY_LANGUAGE.pt = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "pt");
+COMPARISON_ROWS_BY_LANGUAGE.it = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "it");
+COMPARISON_ROWS_BY_LANGUAGE.ar = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "ar");
+COMPARISON_ROWS_BY_LANGUAGE.zh = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "zh");
+COMPARISON_ROWS_BY_LANGUAGE.ko = cloneLocalizedComparisonRows(COMPARISON_ROWS_BY_LANGUAGE.en, "ko");
 
 const SOFT_MARKETING_LINE_BY_LANGUAGE = {
   ru: "Premium стоит {{monthly}}. С инструментами контроля вы можете вернуть до {{amount}} за следующие {{days}} дней.",
@@ -1497,14 +1563,17 @@ const BENEFITS_FOOTNOTE_BY_LANGUAGE = {
   ar: "والمزيد",
   zh: "以及更多",
 };
-const UNLIMITED_USAGE_BULLET_BY_LANGUAGE = {
-  ru: "Неограниченное использование",
-  en: "Unlimited usage",
-  es: "Uso ilimitado",
-  fr: "Utilisation illimitée",
-  de: "Unbegrenzte Nutzung",
-  ar: "استخدام غير محدود",
-  zh: "无限使用",
+const BUDGET_TRANSFER_BULLET_BY_LANGUAGE = {
+  ru: "Бюджет: реальные накопления с подтверждением перевода",
+  en: "Budget: real savings with transfer confirmation",
+  es: "Presupuesto: ahorros reales con transferencia confirmada",
+  fr: "Budget : épargne réelle avec confirmation du virement",
+  de: "Budget: echte Ersparnisse mit Überweisungsbestätigung",
+  pt: "Orçamento: poupança real com transferência confirmada",
+  it: "Budget: risparmi reali con conferma del bonifico",
+  ar: "الميزانية: مدخرات حقيقية مع تأكيد التحويل",
+  zh: "预算：真实储蓄与转账确认",
+  ko: "예산: 실제 저축과 이체 확인",
 };
 const SOCIAL_PROOF_LINE_BY_LANGUAGE = {
   ru: "5K+ уже экономят",
@@ -1932,15 +2001,15 @@ const buildBenefitBullets = ({
 
   const seen = new Set();
   const bullets = [];
-  const unlimitedUsageLabel =
-    UNLIMITED_USAGE_BULLET_BY_LANGUAGE[lang] || UNLIMITED_USAGE_BULLET_BY_LANGUAGE.en;
-  if (unlimitedUsageLabel) {
-    seen.add("unlimited_usage");
+  const budgetTransferLabel =
+    BUDGET_TRANSFER_BULLET_BY_LANGUAGE[lang] || BUDGET_TRANSFER_BULLET_BY_LANGUAGE.en;
+  if (budgetTransferLabel) {
+    seen.add("budget_transfer");
     bullets.push({
-      id: "unlimited_usage",
-      label: unlimitedUsageLabel,
-      featureKey: PREMIUM_FEATURE_KEYS.multipleGoals,
-      featureKeys: [PREMIUM_FEATURE_KEYS.multipleGoals],
+      id: "budget_transfer",
+      label: budgetTransferLabel,
+      featureKey: PREMIUM_FEATURE_KEYS.budgetAuto,
+      featureKeys: [PREMIUM_FEATURE_KEYS.budgetAuto],
       interactive: false,
     });
   }

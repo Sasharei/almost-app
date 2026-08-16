@@ -63,6 +63,14 @@ const patches = [
     dest: 'node_modules/react-native-reanimated/android/CMakeLists.txt',
   },
   {
+    src: 'patches/react-native-worklets/android/build.gradle',
+    dest: 'node_modules/react-native-worklets/android/build.gradle',
+  },
+  {
+    src: 'patches/react-native-svg/android/build.gradle',
+    dest: 'node_modules/react-native-svg/android/build.gradle',
+  },
+  {
     src: 'patches/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
     dest: 'node_modules/react-native-fbsdk-next/android/src/main/java/com/facebook/reactnative/androidsdk/FBAppEventsLoggerModule.java',
   },

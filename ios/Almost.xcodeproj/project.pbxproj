@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A71B87D31A4000100AF0001 /* AdSupport.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A71B87D31A4000100AF0002 /* AdSupport.framework */; };
 		0F999E35099803B484AF78F1 /* libPods-Almost.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
@@ -51,6 +52,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0A71B87D31A4000100AF0002 /* AdSupport.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AdSupport.framework; path = System/Library/Frameworks/AdSupport.framework; sourceTree = SDKROOT; };
 		0A946BB15BACF5239221DE28 /* Pods-Almost.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Almost.release.xcconfig"; path = "Target Support Files/Pods-Almost/Pods-Almost.release.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Almost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Almost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Almost/Images.xcassets; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A71B87D31A4000100AF0001 /* AdSupport.framework in Frameworks */,
 				0F999E35099803B484AF78F1 /* libPods-Almost.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -154,6 +157,7 @@
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				0A71B87D31A4000100AF0002 /* AdSupport.framework */,
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */,
 				4157469D2F48796A00EA9099 /* WidgetKit.framework */,

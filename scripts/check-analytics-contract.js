@@ -309,6 +309,10 @@ trackedLiteralNames.forEach((eventName) => {
 const appSource = read("App.js");
 const analyticsSource = read("analytics.js");
 const indexSource = read("index.js");
+const appsFlyerBootstrapSource = read("src/analytics/appsFlyerBootstrap.js");
+const attributionStateMachineSource = read("src/analytics/attributionStateMachine.js");
+const revenueCatAttributionSyncSource = read("src/analytics/revenueCatAttributionSync.js");
+const purchaseDedupSource = read("src/analytics/purchaseDedupPolicy.js");
 const purchasesSource = read("src/monetization/purchasesClient.js");
 assert(
   !/logEvent\(\s*`/.test(appSource),
@@ -327,13 +331,17 @@ assert(
   "AppsFlyer customerUserId must be set before initSdk."
 );
 assert(
-  indexSource.includes("await setAppScopedInstallIdentity(premiumInstallId);") &&
-    indexSource.includes("void initAttribution().catch((error) => {") &&
-    indexSource.indexOf("await setAppScopedInstallIdentity(premiumInstallId);") <
-      indexSource.indexOf("void initAttribution().catch((error) => {") &&
+  indexSource.includes("bootstrapAppsFlyerAttribution({") &&
+    appsFlyerBootstrapSource.includes("await setInstallIdentity(installId);") &&
+    appsFlyerBootstrapSource.includes("return initAttribution();") &&
+    appsFlyerBootstrapSource.indexOf("await setInstallIdentity(installId);") <
+      appsFlyerBootstrapSource.indexOf("return initAttribution();") &&
+    analyticsSource.includes(
+      "await syncAppsFlyerCustomerUserId();\n  // Product analytics must never sit on the AppsFlyer startup critical path.\n  void syncProductAnalyticsInstallIdentity().catch("
+    ) &&
     !indexSource.includes("timeToWaitForATTUserAuthorization") &&
     !analyticsSource.includes("timeToWaitForATTUserAuthorization"),
-  "AppsFlyer must start immediately after the app-scoped install identity, without waiting for ATT."
+  "AppsFlyer must start immediately after the app-scoped install identity, without waiting for ATT or product analytics."
 );
 assert(
   !appSource.includes("initAttribution(") &&
@@ -341,15 +349,28 @@ assert(
   "The ATT prompt must control IDFA only and must not control AppsFlyer initialization."
 );
 assert(
-  analyticsSource.includes("APPSFLYER_FIRST_TOUCH_STORAGE_KEY") &&
-    analyticsSource.includes("mergeWriteOnceAttribution"),
-  "AppsFlyer first-touch attribution must be persisted write-once."
+  analyticsSource.includes("APPSFLYER_REVENUECAT_ATTRIBUTION_STATE_STORAGE_KEY") &&
+    attributionStateMachineSource.includes("ATTRIBUTION_STATE_SCHEMA_VERSION = 2") &&
+    attributionStateMachineSource.includes("let operationQueue = Promise.resolve();") &&
+    attributionStateMachineSource.includes("written_pending_upload") &&
+    attributionStateMachineSource.includes("synced_full"),
+  "AppsFlyer first-touch attribution must use the serialized versioned delivery state."
 );
 assert(
   analyticsSource.includes("GA4_PURCHASE_DEDUP_STORAGE_KEY") &&
     analyticsSource.includes("ga4PurchaseLogQueue") &&
-    analyticsSource.includes("previousIds.includes(normalizedTransactionId)"),
+    analyticsSource.includes("runDeduplicatedPurchase({") &&
+    purchaseDedupSource.includes("previousIds.includes(normalizedTransactionId)"),
   "GA4 purchase must retain persistent transaction deduplication."
+);
+assert(
+  revenueCatAttributionSyncSource.includes("preservedExistingCustomer = true") &&
+    revenueCatAttributionSyncSource.includes("didWriteAppsFlyerId") &&
+    revenueCatAttributionSyncSource.includes("previouslyWrittenAppsFlyerId") &&
+    !purchasesSource.includes(
+      "preserved && !!normalizeAttributionIdentifier(attribution?.appsFlyerId)"
+    ),
+  "Existing RevenueCat customers must never be falsely confirmed from an input ID."
 );
 assert(
   !appSource.includes("install_id: premiumInstallId"),

@@ -1,5 +1,5 @@
 {
-  "maxEventNames": 216,
+  "maxEventNames": 217,
   "schemaVersion": "2",
-  "reviewNote": "Increase maxEventNames only with an explicit analytics-contract review."
+  "reviewNote": "Reviewed 2026-08-14: added the product-only next_decision_coach lifecycle event."
 }

@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import AbandonedOfferWheel from "./AbandonedOfferWheel";
+import { resolveForegroundForColor } from "../utils/themeColors";
 
 const HERO_REFERENCE_VISUAL = require("../../assets/paywall/v2/hero_reference.jpg");
 
@@ -31,61 +32,61 @@ const FALLBACK_FEATURES_BY_LANGUAGE = {
   ru: [
     "Неограниченные сохранения без дневного лимита",
     "Больше целей, чтобы видеть реальный прогресс накоплений",
-    "Умный трекинг искушений показывает, где деньги утекают чаще всего",
+    "Автосбор по расписанию готовит повторные искушения к быстрой проверке",
     "Глубокая аналитика помогает закреплять привычки и экономить осознаннее",
   ],
   en: [
     "Unlimited saves without the daily free limit",
     "More savings goals so every resisted purchase has a destination",
-    "Smart temptation tracking shows where money leaks most often",
+    "Scheduled auto-collect prepares recurring temptations for a quick review",
     "Deeper progress insights help turn saved impulses into better habits",
   ],
   es: [
     "Ahorros ilimitados sin el límite diario gratis",
     "Más metas para que cada compra resistida tenga destino",
-    "El seguimiento inteligente muestra dónde se escapa más dinero",
+    "La recolección automática prepara tentaciones recurrentes para una revisión rápida",
     "Insights más profundos ayudan a convertir impulsos evitados en hábitos",
   ],
   fr: [
     "Épargnes illimitées sans limite quotidienne gratuite",
     "Plus d'objectifs pour donner une destination à chaque achat évité",
-    "Le suivi intelligent montre où l'argent s'échappe le plus",
+    "La collecte automatique prépare les tentations récurrentes pour une revue rapide",
     "Des analyses plus profondes transforment les impulsions évitées en habitudes",
   ],
   de: [
     "Unbegrenztes Sparen ohne tägliches Gratislimit",
     "Mehr Sparziele, damit jeder widerstandene Kauf ein Ziel hat",
-    "Smartes Tracking zeigt, wo Geld am häufigsten verloren geht",
+    "Die automatische Sammlung bereitet wiederkehrende Versuchungen zur schnellen Prüfung vor",
     "Tiefere Analysen machen aus widerstandenen Impulsen bessere Gewohnheiten",
   ],
   pt: [
     "Poupanças ilimitadas sem o limite diário grátis",
     "Mais metas para cada compra evitada ter destino",
-    "O acompanhamento inteligente mostra onde o dinheiro escapa mais",
+    "A coleta automática prepara tentações recorrentes para uma revisão rápida",
     "Insights mais profundos ajudam a transformar impulsos evitados em hábitos",
   ],
   it: [
     "Risparmi illimitati senza il limite giornaliero gratuito",
     "Più obiettivi così ogni acquisto evitato ha una destinazione",
-    "Il tracking intelligente mostra dove il denaro scappa più spesso",
+    "La raccolta automatica prepara le tentazioni ricorrenti per una verifica rapida",
     "Insight più profondi aiutano a trasformare gli impulsi evitati in abitudini",
   ],
   ar: [
     "ادخار غير محدود بلا حد يومي مجاني",
     "أهداف أكثر ليصبح لكل شراء تم مقاومته وجهة واضحة",
-    "التتبع الذكي يوضح أين يتسرّب المال غالباً",
+    "الجمع التلقائي يجهز الإغراءات المتكررة لمراجعة سريعة",
     "رؤى أعمق تساعد على تحويل مقاومة الاندفاعات إلى عادات أفضل",
   ],
   zh: [
     "不受每日免费次数限制，持续记录省下的钱",
     "更多储蓄目标，让每次克制消费都有去处",
-    "智能追踪帮你看清钱最常流失在哪里",
+    "自动收集会整理重复出现的诱惑卡片，方便快速确认",
     "更深入的进度洞察，把克制冲动变成稳定习惯",
   ],
   ko: [
     "일일 무료 제한 없이 절약 기록을 계속 남기기",
     "더 많은 목표로 참아낸 소비마다 목적지를 만들기",
-    "스마트 유혹 추적으로 돈이 새는 지점을 확인하기",
+    "자동 수집으로 반복 유혹을 모아 빠르게 확인하기",
     "깊은 진행 인사이트로 절약 행동을 습관으로 바꾸기",
   ],
 };
@@ -781,8 +782,12 @@ const PremiumPaywallModalV2 = ({
       accentText: colors?.primary || "#536DFE",
       featureAccent: premiumAccent || (isDarkMode ? "#C084FC" : "#7C3AED"),
       success: colors?.success || "#1FA561",
-      ctaBg: colors?.primary || "#536DFE",
-      ctaText: colors?.onPrimary || "#FFFFFF",
+      ctaBg: colors?.success || "#247451",
+      ctaText: resolveForegroundForColor(colors?.success || "#247451"),
+      ctaDisabledBg: colors?.disabled || (isDarkMode ? "#717A8C" : "#8B909C"),
+      ctaDisabledText: resolveForegroundForColor(
+        colors?.disabled || (isDarkMode ? "#717A8C" : "#8B909C")
+      ),
       subtleButtonBg: colors?.surfaceMuted || colors?.card || (isDarkMode ? "#1C2436" : "#F3F5FA"),
       subtleButtonText: colors?.text || (isDarkMode ? "#E7EDFF" : "#1D2742"),
       divider: colors?.separator || colors?.border || (isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(23,50,45,0.12)"),
@@ -1789,7 +1794,7 @@ const PremiumPaywallModalV2 = ({
               style={[
                 styles.primaryButton,
                 {
-                  backgroundColor: purchaseDisabled ? "rgba(248,141,57,0.48)" : palette.ctaBg,
+                  backgroundColor: purchaseDisabled ? palette.ctaDisabledBg : palette.ctaBg,
                   height: compactTier.ctaHeight,
                 },
               ]}
@@ -1801,7 +1806,10 @@ const PremiumPaywallModalV2 = ({
               accessibilityState={{ disabled: purchaseDisabled }}
             >
               {purchaseLoadingPlan ? (
-                <ActivityIndicator color={palette.ctaText} size="small" />
+                <ActivityIndicator
+                  color={purchaseDisabled ? palette.ctaDisabledText : palette.ctaText}
+                  size="small"
+                />
               ) : (
                 <Text
                   allowFontScaling
@@ -1809,7 +1817,12 @@ const PremiumPaywallModalV2 = ({
                   adjustsFontSizeToFit
                   minimumFontScale={0.78}
                   numberOfLines={1}
-                  style={styles.primaryButtonText}
+                  style={[
+                    styles.primaryButtonText,
+                    {
+                      color: purchaseDisabled ? palette.ctaDisabledText : palette.ctaText,
+                    },
+                  ]}
                 >
                   {primaryButtonLabel}
                 </Text>

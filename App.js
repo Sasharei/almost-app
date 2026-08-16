@@ -49,6 +49,7 @@ import Svg, {
   Mask,
   Rect as SvgRect,
   LinearGradient as SvgLinearGradient,
+  RadialGradient as SvgRadialGradient,
   Stop as SvgStop,
   Path as SvgPath,
   Text as SvgText,
@@ -213,6 +214,7 @@ import {
   GREEN_HEALTH_COIN_TIER,
   BLUE_HEALTH_COIN_ASSET,
   BLUE_HEALTH_COIN_VALUE,
+  GREEN_HEALTH_COIN_ASSET,
   GOAL_COMPLETION_REWARD_COINS,
   GOAL_COMPLETION_REWARD_TIER,
   GOAL_COMPLETION_REWARD_VALUE,
@@ -256,6 +258,10 @@ import {
   WEEKDAY_SELECTOR_ORDER,
   WEEKDAY_LABEL_KEYS,
   FREQUENCY_COUNTDOWN_TOKENS,
+  TEMPTATION_SAVINGS_SCORE_LABELS,
+  TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES,
+  TEMPTATION_DUPLICATE_ACTION_LABELS,
+  TEMPTATION_DUPLICATE_HINTS,
 } from "./src/constants/localizedUiCopy";
 import {
   FEATURE_UNLOCK_STEPS,
@@ -266,14 +272,13 @@ import {
   FEATURE_UNLOCK_PREMIUM_VARIANTS,
 } from "./src/constants/featureUnlock";
 import {
-  APP_TUTORIAL_BASE_STEPS,
-  TEMPTATION_TUTORIAL_STEPS,
   FAB_TUTORIAL_STATUS,
-  FEED_FIRST_TUTORIAL_STAGE,
   QUEUED_MODAL_TYPES,
+  POST_ACTION_PROMPT_MODAL_TYPES,
+  POST_ACTION_PROMPT_MODAL_PRIORITY,
+  USER_INITIATED_QUEUED_MODAL_TYPES,
   CARD_TEXTURE_ACCENTS,
   TEMPTATION_CARD_RADIUS,
-  ANDROID_TUTORIAL_HIGHLIGHT_OFFSET,
   TAB_BAR_BASE_HEIGHT,
   TAB_BAR_BASE_HEIGHT_COMPACT,
   HERO_MASCOT_SIZE,
@@ -287,7 +292,6 @@ import {
   FAB_TUTORIAL_HALO_SIZE,
   FAB_TUTORIAL_CARD_SPACING,
   FAB_TUTORIAL_HALO_INSET,
-  TUTORIAL_HIGHLIGHT_INSET,
   BACK_GESTURE_EDGE_WIDTH,
   BACK_GESTURE_TRIGGER_DISTANCE,
   BACK_GESTURE_VERTICAL_SLOP,
@@ -301,6 +305,9 @@ import {
   PRO_THEME_ACCENT_OPTIONS,
   DEFAULT_PRO_THEME_ACCENT_ID,
   PRO_THEME_ACCENT_COPY,
+  MOOD_GRADIENTS,
+  MOOD_GRADIENT_OVERLAY_OPACITY,
+  MOOD_GRADIENT_THEME_MIX,
   INTER_FONTS,
 } from "./src/constants/themeConfig";
 import {
@@ -329,9 +336,7 @@ import {
   FOCUS_VICTORY_THRESHOLD,
   FOCUS_VICTORY_REWARD,
   FOCUS_LOSS_THRESHOLD,
-  FOCUS_RECENT_WINDOW_MS,
-  FOCUS_RECENT_MIN_SPEND_COUNT,
-  FOCUS_MIN_UNIQUE_SPEND_TEMPLATES,
+  FOCUS_DURATION_MS,
   CHALLENGE_REWARD_SCALE,
   PUSH_NOTIFICATION_COOLDOWN_MS,
   PUSH_DEDUPE_WINDOW_MS,
@@ -373,15 +378,12 @@ import {
   NORTH_STAR_WINDOW_MS,
   SAVE_ACTION_COLOR,
   SPEND_ACTION_COLOR,
-  COIN_ENTRY_SAVE_BACKGROUND,
-  COIN_ENTRY_SPEND_BACKGROUND,
   GOAL_HIGHLIGHT_COLOR,
   GOAL_SWIPE_THRESHOLD,
   DELETE_SWIPE_THRESHOLD,
   CHALLENGE_SWIPE_ACTION_WIDTH,
   CUSTOM_TEMPTATION_SAMPLE_USD,
-  RATING_PROMPT_ACTION_THRESHOLD,
-  RATING_PROMPT_ACTION_TYPES,
+  RATING_PROMPT_SERIES_THRESHOLD,
   RATING_PROMPT_STORE_THRESHOLD,
   RATING_PROMPT_FEEDBACK_MIN_LENGTH,
   ANDROID_REVIEW_URL,
@@ -518,6 +520,55 @@ import {
 } from "./src/monetization/purchasesClient";
 import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetization/backendSync";
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  TEMPTATION_SERIES_STATUS,
+  applyTemptationSeriesAction,
+  claimTemptationSeries,
+  createInitialTemptationSeriesState,
+  getTemptationSeriesProgress,
+  getTemptationSeriesSummary,
+  reconcileTemptationSeriesTargets,
+  normalizeTemptationSeriesState,
+  normalizeTemptationId,
+  resetTemptationSeriesForDay,
+} = require("./src/engagement/temptationSeries");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  buildTodayTemptationPlan,
+  getNextLocalMidnightAt,
+  partitionUnifiedTemptationFeed,
+} = require("./src/engagement/todayTemptations");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  shouldPreserveTemptationScheduleOnAction,
+} = require("./src/engagement/temptationSchedule");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  NEXT_DECISION_COACH_STATUS,
+  createEligibleNextDecisionCoach,
+  normalizeNextDecisionCoachState,
+  resolveNextDecisionCoachTarget,
+  serializeNextDecisionCoachState,
+  shouldQueueNextDecisionCoach,
+} = require("./src/engagement/nextDecisionCoach");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  isTycoonAutosaveEnabled,
+  normalizeTycoonSettings,
+  resetLegacyTycoonPendingEvents,
+  shouldResetLegacyTycoonPendingEvents,
+} = require("./src/engagement/tycoonAccess");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  createUiSessionState,
+  normalizeUiSessionState,
+} = require("./src/utils/uiSessionState");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  resolveFabTutorialCutout,
+} = require("./src/utils/fabTutorialGeometry");
+
 const applyTextScalingDefaults = (Component, componentLabel) => {
   if (!Component) return;
   try {
@@ -604,6 +655,7 @@ const {
   isTrackingStatusGranted,
 } = require("./src/analytics/consentPolicy");
 const IOS_DEFAULT_MODAL_PRESENTATION = "overFullScreen";
+const IOS_NATIVE_TAB_BAR_BOTTOM_LIFT = 6;
 const ANDROID_STABLE_ALPHA_PROPS =
   Platform.OS === "android"
     ? {
@@ -1077,6 +1129,8 @@ const safeNotifications = (() => {
       swallow(safeAsyncQueued("notifications badge", api.setBadgeCountAsync, count)),
     getLastNotificationResponseAsync: async () =>
       safeAsyncQueued("notifications last response", api.getLastNotificationResponseAsync),
+    clearLastNotificationResponseAsync: async () =>
+      safeAsyncQueued("notifications clear last response", api.clearLastNotificationResponseAsync),
     addNotificationResponseReceivedListener: (handler) =>
       safeCall("notifications response listener", api.addNotificationResponseReceivedListener, handler),
     addNotificationReceivedListener: (handler) =>
@@ -1268,7 +1322,12 @@ const bootstrapMonitoring = (() => {
     });
   };
 })();
-// Keep native splash visible until our custom LogoSplash is ready.
+// Keep the native splash fully opaque until the first animated logo frame is laid out.
+// Disabling the platform cross-fade prevents the native and React splash layers from
+// briefly blending into a dimmed/colored system-bar frame during the hand-off.
+if (typeof SplashScreen.setOptions === "function") {
+  SplashScreen.setOptions({ duration: 0, fade: false });
+}
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const FREE_GOAL_LIMIT = FREE_PLAN_LIMITS.activeGoals;
@@ -3549,12 +3608,14 @@ const getCelebrationMessages = (language, gender = "none") => {
   return Array.isArray(variant) ? variant : [];
 };
 const createInitialRatingPromptState = () => ({
+  triggerVersion: 2,
   firstOpenAt: new Date().toISOString(),
   completed: false,
   lastShownAt: null,
   lastAction: null,
   respondedAt: null,
   actionCount: 0,
+  seriesCompletionCount: 0,
   actionPrompted: false,
 });
 
@@ -4342,6 +4403,7 @@ const FEED_ONLY_OVERLAY_TYPES = new Set(["focus_digest", "impulse_alert"]);
 const FEED_ONLY_QUEUED_MODAL_TYPES = new Set([
   QUEUED_MODAL_TYPES.DID_YOU_KNOW,
   QUEUED_MODAL_TYPES.FOCUS_DIGEST,
+  QUEUED_MODAL_TYPES.IMPULSE_ALERT,
 ]);
 
 const getDailyRewardForDay = (baseAmount = 0, day = 1) => {
@@ -4925,39 +4987,6 @@ const lightenColor = (hex, amount = 0.25) => {
   return `rgb(${r}, ${g}, ${b})`;
 };
 
-const MOOD_GRADIENTS = {
-  [MOOD_IDS.NEUTRAL]: {
-    start: "#CDE6FF",
-    end: "#F3F7FF",
-    accent: "#A2C9FF",
-  },
-  [MOOD_IDS.FOCUSED]: {
-    start: "#FFE8C7",
-    end: "#FFD6E7",
-    accent: "#FFB973",
-  },
-  [MOOD_IDS.IMPULSIVE]: {
-    start: "#FFD1CC",
-    end: "#FFF0DA",
-    accent: "#FF8A7F",
-  },
-  [MOOD_IDS.DOUBTER]: {
-    start: "#E3D8FF",
-    end: "#F7E9FF",
-    accent: "#C7B1FF",
-  },
-  [MOOD_IDS.TIRED]: {
-    start: "#D5E0FF",
-    end: "#ECEFF5",
-    accent: "#9AB0FF",
-  },
-  [MOOD_IDS.DREAMER]: {
-    start: "#CFF7F1",
-    end: "#E9E2FF",
-    accent: "#94D8C7",
-  },
-};
-
 const MOOD_INFO_COPY = {
   intro: {
     ru: "Это адаптивный режим Almost.",
@@ -4982,20 +5011,23 @@ const MOOD_INFO_COPY = {
 const getMoodGradient = (moodId = MOOD_IDS.NEUTRAL) =>
   MOOD_GRADIENTS[moodId] || MOOD_GRADIENTS[MOOD_IDS.NEUTRAL];
 
-const applyThemeToMoodGradient = (palette, themeKey = "light") => {
+const applyThemeToMoodGradient = (palette, themeKey = "light", themeColors = null) => {
   if (!palette) return getMoodGradient();
+  const resolvedThemeColors = themeColors || THEMES[themeKey] || THEMES[DEFAULT_THEME];
   if (themeKey === PRO_THEME_ID) {
+    const mix = MOOD_GRADIENT_THEME_MIX.pro;
     return {
-      start: blendColors(THEMES.pro.background, palette.start, 0.24),
-      end: blendColors(THEMES.pro.background, palette.end, 0.16),
-      accent: blendColors(palette.accent, THEMES.pro.text, 0.12),
+      start: blendColors(resolvedThemeColors.background, palette.start, mix.startMoodMix),
+      end: blendColors(resolvedThemeColors.surfaceMuted, palette.end, mix.endMoodMix),
+      accent: blendColors(palette.accent, resolvedThemeColors.primary, mix.accentPrimaryMix),
     };
   }
   if (themeKey !== "dark") return palette;
+  const mix = MOOD_GRADIENT_THEME_MIX.dark;
   return {
-    start: blendColors(THEMES.dark.surface, palette.start, 0.14),
-    end: blendColors(THEMES.dark.background, palette.end, 0.08),
-    accent: blendColors(palette.accent, THEMES.dark.surface, 0.22),
+    start: blendColors(resolvedThemeColors.surface, palette.accent, mix.startAccentMix),
+    end: blendColors(resolvedThemeColors.background, palette.accent, mix.endAccentMix),
+    accent: blendColors(palette.accent, resolvedThemeColors.text, mix.accentTextMix),
   };
 };
 
@@ -5486,6 +5518,7 @@ const TAMAGOTCHI_CLEAN_SWIPE_STROKE_COOLDOWN_MS = 45;
 const TAMAGOTCHI_CLOSE_EDGE_WIDTH = 56;
 const TAMAGOTCHI_CLOSE_SWIPE_DISTANCE = 52;
 const TAMAGOTCHI_CLOSE_VERTICAL_SLOP = 72;
+const IS_TALL_TAMAGOTCHI_DEVICE = SCREEN_HEIGHT >= 820;
 const createTamagotchiCleaningProgress = () => ({
   strokeHits: 0,
   soapHits: 0,
@@ -6138,14 +6171,17 @@ function AlmiTamagotchi({
   animationSetKey = DEFAULT_TAMAGOTCHI_SKIN,
   imageOffsetX = ALMI_MASCOT_IMAGE_OFFSET_X,
   idleAnimationsEnabled = true,
+  dirtyOverlayEnabled = true,
+  transitionFallbackEnabled = false,
 }) {
   const [currentKey, setCurrentKey] = useState("idle");
+  const [loadedSourceIdentity, setLoadedSourceIdentity] = useState(null);
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
   const currentKeyRef = useRef("idle");
   const normalizedDesaturation = Math.max(0, Math.min(1, Number(desaturation) || 0));
   const dirtyOverlayStrength = normalizedDesaturation > 0 ? normalizedDesaturation : 0;
-  const showDirtyOverlay = dirtyOverlayStrength >= 0.12;
+  const showDirtyOverlay = dirtyOverlayEnabled && dirtyOverlayStrength >= 0.12;
   const idleVariants = useMemo(
     () =>
       isPlayDeprived
@@ -6277,6 +6313,7 @@ function AlmiTamagotchi({
     ? skinConfig?.preview || animatedDefaultImageSource
     : animatedDefaultImageSource;
   const renderSourceKey = shouldUseStaticPreview ? "preview" : currentKey;
+  const sourceIdentity = `${sourceKey}:${renderSourceKey}`;
   const flattenedWrapStyle = StyleSheet.flatten([styles.almiMascotWrap, style]) || {};
   const resolvedClipRadius = Number.isFinite(flattenedWrapStyle?.borderRadius)
     ? Math.max(0, flattenedWrapStyle.borderRadius)
@@ -6287,6 +6324,22 @@ function AlmiTamagotchi({
   return (
     <View style={[styles.almiMascotWrap, style]}>
       <View style={[styles.almiMascotClip, { borderRadius: resolvedClipRadius }]}>
+        {transitionFallbackEnabled && loadedSourceIdentity !== sourceIdentity && (
+          <Image
+            source={skinConfig?.preview || defaultImageSource}
+            style={[
+              styles.almiMascotImage,
+              styles.almiMascotFallbackImage,
+              {
+                borderRadius: resolvedClipRadius,
+                transform: [{ translateX: resolvedImageOffsetX }],
+              },
+              normalizedDesaturation > 0 && { opacity: 1 - dirtyOverlayStrength * 0.4 },
+            ]}
+            resizeMode="contain"
+            fadeDuration={0}
+          />
+        )}
         <Image
           key={`almi_${sourceKey}_${renderSourceKey}`}
           source={source}
@@ -6298,6 +6351,11 @@ function AlmiTamagotchi({
           ]}
           resizeMode="contain"
           fadeDuration={0}
+          onLoad={
+            transitionFallbackEnabled
+              ? () => setLoadedSourceIdentity(sourceIdentity)
+              : undefined
+          }
         />
         {showDirtyOverlay && (
           <View
@@ -9247,6 +9305,17 @@ const capitalizeFirstLetter = (value = "") => {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 };
 
+const capitalizeFirstCasedCharacter = (value = "", locale = undefined) => {
+  const characters = Array.from(String(value || "").trim());
+  const index = characters.findIndex(
+    (character) =>
+      character.toLocaleUpperCase(locale) !== character.toLocaleLowerCase(locale)
+  );
+  if (index < 0) return characters.join("");
+  characters[index] = characters[index].toLocaleUpperCase(locale);
+  return characters.join("");
+};
+
 const getWeekStartMonday = (date) => {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -10391,6 +10460,29 @@ const createCustomTemptationCard = (customTemptation, fallbackCurrency = DEFAULT
   };
 };
 
+const buildDuplicateTemptationTitle = (sourceTitle, existingTitles = []) => {
+  const normalizedSource = String(sourceTitle || "").trim();
+  if (!normalizedSource) return "2";
+  const normalizedExisting = new Set(
+    (Array.isArray(existingTitles) ? existingTitles : [])
+      .map((title) => String(title || "").trim().toLocaleLowerCase())
+      .filter(Boolean)
+  );
+  const trailingNumberMatch = normalizedSource.match(/^(.*\S)\s+(\d+)$/u);
+  const trailingNumber = trailingNumberMatch ? Number(trailingNumberMatch[2]) : null;
+  const potentialBase = trailingNumberMatch ? trailingNumberMatch[1].trim() : normalizedSource;
+  const hasGeneratedBase =
+    trailingNumber !== null &&
+    trailingNumber >= 2 &&
+    normalizedExisting.has(potentialBase.toLocaleLowerCase());
+  const baseTitle = hasGeneratedBase ? potentialBase : normalizedSource;
+  let suffix = hasGeneratedBase ? trailingNumber + 1 : 2;
+  while (normalizedExisting.has(`${baseTitle} ${suffix}`.toLocaleLowerCase())) {
+    suffix += 1;
+  }
+  return `${baseTitle} ${suffix}`;
+};
+
 const hasValidCustomPrice = (entry) => {
   if (!entry || typeof entry !== "object") return false;
   const price = Number(entry.priceUSD);
@@ -11220,10 +11312,6 @@ const HERO_POTENTIAL_MISSED_CYCLE_PENALTY = 0.35;
 const HERO_POTENTIAL_MIN_ADHERENCE = 0.35;
 const HERO_POTENTIAL_SPEND_ONLY_BASE_SAVE_RATE = 0.35;
 const HERO_POTENTIAL_SPEND_ONLY_RATE_DECAY = 0.4;
-const HERO_POTENTIAL_AHEAD_MID_RATIO = 0.15;
-const HERO_POTENTIAL_AHEAD_HIGH_RATIO = 0.35;
-const HERO_POTENTIAL_BEHIND_NEAR_RATIO = 0.15;
-const HERO_POTENTIAL_BEHIND_FAR_RATIO = 0.4;
 const GOAL_JAR_BALL_LAYOUT = [
   { x: 0.18, y: 0.84, r: 0.062, c: 0 },
   { x: 0.34, y: 0.86, r: 0.066, c: 1 },
@@ -11793,17 +11881,6 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Arabic (Saudi Arabia)",
     languageArabicUAE: "Arabic (UAE)",
     languageChinese: "Chinese",
-    feedTutorialWelcomeBadge: "Almost Guide",
-    feedTutorialWelcomeTitle: "Almost helps you stay on track",
-    feedTutorialWelcomeDesc:
-      "Use each card to log decisions: tap Save if you resisted the temptation, or Spent if you bought it anyway.",
-    feedTutorialWelcomeHint:
-      "Both actions matter. Almost adapts to your real behavior and gets better at guiding you to your goal.",
-    feedTutorialWelcomeAction: "Start",
-    feedTutorialAddTitle: "Create your own temptations",
-    feedTutorialAddDesc:
-      "Tap + to add a custom temptation. Existing cards can be edited with a regular tap.",
-    feedTutorialAddAction: "Create temptation",
     feedTailLevelBadge: "Coming more...",
     feedTailMoreOffersTitle: "More suggested temptations at level {{level}}",
     feedTailMoreOffersSubtitle:
@@ -11815,17 +11892,6 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Арабский (Саудовская Аравия)",
     languageArabicUAE: "Арабский (ОАЭ)",
     languageChinese: "Китайский",
-    feedTutorialWelcomeBadge: "Гид Almost",
-    feedTutorialWelcomeTitle: "Almost поможет дойти до цели",
-    feedTutorialWelcomeDesc:
-      "Отмечай решения на карточке: «Копить», если удержался(ась) от искушения, и «Потратить», если всё же потратил(а).",
-    feedTutorialWelcomeHint:
-      "Оба действия важны: Almost подстроится под твои привычки и будет точнее вести к цели. Сделаем первое действие.",
-    feedTutorialWelcomeAction: "Начать",
-    feedTutorialAddTitle: "Создавай свои искушения",
-    feedTutorialAddDesc:
-      "Нажми «+», чтобы добавить своё искушение. Существующие карточки можно редактировать обычным тапом.",
-    feedTutorialAddAction: "Создать искушение",
     feedTailLevelBadge: "Скоро больше...",
     feedTailMoreOffersTitle: "Больше предложенных искушений на уровне {{level}}",
     feedTailMoreOffersSubtitle:
@@ -11844,17 +11910,6 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Árabe (Arabia Saudí)",
     languageArabicUAE: "Árabe (EAU)",
     languageChinese: "Chino",
-    feedTutorialWelcomeBadge: "Guía Almost",
-    feedTutorialWelcomeTitle: "Almost te ayuda a seguir el plan",
-    feedTutorialWelcomeDesc:
-      "En cada tarjeta registra tu decisión: «Ahorrar» si resististe la tentación, o «Gastar» si terminaste comprando.",
-    feedTutorialWelcomeHint:
-      "Ambas acciones importan. Almost se adapta a tu comportamiento real y te guía mejor hacia tu meta.",
-    feedTutorialWelcomeAction: "Empezar",
-    feedTutorialAddTitle: "Crea tus propias tentaciones",
-    feedTutorialAddDesc:
-      "Pulsa + para crear una tentación personalizada. Las tarjetas existentes se editan con un toque.",
-    feedTutorialAddAction: "Crear tentación",
     feedTailLevelBadge: "Muy pronto...",
     feedTailMoreOffersTitle: "Más tentaciones sugeridas en el nivel {{level}}",
     feedTailMoreOffersSubtitle:
@@ -11873,17 +11928,6 @@ const LANGUAGE_OVERRIDES = {
     languageArabicSaudi: "Arabe (Arabie saoudite)",
     languageArabicUAE: "Arabe (EAU)",
     languageChinese: "Chinois",
-    feedTutorialWelcomeBadge: "Guide Almost",
-    feedTutorialWelcomeTitle: "Almost t'aide à garder le cap",
-    feedTutorialWelcomeDesc:
-      "Sur chaque carte, note ta décision : « Épargner » si tu as résisté, ou « Dépenser » si tu as finalement craqué.",
-    feedTutorialWelcomeHint:
-      "Les deux actions sont utiles. Almost s'adapte à ton comportement réel et te guide mieux vers ton objectif.",
-    feedTutorialWelcomeAction: "Commencer",
-    feedTutorialAddTitle: "Crée tes propres tentations",
-    feedTutorialAddDesc:
-      "Appuie sur + pour créer une tentation perso. Les cartes existantes se modifient avec un simple tap.",
-    feedTutorialAddAction: "Créer une tentation",
     feedTailLevelBadge: "Encore plus bientôt...",
     feedTailMoreOffersTitle: "Plus de tentations suggérées au niveau {{level}}",
     feedTailMoreOffersSubtitle:
@@ -11925,17 +11969,6 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "Bis zum Ziel",
     homeWidgetGoalLabel: "Bis zum Ziel",
     tutorialFeedTitle: "Feed und Sofortentscheidungen",
-    feedTutorialWelcomeBadge: "Almost Guide",
-    feedTutorialWelcomeTitle: "Almost bringt dich sicher ans Ziel",
-    feedTutorialWelcomeDesc:
-      "Markiere jede Entscheidung auf der Karte: „Sparen“, wenn du widerstanden hast, und „Ausgegeben“, wenn du doch gekauft hast.",
-    feedTutorialWelcomeHint:
-      "Beides ist wichtig. Almost lernt aus deinem Verhalten und hilft dir Schritt fuer Schritt zum Ziel.",
-    feedTutorialWelcomeAction: "Los geht's",
-    feedTutorialAddTitle: "Erstelle eigene Versuchungen",
-    feedTutorialAddDesc:
-      "Tippe auf +, um eine eigene Versuchung anzulegen. Vorhandene Karten kannst du mit einem Tap bearbeiten.",
-    feedTutorialAddAction: "Versuchung erstellen",
     feedTailLevelBadge: "Bald mehr...",
     feedTailMoreOffersTitle: "Mehr vorgeschlagene Versuchungen auf Level {{level}}",
     feedTailMoreOffersSubtitle:
@@ -11980,17 +12013,6 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "إلى الهدف",
     homeWidgetGoalLabel: "إلى الهدف",
     tutorialFeedTitle: "الخلاصة والقرارات الفورية",
-    feedTutorialWelcomeBadge: "دليل Almost",
-    feedTutorialWelcomeTitle: "Almost يساعدك على الالتزام بهدفك",
-    feedTutorialWelcomeDesc:
-      "سجّل قرارك في كل بطاقة: اضغط «ادخار» إذا قاومت الإغراء، أو «إنفاق» إذا اشتريت في النهاية.",
-    feedTutorialWelcomeHint:
-      "كلا الإجراءين مهمان. Almost يتكيّف مع سلوكك الحقيقي ليساعدك على الوصول إلى هدفك.",
-    feedTutorialWelcomeAction: "ابدأ",
-    feedTutorialAddTitle: "أنشئ إغراءاتك الخاصة",
-    feedTutorialAddDesc:
-      "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
-    feedTutorialAddAction: "إنشاء إغراء",
     feedTailLevelBadge: "المزيد قريباً...",
     feedTailMoreOffersTitle: "مزيد من الإغراءات المقترحة عند المستوى {{level}}",
     feedTailMoreOffersSubtitle:
@@ -12035,17 +12057,6 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "إلى الهدف",
     homeWidgetGoalLabel: "إلى الهدف",
     tutorialFeedTitle: "الخلاصة والقرارات الفورية",
-    feedTutorialWelcomeBadge: "دليل Almost",
-    feedTutorialWelcomeTitle: "Almost يساعدك على الالتزام بهدفك",
-    feedTutorialWelcomeDesc:
-      "سجّل قرارك في كل بطاقة: اضغط «ادخار» إذا قاومت الإغراء، أو «إنفاق» إذا اشتريت في النهاية.",
-    feedTutorialWelcomeHint:
-      "كلا الإجراءين مهمان. Almost يتكيّف مع سلوكك الحقيقي ليساعدك على الوصول إلى هدفك.",
-    feedTutorialWelcomeAction: "ابدأ",
-    feedTutorialAddTitle: "أنشئ إغراءاتك الخاصة",
-    feedTutorialAddDesc:
-      "اضغط + لإنشاء إغراء مخصص. ويمكنك تعديل البطاقات الحالية بلمسة عادية.",
-    feedTutorialAddAction: "إنشاء إغراء",
     feedTailLevelBadge: "المزيد قريباً...",
     feedTailMoreOffersTitle: "مزيد من الإغراءات المقترحة عند المستوى {{level}}",
     feedTailMoreOffersSubtitle:
@@ -12090,16 +12101,6 @@ const LANGUAGE_OVERRIDES = {
     goalWidgetTitle: "距离目标",
     homeWidgetGoalLabel: "距离目标",
     tutorialFeedTitle: "动态与即时决策",
-    feedTutorialWelcomeBadge: "Almost 指南",
-    feedTutorialWelcomeTitle: "Almost 帮你稳步达成目标",
-    feedTutorialWelcomeDesc:
-      "在每张卡片记录结果：如果你忍住了就点「已省下」，如果还是花了就点「已花费」。",
-    feedTutorialWelcomeHint:
-      "两个动作都很重要。Almost 会根据你的真实习惯调整，持续帮助你靠近目标。",
-    feedTutorialWelcomeAction: "开始",
-    feedTutorialAddTitle: "创建你的专属诱惑",
-    feedTutorialAddDesc: "点击 + 创建自定义诱惑。已有卡片可通过点击进行编辑。",
-    feedTutorialAddAction: "创建诱惑",
     feedTailLevelBadge: "更多即将到来...",
     feedTailMoreOffersTitle: "在等级 {{level}} 获得更多推荐诱惑卡",
     feedTailMoreOffersSubtitle: "这些是推荐的示例卡片。继续记录你的选择，在下一等级会解锁更多。",
@@ -14195,6 +14196,26 @@ const colorWithAlpha = (color, alpha = 1) => {
   return `rgba(${r}, ${g}, ${b}, ${normalized})`;
 };
 
+const TEMPTATION_ACTION_BUTTON_PALETTES = Object.freeze({
+  light: Object.freeze({
+    saveBackground: "#28D985",
+    saveForeground: "#042B1B",
+    spendBackground: "#FF657B",
+    spendForeground: "#30030A",
+  }),
+  dark: Object.freeze({
+    saveBackground: "#35E295",
+    saveForeground: "#042B1B",
+    spendBackground: "#FF7B8D",
+    spendForeground: "#30030A",
+  }),
+});
+
+const resolveTemptationActionButtonPalette = (isDarkTheme) =>
+  isDarkTheme
+    ? TEMPTATION_ACTION_BUTTON_PALETTES.dark
+    : TEMPTATION_ACTION_BUTTON_PALETTES.light;
+
 const resolveAndroidOpaqueLayerColor = (
   foregroundColor,
   backgroundColor,
@@ -14333,6 +14354,59 @@ const filterTemptationsByPrice = (list, limitUSD) => {
   return list.filter((item) => isCustomTemptation(item) || getTemptationPrice(item) <= limitUSD);
 };
 
+const TemptationGlyph = React.memo(function TemptationGlyph({
+  type,
+  color,
+  size = 16,
+  strokeWidth = 1.8,
+}) {
+  const commonPathProps = {
+    fill: "none",
+    stroke: color,
+    strokeWidth,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      {type === "timer" ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8.25" {...commonPathProps} />
+          <SvgPath d="M12 7.5v5l3.25 1.75" {...commonPathProps} />
+        </>
+      ) : type === "score" ? (
+        <>
+          <SvgPath d="M5 16.5 9.25 12l3.25 3 6.5-7" {...commonPathProps} />
+          <SvgPath d="M15.25 8H19v3.75" {...commonPathProps} />
+        </>
+      ) : type === "target" ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8" {...commonPathProps} />
+          <SvgCircle cx="12" cy="12" r="3.25" {...commonPathProps} />
+          <SvgPath d="M12 2.75V6M12 18v3.25M2.75 12H6M18 12h3.25" {...commonPathProps} />
+        </>
+      ) : type === "pause" ? (
+        <>
+          <SvgPath d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" {...commonPathProps} />
+          <SvgPath d="m9.45 5.2 2.55 2.3 2.55-2.3M9.45 18.8 12 16.5l2.55 2.3M5.35 10.65l3.25-.95.7-3.35M18.65 13.35l-3.25.95-.7 3.35M5.35 13.35l3.25.95.7 3.35M18.65 10.65l-3.25-.95-.7-3.35" {...commonPathProps} />
+        </>
+      ) : type === "duplicate" ? (
+        <>
+          <SvgRect x="8" y="8" width="11" height="11" rx="2.25" {...commonPathProps} />
+          <SvgPath d="M16 8V6.75A1.75 1.75 0 0 0 14.25 5h-7.5A1.75 1.75 0 0 0 5 6.75v7.5A1.75 1.75 0 0 0 6.75 16H8" {...commonPathProps} />
+        </>
+      ) : (
+        <>
+          <SvgPath d="M12 3.75 21 19.5H3L12 3.75Z" {...commonPathProps} />
+          <SvgPath d="M12 9v4.5" {...commonPathProps} />
+          <SvgCircle cx="12" cy="16.75" r="0.75" fill={color} />
+        </>
+      )}
+    </Svg>
+  );
+});
+
 function TemptationCardComponent({
   item,
   language,
@@ -14368,14 +14442,15 @@ function TemptationCardComponent({
   onEditGoalSelect,
   onSwipeDelete,
   onSwipeArchive,
+  showSeriesQuickActions = false,
+  seriesChecked = false,
+  onSeriesSkip = null,
+  onSeriesNotMine = null,
   showEditorInline = false,
   cardStyle = null,
   isPrimaryTemptation = false,
   isArchived = false,
   tutorialHighlightMode = null,
-  tutorialHighlightMeasureTick = 0,
-  tutorialHighlightOffset = null,
-  onTutorialHighlightLayoutChange = null,
   interaction = null,
   interactionRefreshKey = "",
   allowThinkAction = true,
@@ -14384,8 +14459,10 @@ function TemptationCardComponent({
   budgetAlertText = null,
   categoryBudget = null,
   onCategoryBudgetPress = null,
-  showSavedCoachMark = false,
-  onSavedCoachMarkAction = null,
+  showNextDecisionCoach = false,
+  nextDecisionCoachCompleted = 1,
+  nextDecisionCoachTotal = 3,
+  onNextDecisionCoachDismiss = null,
   showAmountSliderConfirmCoach = false,
   onAmountSliderConfirmCoachComplete = null,
   isDailyChallengeTarget = false,
@@ -14403,7 +14480,7 @@ function TemptationCardComponent({
 }) {
   const showMetaBadges = !hideMetaBadges;
   const safeInsets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const compactDecisionLayout = windowHeight <= 700;
   const androidSystemBottomInset = resolveAndroidSystemBottomInset({
     safeBottom: safeInsets.bottom,
@@ -14432,210 +14509,59 @@ function TemptationCardComponent({
     resolvedDesc = isCustomCard ? baseDescription || customLanguageFallback || "" : baseDescription;
   }
   const desc = resolvedDesc || "";
-  const tutorialHighlightActive = Boolean(tutorialHighlightMode);
-  const tutorialHighlightActions = tutorialHighlightMode === "actions";
+  const tutorialHighlightActive = Boolean(tutorialHighlightMode) || showNextDecisionCoach;
+  const tutorialHighlightActions = tutorialHighlightMode === "actions" || showNextDecisionCoach;
   const tutorialHighlightSwipe = tutorialHighlightMode === "swipe";
   const tutorialHighlightThink = tutorialHighlightMode === "think" && allowThinkAction;
   const tutorialHighlightFrame = tutorialHighlightSwipe || tutorialHighlightActions;
-  const coachMarkPulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!showSavedCoachMark) {
-      coachMarkPulse.setValue(0);
-      return;
-    }
-    const loop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(coachMarkPulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(coachMarkPulse, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [coachMarkPulse, showSavedCoachMark]);
-  const coachMarkGlowOpacity = coachMarkPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.35, 0.9],
+  const nextDecisionCoachCompletedCount = Math.max(
+    0,
+    Number(nextDecisionCoachCompleted) || 0
+  );
+  const nextDecisionCoachTotalCount = Math.max(
+    1,
+    Number(nextDecisionCoachTotal) || 3
+  );
+  const nextDecisionCoachProgressLabel = t("temptationSeriesProgress", {
+    completed: nextDecisionCoachCompletedCount,
+    total: nextDecisionCoachTotalCount,
   });
-  const coachMarkGlowScale = coachMarkPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.05],
-  });
-  const tutorialHighlightCardRef = useRef(null);
-  const updateTutorialHighlightLayout = useCallback(() => {
-    if (typeof onTutorialHighlightLayoutChange !== "function") return;
-    if (!tutorialHighlightActive) {
-      onTutorialHighlightLayoutChange(null);
-      return;
-    }
-    const node = tutorialHighlightCardRef.current;
-    const measureTarget = node && typeof node.measureInWindow !== "function"
-      ? node.getNode?.()
-      : node;
-    if (!measureTarget || typeof measureTarget.measureInWindow !== "function") return;
-    requestAnimationFrame(() => {
-      measureTarget.measureInWindow((x, y, width, height) => {
-        const androidFineTune =
-          Platform.OS === "android"
-            ? (Number.isFinite(tutorialHighlightOffset)
-                ? tutorialHighlightOffset
-                : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET) + (RNStatusBar.currentHeight || 0)
-            : 0;
-        onTutorialHighlightLayoutChange({
-          x,
-          y: y + androidFineTune,
-          width,
-          height,
-        });
-      });
-    });
-  }, [onTutorialHighlightLayoutChange, tutorialHighlightActive]);
-  const handleTutorialCardLayout = useCallback(() => {
-    updateTutorialHighlightLayout();
-  }, [updateTutorialHighlightLayout]);
-  useEffect(() => {
-    updateTutorialHighlightLayout();
-    const timer = setTimeout(() => {
-      updateTutorialHighlightLayout();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [updateTutorialHighlightLayout]);
-  useEffect(() => {
-    if (!tutorialHighlightActive) return;
-    let fired = false;
-    let cancelled = false;
-    const frame = requestAnimationFrame(() => {
-      fired = true;
-      if (cancelled) return;
-      updateTutorialHighlightLayout();
-    });
-    return () => {
-      cancelled = true;
-      if (!fired) {
-        cancelAnimationFrame(frame);
-      }
-    };
-  }, [tutorialHighlightActive, tutorialHighlightMeasureTick, updateTutorialHighlightLayout]);
-  useEffect(() => {
-    if (!tutorialHighlightActive) return;
-    const subscription = Dimensions.addEventListener("change", updateTutorialHighlightLayout);
-    return () => {
-      if (subscription?.remove) {
-        subscription.remove();
-      } else if (typeof subscription === "function") {
-        subscription();
-      }
-    };
-  }, [tutorialHighlightActive, updateTutorialHighlightLayout]);
-  useEffect(() => {
-    return () => {
-      if (typeof onTutorialHighlightLayoutChange === "function") {
-        onTutorialHighlightLayoutChange(null);
-      }
-    };
-  }, [onTutorialHighlightLayoutChange]);
-  const highlight = true;
   const isDarkTheme = colors?.background === THEMES.dark.background;
+  const cardActionButtonPalette = resolveTemptationActionButtonPalette(isDarkTheme);
+  const cardSaveActionColor = cardActionButtonPalette.saveBackground;
+  const cardSaveActionTextColor = cardActionButtonPalette.saveForeground;
+  const cardSpendActionColor = cardActionButtonPalette.spendBackground;
+  const cardSpendActionTextColor = cardActionButtonPalette.spendForeground;
   const baseColor = item.color || colors.card;
   const focusActive = showMetaBadges && isFocusTarget && !showEditorInline;
-  const darkCardPalette = highlight
-    ? {
-        background: blendColors(baseColor, THEMES.dark.primarySurface, 0.32),
-        border: THEMES.dark.primaryBorder,
-        text: "#E9DDC9",
-        muted: "rgba(233,221,201,0.72)",
-        badgeBg: "rgba(255,255,255,0.1)",
-        badgeBorder: "rgba(255,255,255,0.18)",
-        swipeBg: "rgba(255,255,255,0.05)",
-        swipeBorder: "rgba(255,255,255,0.1)",
-      }
-    : {
-        background: "#101526",
-        border: "rgba(255,255,255,0.08)",
-        text: colors.text,
-        muted: colors.muted,
-        badgeBg: "rgba(255,255,255,0.08)",
-        badgeBorder: "rgba(255,255,255,0.18)",
-        swipeBg: "rgba(255,255,255,0.04)",
-        swipeBorder: "rgba(255,255,255,0.08)",
-      };
-  const baseCardBackground = isDarkTheme
-    ? blendColors(colors.card, baseColor, 0.2)
-    : baseColor;
-  const cardBackground = baseCardBackground;
-  const cardSurfaceColor = isDarkTheme
-    ? blendColors(cardBackground, "#FFFFFF", 0.08)
-    : lightenColor(cardBackground, 0.18);
-  const primaryHighlightColor = isDarkTheme
-    ? THEMES.dark.error
-    : Platform.OS === "ios"
-    ? "#D95764"
-    : "#C94350";
-  const cardTextColor = isDarkTheme ? darkCardPalette.text : colors.text;
-  const cardMutedColor = isDarkTheme ? darkCardPalette.muted : colors.muted;
+  const cardBackground = blendColors(colors.card, baseColor, isDarkTheme ? 0.08 : 0.045);
+  const cardSurfaceColor = blendColors(
+    cardBackground,
+    colors.surfaceMuted || colors.background,
+    isDarkTheme ? 0.34 : 0.46
+  );
+  const cardTextColor = colors.text;
+  const cardMutedColor = colors.muted;
   const isBudgetOver = budgetStatus === "over";
   const isBudgetLow = budgetStatus === "low";
   const showBudgetAlert =
     showMetaBadges && !showEditorInline && (isBudgetOver || isBudgetLow) && !!budgetAlertText;
   const budgetAccentColor = isBudgetOver
     ? isDarkTheme
-      ? THEMES.dark.error
-      : "#E15555"
+      ? "#FF7A89"
+      : "#D93652"
     : isBudgetLow
     ? isDarkTheme
-      ? THEMES.dark.warning
-      : "#F6C16B"
-    : null;
-  const budgetSurfaceTint = isBudgetOver
-    ? blendColors(cardSurfaceColor, isDarkTheme ? "#351018" : "#FFE7EA", isDarkTheme ? 0.42 : 0.22)
-    : isBudgetLow
-    ? blendColors(cardSurfaceColor, isDarkTheme ? "#3A2B12" : "#FFF7E0", isDarkTheme ? 0.34 : 0.18)
-    : cardSurfaceColor;
-  const budgetAlertBackground = isBudgetOver
-    ? isDarkTheme
-      ? colorWithAlpha(THEMES.dark.error, 0.14)
-      : "rgba(255,92,92,0.12)"
-    : isBudgetLow
-    ? isDarkTheme
-      ? colorWithAlpha(THEMES.dark.warning, 0.14)
-      : "rgba(246,193,107,0.14)"
-    : "transparent";
-  const budgetAlertBorder = isBudgetOver
-    ? isDarkTheme
-      ? colorWithAlpha(THEMES.dark.error, 0.34)
-      : "rgba(255,92,92,0.35)"
-    : isBudgetLow
-    ? isDarkTheme
-      ? colorWithAlpha(THEMES.dark.warning, 0.32)
-      : "rgba(246,193,107,0.35)"
-    : "transparent";
-  const budgetAlertTextColor = isBudgetOver
-    ? isDarkTheme
-      ? "#EAB8B3"
-      : "#C2153B"
-    : isBudgetLow
-    ? isDarkTheme
-      ? "#E5C892"
-      : "#5C3A00"
-    : cardTextColor;
-  const budgetAlertIcon = isBudgetOver ? "⛔" : "⚠️";
+      ? "#FFB45D"
+      : "#D97706"
+    : colors.primary;
+  const budgetAlertTextColor = budgetAccentColor || cardTextColor;
   const resolvedGoalLabel =
     typeof goalLabel === "string" && goalLabel.trim().length ? goalLabel.trim() : "";
   const coinBurstColor = isDarkTheme ? THEMES.dark.warning : "#E5B954";
   const effectiveWishlistGoal = showMetaBadges && isWishlistGoal && !isPrimaryTemptation;
-  const canAssignGoal = !isPrimaryTemptation;
   const highlightPinned = effectiveWishlistGoal && !showEditorInline;
   const dailyChallengeActive = showMetaBadges && isDailyChallengeTarget && !showEditorInline;
-  const showFloatingBadgeStack = !showEditorInline && (dailyChallengeActive || (effectiveWishlistGoal && canAssignGoal));
   const textureSeedSource = item.id || title || "";
   const textureSeed = textureSeedSource
     ? textureSeedSource.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
@@ -14659,60 +14585,52 @@ function TemptationCardComponent({
     isDarkTheme ? 0.18 : 0.32
   );
   const showCardTexture = false;
-  const defaultShadowColor = isDarkTheme ? "rgba(0,0,0,0.65)" : "rgba(15,23,42,0.18)";
-  const redShadowColor = "rgba(244,37,78,0.42)";
-  const goldShadowColor = "rgba(184,126,28,0.32)";
-  const focusShadowColor = "rgba(255,92,92,0.38)";
-  const dailyChallengeShadowColor = "rgba(226,35,66,0.4)";
-  const shadowColor = isPrimaryTemptation
-    ? redShadowColor
-    : dailyChallengeActive
-    ? dailyChallengeShadowColor
-    : focusActive
-    ? focusShadowColor
+  const cardStateAccent = showBudgetAlert
+    ? budgetAccentColor
+    : focusActive || dailyChallengeActive
+    ? colors.error
     : highlightPinned
-    ? goldShadowColor
-    : defaultShadowColor;
-  const shadowRadius = isPrimaryTemptation || dailyChallengeActive
-    ? 14
-    : focusActive || highlightPinned
-    ? 12
-    : 8;
-  const shadowOpacity = isPrimaryTemptation || dailyChallengeActive
-    ? 0.32
-    : focusActive || highlightPinned
-    ? 0.26
-    : isDarkTheme
-    ? 0.24
-    : 0.16;
-  const shadowElevation = isPrimaryTemptation || dailyChallengeActive
-    ? 7
-    : focusActive || highlightPinned
-    ? 5
-    : 2;
-  const shadowOffsetHeight = isPrimaryTemptation || dailyChallengeActive ? 7 : 4;
+    ? colors.warning
+    : blendColors(colors.primary, baseColor, 0.34);
+  const cardOutlineColor = isDarkTheme
+    ? showBudgetAlert
+      ? colorWithAlpha(cardStateAccent, 0.34)
+      : colorWithAlpha(colors.text, 0.1)
+    : showBudgetAlert
+    ? colorWithAlpha(cardStateAccent, 0.2)
+    : "transparent";
   const baseCardShadowStyle = Platform.select({
     ios: {
-      shadowColor,
-      shadowOpacity,
-      shadowRadius,
-      shadowOffset: { width: 0, height: shadowOffsetHeight },
+      shadowColor:
+        showBudgetAlert || focusActive || dailyChallengeActive || highlightPinned
+          ? cardStateAccent
+          : colors.shadow || "#111318",
+      shadowOpacity: isDarkTheme
+        ? showBudgetAlert || focusActive || dailyChallengeActive || highlightPinned
+          ? 0.18
+          : 0
+        : showBudgetAlert || focusActive || dailyChallengeActive || highlightPinned
+        ? 0.14
+        : 0.08,
+      shadowRadius: showBudgetAlert ? 22 : 17,
+      shadowOffset: { width: 0, height: 8 },
     },
     android: {
-      elevation: shadowElevation,
-      shadowColor,
+      elevation: isDarkTheme ? 0 : 3,
+      shadowColor: colors.shadow || "#111318",
     },
     default: {},
   });
   const cardShadowStyle = tutorialHighlightActive ? null : baseCardShadowStyle;
-  const defaultGoalBadgeBackground = isDarkTheme ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
-  const defaultGoalBadgeBorder = isDarkTheme ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
-  const defaultGoalBadgeText = isDarkTheme ? "#E9DDC9" : colors.text;
   const hasGoalAssigned = showMetaBadges && !!resolvedGoalLabel;
   const refuseCount = stats?.count || 0;
   const totalRefusedLabel = formatCurrency(
     convertToCurrency(stats?.totalUSD || 0, currency),
     currency
+  );
+  const savingsScoreLabel = resolveLanguageMapValue(
+    TEMPTATION_SAVINGS_SCORE_LABELS,
+    language
   );
   const priceUSD = getTemptationPrice(item);
   const cardLocked = Boolean(locked) && !isArchived && !showEditorInline && !isEditing;
@@ -14744,7 +14662,8 @@ function TemptationCardComponent({
   const derivedDueAt =
     effectiveIntervalMs && timerStartedAt ? timerStartedAt + effectiveIntervalMs : null;
   const rawDueAt =
-    hasCustomReminderTime && Number.isFinite(nextCheckAt)
+    interactionEntry.frequencyReminderManualConfigured === true &&
+    Number.isFinite(nextCheckAt)
       ? nextCheckAt
       : Number.isFinite(derivedDueAt) && Number.isFinite(nextCheckAt)
       ? Math.max(derivedDueAt, nextCheckAt)
@@ -14764,6 +14683,12 @@ function TemptationCardComponent({
     Number.isFinite(timeRemaining) &&
     timeRemaining <= FREQUENCY_CRITICAL_WINDOW_MS;
   const timerDanger = timerExpired || timerCritical;
+  const timerApproaching =
+    hasTimerSource &&
+    !timerExpired &&
+    !timerCritical &&
+    Number.isFinite(timeRemaining) &&
+    timeRemaining <= DAY_MS;
   const countdownLabel =
     hasTimerSource && !timerExpired
       ? formatFrequencyCountdown(rawDueAt - timerReference, language)
@@ -14773,6 +14698,21 @@ function TemptationCardComponent({
       ? t("frequencyTimerDue")
       : t("frequencyTimerLabel", { time: countdownLabel })
     : null;
+  const fullSavingsScoreText = t("tileRefuseCount", {
+    count: refuseCount,
+    amount: totalRefusedLabel,
+  });
+  const compactSavingsScoreTemplate = resolveLanguageMapValue(
+    TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES,
+    language
+  );
+  const compactSavingsScoreText = String(compactSavingsScoreTemplate || fullSavingsScoreText)
+    .replace("{{count}}", String(refuseCount))
+    .replace("{{amount}}", totalRefusedLabel);
+  const savingsScoreValueText =
+    timerLabel && refuseCount > 0 && windowWidth < 520
+      ? compactSavingsScoreText
+      : fullSavingsScoreText;
   const archiveSwipeLabel = isArchived ? t("archiveSwipeRestore") : t("archiveSwipeAdd");
   const archiveSwipeIcon = isArchived ? "↩️" : "📦";
   const archiveSwipeActionColor = colors.warning || GOAL_HIGHLIGHT_COLOR;
@@ -15030,8 +14970,9 @@ function TemptationCardComponent({
       )
     : 0;
   const amountSliderIsSpendMode = amountSliderAction === "spend";
-  const amountSliderAccent =
-    amountSliderIsSpendMode ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+  const amountSliderAccent = amountSliderIsSpendMode
+    ? cardSpendActionColor
+    : cardSaveActionColor;
   const amountSliderConfirmActionLabel =
     amountSliderIsSpendMode ? t("spendAction") : t("saveAction");
   const amountSliderGold = "#F7C45D";
@@ -15067,10 +15008,6 @@ function TemptationCardComponent({
   const amountSliderModalBorder = isDarkTheme
     ? colorWithAlpha(amountSliderAccent, 0.24)
     : "rgba(229,230,237,0.95)";
-  const amountSliderModalGlowColor = resolveAndroidOpaqueLayerColor(
-    colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.24 : 0.18),
-    amountSliderModalBackground
-  );
   const amountSliderMoodStageColor =
     Platform.OS === "android"
       ? blendColors(
@@ -15140,10 +15077,10 @@ function TemptationCardComponent({
     !amountSliderIsSpendMode || !hasCategoryBudgetLimit
       ? amountSliderAccent
       : categoryBudgetStatus === "over"
-      ? SPEND_ACTION_COLOR
+      ? cardSpendActionColor
       : categoryBudgetStatus === "low"
       ? "#F5A524"
-      : SAVE_ACTION_COLOR;
+      : cardSaveActionColor;
   const formatCategoryBudgetAmount = useCallback(
     (valueUSD = 0) => {
       const numeric = Number(valueUSD) || 0;
@@ -15181,7 +15118,7 @@ function TemptationCardComponent({
   const amountSliderMoodIntensity = Math.max(0, Math.min(1, amountSliderValue));
   const amountSliderMoodAuraColor = resolveAndroidOpaqueLayerColor(
     colorWithAlpha(
-      amountSliderIsSpendMode ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR,
+      amountSliderIsSpendMode ? cardSpendActionColor : cardSaveActionColor,
       amountSliderIsSpendMode
         ? 0.12 + amountSliderMoodIntensity * 0.12
         : 0.18 + amountSliderMoodIntensity * 0.14
@@ -15189,8 +15126,8 @@ function TemptationCardComponent({
     amountSliderMoodStageColor
   );
   const amountSliderProjectionColor = amountSliderIsSpendMode
-    ? blendColors(colors.text, SPEND_ACTION_COLOR, Math.min(0.82, 0.22 + amountSliderMoodIntensity * 0.68))
-    : blendColors(colors.text, SAVE_ACTION_COLOR, Math.min(0.78, 0.2 + amountSliderMoodIntensity * 0.62));
+    ? blendColors(colors.text, cardSpendActionColor, Math.min(0.82, 0.22 + amountSliderMoodIntensity * 0.68))
+    : blendColors(colors.text, cardSaveActionColor, Math.min(0.78, 0.2 + amountSliderMoodIntensity * 0.62));
   const amountSliderProjectionValueStyle = {
     color: amountSliderProjectionColor,
     fontSize: Math.round(27 + amountSliderMoodIntensity * 8),
@@ -15974,11 +15911,60 @@ function TemptationCardComponent({
       }
     });
   }, [closeAmountSlider, item, onEditGoalSelect, onToggleEdit]);
-  const pauseButtonSurfaceColor = isDarkTheme ? "rgba(255,255,255,0.12)" : "#FFFFFF";
-  const pauseButtonBorderColor = isDarkTheme
-    ? "rgba(147,206,255,0.42)"
-    : "rgba(66,124,198,0.28)";
-  const pauseButtonIconColor = isDarkTheme ? "#BDE2FF" : "#2D5FA6";
+  const timerAccentColor = timerDanger
+    ? isDarkTheme
+      ? "#FF7A89"
+      : "#D93652"
+    : timerApproaching
+    ? isDarkTheme
+      ? "#FFB45D"
+      : "#B35C00"
+    : isDarkTheme
+    ? "#75BCFF"
+    : "#236FC8";
+  const scoreAccentColor = isDarkTheme ? "#4EE4A0" : "#087A48";
+  const identitySurfaceColor = colorWithAlpha(colors.primary, isDarkTheme ? 0.14 : 0.08);
+  const identitySurfaceBorder = colorWithAlpha(colors.primary, isDarkTheme ? 0.2 : 0.1);
+  const metaBadgeBackground = colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.045);
+  const goalAccentColor = isDarkTheme ? "#C2A7FF" : "#6E4ED2";
+  const saveButtonBackground = cardSaveActionColor;
+  const saveButtonTextColor = cardSaveActionTextColor;
+  const spendButtonBackground = cardSpendActionColor;
+  const spendButtonTextColor = cardSpendActionTextColor;
+  const spendButtonBorder = colorWithAlpha(spendButtonBackground, isDarkTheme ? 0.78 : 0.62);
+  const pauseButtonSurfaceColor = isDarkTheme ? "#113C59" : "#075A84";
+  const pauseButtonBorderColor = isDarkTheme ? "#65CFFF" : "#0A6E9F";
+  const pauseButtonIconColor = "#FFFFFF";
+  const saveButtonGlowStyle = Platform.select({
+    ios: {
+      shadowColor: saveButtonBackground,
+      shadowOpacity: 0.28,
+      shadowRadius: 11,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    android: { elevation: 4, shadowColor: saveButtonBackground },
+    default: {},
+  });
+  const spendButtonGlowStyle = Platform.select({
+    ios: {
+      shadowColor: spendButtonBackground,
+      shadowOpacity: 0.25,
+      shadowRadius: 11,
+      shadowOffset: { width: 0, height: 6 },
+    },
+    android: { elevation: 4, shadowColor: spendButtonBackground },
+    default: {},
+  });
+  const pauseButtonGlowStyle = Platform.select({
+    ios: {
+      shadowColor: "#4AC4FF",
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+    },
+    android: { elevation: 3, shadowColor: "#4AC4FF" },
+    default: {},
+  });
   const pauseFreezeCardBackground = isDarkTheme ? "#0F1A2A" : "#F7FBFF";
   const pauseFreezeCardBorder = isDarkTheme
     ? "rgba(151,203,255,0.34)"
@@ -16050,13 +16036,11 @@ function TemptationCardComponent({
     <GestureDetector gesture={cardSwipeGesture}>
     <Animated.View
       collapsable={false}
-      ref={tutorialHighlightCardRef}
       onLayout={(event) => {
         const measuredWidth = Number(event?.nativeEvent?.layout?.width);
         if (Number.isFinite(measuredWidth) && measuredWidth > 0) {
           swipeCardWidthRef.current = measuredWidth;
         }
-        handleTutorialCardLayout();
       }}
       style={[styles.temptationSwipeContent, { transform: [{ translateX }] }]}
     >
@@ -16066,9 +16050,21 @@ function TemptationCardComponent({
         cardShadowStyle,
         cardStyle,
         {
-          backgroundColor: budgetSurfaceTint,
-          borderWidth: showBudgetAlert ? 1.2 : 0,
-          borderColor: showBudgetAlert ? budgetAccentColor : "transparent",
+          backgroundColor: cardBackground,
+          borderWidth: showNextDecisionCoach
+            ? 2
+            : seriesChecked
+            ? StyleSheet.hairlineWidth
+            : isDarkTheme || showBudgetAlert
+            ? StyleSheet.hairlineWidth
+            : 0,
+          borderColor: showNextDecisionCoach
+            ? isDarkTheme
+              ? "#E8BD62"
+              : "#D5A838"
+            : seriesChecked
+            ? colorWithAlpha(colors.success || "#3E9B67", isDarkTheme ? 0.54 : 0.34)
+            : cardOutlineColor,
         },
         ]}
       >
@@ -16077,8 +16073,9 @@ function TemptationCardComponent({
           onLongPress={handleCardLongPress}
           delayLongPress={340}
           disabled={isDragActive}
+          accessible={!showNextDecisionCoach}
         >
-          <View>
+          <View style={styles.temptationCardContent}>
             {showCardTexture && (
               <View pointerEvents="none" style={styles.temptationTextureContainer}>
                 <View
@@ -16103,12 +16100,97 @@ function TemptationCardComponent({
                 />
               </View>
             )}
-      <View
-        style={[
-          styles.temptationHeader,
-        ]}
-      >
-        {showEditorInline ? (
+            {seriesChecked && !showEditorInline ? (
+              <View
+                style={[
+                  styles.temptationCheckedTodayBadge,
+                  {
+                    backgroundColor: colorWithAlpha(
+                      colors.success || "#3E9B67",
+                      isDarkTheme ? 0.18 : 0.1
+                    ),
+                  },
+                ]}
+                accessibilityRole="text"
+              >
+                <TemptationSeriesCheckIcon
+                  color={colors.success || "#3E9B67"}
+                  size={18}
+                />
+                <Text
+                  style={[
+                    styles.temptationCheckedTodayBadgeText,
+                    { color: colors.success || "#3E9B67" },
+                  ]}
+                >
+                  {t("temptationCheckedTodayBadge")}
+                </Text>
+              </View>
+            ) : null}
+            {showNextDecisionCoach && !showEditorInline ? (
+              <View
+                style={[
+                  styles.nextDecisionCoach,
+                  {
+                    backgroundColor: isDarkTheme ? "rgba(55,40,15,0.96)" : "#FFF8E8",
+                    borderColor: isDarkTheme ? "rgba(232,189,98,0.58)" : "rgba(213,168,56,0.52)",
+                  },
+                ]}
+              >
+                <View style={styles.nextDecisionCoachHeader}>
+                  <View
+                    style={[
+                      styles.nextDecisionCoachProgress,
+                      { backgroundColor: isDarkTheme ? "#E8BD62" : "#E0B346" },
+                    ]}
+                  >
+                    <Text style={styles.nextDecisionCoachProgressText}>
+                      {nextDecisionCoachProgressLabel}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.nextDecisionCoachTitle,
+                      { color: isDarkTheme ? "#FFF2CE" : "#5F430C" },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {t("nextDecisionCoachTitle")}
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.nextDecisionCoachBody,
+                    { color: isDarkTheme ? "#E8D7AA" : "#745F31" },
+                  ]}
+                >
+                  {t("nextDecisionCoachBody")}
+                </Text>
+                <TouchableOpacity
+                  style={styles.nextDecisionCoachDismiss}
+                  onPress={(event) => {
+                    event?.stopPropagation?.();
+                    onNextDecisionCoachDismiss?.();
+                  }}
+                  activeOpacity={0.72}
+                  accessible
+                  accessibilityRole="button"
+                  accessibilityLabel={t("nextDecisionCoachDismiss")}
+                >
+                  <Text
+                    style={[
+                      styles.nextDecisionCoachDismissText,
+                      { color: isDarkTheme ? "#E8D7AA" : "#745F31" },
+                    ]}
+                  >
+                    {t("nextDecisionCoachDismiss")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+      {showEditorInline ? (
+        <>
+          <View style={styles.temptationHeader}>
           <View style={styles.titleEditWrapper}>
             <View
               style={[
@@ -16143,230 +16225,298 @@ function TemptationCardComponent({
               />
             </View>
           </View>
-        ) : (
-          <>
-            <View style={styles.emojiDisplayWrapper}>
-              <Text style={[styles.temptationEmoji, { color: cardTextColor }]}>{item.emoji || "✨"}</Text>
-            </View>
-            <Text
-              style={[styles.temptationTitle, { color: cardTextColor }]}
-            >
-              {title}
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.temptationGoalBadge,
+              styles.temptationGoalBadgeEditable,
+              { borderColor: colors.border, backgroundColor: colors.card },
+            ]}
+            onPress={onEditGoalSelect}
+          >
+            <Text style={[styles.temptationGoalBadgeText, { color: colors.text }]}>
+              {goalLabel || t("goalAssignFieldLabel")}
             </Text>
-          </>
-        )}
-      </View>
-      {showFloatingBadgeStack && (
-        <View style={styles.temptationBadgeStack} pointerEvents="none">
-          {dailyChallengeActive && (
-            <View
+          </TouchableOpacity>
+          <View style={styles.descriptionEditWrapper}>
+            <TextInput
+              multiline
               style={[
-                styles.temptationDailyChallengeBadge,
+                styles.descriptionEditInput,
                 {
-                  backgroundColor: isDarkTheme ? "rgba(255,92,120,0.16)" : "rgba(255,92,120,0.12)",
-                  borderColor: isDarkTheme ? "rgba(255,92,120,0.58)" : "rgba(226,35,66,0.45)",
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: colors.card,
                 },
               ]}
+              value={editDescriptionValue ?? ""}
+              onChangeText={onEditDescriptionChange}
+              placeholder={t("priceEditDescriptionLabel")}
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+          <View style={styles.temptationPriceRow}>
+            <View
+              style={[
+                styles.temptationPricePill,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
             >
-              <Text style={styles.temptationDailyChallengeBadgeIcon}>🎯</Text>
+              <TextInput
+                style={[styles.pricePillInput, { color: colors.text }]}
+                value={editPriceValue ?? ""}
+                onChangeText={onEditPriceChange}
+                keyboardType="decimal-pad"
+                placeholder={t("priceEditAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
+                placeholderTextColor={colors.muted}
+              />
             </View>
-          )}
-          {hasGoalAssigned && !dailyChallengeActive && (
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.temptationIdentityRow}>
             <View
               style={[
-                styles.temptationGoalBadge,
-                styles.temptationGoalBadgeFloating,
+                styles.emojiDisplayWrapper,
                 {
-                  backgroundColor: isDarkTheme ? "#F6C16B22" : "#FFF2CC",
-                  borderColor: isDarkTheme ? "#F6C16B55" : "#F6C16B",
+                  backgroundColor: identitySurfaceColor,
+                  borderColor: identitySurfaceBorder,
                 },
               ]}
             >
-              <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
-                {t("goalPinnedBadge")}
+              <Text style={[styles.temptationEmoji, { color: cardTextColor }]}>
+                {item.emoji || "✨"}
               </Text>
             </View>
-          )}
-          {isWishlistGoal && !dailyChallengeActive && (
-            <View
-              style={[
-                styles.temptationPinnedBadge,
-                {
-                  borderColor: GOAL_HIGHLIGHT_COLOR,
-                  backgroundColor: isDarkTheme ? "rgba(246,193,107,0.2)" : "rgba(246,193,107,0.12)",
-                },
-              ]}
-            >
-              <Text style={[styles.temptationPinnedBadgeText, { color: GOAL_HIGHLIGHT_COLOR }]}>
-                {t("goalPinnedBadge")}
+            <View style={styles.temptationIdentityContent}>
+              <Text
+                style={[styles.temptationTitle, { color: cardTextColor }]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                allowAndroidAutoFit
+                minimumFontScale={0.86}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.2}
+              >
+                {title}
               </Text>
             </View>
-          )}
-        </View>
-      )}
-      {focusActive && (
-        <TouchableOpacity
-          style={[
-            styles.temptationFocusBadge,
-            {
-              backgroundColor: isDarkTheme ? "rgba(255,92,92,0.15)" : "rgba(255,92,92,0.12)",
-              borderColor: isDarkTheme ? "rgba(255,92,92,0.5)" : "rgba(255,92,92,0.45)",
-            },
-          ]}
-          onPress={() => onFocusBadgePress?.(item)}
-          activeOpacity={onFocusBadgePress ? 0.7 : 1}
-        >
-          <Text style={[styles.temptationFocusBadgeText, { color: isDarkTheme ? "#FFC0C0" : "#C2153B" }]}>
-            {t("focusBadgeLabel")}
-          </Text>
-        </TouchableOpacity>
-      )}
-      {!showEditorInline && isSubscriptionCard && (
-        <View
-          style={[
-            styles.temptationSubscriptionBadge,
-            {
-              backgroundColor: isDarkTheme ? "rgba(255,92,110,0.16)" : "rgba(255,92,110,0.12)",
-              borderColor: isDarkTheme ? "rgba(255,92,110,0.46)" : "rgba(194,21,59,0.24)",
-            },
-          ]}
-        >
-          <Text style={[styles.temptationSubscriptionBadgeText, { color: isDarkTheme ? "#FFC0C8" : "#A51C32" }]}>
-            {t("subscriptionCardBadge")}
-          </Text>
-        </View>
-      )}
-  {timerLabel && (
-        <View
-          style={[
-            styles.temptationTimerBlock,
-            {
-              borderColor: timerDanger
-                ? "rgba(194,21,59,0.6)"
-                : isDarkTheme
-                ? "rgba(255,255,255,0.15)"
-                : "rgba(0,0,0,0.08)",
-              backgroundColor: timerDanger
-                ? "rgba(255,92,92,0.12)"
-                : isDarkTheme
-                ? "rgba(0,0,0,0.25)"
-                : "rgba(255,255,255,0.7)",
-            },
-          ]}
-        >
-          {timerLabel ? (
-            <Text
-              style={[
-                styles.temptationTimerCountdown,
-                { color: timerDanger ? (isDarkTheme ? "#FF9AA5" : "#C2153B") : cardMutedColor },
-              ]}
-            >
-              {timerLabel}
+            {(dailyChallengeActive || focusActive || isSubscriptionCard || (highlightPinned && !hasGoalAssigned)) && (
+              <View style={styles.temptationHeaderMeta}>
+                {dailyChallengeActive && (
+                  <View
+                    style={[
+                      styles.temptationMetaBadge,
+                      styles.temptationMetaBadgeWithIcon,
+                      { backgroundColor: colorWithAlpha(colors.error, isDarkTheme ? 0.16 : 0.08) },
+                    ]}
+                    accessible
+                    accessibilityLabel={t("dailyChallengeOfferBadge")}
+                  >
+                    <TemptationGlyph type="target" color={colors.error} size={12} />
+                    <Text
+                      style={[styles.temptationMetaBadgeText, { color: colors.error }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.82}
+                    >
+                      {t("dailyChallengeOfferBadge")}
+                    </Text>
+                  </View>
+                )}
+                {focusActive && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.temptationMetaBadge,
+                      { backgroundColor: colorWithAlpha(colors.error, isDarkTheme ? 0.16 : 0.08) },
+                      pressed && styles.temptationPressablePressed,
+                    ]}
+                    onPress={() => onFocusBadgePress?.(item)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("focusBadgeLabel")}
+                  >
+                    <Text
+                      style={[styles.temptationMetaBadgeText, { color: colors.error }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.82}
+                    >
+                      {t("focusBadgeLabel")}
+                    </Text>
+                  </Pressable>
+                )}
+                {isSubscriptionCard && (
+                  <View style={[styles.temptationMetaBadge, { backgroundColor: metaBadgeBackground }]}>
+                    <Text
+                      style={[styles.temptationMetaBadgeText, { color: cardMutedColor }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.82}
+                    >
+                      {t("subscriptionCardBadge")}
+                    </Text>
+                  </View>
+                )}
+                {highlightPinned && !hasGoalAssigned && (
+                  <View
+                    style={[
+                      styles.temptationMetaBadge,
+                      { backgroundColor: colorWithAlpha(goalAccentColor, isDarkTheme ? 0.16 : 0.09) },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.temptationMetaBadgeText, { color: goalAccentColor }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      allowAndroidAutoFit
+                      minimumFontScale={0.82}
+                    >
+                      {t("goalPinnedBadge")}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {desc ? (
+            <Text style={[styles.temptationDesc, { color: cardMutedColor }]}>
+              {desc}
             </Text>
           ) : null}
-        </View>
+
+          {(timerLabel || refuseCount > 0 || showBudgetAlert || hasGoalAssigned) && (
+            <View
+              style={[
+                styles.temptationStatusRail,
+                { backgroundColor: cardSurfaceColor },
+              ]}
+            >
+              {(timerLabel || refuseCount > 0) && (
+                <View style={styles.temptationStatusMetrics}>
+                  {timerLabel && (
+                    <View
+                      style={[
+                        styles.temptationStatusMetric,
+                        styles.temptationStatusMetricTimer,
+                        refuseCount > 0 && styles.temptationStatusMetricTimerSplit,
+                      ]}
+                    >
+                      <TemptationGlyph type="timer" color={timerAccentColor} size={15} />
+                      <Text
+                        style={[
+                          styles.temptationStatusMetricText,
+                          styles.temptationStatusMetricTimerText,
+                          { color: timerAccentColor },
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        allowAndroidAutoFit
+                        minimumFontScale={0.9}
+                        maxFontSizeMultiplier={1.2}
+                      >
+                        {timerLabel}
+                      </Text>
+                    </View>
+                  )}
+                  {refuseCount > 0 && (
+                    <View
+                      style={[
+                        styles.temptationStatusMetric,
+                        styles.temptationStatusMetricScore,
+                        timerLabel
+                          ? styles.temptationStatusMetricScoreFlexible
+                          : styles.temptationStatusMetricScoreSolo,
+                        timerLabel && styles.temptationStatusMetricScoreSplit,
+                      ]}
+                      accessible
+                      accessibilityLabel={`${savingsScoreLabel}. ${t("tileRefuseCount", {
+                        count: refuseCount,
+                        amount: totalRefusedLabel,
+                      })}`}
+                    >
+                      <TemptationGlyph type="score" color={scoreAccentColor} size={15} />
+                      <View style={styles.temptationStatusMetricCopy}>
+                        <Text
+                          style={[styles.temptationStatusMetricLabel, { color: scoreAccentColor }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          allowAndroidAutoFit
+                          minimumFontScale={0.82}
+                          maxFontSizeMultiplier={1.2}
+                        >
+                          {savingsScoreLabel}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.temptationStatusMetricText,
+                            styles.temptationStatusMetricScoreText,
+                            { color: scoreAccentColor },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          allowAndroidAutoFit
+                          minimumFontScale={0.82}
+                          maxFontSizeMultiplier={1.2}
+                        >
+                          {savingsScoreValueText}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+              {showBudgetAlert && (
+                <View
+                  style={[
+                    styles.temptationBudgetAlert,
+                    (timerLabel || refuseCount > 0) && styles.temptationStatusDivider,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.temptationBudgetAlertIcon,
+                      { backgroundColor: colorWithAlpha(budgetAccentColor, isDarkTheme ? 0.2 : 0.1) },
+                    ]}
+                  >
+                    <TemptationGlyph type="alert" color={budgetAlertTextColor} size={16} />
+                  </View>
+                  <Text
+                    style={[styles.temptationBudgetAlertText, { color: budgetAlertTextColor }]}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {budgetAlertText}
+                  </Text>
+                </View>
+              )}
+              {hasGoalAssigned && (
+                <View
+                  style={[
+                    styles.temptationGoalDestination,
+                    (timerLabel || refuseCount > 0 || showBudgetAlert) &&
+                      styles.temptationStatusDivider,
+                  ]}
+                >
+                  <TemptationGlyph type="target" color={goalAccentColor} size={15} />
+                  <Text
+                    style={[styles.temptationGoalDestinationText, { color: goalAccentColor }]}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={1.2}
+                  >
+                    {t("goalDestinationLabel")}: {resolvedGoalLabel}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </>
       )}
-      {showBudgetAlert && (
-        <View
-          style={[
-            styles.temptationBudgetAlert,
-            {
-              borderColor: budgetAlertBorder,
-              backgroundColor: budgetAlertBackground,
-            },
-          ]}
-        >
-          <Text style={[styles.temptationBudgetAlertIcon, { color: budgetAlertTextColor }]}>
-            {budgetAlertIcon}
-          </Text>
-          <Text
-            style={[styles.temptationBudgetAlertText, { color: budgetAlertTextColor }]}
-          >
-            {budgetAlertText}
-          </Text>
-        </View>
-      )}
-      {showEditorInline ? (
-        <TouchableOpacity
-          style={[
-            styles.temptationGoalBadge,
-            styles.temptationGoalBadgeEditable,
-            { borderColor: colors.border, backgroundColor: colors.card },
-          ]}
-          onPress={onEditGoalSelect}
-        >
-          <Text style={[styles.temptationGoalBadgeText, { color: colors.text }]}>
-            {goalLabel || t("goalAssignFieldLabel")}
-          </Text>
-        </TouchableOpacity>
-      ) : null}
-      {showEditorInline ? (
-        <View style={styles.descriptionEditWrapper}>
-          <TextInput
-            multiline
-            style={[
-              styles.descriptionEditInput,
-              {
-                borderColor: colors.border,
-                color: colors.text,
-                backgroundColor: colors.card,
-              },
-            ]}
-            value={editDescriptionValue ?? ""}
-            onChangeText={onEditDescriptionChange}
-            placeholder={t("priceEditDescriptionLabel")}
-            placeholderTextColor={colors.muted}
-          />
-        </View>
-      ) : desc ? (
-        <Text style={[styles.temptationDesc, { color: cardMutedColor }]}>
-          {desc}
-        </Text>
-      ) : null}
-  {refuseCount > 0 && (
-        <Text style={[styles.temptationRefuseMeta, { color: cardMutedColor }]}>
-          {t("tileRefuseCount", { count: refuseCount, amount: totalRefusedLabel })}
-        </Text>
-      )}
-  {showEditorInline ? (
-    <View style={styles.temptationPriceRow}>
-      <View
-        style={[
-          styles.temptationPricePill,
-          { borderColor: colors.border, backgroundColor: colors.card },
-        ]}
-      >
-        <TextInput
-          style={[
-            styles.pricePillInput,
-            { color: colors.text },
-          ]}
-          value={editPriceValue ?? ""}
-          onChangeText={onEditPriceChange}
-          keyboardType="decimal-pad"
-          placeholder={t("priceEditAmountLabel", { currency: getCurrencyDisplayCode(currency) })}
-          placeholderTextColor={colors.muted}
-        />
-      </View>
-    </View>
-  ) : hasGoalAssigned ? (
-    <View style={styles.temptationGoalRow}>
-      <View
-        style={[
-          styles.temptationGoalBadge,
-          styles.temptationGoalBadgeInline,
-          {
-            backgroundColor: isDarkTheme ? "rgba(246,193,107,0.18)" : "rgba(246,193,107,0.12)",
-            borderColor: isDarkTheme ? "rgba(246,193,107,0.55)" : "rgba(246,193,107,0.65)",
-          },
-        ]}
-      >
-        <Text style={[styles.temptationGoalBadgeText, { color: isDarkTheme ? "#FEEAC4" : "#5C3A00" }]}>
-          {t("goalDestinationLabel")}: {resolvedGoalLabel}
-        </Text>
-      </View>
-    </View>
-  ) : null}
       {showEditorInline && (
         <View style={styles.categoryEditSection}>
           <Text style={[styles.categoryEditLabel, { color: colors.muted }]}>
@@ -16413,13 +16563,28 @@ function TemptationCardComponent({
               },
             ]}
           >
-            <View
+            <Svg
               pointerEvents="none"
-              style={[
-                styles.temptationAmountModalGlow,
-                { backgroundColor: amountSliderModalGlowColor },
-              ]}
-            />
+              style={styles.temptationAmountModalGlow}
+              viewBox="0 0 260 260"
+            >
+              <Defs>
+                <SvgRadialGradient id="temptationAmountAmbientGlow" cx="50%" cy="50%" r="50%">
+                  <SvgStop
+                    offset="0%"
+                    stopColor={amountSliderAccent}
+                    stopOpacity={isDarkTheme ? 0.28 : 0.2}
+                  />
+                  <SvgStop
+                    offset="58%"
+                    stopColor={amountSliderAccent}
+                    stopOpacity={isDarkTheme ? 0.13 : 0.09}
+                  />
+                  <SvgStop offset="100%" stopColor={amountSliderAccent} stopOpacity={0} />
+                </SvgRadialGradient>
+              </Defs>
+              <SvgCircle cx="130" cy="130" r="130" fill="url(#temptationAmountAmbientGlow)" />
+            </Svg>
             <View
               style={[
                 styles.temptationAmountModalTopbar,
@@ -16704,8 +16869,8 @@ function TemptationCardComponent({
                       styles.temptationAmountInfoBox,
                       {
                         backgroundColor: amountSliderAction === "spend"
-                          ? colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.18 : 0.1)
-                          : colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.22 : 0.12),
+                          ? colorWithAlpha(cardSpendActionColor, isDarkTheme ? 0.18 : 0.1)
+                          : colorWithAlpha(cardSaveActionColor, isDarkTheme ? 0.22 : 0.12),
                         borderColor: colorWithAlpha(amountSliderAccent, isDarkTheme ? 0.5 : 0.26),
                       },
                     ]}
@@ -16719,7 +16884,7 @@ function TemptationCardComponent({
                     ) : null}
                     {timerLabel ? (
                       <TouchableOpacity onPress={handleAmountTimerPress} activeOpacity={0.82}>
-                        <Text style={[styles.temptationAmountInfoBody, { color: colors.muted }]}>
+                        <Text style={[styles.temptationAmountInfoBody, { color: timerAccentColor }]}>
                           {timerLabel}
                         </Text>
                       </TouchableOpacity>
@@ -16833,15 +16998,17 @@ function TemptationCardComponent({
                       ? [
                           styles.temptationAmountModalSaveButton,
                           {
-                            borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.48),
-                            backgroundColor: SAVE_ACTION_COLOR,
+                            borderColor: colorWithAlpha(cardSaveActionColor, 0.78),
+                            backgroundColor: cardSaveActionColor,
+                            shadowColor: cardSaveActionColor,
                           },
                         ]
                       : [
                           styles.temptationAmountModalActionInactive,
                           {
-                            borderColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.38),
-                            backgroundColor: SAVE_ACTION_COLOR,
+                            borderColor: colorWithAlpha(cardSaveActionColor, 0.62),
+                            backgroundColor: cardSaveActionColor,
+                            shadowColor: cardSaveActionColor,
                           },
                         ],
                   ]}
@@ -16851,7 +17018,7 @@ function TemptationCardComponent({
                   <Text
                     style={[
                       styles.temptationAmountModalActionText,
-                      { color: "#FFFFFF" },
+                      { color: cardSaveActionTextColor },
                     ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
@@ -16871,15 +17038,17 @@ function TemptationCardComponent({
                         ? [
                             styles.temptationAmountModalSpendButton,
                             {
-                              borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.48),
-                              backgroundColor: SPEND_ACTION_COLOR,
+                              borderColor: colorWithAlpha(cardSpendActionColor, 0.78),
+                              backgroundColor: cardSpendActionColor,
+                              shadowColor: cardSpendActionColor,
                             },
                           ]
                         : [
                             styles.temptationAmountModalActionInactive,
                             {
-                              borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.38),
-                              backgroundColor: SPEND_ACTION_COLOR,
+                              borderColor: colorWithAlpha(cardSpendActionColor, 0.62),
+                              backgroundColor: cardSpendActionColor,
+                              shadowColor: cardSpendActionColor,
                             },
                           ],
                     ]}
@@ -16889,7 +17058,7 @@ function TemptationCardComponent({
                     <Text
                       style={[
                         styles.temptationAmountModalActionText,
-                        { color: "#FFFFFF" },
+                        { color: cardSpendActionTextColor },
                       ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
@@ -17080,24 +17249,30 @@ function TemptationCardComponent({
               if (action.type === "save") {
                 buttonStyle = [
                   styles.temptationButtonPrimary,
-                  { backgroundColor: SAVE_ACTION_COLOR, opacity: action.disabled ? 0.4 : 1 },
+                  styles.temptationButtonDecision,
+                  saveButtonGlowStyle,
+                  { backgroundColor: saveButtonBackground, opacity: action.disabled ? 0.42 : 1 },
                 ];
-                textStyle = [styles.temptationButtonPrimaryText, { color: "#FFFFFF" }];
+                textStyle = [
+                  styles.temptationButtonPrimaryText,
+                  styles.temptationButtonDecisionText,
+                  { color: saveButtonTextColor },
+                ];
               } else if (action.type === "spend") {
                 buttonStyle = [
                   styles.temptationButtonSecondary,
+                  styles.temptationButtonDecision,
+                  spendButtonGlowStyle,
                   {
-                    backgroundColor: colorWithAlpha(
-                      SPEND_ACTION_COLOR,
-                      isDarkTheme ? 0.16 : 0.08
-                    ),
-                    borderColor: colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.62 : 0.42),
+                    backgroundColor: spendButtonBackground,
+                    borderColor: spendButtonBorder,
                     opacity: action.disabled ? 0.4 : 1,
                   },
                 ];
                 textStyle = [
                   styles.temptationButtonSecondaryText,
-                  { color: isDarkTheme ? "#FFB8C4" : SPEND_ACTION_COLOR },
+                  styles.temptationButtonDecisionText,
+                  { color: spendButtonTextColor },
                 ];
               } else if (action.variant === "primary") {
                 buttonStyle = [
@@ -17154,9 +17329,6 @@ function TemptationCardComponent({
                   onLockedPress?.(item);
                   return;
                 }
-                if (showSavedCoachMark && (action.type === "save" || action.type === "spend")) {
-                  onSavedCoachMarkAction?.(action.type);
-                }
                 if (action.type === "save" || action.type === "spend") {
                   if (!amountSliderVisible) {
                     openAmountSlider(action.type);
@@ -17176,113 +17348,65 @@ function TemptationCardComponent({
                 }
                 onAction?.(action.type, item, action.options || null);
               };
-              const buttonNode = (
-                <TouchableOpacity
-                  style={buttonStyle}
+              const isDecisionAction = action.type === "save" || action.type === "spend";
+              return (
+                <Pressable
+                  key={`${action.type}-${actionIndex}`}
+                  style={({ pressed }) => [
+                    buttonStyle,
+                    pressed && !action.disabled && styles.temptationPressablePressed,
+                  ]}
                   onPress={handleActionPress}
-                  activeOpacity={1}
+                  android_ripple={{ color: colorWithAlpha(cardTextColor, 0.1) }}
                   accessibilityRole="button"
                   accessibilityLabel={action.label}
+                  accessibilityState={{ disabled: Boolean(action.disabled) }}
                 >
                   <Text
                     style={textStyle}
                     numberOfLines={1}
-                    adjustsFontSizeToFit
-                    allowAndroidAutoFit
-                    minimumFontScale={MIN_READABLE_FONT_SCALE}
+                    adjustsFontSizeToFit={!isDecisionAction}
+                    allowAndroidAutoFit={!isDecisionAction}
+                    minimumFontScale={isDecisionAction ? undefined : MIN_READABLE_FONT_SCALE}
                     maxFontSizeMultiplier={1.2}
                   >
                     {action.label}
                   </Text>
-                </TouchableOpacity>
-              );
-              if (!(showSavedCoachMark && action.type === "save")) {
-                return (
-                  <TouchableOpacity
-                    key={`${action.type}-${actionIndex}`}
-                    style={buttonStyle}
-                    onPress={handleActionPress}
-                    activeOpacity={1}
-                    accessibilityRole="button"
-                    accessibilityLabel={action.label}
-                  >
-                    <Text
-                      style={textStyle}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      allowAndroidAutoFit
-                      minimumFontScale={MIN_READABLE_FONT_SCALE}
-                      maxFontSizeMultiplier={1.2}
-                    >
-                      {action.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }
-              return (
-                <View key={`${action.type}-${actionIndex}`} style={styles.temptationCoachMarkSlot}>
-                  <View style={styles.temptationCoachMarkTooltipWrap} pointerEvents="none">
-                    <View
-                      style={[
-                        styles.temptationCoachMarkTooltip,
-                        {
-                          backgroundColor: isDarkTheme ? "rgba(48,36,13,0.97)" : "#FFF7E6",
-                          borderColor: isDarkTheme ? "rgba(245,200,105,0.54)" : "rgba(232,183,74,0.6)",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.temptationCoachMarkTooltipText,
-                          { color: isDarkTheme ? "#FFE8B8" : "#6E4600" },
-                        ]}
-                      >
-                        {t("temptationSavedCoachmark")}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.temptationCoachMarkTooltipArrow,
-                        { borderTopColor: colors.text },
-                        {
-                          borderTopColor: isDarkTheme ? "rgba(48,36,13,0.97)" : "#FFF7E6",
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.temptationCoachMarkGlow,
-                      {
-                        borderColor: colorWithAlpha("#F5C869", 0.95),
-                        opacity: coachMarkGlowOpacity,
-                        transform: [{ scale: coachMarkGlowScale }],
-                      },
-                    ]}
-                  />
-                  {buttonNode}
-                </View>
+                </Pressable>
               );
             })}
           </View>
           {showPauseAction && (
-            <TouchableOpacity
-              style={[
+            <Pressable
+              style={({ pressed }) => [
                 styles.temptationPauseButton,
                 {
                   backgroundColor: pauseButtonSurfaceColor,
                   borderColor: pauseButtonBorderColor,
                 },
+                pauseButtonGlowStyle,
                 tutorialHighlightThink && styles.temptationTutorialAccentButton,
+                pressed && styles.temptationPressablePressed,
               ]}
               onPress={openPauseFreezePicker}
-              activeOpacity={0.86}
+              android_ripple={{ color: colorWithAlpha(pauseButtonIconColor, 0.18) }}
               accessibilityRole="button"
               accessibilityLabel={t("pauseAction")}
             >
-              <Text style={[styles.temptationPauseButtonIcon, { color: pauseButtonIconColor }]}>❄</Text>
-            </TouchableOpacity>
+              <Text style={styles.temptationPauseButtonIcon} allowFontScaling={false}>
+                ❄️
+              </Text>
+              <Text
+                style={[styles.temptationPauseButtonLabel, { color: pauseButtonIconColor }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                allowAndroidAutoFit
+                minimumFontScale={0.72}
+                maxFontSizeMultiplier={1}
+              >
+                {t("pauseAction")}
+              </Text>
+            </Pressable>
           )}
         </View>
       )}
@@ -17402,7 +17526,9 @@ function TemptationCardComponent({
                     },
                   ]}
                 >
-                  <Text style={[styles.pauseFreezeSelectedIcon, { color: pauseButtonIconColor }]}>❄</Text>
+                  <Text style={styles.pauseFreezeSelectedIcon} allowFontScaling={false}>
+                    ❄️
+                  </Text>
                   <Text style={[styles.pauseFreezeSelectedText, { color: pauseButtonIconColor }]}>
                     {pauseFreezeSelectedLabel}
                   </Text>
@@ -17525,6 +17651,37 @@ function TemptationCardComponent({
         );
       })}
       {messageActive && null}
+      {showSeriesQuickActions && !cardLocked && !isEditing ? (
+        <View
+          style={[
+            styles.temptationSeriesQuickActions,
+            { borderTopColor: colorWithAlpha(colors.text, isDarkTheme ? 0.16 : 0.09) },
+          ]}
+        >
+          {!seriesChecked ? (
+            <TouchableOpacity
+              style={styles.temptationSeriesQuickAction}
+              onPress={() => onSeriesSkip?.(item)}
+              activeOpacity={0.78}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.temptationSeriesQuickActionText, { color: colors.muted }]}>
+                {t("temptationSeriesSkip")}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={styles.temptationSeriesQuickAction}
+            onPress={() => onSeriesNotMine?.(item)}
+            activeOpacity={0.78}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.temptationSeriesQuickActionText, { color: colors.muted }]}>
+              {t("temptationSeriesNotMine")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
       {showEditorInline && isEditing && (
         <View style={[styles.temptationEditor, { borderTopColor: colors.border }]}>
           <View style={styles.temptationEditorActions}>
@@ -17609,6 +17766,733 @@ const FeedDragLiftDecorator = React.memo(function FeedDragLiftDecorator({
   );
 });
 
+const TemptationSeriesCheckIcon = React.memo(function TemptationSeriesCheckIcon({
+  size = 24,
+  color = "#3E9B67",
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <SvgCircle cx="12" cy="12" r="10" fill={colorWithAlpha(color, 0.16)} />
+      <SvgPath
+        d="m7.4 12.2 3 3.1 6.4-6.7"
+        fill="none"
+        stroke={color}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+});
+
+const FeedTemptationSectionHeader = React.memo(function FeedTemptationSectionHeader({
+  title,
+  count = 0,
+  complete = false,
+  hint = null,
+  colors,
+  isDarkMode = false,
+}) {
+  const completeColor = colors.success || "#3E9B67";
+  return (
+    <View style={styles.feedTemptationSectionHeader} accessibilityRole="header">
+      <View style={styles.feedTemptationSectionTitleRow}>
+        {complete ? <TemptationSeriesCheckIcon color={completeColor} size={22} /> : null}
+        <Text
+          style={[styles.feedTemptationSectionTitle, { color: colors.text }]}
+          numberOfLines={2}
+        >
+          {title}
+        </Text>
+        <View
+          style={[
+            styles.feedTemptationSectionCount,
+            {
+              backgroundColor: colorWithAlpha(
+                complete ? completeColor : colors.text,
+                isDarkMode ? 0.16 : 0.08
+              ),
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.feedTemptationSectionCountText,
+              { color: complete ? completeColor : colors.muted },
+            ]}
+          >
+            {Math.max(0, Number(count) || 0)}
+          </Text>
+        </View>
+      </View>
+      {hint ? (
+        <Text style={[styles.feedTemptationSectionHint, { color: colors.muted }]}>
+          {hint}
+        </Text>
+      ) : null}
+    </View>
+  );
+});
+
+const TemptationSeriesProgressCard = React.memo(function TemptationSeriesProgressCard({
+  series,
+  colors,
+  isDarkMode = false,
+  t,
+  usageStreak = null,
+  onOpenChest,
+}) {
+  const normalized = normalizeTemptationSeriesState(series);
+  if (normalized.status === TEMPTATION_SERIES_STATUS.IDLE) return null;
+  const progress = getTemptationSeriesProgress(normalized);
+  const progressRatio = progress.total > 0 ? Math.min(1, progress.completed / progress.total) : 0;
+  const ready = normalized.status === TEMPTATION_SERIES_STATUS.READY;
+  const claimed = normalized.status === TEMPTATION_SERIES_STATUS.CLAIMED;
+  const accent = ready ? "#D59A20" : colors.primary;
+  const panelBackground = isDarkMode
+    ? colorWithAlpha(accent, ready ? 0.2 : 0.12)
+    : colorWithAlpha(accent, ready ? 0.13 : 0.08);
+  const pendingCoins = claimed ? normalized.claimedCoins : normalized.pendingCoins;
+  const chestTier = getChestRewardTierForAmount(pendingCoins) || DEFAULT_CHEST_REWARD_TIER;
+  const rewardCoinTier = getHealthCoinTierForAmount(pendingCoins);
+  if (claimed) {
+    const completeAccent = colors.success || "#3E9B67";
+    const rhythmCount = Math.max(0, Number(usageStreak?.current) || 0);
+    const rhythmLabel = t(
+      rhythmCount === 1 ? "temptationSeriesRhythmOne" : "temptationSeriesRhythm",
+      { count: rhythmCount }
+    );
+    return (
+      <TouchableOpacity
+        style={[
+          styles.temptationSeriesClaimedCard,
+          {
+            backgroundColor: colorWithAlpha(completeAccent, isDarkMode ? 0.14 : 0.075),
+            borderColor: colorWithAlpha(completeAccent, isDarkMode ? 0.34 : 0.22),
+          },
+        ]}
+        onPress={onOpenChest}
+        activeOpacity={0.86}
+        accessibilityRole="button"
+        accessibilityLabel={t("temptationSeriesViewReward")}
+        accessibilityHint={t("temptationSeriesClaimedHint")}
+      >
+        <View
+          style={[
+            styles.temptationSeriesClaimedStatus,
+            { backgroundColor: colorWithAlpha(completeAccent, isDarkMode ? 0.2 : 0.12) },
+          ]}
+        >
+          <TemptationSeriesCheckIcon size={25} color={completeAccent} />
+        </View>
+        <View style={styles.temptationSeriesClaimedCopy}>
+          <Text
+            style={[styles.temptationSeriesClaimedTitle, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {t("temptationSeriesTitle")}
+          </Text>
+          <Text
+            style={[styles.temptationSeriesClaimedMeta, { color: colors.muted }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            allowAndroidAutoFit
+            minimumFontScale={0.82}
+          >
+            {t("temptationSeriesCompleteTitle")} · {rhythmLabel}
+          </Text>
+        </View>
+        <View style={styles.temptationSeriesClaimedReward}>
+          <Image
+            source={chestTier?.assets?.open}
+            style={styles.temptationSeriesClaimedChest}
+            resizeMode="contain"
+          />
+          <View style={styles.temptationSeriesClaimedAmountRow}>
+            <Image
+              source={rewardCoinTier?.asset || GREEN_HEALTH_COIN_ASSET}
+              style={styles.temptationSeriesClaimedCoin}
+              resizeMode="contain"
+            />
+            <Text style={[styles.temptationSeriesClaimedAmount, { color: colors.text }]}>
+              {pendingCoins}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+  return (
+    <View
+      style={[
+        styles.temptationSeriesProgressCard,
+        { backgroundColor: panelBackground, borderColor: colorWithAlpha(accent, 0.28) },
+      ]}
+      accessibilityRole="summary"
+    >
+      <View style={styles.temptationSeriesProgressHeader}>
+        <View style={styles.temptationSeriesProgressCopy}>
+          <Text style={[styles.temptationSeriesProgressTitle, { color: colors.text }]}>
+            {t("temptationSeriesTitle")}
+          </Text>
+          <Text style={[styles.temptationSeriesProgressSubtitle, { color: colors.muted }]}>
+            {ready
+              ? t("temptationSeriesReadyHint")
+              : t("temptationSeriesIntro")}
+          </Text>
+        </View>
+        <View style={styles.temptationSeriesChestCompact}>
+          <Image
+            source={chestTier?.assets?.closed}
+            style={styles.temptationSeriesChestCompactImage}
+            resizeMode="contain"
+          />
+          <View style={styles.temptationSeriesChestAmountRow}>
+            <Image
+              source={rewardCoinTier?.asset || GREEN_HEALTH_COIN_ASSET}
+              style={styles.temptationSeriesChestCoin}
+              resizeMode="contain"
+            />
+            <Text style={[styles.temptationSeriesChestAmount, { color: colors.text }]}>
+              {pendingCoins}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.temptationSeriesProgressMeta}>
+        <Text style={[styles.temptationSeriesProgressCount, { color: colors.text }]}>
+          {t("temptationSeriesProgress", {
+            completed: progress.completed,
+            total: progress.total,
+          })}
+        </Text>
+        <Text style={[styles.temptationSeriesProgressBalance, { color: colors.muted }]}>
+          {t("temptationSeriesChestBalance", { coins: pendingCoins })}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.temptationSeriesProgressTrack,
+          { backgroundColor: colorWithAlpha(colors.text, isDarkMode ? 0.14 : 0.09) },
+        ]}
+      >
+        <View
+          style={[
+            styles.temptationSeriesProgressFill,
+            { width: `${Math.max(4, progressRatio * 100)}%`, backgroundColor: accent },
+          ]}
+        />
+      </View>
+      {ready ? (
+        <TouchableOpacity
+          style={[styles.temptationSeriesOpenButton, { backgroundColor: accent }]}
+          onPress={onOpenChest}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+          accessibilityLabel={t("temptationSeriesOpenChest")}
+        >
+          <Text style={styles.temptationSeriesOpenButtonText}>{t("temptationSeriesOpenChest")}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={[styles.temptationSeriesRemainingText, { color: colors.muted }]}>
+          {t("temptationSeriesRemaining", { count: progress.remaining })}
+        </Text>
+      )}
+    </View>
+  );
+});
+
+const TemptationSeriesNotMineModal = React.memo(function TemptationSeriesNotMineModal({
+  visible,
+  title,
+  colors,
+  isDarkMode = false,
+  t,
+  onEdit,
+  onArchive,
+  onClose,
+}) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.temptationSeriesSheetBackdrop}>
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View
+              style={[
+                styles.temptationSeriesSheet,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colorWithAlpha(colors.text, isDarkMode ? 0.2 : 0.1),
+                },
+              ]}
+              accessibilityViewIsModal
+            >
+              <View
+                style={[
+                  styles.temptationSeriesSheetHandle,
+                  { backgroundColor: colorWithAlpha(colors.text, 0.18) },
+                ]}
+              />
+              <Text style={[styles.temptationSeriesSheetTitle, { color: colors.text }]}>
+                {t("temptationSeriesNotMineTitle", { title })}
+              </Text>
+              <TouchableOpacity
+                style={[styles.temptationSeriesSheetAction, { borderColor: colors.border }]}
+                onPress={onEdit}
+                activeOpacity={0.86}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.temptationSeriesSheetActionText, { color: colors.text }]}>
+                  {t("temptationSeriesEdit")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.temptationSeriesSheetAction, { borderColor: colors.border }]}
+                onPress={onArchive}
+                activeOpacity={0.86}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.temptationSeriesSheetActionText, { color: colors.text }]}>
+                  {t("temptationSeriesArchive")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.temptationSeriesSheetCancel}
+                onPress={onClose}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.temptationSeriesSheetCancelText, { color: colors.muted }]}>
+                  {t("temptationSeriesCancel")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+});
+
+const TemptationSeriesCompletionModal = React.memo(function TemptationSeriesCompletionModal({
+  visible,
+  series,
+  usageStreak,
+  colors,
+  isDarkMode = false,
+  reduceMotion = false,
+  language = DEFAULT_LANGUAGE,
+  playSound,
+  t,
+  onClaim,
+  onCloseReady,
+  onContinue,
+}) {
+  const normalized = normalizeTemptationSeriesState(series);
+  const claimed = normalized.status === TEMPTATION_SERIES_STATUS.CLAIMED;
+  const ready = normalized.status === TEMPTATION_SERIES_STATUS.READY;
+  const summary = getTemptationSeriesSummary(normalized);
+  const progress = getTemptationSeriesProgress(normalized);
+  const rewardCoins = claimed ? normalized.claimedCoins : normalized.pendingCoins;
+  const chestTier = getChestRewardTierForAmount(rewardCoins) || DEFAULT_CHEST_REWARD_TIER;
+  const chestSource = claimed
+    ? chestTier?.assets?.glow || chestTier?.assets?.open
+    : chestTier?.assets?.closed;
+  const accent = chestTier?.accent || "#D59A20";
+  const glow = chestTier?.glow || "#FFD77A";
+  const saveTone = colors.success || SAVE_ACTION_COLOR;
+  const spendTone = colors.error || SPEND_ACTION_COLOR;
+  const rewardTone = claimed ? saveTone : accent;
+  const rewardCoinSource = GREEN_HEALTH_COIN_TIER?.asset || HEALTH_COIN_TIERS[0]?.asset;
+  const revealScale = useRef(new Animated.Value(1)).current;
+  const glowPulse = useRef(new Animated.Value(0)).current;
+  const mascotFloat = useRef(new Animated.Value(0)).current;
+  const [chestRitualSeriesId, setChestRitualSeriesId] = useState(null);
+  const coinRainAssets = useMemo(
+    () =>
+      buildHealthCoinEntries(rewardCoins)
+        .filter((entry) => entry.count > 0)
+        .flatMap((entry) => Array.from({ length: Math.min(entry.count, 4) }, () => entry.asset))
+        .filter(Boolean),
+    [rewardCoins]
+  );
+  useEffect(() => {
+    if (!visible) {
+      revealScale.setValue(1);
+      glowPulse.setValue(0);
+      mascotFloat.setValue(0);
+      return undefined;
+    }
+    revealScale.setValue(reduceMotion ? 1 : claimed ? 0.72 : 0.9);
+    glowPulse.setValue(reduceMotion ? 0.55 : 0);
+    mascotFloat.setValue(0);
+    const entrance = Animated.spring(revealScale, {
+      toValue: 1,
+      damping: 12,
+      mass: 0.5,
+      stiffness: 190,
+      useNativeDriver: true,
+    });
+    const glowLoop = createMotionLoop(
+      Animated.sequence([
+        Animated.timing(glowPulse, {
+          toValue: 1,
+          duration: 850,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowPulse, {
+          toValue: 0.22,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    const mascotLoop = createMotionLoop(
+      Animated.sequence([
+        Animated.timing(mascotFloat, {
+          toValue: 1,
+          duration: 1350,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(mascotFloat, {
+          toValue: 0,
+          duration: 1350,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    entrance.start();
+    if (!reduceMotion) {
+      glowLoop.start();
+      mascotLoop.start();
+    }
+    return () => {
+      entrance.stop();
+      glowLoop.stop();
+      mascotLoop.stop();
+    };
+  }, [claimed, glowPulse, mascotFloat, reduceMotion, revealScale, visible]);
+  useEffect(() => {
+    if (!visible) {
+      setChestRitualSeriesId(null);
+      return;
+    }
+    if (ready && normalized.seriesId) {
+      setChestRitualSeriesId(normalized.seriesId);
+    }
+  }, [normalized.seriesId, ready, visible]);
+  if (!ready && !claimed) return null;
+  const chestRitualVisible =
+    ready || (claimed && chestRitualSeriesId === normalized.seriesId);
+  const handleChestRitualClose = () => {
+    if (claimed) {
+      setChestRitualSeriesId(null);
+      return;
+    }
+    onCloseReady?.();
+  };
+  if (chestRitualVisible) {
+    return (
+      <Modal
+        transparent
+        visible={visible}
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleChestRitualClose}
+      >
+        <HealthCelebration
+          colors={colors}
+          payload={{
+            amount: rewardCoins,
+            tierId: chestTier?.id || null,
+            title: t("temptationSeriesReady"),
+            closedSubtitle: t("temptationSeriesChestBalance", { coins: rewardCoins }),
+            openedSubtitle: t("temptationSeriesRewardPaid", { coins: rewardCoins }),
+            hideBadge: true,
+            onRevealReward: onClaim,
+          }}
+          t={t}
+          language={language}
+          reduceMotion={reduceMotion}
+          onClose={handleChestRitualClose}
+          playSound={playSound}
+        />
+      </Modal>
+    );
+  }
+  const skippedCount = summary.skip + summary.pause;
+  const summaryItems = [
+    {
+      key: "save",
+      count: summary.save,
+      label: "temptationSeriesSummarySaved",
+      symbol: "✓",
+      tone: saveTone,
+    },
+    {
+      key: "spend",
+      count: summary.spend,
+      label: "temptationSeriesSummarySpent",
+      symbol: "↗",
+      tone: spendTone,
+    },
+    {
+      key: "skip",
+      count: skippedCount,
+      label: "temptationSeriesSummarySkipped",
+      symbol: "→",
+      tone: colors.primary,
+    },
+    {
+      key: "archive",
+      count: summary.archive,
+      label: "temptationSeriesSummaryArchived",
+      symbol: "↓",
+      tone: colors.muted,
+    },
+  ].filter((item) => item.count > 0);
+  const glowScale = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1.1],
+  });
+  const glowOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.22, 0.56],
+  });
+  const mascotTranslateY = mascotFloat.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -7],
+  });
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={claimed ? onContinue : onCloseReady}
+    >
+      <View style={styles.temptationSeriesCompletionBackdrop}>
+        {claimed && !reduceMotion && coinRainAssets.length ? (
+          <CoinRainOverlay dropCount={10} assets={coinRainAssets} />
+        ) : null}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.temptationSeriesCompletionAmbientGlow,
+            {
+              backgroundColor: colorWithAlpha(glow, isDarkMode ? 0.22 : 0.18),
+              opacity: glowOpacity,
+              transform: [{ scale: glowScale }],
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.temptationSeriesCompletionCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colorWithAlpha(accent, isDarkMode ? 0.58 : 0.38),
+              shadowColor: glow,
+            },
+          ]}
+          accessibilityViewIsModal
+        >
+          <TouchableOpacity
+            style={[
+              styles.temptationSeriesCompletionClose,
+              { backgroundColor: colorWithAlpha(colors.text, 0.08) },
+            ]}
+            onPress={claimed ? onContinue : onCloseReady}
+            accessibilityRole="button"
+            accessibilityLabel={
+              claimed ? t("temptationSeriesContinue") : t("temptationSeriesCancel")
+            }
+          >
+            <Svg width={18} height={18} viewBox="0 0 24 24">
+              <SvgPath d="m6 6 12 12M18 6 6 18" stroke={colors.text} strokeWidth="2" strokeLinecap="round" />
+            </Svg>
+          </TouchableOpacity>
+          <ScrollView
+            style={styles.temptationSeriesCompletionScroll}
+            contentContainerStyle={styles.temptationSeriesCompletionContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View
+              style={[
+                styles.temptationSeriesCompletionEyebrow,
+                {
+                  backgroundColor: colorWithAlpha(accent, isDarkMode ? 0.2 : 0.12),
+                  borderColor: colorWithAlpha(accent, isDarkMode ? 0.44 : 0.28),
+                },
+              ]}
+            >
+              <TemptationSeriesCheckIcon size={18} color={accent} />
+              <Text style={[styles.temptationSeriesCompletionEyebrowText, { color: colors.text }]}>
+                {t("temptationSeriesTitle")}
+              </Text>
+            </View>
+            <View style={styles.temptationSeriesCompletionHero}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.temptationSeriesCompletionHeroHalo,
+                  {
+                    borderColor: colorWithAlpha(glow, isDarkMode ? 0.5 : 0.36),
+                    opacity: glowOpacity,
+                    transform: [{ scale: glowScale }],
+                  },
+                ]}
+              />
+              <Animated.Image
+                source={chestSource}
+                style={[
+                  styles.temptationSeriesCompletionChestImage,
+                  { transform: [{ scale: revealScale }] },
+                ]}
+                resizeMode="contain"
+              />
+              <Animated.Image
+                source={CLASSIC_TAMAGOTCHI_ANIMATIONS.happy}
+                style={[
+                  styles.temptationSeriesCompletionMascot,
+                  { transform: [{ translateY: mascotTranslateY }] },
+                ]}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={[styles.temptationSeriesCompletionTitle, { color: colors.text }]}>
+              {claimed ? t("temptationSeriesCompleteTitle") : t("temptationSeriesReady")}
+            </Text>
+            <View
+              style={[
+                styles.temptationSeriesRewardPanel,
+                {
+                  backgroundColor: colorWithAlpha(rewardTone, isDarkMode ? 0.16 : 0.08),
+                  borderColor: colorWithAlpha(rewardTone, isDarkMode ? 0.42 : 0.24),
+                },
+              ]}
+            >
+              {claimed ? (
+                <View
+                  style={styles.temptationSeriesRewardValue}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={t("temptationSeriesRewardPaid", {
+                    coins: normalized.claimedCoins,
+                  })}
+                >
+                  <Image
+                    source={rewardCoinSource}
+                    style={styles.temptationSeriesRewardCoin}
+                    resizeMode="contain"
+                  />
+                  <Text style={[styles.temptationSeriesRewardAmount, { color: colors.text }]}>
+                    {rewardCoins}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.temptationSeriesReadyProgress, { color: colors.text }]}>
+                  {t("temptationSeriesProgress", {
+                    completed: progress.completed,
+                    total: progress.total,
+                  })}
+                </Text>
+              )}
+              <Text
+                style={[
+                  styles.temptationSeriesCompletionReward,
+                  { color: claimed ? colors.muted : accent },
+                ]}
+                accessible={!claimed}
+                accessibilityElementsHidden={claimed}
+                importantForAccessibility={claimed ? "no-hide-descendants" : "auto"}
+              >
+                {claimed
+                  ? t("temptationSeriesRewardBalanceLabel")
+                  : t("temptationSeriesChestBalance", { coins: normalized.pendingCoins })}
+              </Text>
+            </View>
+            {claimed ? (
+              <>
+              <View style={styles.temptationSeriesSummaryList}>
+                {summaryItems.map((item) => (
+                  <View
+                    key={item.key}
+                    style={[
+                      styles.temptationSeriesSummaryItem,
+                      {
+                        backgroundColor: colorWithAlpha(item.tone, isDarkMode ? 0.14 : 0.08),
+                        borderColor: colorWithAlpha(item.tone, isDarkMode ? 0.34 : 0.2),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.temptationSeriesSummarySymbol, { color: item.tone }]}>
+                      {item.symbol}
+                    </Text>
+                    <Text style={[styles.temptationSeriesSummaryText, { color: item.tone }]}>
+                      {t(item.label, { count: item.count })}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View
+                style={[
+                  styles.temptationSeriesRhythmChip,
+                  {
+                    backgroundColor: colorWithAlpha(colors.primary, isDarkMode ? 0.2 : 0.1),
+                    borderColor: colorWithAlpha(colors.primary, isDarkMode ? 0.4 : 0.22),
+                  },
+                ]}
+              >
+                <Text style={styles.temptationSeriesRhythmIcon}>⚡</Text>
+                <Text style={[styles.temptationSeriesRhythmChipText, { color: colors.text }]}>
+                  {t(
+                    Math.max(0, Number(usageStreak?.current) || 0) === 1
+                      ? "temptationSeriesRhythmOne"
+                      : "temptationSeriesRhythm",
+                    { count: Math.max(0, Number(usageStreak?.current) || 0) }
+                  )}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.temptationSeriesCompletionPrimary,
+                  { backgroundColor: colors.text, shadowColor: colors.text },
+                ]}
+                onPress={onContinue}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.temptationSeriesCompletionPrimaryText, { color: colors.background }]}>
+                  {t("temptationSeriesContinue")}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.temptationSeriesCompletionPrimary,
+                { backgroundColor: accent, shadowColor: glow },
+              ]}
+              onPress={onClaim}
+              activeOpacity={0.9}
+              accessibilityRole="button"
+            >
+              <Text style={styles.temptationSeriesOpenButtonText}>{t("temptationSeriesOpenChest")}</Text>
+            </TouchableOpacity>
+          )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
 const TemptationEditSheet = React.memo(function TemptationEditSheet({
   item,
   language,
@@ -17647,6 +18531,8 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
   onEditSave,
   onEditCancel,
   onEditDelete,
+  onEditDuplicate,
+  isDuplicateCopy = false,
 }) {
   const scrollRef = useRef(null);
   const scrollHeightRef = useRef(0);
@@ -17761,6 +18647,12 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
   const editorDanger = colors.error || SPEND_ACTION_COLOR;
   const editorControlSurface = colors.surfaceMuted || colorWithAlpha(colors.text, 0.045);
   const editorSheetSurface = colors.surfaceElevated || colors.card;
+  const duplicateActionLabel =
+    resolveLanguageMapValue(TEMPTATION_DUPLICATE_ACTION_LABELS, language) ||
+    TEMPTATION_DUPLICATE_ACTION_LABELS.en;
+  const duplicateHint =
+    resolveLanguageMapValue(TEMPTATION_DUPLICATE_HINTS, language) ||
+    TEMPTATION_DUPLICATE_HINTS.en;
   const resolveControlColors = (fieldKey) => {
     const focused = focusedField === fieldKey;
     return {
@@ -17786,19 +18678,35 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
         >
           {t("temptationEditTitle")}
         </Text>
-        <TouchableOpacity
-          style={[
-            styles.temptationEditClose,
-            { backgroundColor: colorWithAlpha(colors.text, 0.07) },
-          ]}
-          onPress={onEditCancel}
-          activeOpacity={0.72}
-          accessibilityRole="button"
-          accessibilityLabel={t("priceEditCancel")}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Text style={[styles.temptationEditCloseText, { color: colors.text }]}>×</Text>
-        </TouchableOpacity>
+        <View style={styles.temptationEditHeaderActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.temptationEditHeaderAction,
+              { backgroundColor: colorWithAlpha(editorAccent, pressed ? 0.16 : 0.09) },
+              pressed && styles.temptationEditHeaderActionPressed,
+            ]}
+            onPress={onEditDuplicate}
+            accessibilityRole="button"
+            accessibilityLabel={duplicateActionLabel}
+            accessibilityHint={duplicateHint}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <TemptationGlyph type="duplicate" color={editorAccent} size={20} strokeWidth={1.75} />
+          </Pressable>
+          <TouchableOpacity
+            style={[
+              styles.temptationEditClose,
+              { backgroundColor: colorWithAlpha(colors.text, 0.07) },
+            ]}
+            onPress={onEditCancel}
+            activeOpacity={0.72}
+            accessibilityRole="button"
+            accessibilityLabel={t("priceEditCancel")}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={[styles.temptationEditCloseText, { color: colors.text }]}>×</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <ScrollView
         ref={scrollRef}
@@ -17822,6 +18730,20 @@ const TemptationEditSheet = React.memo(function TemptationEditSheet({
           updateOverflowCue();
         }}
       >
+        {isDuplicateCopy ? (
+          <View
+            style={[
+              styles.temptationEditDuplicateHint,
+              { backgroundColor: colorWithAlpha(editorAccent, 0.09) },
+            ]}
+            accessibilityRole="text"
+          >
+            <TemptationGlyph type="duplicate" color={editorAccent} size={19} strokeWidth={1.75} />
+            <Text style={[styles.temptationEditDuplicateHintText, { color: colors.text }]}>
+              {duplicateHint}
+            </Text>
+          </View>
+        ) : null}
         <View
           style={styles.temptationEditFieldRow}
           onLayout={(event) => registerFieldLayout("identity", event)}
@@ -20028,7 +20950,6 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   t,
   language = DEFAULT_LANGUAGE,
   analyticsPreview = [],
-  actualSavedUSD = 0,
   potentialForecastUSD = 0,
   potentialForecastPeriod = "month",
   onPotentialForecastPeriodChange = () => {},
@@ -20816,6 +21737,24 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
       precisionOverride: potentialPrecision,
     }
   );
+  const potentialHasForecast = resolvedPotentialForecastUSD > 0.01;
+  const potentialPeriodDays = Math.max(
+    1,
+    Math.round(
+      (HERO_POTENTIAL_PERIOD_FACTORS[resolvedPotentialForecastPeriod] || 1) * FORECAST_MONTH_DAYS
+    )
+  );
+  const potentialPeriodDaysLabel = t("potentialBlockPeriodDays", {
+    count: potentialPeriodDays,
+  });
+  const potentialCompactLabel = t("potentialBlockCompactLabel");
+  const potentialStatusText = t(
+    potentialHasForecast ? "potentialBlockStatusReady" : "potentialBlockStatusStart"
+  );
+  const potentialDisplayValue = potentialHasForecast ? potentialLocal : "—";
+  const potentialAccessibilityLabel = `${t("potentialBlockTitle")}. ${potentialPeriodDaysLabel}. ${
+    potentialHasForecast ? potentialLocal : potentialStatusText
+  }`;
   const potentialPeriodOptions = useMemo(
     () => [
       { id: "week", label: t("potentialPeriodWeek") },
@@ -20831,11 +21770,12 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
   const potentialSegmentedColors = useMemo(
     () => ({
       border: colorWithAlpha(potentialAccentColor, 0.46),
-      text: potentialAccentColor,
-      muted: colorWithAlpha(potentialAccentColor, 0.78),
+      text: goldPalette.text,
+      muted: goldPalette.subtext,
       background: "#FFFFFF",
+      activeText: resolveForegroundForColor(goldPalette.text),
     }),
-    [potentialAccentColor]
+    [goldPalette.subtext, goldPalette.text, potentialAccentColor]
   );
   const isHeroRtlText = isRtlLanguage(language);
   const isHeroRtlLayout = false;
@@ -20899,62 +21839,8 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
     : resolvedGoalSavedLabel;
   const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);
   const hasCoinInventory = coinEntries.some((entry) => entry.count > 0);
-  const aheadUSD = Math.max(0, actualSavedUSD - resolvedPotentialForecastUSD);
-  const aheadRatio =
-    resolvedPotentialForecastUSD > 0 ? aheadUSD / resolvedPotentialForecastUSD : 0;
-  const missedUSD = Math.max(0, resolvedPotentialForecastUSD - actualSavedUSD);
-  const missedRatio =
-    resolvedPotentialForecastUSD > 0 ? missedUSD / resolvedPotentialForecastUSD : 0;
-  const missedLocal = formatCurrency(convertToCurrency(missedUSD || 0, currency), currency, {
-    precisionOverride: getCurrencyPrecision(currency),
-  });
-  const potentialStatusMeta = useMemo(() => {
-    if (resolvedPotentialForecastUSD <= 0 || actualSavedUSD <= 0) {
-      return { key: "potentialBlockStatusStart", tone: "neutral", replacements: undefined };
-    }
-    if (aheadUSD > 0.01) {
-      if (aheadRatio >= HERO_POTENTIAL_AHEAD_HIGH_RATIO) {
-        return { key: "potentialBlockStatusAheadHigh", tone: "ahead", replacements: undefined };
-      }
-      if (aheadRatio >= HERO_POTENTIAL_AHEAD_MID_RATIO) {
-        return { key: "potentialBlockStatusAheadMid", tone: "ahead", replacements: undefined };
-      }
-      return { key: "potentialBlockStatusAheadLow", tone: "ahead", replacements: undefined };
-    }
-    if (missedUSD <= 0.01) {
-      return { key: "potentialBlockStatusOnTrack", tone: "neutral", replacements: undefined };
-    }
-    if (missedRatio <= HERO_POTENTIAL_BEHIND_NEAR_RATIO) {
-      return {
-        key: "potentialBlockHintNear",
-        tone: "behind",
-        replacements: { amount: missedLocal },
-      };
-    }
-    if (missedRatio <= HERO_POTENTIAL_BEHIND_FAR_RATIO) {
-      return {
-        key: "potentialBlockHintMid",
-        tone: "behind",
-        replacements: { amount: missedLocal },
-      };
-    }
-    return {
-      key: "potentialBlockHintFar",
-      tone: "behind",
-      replacements: { amount: missedLocal },
-    };
-  }, [actualSavedUSD, aheadRatio, aheadUSD, missedLocal, missedRatio, missedUSD, resolvedPotentialForecastUSD]);
-  const potentialStatusText = t(potentialStatusMeta.key, potentialStatusMeta.replacements);
-  const potentialStatusColor =
-    potentialStatusMeta.tone === "ahead"
-      ? goldPalette.success
-      : potentialStatusMeta.tone === "behind"
-      ? goldPalette.danger
-      : goldPalette.subtext;
-  const potentialCompactLabel =
-    resolvedPotentialForecastUSD > 0 && missedUSD > 0.01
-      ? t("homePotentialLeftLabel", { amount: missedLocal })
-      : potentialStatusText;
+  const potentialStatusColor = goldPalette.subtext;
+  const potentialValueColor = goldPalette.text;
   const handlePotentialForecastPeriodChange = useCallback(
     (nextPeriod) => {
       if (HERO_POTENTIAL_PERIOD_FACTORS[nextPeriod] == null) return;
@@ -21201,31 +22087,62 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             ) : null}
             {!expanded ? (
               <TouchableOpacity
-                style={[
-                  styles.goalJarPotentialPill,
-                  styles.goalJarPotentialPillCollapsed,
-                  {
-                    backgroundColor: colorWithAlpha(potentialAccentColor, isDarkMode ? 0.14 : 0.1),
-                    borderColor: colorWithAlpha(potentialAccentColor, isDarkMode ? 0.35 : 0.24),
-                  },
-                ]}
+                style={[styles.goalJarPotentialPill, styles.goalJarPotentialPillCollapsed]}
                 activeOpacity={0.88}
+                hitSlop={{ top: 8, right: 4, bottom: 8, left: 4 }}
                 onPress={handlePotentialDetailsOpen}
+                accessibilityRole="button"
+                accessibilityLabel={potentialAccessibilityLabel}
+                accessibilityHint={t("potentialBlockOpenHint")}
               >
-                <Text
+                <View
                   style={[
-                    styles.goalJarPotentialText,
-                    isHeroRtlText && styles.goalJarHeroTextRtl,
-                    { color: potentialStatusColor },
+                    styles.goalJarPotentialCompactRow,
+                    isHeroRtlLayout && styles.goalJarPotentialCompactRowRtl,
                   ]}
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                  allowAndroidAutoFit
-                  minimumFontScale={MIN_READABLE_FONT_SCALE}
-                  maxFontSizeMultiplier={1.15}
                 >
-                  {potentialCompactLabel}
-                </Text>
+                  <Text
+                    style={[
+                      styles.goalJarPotentialCompactLabel,
+                      isHeroRtlText && styles.goalJarHeroTextRtl,
+                      { color: goldPalette.subtext },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    allowAndroidAutoFit
+                    minimumFontScale={0.82}
+                    maxFontSizeMultiplier={1}
+                  >
+                    {potentialCompactLabel}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.goalJarPotentialValue,
+                      potentialAmountDirectionStyle,
+                      { color: potentialValueColor },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    allowAndroidAutoFit
+                    minimumFontScale={0.72}
+                    maxFontSizeMultiplier={1}
+                  >
+                    {potentialDisplayValue}
+                  </Text>
+                </View>
+                {!potentialHasForecast ? (
+                  <Text
+                    style={[
+                      styles.goalJarPotentialStatus,
+                      isHeroRtlText && styles.goalJarHeroTextRtl,
+                      { color: potentialStatusColor },
+                    ]}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={1.15}
+                  >
+                    {potentialStatusText}
+                  </Text>
+                ) : null}
               </TouchableOpacity>
             ) : null}
           </View>
@@ -21414,52 +22331,64 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
             ]}
             activeOpacity={0.9}
             onPress={handlePotentialDetailsOpen}
+            accessibilityRole="button"
+            accessibilityLabel={potentialAccessibilityLabel}
+            accessibilityHint={t("potentialBlockOpenHint")}
           >
-            <View style={styles.heroPotentialExpandedRow}>
-              <View style={styles.heroPotentialMetricColumn}>
-                <Text style={[styles.heroPotentialLabel, potentialCenteredRtlStyle, { color: goldPalette.text }]}>
-                  {t("potentialBlockTitle")}
-                </Text>
-                <View style={styles.heroPotentialValueWrap}>
-                  <Text
-                    style={[
-                      styles.heroPotentialValue,
-                      potentialAmountDirectionStyle,
-                      { color: potentialAccentColor },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    allowAndroidAutoFit
-                    minimumFontScale={0.55}
-                    maxFontSizeMultiplier={1}
-                  >
-                    {potentialLocal}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.heroPotentialControlsColumn}>
-                <SegmentedSlider
-                  value={resolvedPotentialForecastPeriod}
-                  options={potentialPeriodOptions}
-                  onChange={handlePotentialForecastPeriodChange}
-                  colors={potentialSegmentedColors}
-                  style={styles.heroPotentialSegmentedControl}
-                  optionStyle={styles.heroPotentialSegmentedOption}
-                  textStyle={styles.heroPotentialSegmentedText}
-                  activeTextStyle={styles.heroPotentialSegmentedTextActive}
-                />
+            <View style={styles.heroPotentialHeaderRow}>
+              <Text
+                style={[styles.heroPotentialLabel, potentialCenteredRtlStyle, { color: goldPalette.text }]}
+                numberOfLines={2}
+              >
+                {t("potentialBlockTitle")}
+              </Text>
+              <SegmentedSlider
+                value={resolvedPotentialForecastPeriod}
+                options={potentialPeriodOptions}
+                onChange={handlePotentialForecastPeriodChange}
+                colors={potentialSegmentedColors}
+                activeTextColor={potentialSegmentedColors.activeText}
+                style={styles.heroPotentialSegmentedControl}
+                optionStyle={styles.heroPotentialSegmentedOption}
+                textStyle={styles.heroPotentialSegmentedText}
+                activeTextStyle={styles.heroPotentialSegmentedTextActive}
+              />
+            </View>
+            <View style={styles.heroPotentialValueRow}>
+              <View style={styles.heroPotentialValueWrap}>
                 <Text
-                  style={[styles.heroPotentialStatus, potentialCenteredRtlStyle, { color: potentialStatusColor }]}
-                  numberOfLines={3}
+                  style={[
+                    styles.heroPotentialValue,
+                    potentialAmountDirectionStyle,
+                    { color: potentialValueColor },
+                  ]}
+                  numberOfLines={1}
                   adjustsFontSizeToFit
                   allowAndroidAutoFit
-                  minimumFontScale={MIN_READABLE_FONT_SCALE}
-                  maxFontSizeMultiplier={1.15}
+                  minimumFontScale={0.55}
+                  maxFontSizeMultiplier={1}
                 >
-                  {potentialStatusText}
+                  {potentialDisplayValue}
+                </Text>
+                <Text
+                  style={[styles.heroPotentialPeriodText, potentialCenteredRtlStyle, { color: goldPalette.subtext }]}
+                >
+                  {potentialPeriodDaysLabel}
                 </Text>
               </View>
+              <Text
+                style={[styles.heroPotentialExplainCta, { color: goldPalette.text }]}
+              >
+                {t("potentialBlockExplainCta")}
+              </Text>
             </View>
+            <Text
+              style={[styles.heroPotentialStatus, potentialCenteredRtlStyle, { color: potentialStatusColor }]}
+              numberOfLines={2}
+              maxFontSizeMultiplier={1.15}
+            >
+              {potentialStatusText}
+            </Text>
           </TouchableOpacity>
           <View style={[styles.savedHeroFooterGrid, { borderTopColor: goldPalette.border }]}>
             <View style={styles.savedHeroCoinsCard}>
@@ -27824,12 +28753,19 @@ const FeedScreen = React.memo(
   onTemptationAction,
   onTemptationEditToggle,
   onTemptationArchiveToggle,
+  temptationSeries = null,
+  todayTemptationPlan = null,
+  temptationSeriesContinuationRequestTick = 0,
+  onTemptationSeriesContinuationHandled = () => {},
+  onTemptationSeriesAction = () => {},
+  onTemptationSeriesOpenChest = () => {},
   onNewTemptation = () => {},
   onTemptationLockedPress = null,
   t,
   tVariant,
   language,
   colors,
+  theme = DEFAULT_THEME,
   currency,
   freeDayStats,
   usageStreak = INITIAL_USAGE_STREAK,
@@ -27944,16 +28880,12 @@ const FeedScreen = React.memo(
   onTamagotchiGreeting = () => {},
   tamagotchiLastHungrySpeechAt = 0,
   onTamagotchiHungrySpeech = () => {},
-  tutorialTemptationStepId = null,
-  tutorialHighlightMeasureTick = 0,
-  onTutorialHighlightLayoutChange = null,
   showAmountSliderConfirmCoach = false,
   onAmountSliderConfirmCoachComplete = () => {},
-  showTemptationCoachMark = false,
-  onTemptationCoachMarkAction = () => {},
-  showTemptationAddCoachMark = false,
-  onTemptationAddCoachDismiss = () => {},
-  onTemptationAddCoachCreate = () => {},
+  nextDecisionCoachRequest = null,
+  onNextDecisionCoachShown = () => {},
+  onNextDecisionCoachDismiss = () => {},
+  onNextDecisionCoachUnavailable = () => {},
   allowThinkAction = true,
   isPremiumUser = false,
   budgetSpeechDataRef = null,
@@ -27969,6 +28901,33 @@ const FeedScreen = React.memo(
   ) {
   const safeAreaInsets = safeUseSafeAreaInsets();
   const { reduceMotion } = useMotionPreferences();
+  const normalizedTemptationSeries = useMemo(
+    () => normalizeTemptationSeriesState(temptationSeries),
+    [temptationSeries]
+  );
+  const normalizedTodayTemptationPlan = useMemo(() => {
+    const targetIds = Array.from(
+      new Set(
+        (Array.isArray(todayTemptationPlan?.targetIds) ? todayTemptationPlan.targetIds : [])
+          .map(normalizeTemptationId)
+          .filter(Boolean)
+      )
+    );
+    return {
+      dayKey:
+        typeof todayTemptationPlan?.dayKey === "string" ? todayTemptationPlan.dayKey : null,
+      targetIds,
+      resolutions:
+        todayTemptationPlan?.resolutions && typeof todayTemptationPlan.resolutions === "object"
+          ? todayTemptationPlan.resolutions
+          : {},
+    };
+  }, [todayTemptationPlan]);
+  const temptationSeriesProgress = useMemo(
+    () => getTemptationSeriesProgress(normalizedTemptationSeries),
+    [normalizedTemptationSeries]
+  );
+  const [seriesNotMineItem, setSeriesNotMineItem] = useState(null);
   const dailyRewardModalRef = useRef(null);
   const dailyRewardOpenRequestSeenRef = useRef(0);
   const dailyRewardModalVisibleRef = useRef(false);
@@ -28046,14 +29005,11 @@ const FeedScreen = React.memo(
   const resolvedProgressLifetimeSavedUSD = Number.isFinite(progressLifetimeSavedUSD)
     ? progressLifetimeSavedUSD
     : lifetimeSavedUSD;
-  const tutorialHighlightOffset = useMemo(() => {
-    if (Platform.OS !== "android") return 0;
-    const bottomInset = Math.max(safeAreaInsets.bottom || 0, 0);
-    return bottomInset <= 8 ? 0 : ANDROID_TUTORIAL_HIGHLIGHT_OFFSET;
-  }, [safeAreaInsets.bottom]);
   const listRef = useRef(null);
   const cardLayoutOffsetsRef = useRef(new Map());
   const feedIndexByTemplateRef = useRef(new Map());
+  const nextDecisionCoachScrollHandledRef = useRef(null);
+  const seriesContinuationRequestSeenRef = useRef(0);
   const [feedScrollLocked, setFeedScrollLocked] = useState(false);
   const activeAmountSliderCardIdRef = useRef(null);
   const heroSectionHeightRef = useRef(0);
@@ -28101,8 +29057,6 @@ const FeedScreen = React.memo(
   const feedScrollingRef = useRef(false);
   const [feedScrolling, setFeedScrolling] = useState(false);
   const [feedAppState, setFeedAppState] = useState(() => AppState?.currentState || "active");
-  const addCoachEntrance = useRef(new Animated.Value(0)).current;
-  const addCoachPulse = useRef(new Animated.Value(0)).current;
   const isFeedAppActive = feedAppState !== "background" && feedAppState !== "inactive";
   const shouldAnimateVisibleHero =
     !reduceMotion && isFeedAppActive && heroPotentialVisible && !feedScrolling;
@@ -28112,7 +29066,7 @@ const FeedScreen = React.memo(
       feedScrollingRef.current = next;
       setFeedScrolling(next);
       if (notifyExternal && typeof onScrollActivityChange === "function") {
-        onScrollActivityChange(next);
+        onScrollActivityChange(next, feedScrollOffsetRef.current);
       }
     },
     [onScrollActivityChange]
@@ -28218,63 +29172,6 @@ const FeedScreen = React.memo(
       return nextPeriod;
     });
   }, []);
-  useEffect(() => {
-    if (!showTemptationAddCoachMark) {
-      addCoachEntrance.stopAnimation();
-      addCoachPulse.stopAnimation();
-      addCoachEntrance.setValue(0);
-      addCoachPulse.setValue(0);
-      return;
-    }
-    addCoachEntrance.stopAnimation();
-    addCoachPulse.stopAnimation();
-    addCoachEntrance.setValue(0);
-    addCoachPulse.setValue(0);
-    const entrance = Animated.spring(addCoachEntrance, {
-      toValue: 1,
-      friction: 8,
-      tension: 120,
-      useNativeDriver: true,
-    });
-    const pulseLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(addCoachPulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(addCoachPulse, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    entrance.start();
-    pulseLoop.start();
-    return () => {
-      entrance.stop();
-      pulseLoop.stop();
-    };
-  }, [addCoachEntrance, addCoachPulse, showTemptationAddCoachMark]);
-  const addCoachOpacity = addCoachEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  const addCoachTranslateY = addCoachEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [14, 0],
-  });
-  const addButtonPulseScale = addCoachPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.08],
-  });
-  const addButtonPulseOpacity = addCoachPulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.62, 1],
-  });
   const syncFeedScrollLock = useCallback(() => {
     const shouldLock = Boolean(activeAmountSliderCardIdRef.current);
     setFeedScrollLocked((prev) => (prev === shouldLock ? prev : shouldLock));
@@ -29017,6 +29914,18 @@ const FeedScreen = React.memo(
           ? normalizeInteractionKey(String(templateId))
           : normalizeInteractionKey(templateId);
       if (!normalizedKey) return false;
+      const index = Number(feedIndexByTemplateRef.current.get(normalizedKey));
+      if (index === 0 && heroSectionHeightRef.current > 0) {
+        try {
+          listRef.current.scrollToOffset({
+            offset: Math.max(0, heroSectionHeightRef.current - 12),
+            animated,
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
       const offset = Number(cardLayoutOffsetsRef.current.get(normalizedKey));
       if (Number.isFinite(offset)) {
         try {
@@ -29026,7 +29935,6 @@ const FeedScreen = React.memo(
           return false;
         }
       }
-      const index = Number(feedIndexByTemplateRef.current.get(normalizedKey));
       if (!Number.isFinite(index) || index < 0 || typeof listRef.current.scrollToIndex !== "function") {
         return false;
       }
@@ -29436,13 +30344,14 @@ const FeedScreen = React.memo(
     },
     [historyInteractionMap]
   );
-  const isDarkMode = colors === THEMES.dark;
+  const isDarkMode = theme === "dark";
   const isProMode = useMemo(() => {
+    if (theme === PRO_THEME_ID) return true;
     const normalizedPrimary = String(colors?.primary || "").trim().toLowerCase();
     return PRO_THEME_ACCENT_OPTIONS.some(
       (option) => String(option?.accent || "").trim().toLowerCase() === normalizedPrimary
     );
-  }, [colors?.primary]);
+  }, [colors?.primary, theme]);
   const nextFeedOfferLevel = useMemo(() => {
     const currentLevel = Math.max(1, Math.floor(Number(playerLevel) || 1));
     return currentLevel + 1;
@@ -29470,8 +30379,8 @@ const FeedScreen = React.memo(
     []
   );
   const moodGradient = useMemo(
-    () => (isDarkMode ? applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), "dark") : getMoodGradient(moodPreset?.id)),
-    [isDarkMode, moodPreset?.id]
+    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme, colors),
+    [colors, moodPreset?.id, theme]
   );
   const resolveInteractionEntry = useCallback(
     (item) => {
@@ -30617,6 +31526,7 @@ const FeedScreen = React.memo(
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
   const progressPercentLabel = Math.round(progressPercent * 100);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
+  const compactLevelLabel = t("progressHeroLevelCompact", { level: tierInfo.level });
   const usageStreakCount = Math.max(0, Number(usageStreak?.current) || 0);
   const usageStreakLostCount = Math.max(0, Number(usageStreak?.lostCount) || 0);
   const usageStreakLost = usageStreakCount === 0 && usageStreakLostCount > 0;
@@ -31244,23 +32154,41 @@ const FeedScreen = React.memo(
     if (feedCategoryOptions.some((option) => option.id === selectedFeedCategoryId)) return;
     setSelectedFeedCategoryId("all");
   }, [feedCategoryOptions, selectedFeedCategoryId]);
-  const handleFeedCategoryFilterPress = useCallback((categoryId) => {
-    const nextCategoryId = categoryId && IMPULSE_CATEGORY_DEFS[categoryId] ? categoryId : "all";
-    setSelectedFeedCategoryId(nextCategoryId);
-    if (nextCategoryId === "all") return;
-    const now = Date.now();
-    setFeedCategoryFilterUsage((prev) => {
-      const normalizedPrev = normalizeFeedCategoryFilterUsage(prev);
-      const current = normalizedPrev[nextCategoryId] || { count: 0, lastUsedAt: 0 };
-      return {
-        ...normalizedPrev,
-        [nextCategoryId]: {
-          count: Math.max(0, Math.floor(Number(current.count) || 0)) + 1,
-          lastUsedAt: now,
-        },
-      };
-    });
-  }, []);
+  const handleFeedCategoryFilterPress = useCallback(
+    (categoryId) => {
+      if (nextDecisionCoachRequest) {
+        onNextDecisionCoachDismiss?.("filter_changed");
+      }
+      const requestedCategoryId =
+        categoryId === "all" || IMPULSE_CATEGORY_DEFS[categoryId]
+          ? categoryId
+          : "all";
+      const nextCategoryId = feedCategoryOptions.some(
+        (option) => option.id === requestedCategoryId
+      )
+        ? requestedCategoryId
+        : "all";
+      setSelectedFeedCategoryId(nextCategoryId);
+      if (nextCategoryId === "all") return;
+      const now = Date.now();
+      setFeedCategoryFilterUsage((prev) => {
+        const normalizedPrev = normalizeFeedCategoryFilterUsage(prev);
+        const current = normalizedPrev[nextCategoryId] || { count: 0, lastUsedAt: 0 };
+        return {
+          ...normalizedPrev,
+          [nextCategoryId]: {
+            count: Math.max(0, Math.floor(Number(current.count) || 0)) + 1,
+            lastUsedAt: now,
+          },
+        };
+      });
+    },
+    [
+      feedCategoryOptions,
+      nextDecisionCoachRequest,
+      onNextDecisionCoachDismiss,
+    ]
+  );
   const activeFeedProducts = useMemo(() => {
     if (selectedFeedCategoryId === "all" || typeof resolveTemptationCategory !== "function") {
       return orderedProducts;
@@ -31268,7 +32196,11 @@ const FeedScreen = React.memo(
     return orderedProducts.filter(
       (item) => resolveTemptationCategory(item) === selectedFeedCategoryId
     );
-  }, [orderedProducts, resolveTemptationCategory, selectedFeedCategoryId]);
+  }, [
+    orderedProducts,
+    resolveTemptationCategory,
+    selectedFeedCategoryId,
+  ]);
   const filteredArchivedItems = useMemo(() => {
     const entries = Array.isArray(archivedItems) ? archivedItems : [];
     if (selectedFeedCategoryId === "all" || typeof resolveTemptationCategory !== "function") {
@@ -31429,41 +32361,84 @@ const FeedScreen = React.memo(
       });
     const potentialSavedUSD = Math.max(0, Number(heroPotentialForecast?.potentialUSD) || 0);
     const potentialLocal = formatLocal(potentialSavedUSD);
-    const actualLocal = formatLocal(realSavedUSD);
-    const remainingUSD = Math.max(potentialSavedUSD - realSavedUSD, 0);
-    const remainingLocal = formatLocal(remainingUSD);
-    const periodBadge =
-      heroPotentialForecast?.period === "week"
-        ? "7d"
-        : heroPotentialForecast?.period === "year"
-        ? "365d"
-        : "30d";
-    onPotentialDetailsOpen(
-      t("potentialBlockDetails", {
-        period: periodBadge,
-        potential: potentialLocal,
-        actual: actualLocal,
-        remaining: remainingLocal,
-      })
-    );
+    const periodFactor = Math.max(0, Number(heroPotentialForecast?.periodFactor) || 1);
+    const periodDays = Math.max(1, Math.round(periodFactor * FORECAST_MONTH_DAYS));
+    const cardCount = Math.max(0, Number(heroPotentialForecast?.cardCount) || 0);
+    onPotentialDetailsOpen({
+      forecastLabel: potentialLocal,
+      periodDays,
+      cardCount,
+      hasForecast: potentialSavedUSD > 0.01 && cardCount > 0,
+    });
   }, [
     heroPotentialForecast,
     onPotentialDetailsOpen,
     profile?.currency,
-    realSavedUSD,
-    t,
   ]);
   const feedEntries = useMemo(() => {
-    return activeFeedProducts.map((item, index) => {
+    const hasSeriesSnapshot =
+      normalizedTemptationSeries.status !== TEMPTATION_SERIES_STATUS.IDLE &&
+      normalizedTemptationSeries.targetIds.length > 0;
+    const todayTargetIds = new Set(
+      hasSeriesSnapshot
+        ? normalizedTemptationSeries.targetIds
+        : normalizedTodayTemptationPlan.targetIds
+    );
+    const resolvedTodayIds = new Set([
+      ...Object.keys(normalizedTodayTemptationPlan.resolutions),
+      ...Object.keys(normalizedTemptationSeries.resolutions),
+    ]);
+    const entries = activeFeedProducts.map((item, index) => {
       const key = item?.id || item?.templateId || `item-${index}`;
+      const seriesId = normalizeTemptationId(item?.templateId || item?.id);
+      const seriesResolution = seriesId
+        ? normalizedTemptationSeries.resolutions[seriesId] ||
+          normalizedTodayTemptationPlan.resolutions[seriesId] ||
+          null
+        : null;
       return {
         type: "card",
         id: `card-${key}`,
         item,
         interaction: getInteractionEntry(item),
+        seriesId,
+        seriesTarget: Boolean(seriesId && todayTargetIds.has(seriesId)),
+        seriesResolution,
+        seriesChecked: Boolean(seriesResolution),
       };
     });
-  }, [activeFeedProducts, getInteractionEntry]);
+    const partition = partitionUnifiedTemptationFeed({
+      items: entries,
+      getId: (entry) => entry.seriesId,
+      todayTargetIds: Array.from(todayTargetIds),
+      resolvedTodayIds: Array.from(resolvedTodayIds),
+    });
+    const todayEntries = [...partition.uncheckedToday, ...partition.checkedToday];
+    const todayComplete =
+      todayEntries.length > 0 && partition.uncheckedToday.length === 0;
+    const continuationAvailable =
+      normalizedTemptationSeries.status === TEMPTATION_SERIES_STATUS.CLAIMED &&
+      partition.other.length > 0;
+    return [
+      ...todayEntries.map((entry, index) => ({
+        ...entry,
+        showTodaySectionHeader: index === 0,
+        todaySectionCount: todayEntries.length,
+        todaySectionComplete: todayComplete,
+      })),
+      ...partition.other.map((entry, index) => ({
+        ...entry,
+        showOtherSectionHeader: todayEntries.length > 0 && index === 0,
+        otherSectionCount: partition.other.length,
+        showSeriesContinuationHint: continuationAvailable && index === 0,
+      })),
+    ];
+  }, [
+    activeFeedProducts,
+    getInteractionEntry,
+    normalizedTemptationSeries,
+    normalizedTodayTemptationPlan,
+  ]);
   const archiveEntries = useMemo(() => {
     const entries = Array.isArray(filteredArchivedItems) ? filteredArchivedItems : [];
     return entries
@@ -31479,15 +32454,24 @@ const FeedScreen = React.memo(
       })
       .filter(Boolean);
   }, [filteredArchivedItems, getInteractionEntry]);
-  const firstVisibleTemptationId = useMemo(() => {
-    const firstCard = feedEntries.find(
-      (entry) => entry?.type === "card" && entry.item?.id && !entry?.isLocked
-    );
-    return firstCard?.item?.id || null;
-  }, [feedEntries]);
-  const tutorialHighlightTemptationId = tutorialTemptationStepId
-    ? firstVisibleTemptationId || activeFeedProducts[0]?.id || orderedProducts[0]?.id || null
-    : null;
+  const nextDecisionCoachTarget = useMemo(() => {
+    if (!nextDecisionCoachRequest) return null;
+    return resolveNextDecisionCoachTarget({
+      products: orderedProducts,
+      resolvedTemptationIds: [
+        ...Object.keys(normalizedTemptationSeries.resolutions || {}),
+        ...Object.keys(normalizedTodayTemptationPlan.resolutions || {}),
+      ],
+      sourceTemptationId: nextDecisionCoachRequest.sourceTemptationId,
+      preferredTemptationId: nextDecisionCoachRequest.targetTemptationId,
+    });
+  }, [
+    nextDecisionCoachRequest,
+    normalizedTemptationSeries.resolutions,
+    normalizedTodayTemptationPlan.resolutions,
+    orderedProducts,
+  ]);
+  const nextDecisionCoachTargetId = nextDecisionCoachTarget?.id || null;
   const feedKeyExtractor = useCallback(
     (entry, index) => String(entry?.id || `${entry?.type || "feed-entry"}-${index}`),
     []
@@ -31498,6 +32482,35 @@ const FeedScreen = React.memo(
     runLayoutAnimation();
     setArchiveExpanded((prev) => !prev);
   }, []);
+  const handleSeriesSkip = useCallback(
+    (item) => {
+      onTemptationSeriesAction?.(item, "skip");
+      triggerSelectionHaptic();
+      runLayoutAnimation();
+    },
+    [onTemptationSeriesAction]
+  );
+  const handleSeriesNotMine = useCallback((item) => {
+    setSeriesNotMineItem(item || null);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+  const closeSeriesNotMine = useCallback(() => {
+    setSeriesNotMineItem(null);
+  }, []);
+  const handleSeriesNotMineEdit = useCallback(() => {
+    const item = seriesNotMineItem;
+    setSeriesNotMineItem(null);
+    if (item) onTemptationEditToggle?.(item);
+  }, [onTemptationEditToggle, seriesNotMineItem]);
+  const handleSeriesNotMineArchive = useCallback(() => {
+    const item = seriesNotMineItem;
+    setSeriesNotMineItem(null);
+    if (!item) return;
+    onTemptationSeriesAction?.(item, "archive");
+    onTemptationArchiveToggle?.(item);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    runLayoutAnimation();
+  }, [onTemptationArchiveToggle, onTemptationSeriesAction, seriesNotMineItem]);
   useEffect(() => {
     const map = new Map();
     feedEntries.forEach((entry, index) => {
@@ -31520,6 +32533,141 @@ const FeedScreen = React.memo(
     });
     feedIndexByTemplateRef.current = map;
   }, [feedEntries]);
+  useEffect(() => {
+    const requestTick = Math.max(0, Number(temptationSeriesContinuationRequestTick) || 0);
+    if (!requestTick) {
+      seriesContinuationRequestSeenRef.current = 0;
+      return undefined;
+    }
+    if (requestTick === seriesContinuationRequestSeenRef.current) return undefined;
+    if (!feedEntries.length) {
+      if (selectedFeedCategoryId !== "all") {
+        setSelectedFeedCategoryId("all");
+        return undefined;
+      }
+      seriesContinuationRequestSeenRef.current = requestTick;
+      onTemptationSeriesContinuationHandled?.(requestTick);
+      return undefined;
+    }
+    const firstOtherIndex = feedEntries.findIndex((entry) => !entry.seriesTarget);
+    if (firstOtherIndex < 0 && selectedFeedCategoryId !== "all") {
+      setSelectedFeedCategoryId("all");
+      return undefined;
+    }
+    seriesContinuationRequestSeenRef.current = requestTick;
+    if (firstOtherIndex < 0) {
+      onTemptationSeriesContinuationHandled?.(requestTick);
+      return undefined;
+    }
+    const targetIndex = firstOtherIndex;
+    let scrollTimer = null;
+    let cancelled = false;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      scrollTimer = setTimeout(() => {
+        if (cancelled || typeof listRef.current?.scrollToIndex !== "function") return;
+        try {
+          listRef.current.scrollToIndex({
+            index: targetIndex,
+            animated: !reduceMotion,
+            viewPosition: 0.06,
+          });
+        } catch (_error) {
+        } finally {
+          onTemptationSeriesContinuationHandled?.(requestTick);
+        }
+      }, 180);
+    });
+    return () => {
+      cancelled = true;
+      interactionTask?.cancel?.();
+      if (scrollTimer) clearTimeout(scrollTimer);
+    };
+  }, [
+    feedEntries,
+    onTemptationSeriesContinuationHandled,
+    reduceMotion,
+    selectedFeedCategoryId,
+    temptationSeriesContinuationRequestTick,
+  ]);
+  useEffect(() => {
+    if (!nextDecisionCoachRequest) return undefined;
+    const requestId = Math.max(1, Number(nextDecisionCoachRequest.requestId) || 1);
+    if (!nextDecisionCoachTargetId) {
+      const unavailableKey = `${requestId}:unavailable`;
+      if (nextDecisionCoachScrollHandledRef.current === unavailableKey) return undefined;
+      nextDecisionCoachScrollHandledRef.current = unavailableKey;
+      onNextDecisionCoachUnavailable?.();
+      return undefined;
+    }
+    const targetVisibleInFilter = activeFeedProducts.some(
+      (item) =>
+        normalizeTemptationId(item?.templateId || item?.id) === nextDecisionCoachTargetId
+    );
+    if (
+      nextDecisionCoachRequest.status === NEXT_DECISION_COACH_STATUS.PENDING &&
+      !targetVisibleInFilter
+    ) {
+      setSelectedFeedCategoryId("all");
+      return undefined;
+    }
+    const requestKey = `${requestId}:${nextDecisionCoachTargetId}`;
+    if (nextDecisionCoachScrollHandledRef.current === requestKey) return undefined;
+    let retryTimer = null;
+    let settleTimer = null;
+    let cancelled = false;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      const completeScroll = (didScroll) => {
+        if (cancelled) return;
+        if (!didScroll) {
+          onNextDecisionCoachUnavailable?.();
+          return;
+        }
+        nextDecisionCoachScrollHandledRef.current = requestKey;
+        onNextDecisionCoachShown?.(nextDecisionCoachTargetId);
+      };
+      const settleOnTarget = (initialDidScroll) => {
+        settleTimer = setTimeout(() => {
+          if (cancelled) return;
+          const settledDidScroll = scrollToTemptationCard({
+            templateId: nextDecisionCoachTargetId,
+            animated: !reduceMotion,
+          });
+          completeScroll(initialDidScroll || settledDidScroll);
+        }, 420);
+      };
+      const firstAttempt = scrollToTemptationCard({
+        templateId: nextDecisionCoachTargetId,
+        animated: !reduceMotion,
+      });
+      if (firstAttempt) {
+        settleOnTarget(true);
+        return;
+      }
+      retryTimer = setTimeout(() => {
+        settleOnTarget(
+          scrollToTemptationCard({
+            templateId: nextDecisionCoachTargetId,
+            animated: !reduceMotion,
+          })
+        );
+      }, 180);
+    });
+    return () => {
+      cancelled = true;
+      interactionTask?.cancel?.();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (settleTimer) clearTimeout(settleTimer);
+    };
+  }, [
+    activeFeedProducts,
+    nextDecisionCoachRequest,
+    nextDecisionCoachTargetId,
+    onNextDecisionCoachShown,
+    onNextDecisionCoachUnavailable,
+    reduceMotion,
+    scrollToTemptationCard,
+  ]);
   const resolveAssignedGoalLabel = useCallback(
     (goalId, assignedGoal) => {
       if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
@@ -31545,8 +32693,7 @@ const FeedScreen = React.memo(
         !archived &&
         !isLockedCard &&
         typeof drag === "function" &&
-        editingTemptationId !== item?.id &&
-        !tutorialTemptationStepId;
+        editingTemptationId !== item?.id;
       const interactionEntry = entry.interaction;
       const interactionRefreshKey = interactionEntry
         ? `${interactionEntry.lastInteractionAt || 0}:${interactionEntry.lastTimerResetAt || 0}:${interactionEntry.nextCheckAt || 0}`
@@ -31582,7 +32729,14 @@ const FeedScreen = React.memo(
         spentUSD: Math.max(0, Number(spendStatsEntry?.spentUSD) || 0),
         spendCount: Math.max(0, Number(spendStatsEntry?.spendCount) || 0),
       };
-      const isTutorialHighlightTarget = !isLockedCard && tutorialHighlightTemptationId === item.id;
+      const isNextDecisionCoachTarget =
+        !archived &&
+        !isLockedCard &&
+        Boolean(nextDecisionCoachRequest) &&
+        Boolean(nextDecisionCoachTargetId) &&
+        (normalizeTemptationId(templateKey) === nextDecisionCoachTargetId ||
+          normalizeTemptationId(item?.id) === nextDecisionCoachTargetId);
+      const resolvedTutorialHighlightMode = isNextDecisionCoachTarget ? "actions" : null;
       const categoryId =
         typeof resolveTemptationCategory === "function"
           ? resolveTemptationCategory(item)
@@ -31670,7 +32824,19 @@ const FeedScreen = React.memo(
             onEditDelete={() => onTemptationEditDelete?.(item)}
             onEditGoalSelect={() => onTemptationGoalSelect?.(item)}
             onSwipeDelete={() => onTemptationSwipeDelete?.(item)}
-            onSwipeArchive={() => onTemptationArchiveToggle?.(item)}
+            onSwipeArchive={() => {
+              if (!archived) onTemptationSeriesAction?.(item, "archive");
+              onTemptationArchiveToggle?.(item);
+            }}
+            showSeriesQuickActions={
+              !archived &&
+              entry.seriesTarget &&
+              (normalizedTemptationSeries.status === TEMPTATION_SERIES_STATUS.ACTIVE ||
+                normalizedTemptationSeries.status === TEMPTATION_SERIES_STATUS.READY)
+            }
+            seriesChecked={Boolean(entry.seriesChecked)}
+            onSeriesSkip={handleSeriesSkip}
+            onSeriesNotMine={handleSeriesNotMine}
             allowSwipeGestures={!isDragActive}
             onLongPress={canDragCard ? drag : null}
             isDragActive={isDragActive}
@@ -31680,18 +32846,13 @@ const FeedScreen = React.memo(
             playSound={playSound}
             onAmountSliderToggle={handleAmountSliderToggle}
             onFocusBadgePress={onFocusCancel}
-            showSavedCoachMark={false}
-            onSavedCoachMarkAction={onTemptationCoachMarkAction}
+            showNextDecisionCoach={isNextDecisionCoachTarget}
+            nextDecisionCoachCompleted={nextDecisionCoachRequest?.completed || 1}
+            nextDecisionCoachTotal={nextDecisionCoachRequest?.total || 3}
+            onNextDecisionCoachDismiss={() => onNextDecisionCoachDismiss?.("not_now")}
             showAmountSliderConfirmCoach={showAmountSliderConfirmCoach}
             onAmountSliderConfirmCoachComplete={onAmountSliderConfirmCoachComplete}
-            tutorialHighlightMode={isTutorialHighlightTarget ? tutorialTemptationStepId : null}
-            tutorialHighlightMeasureTick={
-              isTutorialHighlightTarget ? tutorialHighlightMeasureTick : 0
-            }
-            tutorialHighlightOffset={tutorialHighlightOffset}
-            onTutorialHighlightLayoutChange={
-              isTutorialHighlightTarget ? onTutorialHighlightLayoutChange : null
-            }
+            tutorialHighlightMode={resolvedTutorialHighlightMode}
             interaction={interactionEntry}
             interactionRefreshKey={interactionRefreshKey}
             budgetStatus={budgetStatus}
@@ -31737,24 +32898,25 @@ const FeedScreen = React.memo(
       onTemptationGoalSelect,
       onTemptationCategoryBudgetPress,
       onTemptationArchiveToggle,
+      onTemptationSeriesAction,
       onTemptationSwipeDelete,
+      handleSeriesNotMine,
+      handleSeriesSkip,
+      normalizedTemptationSeries.status,
+      nextDecisionCoachRequest,
+      nextDecisionCoachTargetId,
+      onNextDecisionCoachDismiss,
       onFocusCancel,
       showAmountSliderConfirmCoach,
       onAmountSliderConfirmCoachComplete,
-      onTemptationCoachMarkAction,
       playSound,
       resolveCardRefuseStats,
       resolveTemptationCategory,
       swipePinnedByTemplate,
       t,
       titleOverrides,
-      tutorialHighlightMeasureTick,
-      tutorialHighlightOffset,
       resolveAssignedGoalLabel,
       wishesById,
-      tutorialHighlightTemptationId,
-      tutorialTemptationStepId,
-      onTutorialHighlightLayoutChange,
       registerTemptationCardLayout,
     ]
   );
@@ -31888,16 +33050,46 @@ const FeedScreen = React.memo(
       const tiltDirection =
         orderKey && orderKey.charCodeAt(orderKey.length - 1) % 2 === 0 ? -1 : 1;
       return (
-        <FeedDragLiftDecorator
-          reduceMotion={reduceMotion}
-          shadowColor={isDarkMode ? "#000000" : "#17213B"}
-          tiltDirection={tiltDirection}
-        >
-          {renderTemptationCard(entry, { drag, isDragActive: isActive })}
-        </FeedDragLiftDecorator>
+        <>
+          {entry.showTodaySectionHeader ? (
+            <FeedTemptationSectionHeader
+              title={t("feedTodaySectionTitle")}
+              count={entry.todaySectionCount}
+              complete={entry.todaySectionComplete}
+              colors={colors}
+              isDarkMode={isDarkMode}
+            />
+          ) : null}
+          {entry.showOtherSectionHeader ? (
+            <FeedTemptationSectionHeader
+              title={t("feedOtherSectionTitle")}
+              count={entry.otherSectionCount}
+              hint={
+                entry.showSeriesContinuationHint
+                  ? t("feedSeriesContinuationHint")
+                  : null
+              }
+              colors={colors}
+              isDarkMode={isDarkMode}
+            />
+          ) : null}
+          <FeedDragLiftDecorator
+            reduceMotion={reduceMotion}
+            shadowColor={isDarkMode ? "#000000" : "#17213B"}
+            tiltDirection={tiltDirection}
+          >
+            {renderTemptationCard(entry, { drag, isDragActive: isActive })}
+          </FeedDragLiftDecorator>
+        </>
       );
     },
-    [isDarkMode, reduceMotion, renderTemptationCard]
+    [
+      colors,
+      isDarkMode,
+      reduceMotion,
+      renderTemptationCard,
+      t,
+    ]
   );
   const feedEmptyState = useMemo(
     () => (
@@ -32085,6 +33277,7 @@ const FeedScreen = React.memo(
                         activeOpacity={0.82}
                         hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
                         accessibilityRole="button"
+                        accessibilityLabel={levelLabel}
                         accessibilityState={{ expanded: heroLevelExpanded }}
                       >
                         <Text
@@ -32095,7 +33288,7 @@ const FeedScreen = React.memo(
                           maxFontSizeMultiplier={1.1}
                           minimumFontScale={MIN_READABLE_FONT_SCALE}
                         >
-                          {levelLabel}
+                          {compactLevelLabel}
                         </Text>
                       </TouchableOpacity>
                       {showUsageStreak && (
@@ -32195,7 +33388,13 @@ const FeedScreen = React.memo(
                   )}
                   {!hideMascot && (
                     <View style={styles.heroMascotContainer}>
-                      <TouchableOpacity onPress={onMascotPress} activeOpacity={0.9}>
+                      <TouchableOpacity
+                        onPress={onMascotPress}
+                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("tamagotchiName")}
+                        testID="home-tamagotchi-button"
+                      >
                         <AlmiTamagotchi
                           style={[styles.heroHeaderMascotWrap, heroMascotWrapStyle]}
                           override={mascotOverride}
@@ -32426,7 +33625,6 @@ const FeedScreen = React.memo(
                           t={t}
                           language={language}
                           analyticsPreview={analyticsPreview}
-                          actualSavedUSD={displaySavedUSD}
                           potentialForecastUSD={heroPotentialForecast.potentialUSD}
                           potentialForecastPeriod={heroPotentialForecast.period}
                           onPotentialForecastPeriodChange={handleHeroPotentialPeriodChange}
@@ -32546,15 +33744,12 @@ const FeedScreen = React.memo(
           )}
           <View style={styles.feedTemptationHeader}>
             <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
-              {t("tutorialFeedTitle")}
+              {temptationSeriesProgress.remaining > 0
+                ? t("temptationSeriesUncheckedTitle")
+                : t("tutorialFeedTitle")}
             </Text>
           </View>
-          <View
-            style={[
-              styles.feedCategoryToolbar,
-              showTemptationAddCoachMark && styles.feedCategoryToolbarCoachExpanded,
-            ]}
-          >
+          <View style={styles.feedCategoryToolbar}>
             <View style={styles.feedCategoryRail}>
               <ScrollView
                 horizontal
@@ -32623,47 +33818,16 @@ const FeedScreen = React.memo(
                 </Svg>
               </View>
             </View>
-            <View
-              style={[
-                styles.feedTemptationAddWrap,
-                showTemptationAddCoachMark && styles.feedTemptationAddWrapExpanded,
-              ]}
-            >
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.feedTemptationAddHalo,
-                  showTemptationAddCoachMark && styles.feedTemptationAddHaloVisible,
-                  {
-                    backgroundColor: colorWithAlpha("#F5C869", 0.26),
-                    borderColor: colorWithAlpha("#F5C869", 0.8),
-                    opacity: showTemptationAddCoachMark ? addButtonPulseOpacity : 0,
-                    transform: [{ scale: showTemptationAddCoachMark ? addButtonPulseScale : 1 }],
-                  },
-                ]}
-              />
+            <View style={styles.feedTemptationAddWrap}>
               <TouchableOpacity
                 style={[
                   styles.feedTemptationAddButton,
                   {
-                    backgroundColor: showTemptationAddCoachMark
-                      ? "#F5C869"
-                      : isDarkMode
-                      ? colors.surfaceElevated
-                      : colors.text,
-                    borderColor: showTemptationAddCoachMark
-                      ? "#F5C869"
-                      : isDarkMode
-                      ? colors.separator
-                      : colors.text,
+                    backgroundColor: isDarkMode ? colors.surfaceElevated : colors.text,
+                    borderColor: isDarkMode ? colors.separator : colors.text,
                   },
-                  showTemptationAddCoachMark && styles.feedTemptationAddButtonFocused,
                 ]}
-                onPress={
-                  showTemptationAddCoachMark
-                    ? () => onTemptationAddCoachCreate?.()
-                    : onNewTemptation
-                }
+                onPress={onNewTemptation}
                 activeOpacity={0.85}
                 accessibilityRole="button"
                 accessibilityLabel={t("fabNewTemptation")}
@@ -32672,76 +33836,23 @@ const FeedScreen = React.memo(
                   style={[
                     styles.feedTemptationAddIcon,
                     {
-                      color: showTemptationAddCoachMark
-                        ? "#3B2A00"
-                        : isDarkMode
-                        ? colors.text
-                        : colors.background,
+                      color: isDarkMode ? colors.text : colors.background,
                     },
                   ]}
                 >
                   +
                 </Text>
               </TouchableOpacity>
-              {showTemptationAddCoachMark ? (
-                <Animated.View
-                  style={[
-                    styles.feedTemptationAddCoachBubble,
-                    {
-                      backgroundColor: isDarkMode ? "rgba(44,33,12,0.97)" : "#FFF8EA",
-                      borderColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
-                      opacity: addCoachOpacity,
-                      transform: [{ translateY: addCoachTranslateY }],
-                    },
-                  ]}
-                >
-                  <Text style={[styles.feedTemptationAddCoachTitle, { color: isDarkMode ? "#FFE8B8" : "#6E4600" }]}>
-                    {t("feedTutorialAddTitle")}
-                  </Text>
-                  <Text
-                    style={[styles.feedTemptationAddCoachDesc, { color: isDarkMode ? "#E5CE9A" : "#7C6542" }]}
-                  >
-                    {t("feedTutorialAddDesc")}
-                  </Text>
-                  <View style={styles.feedTemptationAddCoachActions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.feedTemptationAddCoachGhost,
-                        { borderColor: isDarkMode ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.42)" },
-                      ]}
-                      activeOpacity={0.85}
-                      onPress={onTemptationAddCoachDismiss}
-                    >
-                      <Text
-                        style={[styles.feedTemptationAddCoachGhostText, { color: isDarkMode ? "#E5CE9A" : "#7C6542" }]}
-                      >
-                        {t("tutorialSkip")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.feedTemptationAddCoachPrimary, { backgroundColor: "#F5C869" }]}
-                      activeOpacity={0.9}
-                      onPress={onTemptationAddCoachCreate}
-                    >
-                      <Text style={[styles.feedTemptationAddCoachPrimaryText, { color: "#3B2A00" }]}>
-                        {t("feedTutorialAddAction")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View
-                    style={[
-                      styles.feedTemptationAddCoachArrow,
-                      {
-                        borderTopColor: isDarkMode ? "rgba(44,33,12,0.97)" : "#FFF8EA",
-                        borderRightColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
-                        borderBottomColor: isDarkMode ? "rgba(245,200,105,0.58)" : "rgba(232,183,74,0.62)",
-                      },
-                    ]}
-                  />
-                </Animated.View>
-              ) : null}
             </View>
           </View>
+          <TemptationSeriesProgressCard
+            series={normalizedTemptationSeries}
+            colors={colors}
+            isDarkMode={isDarkMode}
+            t={t}
+            usageStreak={usageStreak}
+            onOpenChest={onTemptationSeriesOpenChest}
+          />
           </View>
         }
       />
@@ -32790,6 +33901,29 @@ const FeedScreen = React.memo(
         colors={colors}
         currency={currency}
         language={language}
+      />
+      <TemptationSeriesNotMineModal
+        visible={Boolean(seriesNotMineItem)}
+        title={
+          seriesNotMineItem
+            ? resolveTemplateTitle?.(
+                seriesNotMineItem?.templateId || seriesNotMineItem?.id,
+                seriesNotMineItem?.title || ""
+              ) ||
+              resolveTemptationTitle(
+                seriesNotMineItem,
+                language,
+                titleOverrides?.[seriesNotMineItem?.id]
+              ) ||
+              t("defaultDealTitle")
+            : ""
+        }
+        colors={colors}
+        isDarkMode={isDarkMode}
+        t={t}
+        onEdit={handleSeriesNotMineEdit}
+        onArchive={handleSeriesNotMineArchive}
+        onClose={closeSeriesNotMine}
       />
     </View>
   );
@@ -34329,10 +35463,18 @@ const ProgressScreen = React.memo(function ProgressScreen({
       todayTimestamp,
     ]
   );
-  const progressPotentialUSD = useMemo(() => {
-    const snapshot = computeProgressPotentialSnapshot(new Date(todayTimestamp));
-    return Math.max(0, Number(snapshot?.potentialUSD) || 0);
-  }, [computeProgressPotentialSnapshot, todayTimestamp]);
+  const progressPotentialSnapshot = useMemo(
+    () => computeProgressPotentialSnapshot(new Date(todayTimestamp)),
+    [computeProgressPotentialSnapshot, todayTimestamp]
+  );
+  const progressPotentialUSD = Math.max(
+    0,
+    Number(progressPotentialSnapshot?.potentialUSD) || 0
+  );
+  const progressPotentialCardCount = Math.max(
+    0,
+    Number(progressPotentialSnapshot?.cardCount) || 0
+  );
   const progressPotentialLabel = useMemo(
     () => formatLocalAmount(progressPotentialUSD),
     [formatLocalAmount, progressPotentialUSD]
@@ -36371,7 +37513,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       : potentialTrendDeltaUSD < -0.01
       ? SPEND_ACTION_COLOR
       : colors.muted;
-  const potentialTrendChartHeight = 188;
+  const potentialTrendChartHeight = 148;
   const potentialTrendResolvedWidth = Math.max(220, Number(potentialTrendChartWidth) || 0);
   const potentialTrendChart = useMemo(() => {
     const width = potentialTrendResolvedWidth;
@@ -36394,9 +37536,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       const range = rawMaxValue - rawMinValue;
       minValue = rawMinValue - range * 0.08;
       maxValue = rawMaxValue + range * 0.08;
-    }
-    if (!trendIsBalance && minValue > 0) {
-      minValue = 0;
     }
     if (maxValue <= minValue) {
       maxValue = minValue + 1;
@@ -37183,19 +38322,21 @@ const ProgressScreen = React.memo(function ProgressScreen({
   }, [categoryData.categories]);
   const trendModalTitleKey = trendIsBalance
     ? "progressBalanceTrendTitle"
-    : "progressPotentialTrendTitle";
+    : "potentialBlockTitle";
   const trendModalSubtitleKey = trendIsBalance
     ? "progressBalanceTrendSubtitle"
-    : "progressPotentialTrendSubtitle";
+    : progressPotentialCardCount > 0
+    ? "potentialDetailsIntro"
+    : "potentialDetailsEmptyIntro";
   const trendModalPrimaryLabelKey = trendIsBalance
     ? "progressBalanceLabel"
-    : "progressPotentialLabel";
+    : "potentialPeriodMonth";
   const trendModalWindowLabelKey = trendIsBalance
     ? "progressBalanceTrendWindowLabel"
     : "progressPotentialTrendWindowLabel";
   const trendAreaStartColor = trendIsBalance
     ? colorWithAlpha(progressBalanceAccentColor, 0.34)
-    : colorWithAlpha(SAVE_ACTION_COLOR, 0.42);
+    : colorWithAlpha(SAVE_ACTION_COLOR, 0.2);
   const trendAreaEndColor = trendIsBalance
     ? colorWithAlpha(progressBalanceAccentColor, 0.03)
     : colorWithAlpha(SAVE_ACTION_COLOR, 0.02);
@@ -37203,6 +38344,16 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const trendLineEndColor = trendIsBalance ? colorWithAlpha(SAVE_ACTION_COLOR, 0.96) : "#6FB8FF";
   const trendPointColor = trendIsBalance ? colorWithAlpha(colors.text, 0.62) : "#6FB8FF";
   const trendLastPointColor = trendIsBalance ? potentialTrendDeltaColor : "#61D3A5";
+  const trendFirstEntry = activeTrendSeries[0] || null;
+  const trendLastEntry = activeTrendSeries[activeTrendSeries.length - 1] || null;
+  const trendFirstValueLabel = trendIsBalance
+    ? formatSignedLocalAmount(Number(trendFirstEntry?.valueUSD) || 0)
+    : formatLocalAmount(Number(trendFirstEntry?.valueUSD) || 0);
+  const trendLastValueLabel = trendIsBalance
+    ? formatSignedLocalAmount(Number(trendLastEntry?.valueUSD) || 0)
+    : formatLocalAmount(Number(trendLastEntry?.valueUSD) || 0);
+  const progressPotentialStatusKey =
+    progressPotentialCardCount > 0 ? "potentialBlockStatusReady" : "potentialBlockStatusStart";
   const potentialTrendCurrentLabel = useMemo(
     () =>
       trendIsBalance
@@ -38519,35 +39670,100 @@ const ProgressScreen = React.memo(function ProgressScreen({
               pressed && styles.progressAnalyticsPressablePressed,
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`${t("progressPotentialLabel")}. ${progressPotentialLabel}`}
-            accessibilityHint={t("progressPotentialTapHint")}
+            accessibilityLabel={`${t("potentialBlockTitle")}. ${progressPotentialLabel}. ${t(
+              "potentialPeriodMonth"
+            )}`}
+            accessibilityHint={t("potentialBlockOpenHint")}
           >
             <View style={styles.progressAnalyticsSummaryLeading}>
               <View style={[styles.progressAnalyticsSummaryDot, { backgroundColor: colors.primary }]} />
               <View style={styles.progressAnalyticsSummaryCopy}>
                 <Text style={[styles.progressAnalyticsSummaryLabel, { color: colors.text }]}>
-                  {t("progressPotentialLabel")}
+                  {t("potentialBlockTitle")}
                 </Text>
                 <Text style={[styles.progressAnalyticsSummaryHint, { color: colors.muted }]}>
-                  {t("progressPotentialTapHint")}
+                  {t(progressPotentialStatusKey)}
                 </Text>
               </View>
             </View>
             <View style={styles.progressAnalyticsSummaryTrailing}>
-              <Text
-                style={[styles.progressAnalyticsSummaryValue, { color: colors.primary }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
-              >
-                {progressPotentialLabel}
-              </Text>
+              <View style={styles.progressAnalyticsSummaryMetric}>
+                <Text
+                  style={[styles.progressAnalyticsSummaryValue, { color: colors.primary }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {progressPotentialLabel}
+                </Text>
+                <Text style={[styles.progressAnalyticsSummaryPeriod, { color: colors.muted }]}>
+                  {t("potentialPeriodMonth")}
+                </Text>
+              </View>
               <Text style={[styles.progressAnalyticsSummaryChevron, { color: colors.muted }]}>›</Text>
             </View>
           </Pressable>
         </View>
+        <Pressable
+          onPress={toggleProgressAnalytics}
+          style={({ pressed }) => [
+            styles.progressForecastExplainer,
+            { backgroundColor: colors.primarySurface || colors.surfaceMuted },
+            pressed && styles.progressAnalyticsPressablePressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("potentialDetailsTitle")}. ${t(
+            progressPotentialCardCount > 0
+              ? "potentialDetailsIntro"
+              : "potentialDetailsEmptyIntro"
+          )}`}
+          accessibilityHint={progressAnalyticsExpanded ? t("heroCollapse") : t("heroExpand")}
+          accessibilityState={{ expanded: progressAnalyticsExpanded }}
+        >
+          <View style={styles.progressForecastExplainerHeader}>
+            <Text style={[styles.progressForecastExplainerTitle, { color: colors.text }]}>
+              {t("potentialDetailsTitle")}
+            </Text>
+            <View
+              style={[
+                styles.progressForecastPeriodBadge,
+                { backgroundColor: colors.primarySurfaceStrong || colors.surfaceElevated },
+              ]}
+            >
+              <Text style={[styles.progressForecastPeriodBadgeText, { color: colors.text }]}>
+                {t("potentialPeriodMonth")}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.progressForecastExplainerBody, { color: colors.text }]}>
+            {t(
+              progressPotentialCardCount > 0
+                ? "potentialDetailsIntro"
+                : "potentialDetailsEmptyIntro"
+            )}
+          </Text>
+          <View style={styles.progressForecastExplainerMeta}>
+            <Text style={[styles.progressForecastExplainerStatus, { color: colors.text }]}>
+              {t(progressPotentialStatusKey)}
+            </Text>
+            <Text style={[styles.progressForecastExplainerCount, { color: colors.muted }]}>
+              {t("potentialDetailsCardsLabel", { count: progressPotentialCardCount })}
+            </Text>
+          </View>
+        </Pressable>
         {progressAnalyticsExpanded ? (
           <>
+            <View style={styles.progressForecastHowSection}>
+              <Text style={[styles.progressForecastHowTitle, { color: colors.text }]}>
+                {t("potentialDetailsHowTitle")}
+              </Text>
+              <Text style={[styles.progressForecastHowBody, { color: colors.muted }]}>
+                {t("potentialDetailsHowBody")}
+              </Text>
+            </View>
+            <Text style={[styles.progressForecastCategoryIntro, { color: colors.muted }]}>
+              {t("progressCategorySubtitle")}
+            </Text>
             <View style={styles.progressAnalyticsLegend}>
               <View style={styles.progressAnalyticsLegendItem}>
                 <View style={[styles.progressAnalyticsDot, { backgroundColor: SAVE_ACTION_COLOR }]} />
@@ -38690,76 +39906,21 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 );
               })}
             </ScrollView>
+            <View
+              style={[
+                styles.progressForecastAccuracySection,
+                { borderTopColor: colors.separator || colors.border },
+              ]}
+            >
+              <Text style={[styles.progressForecastHowTitle, { color: colors.text }]}>
+                {t("potentialDetailsAccuracyTitle")}
+              </Text>
+              <Text style={[styles.progressForecastHowBody, { color: colors.muted }]}>
+                {t("potentialDetailsAccuracyBody")}
+              </Text>
+            </View>
           </>
-        ) : (
-          <Pressable
-            style={({ pressed }) => [
-              styles.progressAnalyticsCollapsed,
-              pressed && styles.progressAnalyticsPressablePressed,
-            ]}
-            onPress={toggleProgressAnalytics}
-            accessibilityRole="button"
-            accessibilityLabel={t("heroExpand")}
-          >
-            {(() => {
-              const total = progressAnalyticsTotals.save + progressAnalyticsTotals.spend;
-              const hasData = total > 0;
-              const savePercent = hasData
-                ? Math.max(0, Math.min((progressAnalyticsTotals.save / total) * 100, 100))
-                : 0;
-              const spendPercent = hasData ? 100 - savePercent : 0;
-              return (
-                <View style={styles.progressAnalyticsCollapsedContent}>
-                  <View style={styles.progressAnalyticsCollapsedLegend}>
-                    <View style={styles.progressAnalyticsLegendItem}>
-                      <View style={[styles.progressAnalyticsDot, { backgroundColor: SAVE_ACTION_COLOR }]} />
-                      <Text style={[styles.progressAnalyticsLegendText, { color: colors.muted }]}>
-                        {t("progressCategorySave")}
-                      </Text>
-                      <Text style={[styles.progressAnalyticsLegendValue, { color: colors.text }]}>
-                        {progressAnalyticsTotals.save}
-                      </Text>
-                    </View>
-                    <View style={styles.progressAnalyticsLegendItem}>
-                      <View style={[styles.progressAnalyticsDot, { backgroundColor: SPEND_ACTION_COLOR }]} />
-                      <Text style={[styles.progressAnalyticsLegendText, { color: colors.muted }]}>
-                        {t("progressCategorySpend")}
-                      </Text>
-                      <Text style={[styles.progressAnalyticsLegendValue, { color: colors.text }]}>
-                        {progressAnalyticsTotals.spend}
-                      </Text>
-                    </View>
-                  </View>
-                  <View
-                    style={[
-                      styles.progressAnalyticsTrack,
-                      { backgroundColor: colors.surfaceMuted || colors.background },
-                    ]}
-                  >
-                    <View style={[styles.progressAnalyticsFill, { width: `${hasData ? 100 : 0}%` }]}>
-                      {hasData ? (
-                        <>
-                          <View
-                            style={[
-                              styles.progressAnalyticsSave,
-                              { width: `${savePercent}%`, backgroundColor: SAVE_ACTION_COLOR },
-                            ]}
-                          />
-                          <View
-                            style={[
-                              styles.progressAnalyticsSpend,
-                              { width: `${spendPercent}%`, backgroundColor: SPEND_ACTION_COLOR },
-                            ]}
-                          />
-                        </>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              );
-            })()}
-          </Pressable>
-        )}
+        ) : null}
       </View>
       )}
 
@@ -39555,7 +40716,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
               style={[
                 styles.progressPotentialModalCard,
                 { backgroundColor: colors.card, borderColor: colors.border },
-                { paddingBottom: Math.max(UI_SPACING.md, safeAreaInsets.bottom + UI_SPACING.sm) },
                 {
                   opacity: resolveModalCompositeOpacity(
                     potentialTrendCardOpacity
@@ -39595,134 +40755,248 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   <Text style={[styles.progressPotentialModalCloseText, { color: colors.muted }]}>✕</Text>
                 </TouchableOpacity>
               </View>
-              <View
-                style={[
-                  styles.progressPotentialModalStatsRow,
-                  { backgroundColor: colors.surfaceMuted || colors.background },
+              <ScrollView
+                style={styles.progressPotentialModalScroll}
+                contentContainerStyle={[
+                  styles.progressPotentialModalScrollContent,
+                  { paddingBottom: Math.max(UI_SPACING.md, safeAreaInsets.bottom + UI_SPACING.sm) },
                 ]}
+                showsVerticalScrollIndicator={false}
               >
-                <View style={styles.progressPotentialModalStat}>
-                  <Text style={[styles.progressPotentialModalStatLabel, { color: colors.muted }]}>
-                    {t(trendModalPrimaryLabelKey)}
-                  </Text>
-                  <Text style={[styles.progressPotentialModalStatValue, { color: colors.text }]}>
-                    {potentialTrendCurrentLabel}
-                  </Text>
+                <View
+                  style={[
+                    styles.progressPotentialModalStatsRow,
+                    { backgroundColor: colors.surfaceMuted || colors.background },
+                  ]}
+                >
+                  <View style={styles.progressPotentialModalStat}>
+                    <Text style={[styles.progressPotentialModalStatLabel, { color: colors.muted }]}>
+                      {t(trendModalPrimaryLabelKey)}
+                    </Text>
+                    <Text style={[styles.progressPotentialModalStatValue, { color: colors.text }]}>
+                      {potentialTrendCurrentLabel}
+                    </Text>
+                    {!trendIsBalance ? (
+                      <Text style={[styles.progressPotentialModalStatHint, { color: colors.muted }]}>
+                        {t(progressPotentialStatusKey)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View
+                    style={[
+                      styles.progressPotentialModalStatDivider,
+                      { backgroundColor: colors.separator || colors.border },
+                    ]}
+                  />
+                  <View style={styles.progressPotentialModalStat}>
+                    <Text style={[styles.progressPotentialModalStatLabel, { color: colors.muted }]}>
+                      {t(trendModalWindowLabelKey)}
+                    </Text>
+                    <Text style={[styles.progressPotentialModalDelta, { color: potentialTrendDeltaColor }]}>
+                      {potentialTrendDeltaCopy}
+                    </Text>
+                  </View>
                 </View>
                 <View
                   style={[
-                    styles.progressPotentialModalStatDivider,
-                    { backgroundColor: colors.separator || colors.border },
+                    styles.progressPotentialChartSection,
+                    { backgroundColor: colors.surfaceMuted || colors.background },
                   ]}
-                />
-                <View style={styles.progressPotentialModalStat}>
-                  <Text style={[styles.progressPotentialModalStatLabel, { color: colors.muted }]}>
-                    {t(trendModalWindowLabelKey)}
-                  </Text>
-                  <Text style={[styles.progressPotentialModalDelta, { color: potentialTrendDeltaColor }]}>
-                    {potentialTrendDeltaCopy}
-                  </Text>
-                </View>
-              </View>
-              <View
-                style={[
-                  styles.progressPotentialChartWrap,
-                  { backgroundColor: colors.surfaceMuted || colors.background },
-                ]}
-                onLayout={(event) => {
-                  const nextWidth = Number(event?.nativeEvent?.layout?.width) || 0;
-                  if (!nextWidth) return;
-                  setPotentialTrendChartWidth((prev) =>
-                    Math.abs(prev - nextWidth) < 1 ? prev : nextWidth
-                  );
-                }}
-              >
-                <Svg width="100%" height={potentialTrendChartHeight}>
-                  <Defs>
-                    <SvgLinearGradient id={potentialTrendIds.area} x1="0" y1="0" x2="0" y2="1">
-                      <SvgStop offset="0%" stopColor={trendAreaStartColor} />
-                      <SvgStop offset="100%" stopColor={trendAreaEndColor} />
-                    </SvgLinearGradient>
-                    <SvgLinearGradient id={potentialTrendIds.line} x1="0" y1="0" x2="1" y2="0">
-                      <SvgStop offset="0%" stopColor={trendLineStartColor} />
-                      <SvgStop offset="100%" stopColor={trendLineEndColor} />
-                    </SvgLinearGradient>
-                    <Mask id={potentialTrendIds.mask}>
-                      <AnimatedSvgRect
-                        x="0"
-                        y="0"
-                        width={potentialTrendRevealWidth}
-                        height={potentialTrendChartHeight}
-                        fill="#fff"
-                      />
-                    </Mask>
-                  </Defs>
-                  <SvgRect
-                    x={10}
-                    y={14}
-                    width={Math.max(0, potentialTrendResolvedWidth - 20)}
-                    height={Math.max(1, potentialTrendChartHeight - 44)}
-                    rx={14}
-                    fill={colorWithAlpha(colors.text, 0.03)}
-                  />
-                  <SvgPath
-                    d={`M 12 ${potentialTrendChart.baselineY} L ${Math.max(
-                      12,
-                      potentialTrendResolvedWidth - 12
-                    )} ${potentialTrendChart.baselineY}`}
-                    stroke={colorWithAlpha(colors.text, 0.14)}
-                    strokeWidth={1}
-                    strokeLinecap="round"
-                  />
-                  {potentialTrendChart.areaPath ? (
-                    <SvgPath
-                      d={potentialTrendChart.areaPath}
-                      fill={`url(#${potentialTrendIds.area})`}
-                      mask={`url(#${potentialTrendIds.mask})`}
-                    />
+                  accessible
+                  accessibilityRole="image"
+                  accessibilityLabel={`${t(
+                    trendIsBalance
+                      ? "progressBalanceTrendSubtitle"
+                      : "progressPotentialTrendSubtitle"
+                  )}. ${trendFirstEntry?.label || ""} ${trendFirstValueLabel}. ${
+                    trendLastEntry?.label || ""
+                  } ${trendLastValueLabel}.`}
+                >
+                  {!trendIsBalance ? (
+                    <View style={styles.progressPotentialChartHeader}>
+                      <Text style={[styles.progressPotentialChartTitle, { color: colors.text }]}>
+                        {t("progressPotentialTrendTitle")}
+                      </Text>
+                      <Text style={[styles.progressPotentialChartSubtitle, { color: colors.muted }]}>
+                        {t("progressPotentialTrendSubtitle")}
+                      </Text>
+                    </View>
                   ) : null}
-                  {potentialTrendChart.linePath ? (
-                    <SvgPath
-                      d={potentialTrendChart.linePath}
-                      stroke={colorWithAlpha(colors.text, 0.18)}
-                      strokeWidth={3}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
-                    />
-                  ) : null}
-                  {potentialTrendChart.linePath ? (
-                    <SvgPath
-                      d={potentialTrendChart.linePath}
-                      stroke={`url(#${potentialTrendIds.line})`}
-                      strokeWidth={3}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
-                      mask={`url(#${potentialTrendIds.mask})`}
-                    />
-                  ) : null}
-                  {potentialTrendChart.points.map((point, index) => (
-                    <SvgCircle
-                      key={`point_${index}`}
-                      cx={point.x}
-                      cy={point.y}
-                      r={index === potentialTrendChart.points.length - 1 ? 3.8 : 2.7}
-                      fill={index === potentialTrendChart.points.length - 1 ? trendLastPointColor : trendPointColor}
-                    />
-                  ))}
-                </Svg>
-                <View style={styles.progressPotentialChartLabels}>
-                  {activeTrendSeries.map((entry) => (
-                    <Text
-                      key={`label_${entry.key}`}
-                      style={[styles.progressPotentialChartLabelText, { color: colors.muted }]}
+                  <View style={styles.progressPotentialChartRangeRow}>
+                    <View style={styles.progressPotentialChartRangeItem}>
+                      <Text style={[styles.progressPotentialChartRangeDay, { color: colors.muted }]}>
+                        {trendFirstEntry?.label || ""}
+                      </Text>
+                      <Text style={[styles.progressPotentialChartRangeValue, { color: colors.text }]}>
+                        {trendFirstValueLabel}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.progressPotentialChartRangeItem,
+                        styles.progressPotentialChartRangeItemEnd,
+                      ]}
                     >
-                      {entry.label}
-                    </Text>
-                  ))}
+                      <Text style={[styles.progressPotentialChartRangeDay, { color: colors.muted }]}>
+                        {trendLastEntry?.label || ""}
+                      </Text>
+                      <Text style={[styles.progressPotentialChartRangeValue, { color: colors.text }]}>
+                        {trendLastValueLabel}
+                      </Text>
+                    </View>
+                  </View>
+                  <View
+                    style={styles.progressPotentialChartWrap}
+                    onLayout={(event) => {
+                      const nextWidth = Number(event?.nativeEvent?.layout?.width) || 0;
+                      if (!nextWidth) return;
+                      setPotentialTrendChartWidth((prev) =>
+                        Math.abs(prev - nextWidth) < 1 ? prev : nextWidth
+                      );
+                    }}
+                  >
+                    <Svg width="100%" height={potentialTrendChartHeight}>
+                      <Defs>
+                        <SvgLinearGradient id={potentialTrendIds.area} x1="0" y1="0" x2="0" y2="1">
+                          <SvgStop offset="0%" stopColor={trendAreaStartColor} />
+                          <SvgStop offset="100%" stopColor={trendAreaEndColor} />
+                        </SvgLinearGradient>
+                        <SvgLinearGradient id={potentialTrendIds.line} x1="0" y1="0" x2="1" y2="0">
+                          <SvgStop offset="0%" stopColor={trendLineStartColor} />
+                          <SvgStop offset="100%" stopColor={trendLineEndColor} />
+                        </SvgLinearGradient>
+                        <Mask id={potentialTrendIds.mask}>
+                          <AnimatedSvgRect
+                            x="0"
+                            y="0"
+                            width={potentialTrendRevealWidth}
+                            height={potentialTrendChartHeight}
+                            fill="#fff"
+                          />
+                        </Mask>
+                      </Defs>
+                      <SvgRect
+                        x={10}
+                        y={14}
+                        width={Math.max(0, potentialTrendResolvedWidth - 20)}
+                        height={Math.max(1, potentialTrendChartHeight - 44)}
+                        rx={12}
+                        fill={colorWithAlpha(colors.text, 0.025)}
+                      />
+                      <SvgPath
+                        d={`M 12 ${potentialTrendChart.baselineY} L ${Math.max(
+                          12,
+                          potentialTrendResolvedWidth - 12
+                        )} ${potentialTrendChart.baselineY}`}
+                        stroke={colorWithAlpha(colors.text, 0.12)}
+                        strokeWidth={1}
+                        strokeLinecap="round"
+                      />
+                      {potentialTrendChart.areaPath ? (
+                        <SvgPath
+                          d={potentialTrendChart.areaPath}
+                          fill={`url(#${potentialTrendIds.area})`}
+                          mask={`url(#${potentialTrendIds.mask})`}
+                        />
+                      ) : null}
+                      {potentialTrendChart.linePath ? (
+                        <SvgPath
+                          d={potentialTrendChart.linePath}
+                          stroke={colorWithAlpha(colors.text, 0.16)}
+                          strokeWidth={3}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      ) : null}
+                      {potentialTrendChart.linePath ? (
+                        <SvgPath
+                          d={potentialTrendChart.linePath}
+                          stroke={`url(#${potentialTrendIds.line})`}
+                          strokeWidth={3}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                          mask={`url(#${potentialTrendIds.mask})`}
+                        />
+                      ) : null}
+                      {potentialTrendChart.points.map((point, index) => (
+                        <SvgCircle
+                          key={`point_${index}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r={index === potentialTrendChart.points.length - 1 ? 3.8 : 2.7}
+                          fill={
+                            index === potentialTrendChart.points.length - 1
+                              ? trendLastPointColor
+                              : trendPointColor
+                          }
+                        />
+                      ))}
+                    </Svg>
+                    <View style={styles.progressPotentialChartLabels}>
+                      {activeTrendSeries.map((entry) => (
+                        <Text
+                          key={`label_${entry.key}`}
+                          style={[styles.progressPotentialChartLabelText, { color: colors.muted }]}
+                        >
+                          {entry.label}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
                 </View>
-              </View>
+                {!trendIsBalance ? (
+                  <>
+                    <View
+                      style={[
+                        styles.progressPotentialExplanationSection,
+                        { borderTopColor: colors.separator || colors.border },
+                      ]}
+                    >
+                      <Text style={[styles.progressPotentialExplanationTitle, { color: colors.text }]}>
+                        {t("potentialDetailsHowTitle")}
+                      </Text>
+                      <Text style={[styles.progressPotentialExplanationBody, { color: colors.muted }]}>
+                        {t("potentialDetailsHowBody")}
+                      </Text>
+                      <Text style={[styles.progressPotentialExplanationMeta, { color: colors.text }]}>
+                        {t("potentialDetailsCardsLabel", { count: progressPotentialCardCount })}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.progressPotentialExplanationSection,
+                        { borderTopColor: colors.separator || colors.border },
+                      ]}
+                    >
+                      <Text style={[styles.progressPotentialExplanationTitle, { color: colors.text }]}>
+                        {t("potentialDetailsAccuracyTitle")}
+                      </Text>
+                      <Text style={[styles.progressPotentialExplanationBody, { color: colors.muted }]}>
+                        {t("potentialDetailsAccuracyBody")}
+                      </Text>
+                    </View>
+                    <Text style={[styles.progressPotentialExplanationNote, { color: colors.muted }]}>
+                      {t("potentialDetailsNote")}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={closePotentialTrendModal}
+                      style={[
+                        styles.progressPotentialModalDone,
+                        { backgroundColor: colors.primary },
+                      ]}
+                      activeOpacity={0.86}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("potentialDetailsClose")}
+                    >
+                      <Text style={[styles.progressPotentialModalDoneText, { color: colors.onPrimary }]}>
+                        {t("potentialDetailsClose")}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : null}
+              </ScrollView>
             </Animated.View>
           </View>
         </View>
@@ -46226,8 +47500,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     };
   }, [isRomanceLocale]);
   const profileMoodGradient = useMemo(
-    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme),
-    [moodPreset?.id, theme]
+    () => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme, colors),
+    [colors, moodPreset?.id, theme]
   );
   const moodStatusAccentColor = profileMoodGradient?.accent || colors.text || "#1F2F56";
   const moodStatusChipBackground = useMemo(
@@ -46318,6 +47592,22 @@ const ProfileScreen = React.memo(function ProfileScreen({
     proAccent: colors?.primary,
   });
   const profilePremiumBadgeText = getReadableTextColor(profilePremiumAccent);
+  const tycoonModeLocked = !isPremiumUser;
+  const tycoonPremiumSurface =
+    Platform.OS === "android"
+      ? blendColors(
+          colors.card || "#FFFFFF",
+          profilePremiumAccent,
+          tycoonModeLocked ? (isDarkTheme ? 0.3 : 0.16) : isDarkTheme ? 0.2 : 0.1
+        )
+      : colorWithAlpha(
+          profilePremiumAccent,
+          tycoonModeLocked ? (isDarkTheme ? 0.18 : 0.1) : isDarkTheme ? 0.12 : 0.07
+        );
+  const tycoonPremiumBorder = colorWithAlpha(
+    profilePremiumAccent,
+    tycoonModeLocked ? (isDarkTheme ? 0.62 : 0.42) : isDarkTheme ? 0.46 : 0.3
+  );
   const incomeSection = (
     isEditing ? (
       <View style={styles.profileEditableEditor}>
@@ -47297,14 +48587,61 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </Pressable>
           </View>
         </View>
-        <View style={styles.settingRow}>
+        <View
+          style={[
+            styles.settingRow,
+            styles.settingPremiumFeatureRow,
+            {
+              backgroundColor: tycoonPremiumSurface,
+              borderColor: tycoonPremiumBorder,
+            },
+          ]}
+        >
           <View style={styles.settingRowContent}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: colors.muted }]}>{t("tycoonModeLabel")}</Text>
+              <View
+                style={[
+                  styles.settingPremiumTitleRow,
+                  isProfileRtlLayout && styles.profileRowRtl,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.settingLabel,
+                    styles.settingPremiumTitle,
+                    { color: colors.text },
+                  ]}
+                >
+                  {t("tycoonModeLabel")}
+                </Text>
+                <View
+                  style={[
+                    styles.profileActionPremiumPill,
+                    {
+                      backgroundColor: colorWithAlpha(
+                        profilePremiumAccent,
+                        isDarkTheme ? 0.22 : 0.14
+                      ),
+                      borderColor: tycoonPremiumBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.profileActionPremiumPillText,
+                      { color: profilePremiumAccent },
+                    ]}
+                  >
+                    {t("featureLockedPremiumLabel")}
+                  </Text>
+                </View>
+              </View>
               <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("tycoonModeHint")}</Text>
             </View>
             <Pressable
-              onPress={() => onTycoonModeToggle?.(!tycoonModeEnabled)}
+              onPress={() =>
+                onTycoonModeToggle?.(tycoonModeLocked ? true : !tycoonModeEnabled)
+              }
               accessibilityRole="switch"
               accessibilityLabel={t("tycoonModeLabel")}
               accessibilityState={{ checked: tycoonModeEnabled }}
@@ -47312,9 +48649,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 styles.settingToggle,
                 {
                   backgroundColor: tycoonModeEnabled
-                    ? colors.text
-                    : colorWithAlpha(colors.text, 0.15),
-                  borderColor: colors.border,
+                    ? profilePremiumAccent
+                    : colorWithAlpha(profilePremiumAccent, isDarkTheme ? 0.22 : 0.14),
+                  borderColor: tycoonPremiumBorder,
                 },
               ]}
             >
@@ -47322,7 +48659,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 style={[
                   styles.settingToggleHandle,
                   {
-                    backgroundColor: tycoonModeEnabled ? colors.background : colors.card,
+                    backgroundColor: tycoonModeEnabled
+                      ? getReadableTextColor(profilePremiumAccent)
+                      : colors.card,
                     transform: [{ translateX: tycoonModeEnabled ? 20 : 0 }],
                   },
                 ]}
@@ -47626,6 +48965,9 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
+  const uiSessionRestorePendingRef = useRef(null);
+  const uiSessionSnapshotRef = useRef(null);
+  const [uiSessionHydrated, setUiSessionHydrated] = useState(false);
   const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);
   const [bugReportVisible, setBugReportVisible] = useState(false);
   const bugReportOpenedAtRef = useRef(null);
@@ -48102,9 +49444,11 @@ function AppContent() {
   const [quickTemptationsHydrated, setQuickTemptationsHydrated] = useState(false);
   const [customTemptationsCreatedCount, setCustomTemptationsCreatedCount] = useState(0);
   const [customTemptationsCreatedHydrated, setCustomTemptationsCreatedHydrated] = useState(false);
-  const [tycoonSettings, setTycoonSettings] = useState({
-    enabled: TYCOON_MODE_DEFAULT_ENABLED,
-  });
+  const [tycoonSettings, setTycoonSettings] = useState(() =>
+    normalizeTycoonSettings({
+      enabled: TYCOON_MODE_DEFAULT_ENABLED,
+    })
+  );
   const [tycoonSettingsHydrated, setTycoonSettingsHydrated] = useState(false);
   const [tycoonLedger, setTycoonLedger] = useState([]);
   const [tycoonLedgerHydrated, setTycoonLedgerHydrated] = useState(false);
@@ -48148,7 +49492,11 @@ function AppContent() {
   });
   const [tycoonRewardFlowActive, setTycoonRewardFlowActive] = useState(false);
   const [tycoonAutosaveSweepVersion, setTycoonAutosaveSweepVersion] = useState(0);
-  const tycoonAutosaveMinuteTick = useMinuteTicker(tycoonSettings?.enabled !== false);
+  const tycoonAutosaveEnabled = isTycoonAutosaveEnabled({
+    isPremium: premiumState.isPremium,
+    settings: tycoonSettings,
+  });
+  const tycoonAutosaveMinuteTick = useMinuteTicker(tycoonAutosaveEnabled);
   const [tamagotchiState, setTamagotchiState] = useState({ ...TAMAGOTCHI_START_STATE });
   useEffect(() => {
     const currentFullness = Math.min(
@@ -48186,7 +49534,9 @@ function AppContent() {
     frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
     initialFrequency: null,
     scheduleConfigVisible: false,
+    isDuplicateCopy: false,
   });
+  const temptationDuplicateInFlightRef = useRef(false);
   const [smartReminders, setSmartReminders] = useState([]);
   const [smartRemindersHydrated, setSmartRemindersHydrated] = useState(false);
   const [dailyNudgeNotificationIds, setDailyNudgeNotificationIds] = useState({});
@@ -48242,6 +49592,37 @@ function AppContent() {
   useEffect(() => {
     usageStreakRef.current = usageStreak;
   }, [usageStreak]);
+  const [temptationSeries, setTemptationSeriesState] = useState(() =>
+    createInitialTemptationSeriesState()
+  );
+  const [temptationSeriesHydrated, setTemptationSeriesHydrated] = useState(false);
+  const [temptationSeriesModalVisible, setTemptationSeriesModalVisible] = useState(false);
+  const [temptationSeriesPaywallReleasedId, setTemptationSeriesPaywallReleasedId] = useState(null);
+  const [temptationSeriesContinuationRequestTick, setTemptationSeriesContinuationRequestTick] =
+    useState(0);
+  const temptationSeriesRef = useRef(temptationSeries);
+  const temptationSeriesReadyPresentedRef = useRef(null);
+  const temptationSeriesClaimedThisSessionRef = useRef(false);
+  useEffect(() => {
+    temptationSeriesRef.current = temptationSeries;
+  }, [temptationSeries]);
+  const updateTemptationSeries = useCallback(
+    (updater) => {
+      const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+      const candidate = typeof updater === "function" ? updater(current) : updater;
+      const next = normalizeTemptationSeriesState(candidate);
+      temptationSeriesRef.current = next;
+      setTemptationSeriesState(next);
+      queuePersist(STORAGE_KEYS.TEMPTATION_SERIES, JSON.stringify(next));
+      return next;
+    },
+    [queuePersist]
+  );
+  const temptationSeriesPaywallReleased =
+    temptationSeriesHydrated &&
+    temptationSeries.status === TEMPTATION_SERIES_STATUS.CLAIMED &&
+    Boolean(temptationSeries.seriesId) &&
+    temptationSeriesPaywallReleasedId === temptationSeries.seriesId;
   const [streakPledge, setStreakPledge] = useState({ ...INITIAL_STREAK_PLEDGE });
   const [streakPledgeHydrated, setStreakPledgeHydrated] = useState(false);
   const streakPledgeRef = useRef(streakPledge);
@@ -48308,11 +49689,13 @@ function AppContent() {
         clearTimeout(dayRolloverTimerRef.current);
       }
       const now = Date.now();
-      const nextMidnight = new Date(now);
-      nextMidnight.setHours(24, 0, 0, 0);
-      const delay = Math.max(1000, nextMidnight.getTime() - now);
+      const nextMidnightAt = getNextLocalMidnightAt(now);
+      const delay = Math.max(50, nextMidnightAt - now + 50);
       dayRolloverTimerRef.current = setTimeout(() => {
-        setCurrentDayKey(getDayKey(Date.now()));
+        const nextDayKey = getDayKey(Date.now());
+        setCurrentDayKey((previousDayKey) =>
+          previousDayKey === nextDayKey ? previousDayKey : nextDayKey
+        );
         scheduleNextMidnight();
       }, delay);
     };
@@ -48323,6 +49706,24 @@ function AppContent() {
       }
     };
   }, []);
+  useEffect(() => {
+    if (!temptationSeriesHydrated) return;
+    const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+    if (
+      (current.status === TEMPTATION_SERIES_STATUS.IDLE && !current.dayKey) ||
+      current.dayKey === currentDayKey
+    ) {
+      return;
+    }
+    const reset = resetTemptationSeriesForDay(current, {
+      dayKey: currentDayKey,
+      timestamp: Date.now(),
+    });
+    updateTemptationSeries(reset);
+    setTemptationSeriesModalVisible(false);
+    setTemptationSeriesPaywallReleasedId(null);
+    temptationSeriesReadyPresentedRef.current = null;
+  }, [currentDayKey, temptationSeriesHydrated, updateTemptationSeries]);
   useEffect(() => {
     if (!dailySaveLimitHydrated) return;
     const todayKey = currentDayKey || getDayKey(Date.now());
@@ -49029,16 +50430,6 @@ function AppContent() {
     setHealthPoints,
     triggerOverlayState,
   ]);
-  const appTutorialSteps = useMemo(
-    () =>
-      APP_TUTORIAL_BASE_STEPS.filter((step) => {
-        if (step.requiresRewards && !rewardsUnlocked) {
-          return false;
-        }
-        return true;
-      }),
-    [rewardsUnlocked]
-  );
   const priceLimitUSD = getTemptationPriceLimitForLevel(playerLevel);
   const normalizedPlayerLevel = Math.max(1, Math.floor(Number(playerLevel) || 1));
   const defaultTemptationFeedLimit = getDefaultFeedTemptationCountForLevel(
@@ -49749,7 +51140,7 @@ function AppContent() {
   }, [tycoonPendingRewardEvents.length, tycoonRewardFlowActive]);
   useEffect(() => {
     if (!tycoonSettingsHydrated || !tycoonLedgerHydrated || !temptationInteractionsHydrated) return;
-    if (tycoonSettings?.enabled === false) {
+    if (!tycoonAutosaveEnabled) {
       setTycoonAutosaveHungryBlock((prev) =>
         prev?.active ? { ...prev, active: false, count: 0, amountUSD: 0 } : prev
       );
@@ -49993,7 +51384,7 @@ function AppContent() {
     tycoonConfirmStats?.confirmAllStreak,
     tycoonLedger,
     tycoonLedgerHydrated,
-    tycoonSettings,
+    tycoonAutosaveEnabled,
     tycoonSettingsHydrated,
   ]);
   const isTemplateReminderEligible = useCallback(
@@ -50216,6 +51607,7 @@ function AppContent() {
   const queuedModalActivatedAtRef = useRef(0);
   const queuedModalStallTimerRef = useRef(null);
   const queuedModalHandoffTimerRef = useRef(null);
+  const postActionPromptSlotRef = useRef(0);
   const canShowQueuedModalRef = useRef(() => false);
   const tutorialBlockingVisibleRef = useRef(false);
   const [queuedModalType, setQueuedModalType] = useState(null);
@@ -50283,19 +51675,23 @@ function AppContent() {
     if (!dailySummaryHydrated) return;
     const todayKey = currentDayKey || getDayKey(Date.now());
     if (!todayKey) return;
-    if (dailySummarySeenKey !== todayKey) return;
+    if (!dailySummarySeenKey || dailySummarySeenKey === todayKey) return;
     setDailySummarySeenKey(null);
     AsyncStorage.removeItem(STORAGE_KEYS.DAILY_SUMMARY).catch(() => {});
   }, [currentDayKey, dailySummaryHydrated, dailySummarySeenKey, getDayKey]);
   const [focusTemplateId, setFocusTemplateId] = useState(null);
   const [focusStateHydrated, setFocusStateHydrated] = useState(false);
+  const [focusStartedAt, setFocusStartedAt] = useState(null);
+  const [focusExpiresAt, setFocusExpiresAt] = useState(null);
   const [focusDigestSeenKey, setFocusDigestSeenKey] = useState(null);
   const [focusDigestHydrated, setFocusDigestHydrated] = useState(false);
   const [pendingFocusDigest, setPendingFocusDigest] = useState(null);
   const [focusDigestPromptShown, setFocusDigestPromptShown] = useState(false);
   const [focusSaveCount, setFocusSaveCount] = useState(0);
+  const [focusSpendCount, setFocusSpendCount] = useState(0);
   const [focusVictoryCount, setFocusVictoryCount] = useState(0);
   const [focusVictoryHydrated, setFocusVictoryHydrated] = useState(false);
+  const [pendingImpulseAlert, setPendingImpulseAlert] = useState(null);
   const appStateRef = useRef(AppState.currentState || "active");
   const overlayInstanceCounterRef = useRef(0);
   const firstSessionStartedAtRef = useRef(Date.now());
@@ -50306,6 +51702,7 @@ function AppContent() {
   const exchangeRatesLastSyncAtRef = useRef(0);
   const focusLossCountersRef = useRef({});
   const focusPromptActiveRef = useRef(false);
+  const focusDigestResolvedKeyRef = useRef(null);
   const homeSessionRef = useRef({
     dateKey: getDayKey(Date.now()),
     sessionCount: 0,
@@ -50422,10 +51819,6 @@ function AppContent() {
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.COMPLETED &&
     !dailyChallenge.completionDismissed;
   const [dailyChallengePromptGate, setDailyChallengePromptGate] = useState(false);
-  const dailyChallengePromptQueuedRef = useRef(false);
-  const dailyChallengePendingRef = useRef(false);
-  const dailyChallengeOfferDeferredRef = useRef(false);
-  const dailyChallengePendingPrevRef = useRef(false);
   const dailyNudgeIdsRef = useRef({});
   const dailyNudgeLegacyCleanupDoneRef = useRef(false);
   const smartRemindersRef = useRef([]);
@@ -50542,15 +51935,45 @@ function AppContent() {
       if (options?.priority) {
         queue.unshift(type);
       } else {
-        queue.push(type);
+        const nextPriority = POST_ACTION_PROMPT_MODAL_PRIORITY[type];
+        if (Number.isFinite(nextPriority)) {
+          const insertAt = queue.findIndex((candidate) => {
+            const candidatePriority = POST_ACTION_PROMPT_MODAL_PRIORITY[candidate];
+            return Number.isFinite(candidatePriority) && candidatePriority > nextPriority;
+          });
+          if (insertAt >= 0) {
+            queue.splice(insertAt, 0, type);
+          } else {
+            queue.push(type);
+          }
+        } else {
+          queue.push(type);
+        }
       }
       requestQueuedModalProcess();
     },
     [requestQueuedModalProcess, startupHardLockPendingBeforePaywall]
   );
+  const grantPostActionPromptSlot = useCallback(
+    (action) => {
+      if (action !== "save" && action !== "spend") return;
+      postActionPromptSlotRef.current = 1;
+      if (isDailyChallengePromptPending) {
+        setDailyChallengePromptGate(true);
+        enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
+      }
+      requestQueuedModalProcess();
+    },
+    [enqueueQueuedModal, isDailyChallengePromptPending, requestQueuedModalProcess]
+  );
+  const consumePostActionPromptSlot = useCallback((_promptType) => {
+    if (postActionPromptSlotRef.current <= 0) return false;
+    postActionPromptSlotRef.current = 0;
+    return true;
+  }, []);
   const refreshQueuedModalsOnResume = useCallback(() => {
-    const isFirstSessionToday = (homeSessionRef.current?.sessionCount || 0) <= 1;
     if (
+      tycoonAutosaveEnabled &&
       tycoonAutosaveHungryBlock.active &&
       isTycoonAutosaveHungryAutoPromptReady()
     ) {
@@ -50559,9 +51982,7 @@ function AppContent() {
     if (dailySummaryUnlocked && pendingDailySummaryData) {
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
     }
-    if (isFirstSessionToday && dailyChallengePromptAllowed && isDailyChallengePromptPending) {
-      dailyChallengeOfferDeferredRef.current = false;
-      setDailyChallengePromptGate(true);
+    if (dailyChallengePromptAllowed && isDailyChallengePromptPending) {
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     }
     if (dailyChallengePromptAllowed && isDailyChallengeCompletePending) {
@@ -50604,6 +52025,7 @@ function AppContent() {
     pendingFocusDigest,
     requestQueuedModalProcess,
     startupLogoVisible,
+    tycoonAutosaveEnabled,
     tycoonAutosaveHungryBlock.active,
     tutorialSeen,
   ]);
@@ -50628,6 +52050,7 @@ function AppContent() {
   useEffect(() => {
     if (onboardingStep !== "done") return;
     if (premiumPaywallState.visible) return;
+    if (!tycoonAutosaveEnabled) return;
     if (!tycoonAutosaveHungryBlock.active) return;
     if (!isTycoonAutosaveHungryAutoPromptReady()) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY, { priority: true });
@@ -50636,6 +52059,7 @@ function AppContent() {
     isTycoonAutosaveHungryAutoPromptReady,
     onboardingStep,
     premiumPaywallState.visible,
+    tycoonAutosaveEnabled,
     tycoonAutosaveHungryBlock.active,
   ]);
   useEffect(() => {
@@ -50643,6 +52067,7 @@ function AppContent() {
     if (
       onboardingStep === "done" &&
       !premiumPaywallState.visible &&
+      tycoonAutosaveEnabled &&
       tycoonAutosaveHungryBlock.active
     ) {
       return;
@@ -50653,11 +52078,13 @@ function AppContent() {
     onboardingStep,
     premiumPaywallState.visible,
     queuedModalType,
+    tycoonAutosaveEnabled,
     tycoonAutosaveHungryBlock.active,
   ]);
 	  useEffect(() => {
 	    if (onboardingStep !== "done") return;
 	    if (premiumPaywallState.visible) return;
+	    if (!tycoonAutosaveEnabled) return;
 	    if (tycoonAutosaveDismissed) return;
     if (tycoonAutosaveSnoozedActive) return;
     if (tycoonPendingEvents.length <= 0) return;
@@ -50666,6 +52093,7 @@ function AppContent() {
     enqueueQueuedModal,
     onboardingStep,
     premiumPaywallState.visible,
+	    tycoonAutosaveEnabled,
     tycoonAutosaveDismissed,
 	    tycoonAutosaveSnoozedActive,
 	    tycoonPendingEvents.length,
@@ -50678,6 +52106,7 @@ function AppContent() {
     }
     if (onboardingStep !== "done") return;
     if (premiumPaywallState.visible) return;
+    if (!tycoonAutosaveEnabled) return;
     if (tycoonPendingEvents.length <= 0) {
       if (tycoonLedgerHydrated) {
         setTycoonAutosaveOpenRequestedAt(0);
@@ -50692,6 +52121,7 @@ function AppContent() {
     enqueueQueuedModal,
     onboardingStep,
     premiumPaywallState.visible,
+    tycoonAutosaveEnabled,
     tycoonAutosaveOpenRequestedAt,
     tycoonLedgerHydrated,
     tycoonPendingEvents.length,
@@ -50702,12 +52132,18 @@ function AppContent() {
       clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE);
       return;
     }
-    if (tycoonPendingEvents.length > 0 && !tycoonAutosaveDismissed && !tycoonAutosaveSnoozedActive) return;
+    if (
+      tycoonAutosaveEnabled &&
+      tycoonPendingEvents.length > 0 &&
+      !tycoonAutosaveDismissed &&
+      !tycoonAutosaveSnoozedActive
+    ) return;
     clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE);
   }, [
     clearQueuedModal,
     premiumPaywallState.visible,
     queuedModalType,
+    tycoonAutosaveEnabled,
     tycoonAutosaveDismissed,
     tycoonAutosaveSnoozedActive,
     tycoonPendingEvents.length,
@@ -50740,23 +52176,41 @@ function AppContent() {
     incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
     setIncomeEntryModalVisible(true);
   }, [clearQueuedModal, incomePromptPending, queuedModalType, shouldPromptIncome]);
+  const closeDailySummary = useCallback(
+    ({ markSeen = false } = {}) => {
+      if (markSeen) {
+        const summaryDayKey = dailySummaryData?.todayKey || getDayKey(Date.now());
+        if (summaryDayKey) {
+          setDailySummarySeenKey(summaryDayKey);
+          AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, summaryDayKey).catch(() => {});
+        }
+      }
+      setDailySummaryVisible(false);
+      setDailySummaryBreakdownType(null);
+      setDailySummaryData(null);
+      setPendingDailySummaryData(null);
+      pendingDailySummaryNotificationRef.current = null;
+      if (dailySummaryLiveActivityRef.current.active) {
+        endDailySummaryLiveActivitySafely();
+        dailySummaryLiveActivityRef.current = {
+          active: false,
+          todayKey: null,
+          expiresAt: 0,
+          cat: null,
+          title: null,
+        };
+      }
+      clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
+    },
+    [clearQueuedModal, dailySummaryData?.todayKey, getDayKey]
+  );
+  const handleDailySummaryDismiss = useCallback(() => {
+    closeDailySummary();
+  }, [closeDailySummary]);
   const handleDailySummaryContinue = useCallback(() => {
-    setDailySummaryVisible(false);
-    setDailySummaryBreakdownType(null);
-    setPendingDailySummaryData(null);
-    pendingDailySummaryNotificationRef.current = null;
-    if (dailySummaryLiveActivityRef.current.active) {
-      endDailySummaryLiveActivitySafely();
-      dailySummaryLiveActivityRef.current = {
-        active: false,
-        todayKey: null,
-        expiresAt: 0,
-        cat: null,
-        title: null,
-      };
-    }
-    clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
-  }, [clearQueuedModal]);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    closeDailySummary({ markSeen: true });
+  }, [closeDailySummary, triggerHaptic]);
   useEffect(() => {
     if (!dailySummaryVisible || !dailySummaryData?.expiresAt) {
       setDailySummaryCountdownMs(0);
@@ -50782,63 +52236,106 @@ function AppContent() {
     dailySummaryVisible,
   ]);
   const [tutorialSeen, setTutorialSeen] = useState(false);
-  const [tutorialHydrated, setTutorialHydrated] = useState(false);
-  const [tutorialVisible, setTutorialVisible] = useState(false);
-  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
-  const tutorialCardEntrance = useRef(new Animated.Value(0)).current;
-  const tutorialAmbientMotion = useRef(new Animated.Value(0)).current;
-  const tutorialPulseMotion = useRef(new Animated.Value(0)).current;
   const [budgetWidgetTutorialSeen, setBudgetWidgetTutorialSeen] = useState(false);
   const [budgetWidgetTutorialHydrated, setBudgetWidgetTutorialHydrated] = useState(false);
   const [budgetWidgetTutorialVisible, setBudgetWidgetTutorialVisible] = useState(false);
-  const [temptationTutorialSeen, setTemptationTutorialSeen] = useState(false);
-  const [temptationTutorialVisible, setTemptationTutorialVisible] = useState(false);
-  const [temptationTutorialStepIndex, setTemptationTutorialStepIndex] = useState(0);
-  const [temptationTutorialHydrated, setTemptationTutorialHydrated] = useState(false);
-  const [temptationTutorialStatus, setTemptationTutorialStatus] = useState("pending");
-  const [temptationTutorialQueued, setTemptationTutorialQueued] = useState(false);
-  const [temptationTutorialCompleted, setTemptationTutorialCompleted] = useState(false);
-  const [tutorialCardShown, setTutorialCardShown] = useState(true);
-  const [tutorialCardHydrated, setTutorialCardHydrated] = useState(false);
-  const [tutorialCardVisible, setTutorialCardVisible] = useState(false);
-  const [feedAddTutorialShown, setFeedAddTutorialShown] = useState(true);
-  const [feedAddTutorialHydrated, setFeedAddTutorialHydrated] = useState(false);
   const [feedIntroVisible, setFeedIntroVisible] = useState(false);
   const feedIntroStatusRef = useRef(null);
   const [amountSliderConfirmCoachSeen, setAmountSliderConfirmCoachSeen] = useState(false);
-  const [feedFirstTutorialStage, setFeedFirstTutorialStage] = useState(FEED_FIRST_TUTORIAL_STAGE.DONE);
-  const feedFirstTutorialWelcomeAnim = useRef(new Animated.Value(0)).current;
-  const feedFirstTutorialAmbientAnim = useRef(new Animated.Value(0)).current;
-  const feedFirstTutorialAddScrolledRef = useRef(false);
-  const feedFirstTutorialSaveAutoScrolledRef = useRef(false);
-  const feedFirstTutorialAddAutoScrolledRef = useRef(false);
-  const [feedFirstTutorialSaveCoachVisible, setFeedFirstTutorialSaveCoachVisible] = useState(false);
-  const [feedFirstTutorialNeedSoftPaywall, setFeedFirstTutorialNeedSoftPaywall] = useState(false);
-  const temptationCardsTutorialEnabled = false;
-  const tutorialCardTimerRef = useRef(null);
-  const tutorialCoachDismissTimeoutRef = useRef(null);
-  const tutorialCardCompletedLoggedRef = useRef(false);
-  const tutorialCardShownLoggedRef = useRef(false);
-  const tutorialVisiblePrevRef = useRef(false);
+  const [nextDecisionCoach, setNextDecisionCoach] = useState(() => ({
+    ...createEligibleNextDecisionCoach(),
+    status: NEXT_DECISION_COACH_STATUS.LOADING,
+  }));
+  const nextDecisionCoachRef = useRef(nextDecisionCoach);
+  const completeNextDecisionCoach = useCallback(
+    (reason = "completed") => {
+      const current = nextDecisionCoachRef.current;
+      if (
+        current.status === NEXT_DECISION_COACH_STATUS.LOADING ||
+        current.status === NEXT_DECISION_COACH_STATUS.DONE
+      ) {
+        return;
+      }
+      const nextState = {
+        ...createEligibleNextDecisionCoach(),
+        status: NEXT_DECISION_COACH_STATUS.DONE,
+      };
+      nextDecisionCoachRef.current = nextState;
+      setNextDecisionCoach(nextState);
+      queuePersist(STORAGE_KEYS.NEXT_DECISION_COACH, "done");
+      if (
+        current.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+        current.status === NEXT_DECISION_COACH_STATUS.VISIBLE
+      ) {
+        logEvent("next_decision_coach", {
+          action: reason,
+          was_visible: current.status === NEXT_DECISION_COACH_STATUS.VISIBLE ? 1 : 0,
+        });
+      }
+    },
+    [queuePersist]
+  );
+  const handleNextDecisionCoachShown = useCallback(
+    (targetTemptationId) => {
+      const current = nextDecisionCoachRef.current;
+      if (
+        current.status !== NEXT_DECISION_COACH_STATUS.PENDING &&
+        current.status !== NEXT_DECISION_COACH_STATUS.VISIBLE
+      ) {
+        return;
+      }
+      const normalizedTargetId = normalizeTemptationId(targetTemptationId);
+      if (!normalizedTargetId) {
+        completeNextDecisionCoach("unavailable");
+        return;
+      }
+      if (
+        current.status === NEXT_DECISION_COACH_STATUS.VISIBLE &&
+        current.targetTemptationId === normalizedTargetId
+      ) {
+        return;
+      }
+      const nextState = {
+        ...current,
+        status: NEXT_DECISION_COACH_STATUS.VISIBLE,
+        targetTemptationId: normalizedTargetId,
+      };
+      nextDecisionCoachRef.current = nextState;
+      setNextDecisionCoach(nextState);
+      queuePersist(
+        STORAGE_KEYS.NEXT_DECISION_COACH,
+        serializeNextDecisionCoachState(nextState)
+      );
+      logEvent("next_decision_coach", {
+        action: "shown",
+        series_progress: 1,
+        series_total: 3,
+      });
+    },
+    [completeNextDecisionCoach, queuePersist]
+  );
+  const handleNextDecisionCoachUnavailable = useCallback(() => {
+    completeNextDecisionCoach("unavailable");
+  }, [completeNextDecisionCoach]);
   const budgetWidgetTutorialTimerRef = useRef(null);
-  const availableTabs = useMemo(() => {
-    if (!tutorialVisible) return tabOrder;
-    return tabOrder.filter((tab) => {
-      if (tab === "pending" && !thinkingUnlocked) return false;
-      return true;
-    });
-  }, [tabOrder, thinkingUnlocked, tutorialVisible]);
+  useEffect(() => {
+    if (!historyHydrated) return;
+    if (nextDecisionCoach.status !== NEXT_DECISION_COACH_STATUS.ELIGIBLE) return;
+    if (temptationActionCount === 0) return;
+    completeNextDecisionCoach("ineligible");
+  }, [
+    completeNextDecisionCoach,
+    historyHydrated,
+    nextDecisionCoach.status,
+    temptationActionCount,
+  ]);
+  const availableTabs = tabOrder;
   useEffect(() => {
     if (availableTabs.includes(activeTab)) return;
     if (availableTabs.length) {
       setActiveTabState(availableTabs[0]);
     }
   }, [activeTab, availableTabs]);
-  const [tutorialHighlightRect, setTutorialHighlightRect] = useState(null);
-  const [tutorialHighlightMeasureTick, setTutorialHighlightMeasureTick] = useState(0);
-  const tutorialHighlightMeasureTimerRef = useRef(null);
-  const tutorialHighlightAdjustCountRef = useRef(0);
-  const tutorialHighlightAlignAttemptsRef = useRef(0);
   const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
   const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
@@ -50854,7 +52351,10 @@ function AppContent() {
     ratingPromptState.completed ||
     ratingPromptState.lastAction === "rate" ||
     ratingPromptState.lastAction === "feedback";
-  const ratingPromptActionCount = Math.max(0, Number(ratingPromptState.actionCount) || 0);
+  const ratingPromptSeriesCompletionCount = Math.max(
+    0,
+    Number(ratingPromptState.seriesCompletionCount) || 0
+  );
   const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
   const ratingPromptCatFloat = useRef(new Animated.Value(0)).current;
   const ratingPromptCatBob = ratingPromptCatFloat.interpolate({
@@ -50909,65 +52409,6 @@ function AppContent() {
   const [fabTutorialAnchor, setFabTutorialAnchor] = useState(null);
   const [savingsHeroAnchor, setSavingsHeroAnchor] = useState(null);
   const [fabTutorialEligible, setFabTutorialEligible] = useState(false);
-  useEffect(() => {
-    if (!appTutorialSteps.length) {
-      setTutorialStepIndex(0);
-      return;
-    }
-    if (tutorialStepIndex >= appTutorialSteps.length) {
-      setTutorialStepIndex(appTutorialSteps.length - 1);
-    }
-  }, [appTutorialSteps.length, tutorialStepIndex]);
-  const finishTutorial = useCallback(() => {
-    setTutorialVisible(false);
-    setTutorialSeen(true);
-    setHomeLayoutReady(true);
-    setTutorialStepIndex(0);
-    setTemptationTutorialSeen(true);
-    setTemptationTutorialStatus("done");
-    setTemptationTutorialStepIndex(0);
-    setTemptationTutorialQueued(false);
-    setTemptationTutorialCompleted(true);
-    AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-    AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
-  }, [setHomeLayoutReady]);
-  const handleTutorialNext = useCallback(() => {
-    if (appTutorialSteps.length === 0) {
-      finishTutorial();
-      return;
-    }
-    if (tutorialStepIndex < appTutorialSteps.length - 1) {
-      setTutorialStepIndex((prev) =>
-        Math.min(prev + 1, Math.max(appTutorialSteps.length - 1, 0))
-      );
-      return;
-    }
-    finishTutorial();
-  }, [appTutorialSteps.length, finishTutorial, tutorialStepIndex]);
-  const handleTutorialSkip = useCallback(() => {
-    finishTutorial();
-  }, [finishTutorial]);
-  const finishTemptationTutorial = useCallback(() => {
-    setTemptationTutorialVisible(false);
-    setTemptationTutorialSeen(true);
-    setTemptationTutorialStatus("done");
-    setTemptationTutorialStepIndex(0);
-    setTemptationTutorialQueued(false);
-    setTemptationTutorialCompleted(true);
-    AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-  }, []);
-  const handleTemptationTutorialNext = useCallback(() => {
-    if (temptationTutorialStepIndex < TEMPTATION_TUTORIAL_STEPS.length - 1) {
-      setTemptationTutorialStepIndex((prev) =>
-        Math.min(prev + 1, TEMPTATION_TUTORIAL_STEPS.length - 1)
-      );
-      return;
-    }
-    finishTemptationTutorial();
-  }, [temptationTutorialStepIndex, finishTemptationTutorial]);
-  const handleTemptationTutorialSkip = useCallback(() => {
-    finishTemptationTutorial();
-  }, [finishTemptationTutorial]);
   const dismissBudgetWidgetTutorial = useCallback(
     (source = "dismiss") => {
       setBudgetWidgetTutorialVisible(false);
@@ -50979,13 +52420,6 @@ function AppContent() {
     },
     [budgetWidgetTutorialSeen, logEvent]
   );
-  const markFeedAddTutorialShown = useCallback(() => {
-    setFeedAddTutorialShown((prev) => {
-      if (prev) return prev;
-      AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "done").catch(() => {});
-      return true;
-    });
-  }, []);
   const markAmountSliderConfirmCoachSeen = useCallback(() => {
     setAmountSliderConfirmCoachSeen((prev) => {
       if (prev) return prev;
@@ -50998,103 +52432,6 @@ function AppContent() {
     AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
   }, [tutorialSeen]);
   useEffect(() => {
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME) {
-      feedFirstTutorialWelcomeAnim.stopAnimation();
-      feedFirstTutorialAmbientAnim.stopAnimation();
-      feedFirstTutorialWelcomeAnim.setValue(0);
-      feedFirstTutorialAmbientAnim.setValue(0);
-      return;
-    }
-    feedFirstTutorialWelcomeAnim.stopAnimation();
-    feedFirstTutorialAmbientAnim.stopAnimation();
-    feedFirstTutorialWelcomeAnim.setValue(0);
-    feedFirstTutorialAmbientAnim.setValue(0);
-    const appear = Animated.spring(feedFirstTutorialWelcomeAnim, {
-      toValue: 1,
-      friction: 8,
-      tension: 120,
-      useNativeDriver: true,
-    });
-    const ambientLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(feedFirstTutorialAmbientAnim, {
-          toValue: 1,
-          duration: 2200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(feedFirstTutorialAmbientAnim, {
-          toValue: 0,
-          duration: 2200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    appear.start();
-    ambientLoop.start();
-    return () => {
-      appear.stop();
-      ambientLoop.stop();
-    };
-  }, [feedFirstTutorialAmbientAnim, feedFirstTutorialStage, feedFirstTutorialWelcomeAnim]);
-  const feedFirstTutorialWelcomeOpacity = feedFirstTutorialWelcomeAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  const feedFirstTutorialWelcomeTranslateY = feedFirstTutorialWelcomeAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [18, 0],
-  });
-  const feedFirstTutorialWelcomeScale = feedFirstTutorialWelcomeAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.97, 1],
-  });
-  const feedFirstTutorialOrbLift = feedFirstTutorialAmbientAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -10],
-  });
-  const feedFirstTutorialOrbDrift = feedFirstTutorialAmbientAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 12],
-  });
-  useEffect(() => {
-    const wasVisible = tutorialVisiblePrevRef.current;
-    if (
-      wasVisible &&
-      !tutorialVisible &&
-      tutorialSeen &&
-      temptationTutorialHydrated &&
-      temptationTutorialStatus === "pending"
-    ) {
-      setTemptationTutorialQueued(true);
-    }
-    tutorialVisiblePrevRef.current = tutorialVisible;
-  }, [
-    temptationTutorialHydrated,
-    temptationTutorialStatus,
-    tutorialSeen,
-    tutorialVisible,
-  ]);
-  const handleTutorialHighlightLayoutChange = useCallback((rect) => {
-    setTutorialHighlightRect(rect);
-  }, []);
-  const scheduleTutorialHighlightMeasure = useCallback((delay = 0) => {
-    if (tutorialHighlightMeasureTimerRef.current) {
-      clearTimeout(tutorialHighlightMeasureTimerRef.current);
-    }
-    tutorialHighlightMeasureTimerRef.current = setTimeout(() => {
-      setTutorialHighlightMeasureTick((prev) => prev + 1);
-    }, Math.max(0, delay));
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (tutorialHighlightMeasureTimerRef.current) {
-        clearTimeout(tutorialHighlightMeasureTimerRef.current);
-      }
-    };
-  }, []);
-  useEffect(() => {
     return () => {
       if (budgetWidgetTutorialTimerRef.current) {
         clearTimeout(budgetWidgetTutorialTimerRef.current);
@@ -51102,7 +52439,6 @@ function AppContent() {
       }
     };
   }, []);
-  const tutorialScrollExtraRef = useRef(0);
   const updateFabAnchor = useCallback(() => {
     const node = fabButtonWrapperRef.current;
     if (!node || typeof node.measureInWindow !== "function") return;
@@ -51192,120 +52528,6 @@ function AppContent() {
     },
     [clearQueuedModal, logEvent, setFabTutorialStateAndPersist]
   );
-  const completeFeedFirstTutorial = useCallback(
-    (source = "completed") => {
-      const completedAddCoachFlow =
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD ||
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING ||
-        source === "add_skip" ||
-        source === "add_create";
-      setTutorialCardVisible(false);
-      setFeedFirstTutorialSaveCoachVisible(false);
-      setFeedFirstTutorialNeedSoftPaywall(false);
-      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.DONE);
-      if (!tutorialCardShown) {
-        setTutorialCardShown(true);
-        AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
-      }
-      if (completedAddCoachFlow) {
-        markFeedAddTutorialShown();
-      }
-      if (!tutorialCardCompletedLoggedRef.current) {
-        tutorialCardCompletedLoggedRef.current = true;
-      }
-      logEvent("feed_first_tutorial_completed", { source });
-    },
-    [feedFirstTutorialStage, logEvent, markFeedAddTutorialShown, tutorialCardShown]
-  );
-  const handleFeedFirstTutorialWelcomeContinue = useCallback(() => {
-    setFeedFirstTutorialSaveCoachVisible(true);
-    setFeedFirstTutorialNeedSoftPaywall(false);
-    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.SAVE);
-    logEvent("feed_first_tutorial_step", { step: "welcome_continue" });
-  }, [logEvent]);
-  const handleFeedFirstTutorialWelcomeSkip = useCallback(() => {
-    completeFeedFirstTutorial("welcome_skip");
-  }, [completeFeedFirstTutorial]);
-  const handleFeedFirstTutorialAddDismiss = useCallback(() => {
-    completeFeedFirstTutorial("add_skip");
-  }, [completeFeedFirstTutorial]);
-  const dismissTutorialCardCoach = useCallback(
-    (source = "dismiss") => {
-      if (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE) {
-        if (source === "action_save" || source === "action_spend") {
-          setTutorialCardVisible(false);
-          setFeedFirstTutorialSaveCoachVisible(false);
-          logEvent("feed_first_tutorial_step", {
-            step: source === "action_save" ? "save_done" : "spend_done",
-          });
-          completeFeedFirstTutorial(source === "action_save" ? "save_done" : "spend_done");
-          return;
-        }
-        setTutorialCardVisible(false);
-        completeFeedFirstTutorial(source);
-        return;
-      }
-      setTutorialCardVisible(false);
-      if (tutorialCardShown) return;
-      setTutorialCardShown(true);
-      AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
-      if (!tutorialCardCompletedLoggedRef.current) {
-        tutorialCardCompletedLoggedRef.current = true;
-        logEvent("fab_tutorial_completed", { source });
-      }
-    },
-    [
-      completeFeedFirstTutorial,
-      feedFirstTutorialStage,
-      logEvent,
-      tutorialCardShown,
-    ]
-  );
-  const dismissTutorialCardCoachDeferred = useCallback(
-    (source = "dismiss") => {
-      if (tutorialCoachDismissTimeoutRef.current) {
-        clearTimeout(tutorialCoachDismissTimeoutRef.current);
-        tutorialCoachDismissTimeoutRef.current = null;
-      }
-      tutorialCoachDismissTimeoutRef.current = setTimeout(() => {
-        tutorialCoachDismissTimeoutRef.current = null;
-        InteractionManager.runAfterInteractions(() => {
-          requestAnimationFrame(() => {
-            dismissTutorialCardCoach(source);
-          });
-        });
-      }, 48);
-    },
-    [dismissTutorialCardCoach]
-  );
-  const handleTutorialCardCoachAction = useCallback(
-    (actionType) => {
-      if (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE) {
-        setFeedFirstTutorialSaveCoachVisible(false);
-        if (actionType === "save") return;
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-        return;
-      }
-      if (actionType === "spend") {
-        dismissTutorialCardCoach("action_spend");
-        return;
-      }
-      dismissTutorialCardCoach("action_save");
-    },
-    [dismissTutorialCardCoach, feedFirstTutorialStage, triggerHaptic]
-  );
-  useEffect(() => {
-    return () => {
-      if (tutorialCardTimerRef.current) {
-        clearTimeout(tutorialCardTimerRef.current);
-        tutorialCardTimerRef.current = null;
-      }
-      if (tutorialCoachDismissTimeoutRef.current) {
-        clearTimeout(tutorialCoachDismissTimeoutRef.current);
-        tutorialCoachDismissTimeoutRef.current = null;
-      }
-    };
-  }, []);
   const updateRatingPromptState = useCallback((updater) => {
     setRatingPromptState((prev) => {
       const nextState = typeof updater === "function" ? updater(prev) : updater;
@@ -51383,6 +52605,7 @@ function AppContent() {
   const showRatingPrompt = useCallback(
     (source = "actions") => {
       if (ratingPromptVisible) return;
+      if (!consumePostActionPromptSlot("rating_prompt")) return;
       setRatingPromptStep("rating");
       setRatingPromptRating(0);
       setRatingPromptFeedback("");
@@ -51395,7 +52618,7 @@ function AppContent() {
         actionPrompted: source === "actions" ? true : prev.actionPrompted,
       }));
     },
-    [ratingPromptVisible, updateRatingPromptState]
+    [consumePostActionPromptSlot, ratingPromptVisible, updateRatingPromptState]
   );
   const queueRatingPrompt = useCallback(
     (source = "actions") => {
@@ -51409,6 +52632,11 @@ function AppContent() {
       ratingPromptSourceRef.current = source;
       const checkAndShow = () => {
         if (!ratingPromptQueuedRef.current) return;
+        if (postActionPromptSlotRef.current <= 0) {
+          ratingPromptQueuedRef.current = false;
+          ratingPromptSourceRef.current = null;
+          return;
+        }
         if (canShowRatingPromptNowRef.current()) {
           ratingPromptQueuedRef.current = false;
           const resolvedSource = ratingPromptSourceRef.current || source;
@@ -52315,6 +53543,8 @@ function AppContent() {
   const [tamagotchiActionSpeech, setTamagotchiActionSpeech] = useState("");
   const [tamagotchiActionSpeechVisible, setTamagotchiActionSpeechVisible] = useState(false);
   const tamagotchiActionSpeechTimerRef = useRef(null);
+  const [tamagotchiMenuSpeech, setTamagotchiMenuSpeech] = useState("");
+  const tamagotchiMenuSpeechLastTextRef = useRef("");
   const tamagotchiCleanSwipeStateRef = useRef({
     lastX: 0,
     lastY: 0,
@@ -52364,8 +53594,6 @@ function AppContent() {
   const tamagotchiDailySummaryPulseAnim = useRef(new Animated.Value(1)).current;
   const pendingDailyRewardModalOpenRef = useRef(false);
   const pendingDailyRewardModalTimerRef = useRef(null);
-  const pendingDailySummaryModalOpenRef = useRef(false);
-  const pendingDailySummaryModalTimerRef = useRef(null);
   const partyGlow = useRef(new Animated.Value(0)).current;
   const [partyActive, setPartyActive] = useState(false);
   const [partyBurstKey, setPartyBurstKey] = useState(0);
@@ -52932,7 +54160,6 @@ function AppContent() {
     !startupHardLockPendingBeforePaywall &&
     !premiumPaywallState.visible &&
     tutorialSeen &&
-    !tutorialOverlayVisible &&
     homeLayoutReady &&
     !startupLogoVisible &&
     !fabTutorialBlocked;
@@ -53012,14 +54239,25 @@ function AppContent() {
         persistFirstSessionDurationBucket(resolvedBucket);
       }
       if (nextState !== "active") {
+        postActionPromptSlotRef.current = 0;
+        setDailyChallengePromptGate(false);
+        const uiSessionSnapshot = uiSessionSnapshotRef.current;
+        if (uiSessionSnapshot) {
+          AsyncStorage.setItem(
+            STORAGE_KEYS.UI_SESSION,
+            JSON.stringify(uiSessionSnapshot)
+          ).catch(() => {});
+        }
         flushPersistQueue(true);
-        Keyboard.dismiss();
+        // Keep the focused editor mounted. The OS owns keyboard visibility while the app
+        // is backgrounded; explicitly blurring here loses the user's exact editing position.
         setKeyboardInset(0);
         setKeyboardVisible(false);
         appResumeAtRef.current = Date.now();
         setFabTutorialVisible(false);
         return;
       }
+      setCurrentDayKey(getDayKey(Date.now()));
       if (wasBackground && nextState === "active") {
         soundModeReadyRef.current = false;
         const resumedAt = appResumeAtRef.current || 0;
@@ -53032,11 +54270,6 @@ function AppContent() {
           suppressResumeOnce ||
           (resumedAt && Date.now() - resumedAt < APP_RESUME_MODAL_GUARD_MS);
         if (!isTransientResume) {
-          if (dailyChallengePromptQueuedRef.current && dailyChallengePendingRef.current) {
-            setDailyChallengePromptGate(true);
-            dailyChallengeOfferDeferredRef.current = false;
-          }
-          setCurrentDayKey(getDayKey(Date.now()));
           processTamagotchiDecay();
           beginHomeSession();
           tryLogHomeOpened();
@@ -53081,16 +54314,18 @@ function AppContent() {
     setKeyboardVisible,
     triggerWidgetRefresh,
   ]);
-  const ratingPromptActionEligible =
+  const ratingPromptSeriesEligible =
     ratingPromptHydrated &&
     !ratingPromptCompleted &&
     !ratingPromptVisible &&
     !ratingPromptActionPrompted &&
-    ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD;
+    !temptationSeriesClaimedThisSessionRef.current &&
+    ratingPromptSeriesCompletionCount >= RATING_PROMPT_SERIES_THRESHOLD;
   useEffect(() => {
-    if (!ratingPromptActionEligible) return;
-    queueRatingPrompt("actions");
-  }, [queueRatingPrompt, ratingPromptActionEligible]);
+    if (!ratingPromptSeriesEligible) return;
+    if (postActionPromptSlotRef.current <= 0) return;
+    queueRatingPrompt("series");
+  }, [queueRatingPrompt, queuedModalProcessTick, ratingPromptSeriesEligible]);
   useEffect(() => {
     if (!ratingPromptVisible) return;
     if (!ratingPromptQueuedRef.current) return;
@@ -53113,9 +54348,23 @@ function AppContent() {
     }
     AsyncStorage.setItem(
       STORAGE_KEYS.FOCUS_TARGET,
-      JSON.stringify({ templateId: focusTemplateId, saveCount: focusSaveCount, updatedAt: Date.now() })
+      JSON.stringify({
+        templateId: focusTemplateId,
+        startedAt: focusStartedAt,
+        expiresAt: focusExpiresAt,
+        saveCount: focusSaveCount,
+        spendCount: focusSpendCount,
+        updatedAt: Date.now(),
+      })
     ).catch(() => {});
-  }, [focusSaveCount, focusStateHydrated, focusTemplateId]);
+  }, [
+    focusExpiresAt,
+    focusSaveCount,
+    focusSpendCount,
+    focusStartedAt,
+    focusStateHydrated,
+    focusTemplateId,
+  ]);
   useEffect(() => {
     if (!focusDigestHydrated) return;
     if (!focusDigestSeenKey) {
@@ -53193,11 +54442,6 @@ function AppContent() {
     if (!pendingDailyRewardModalTimerRef.current) return;
     clearTimeout(pendingDailyRewardModalTimerRef.current);
     pendingDailyRewardModalTimerRef.current = null;
-  }, []);
-  const clearPendingDailySummaryModalTimer = useCallback(() => {
-    if (!pendingDailySummaryModalTimerRef.current) return;
-    clearTimeout(pendingDailySummaryModalTimerRef.current);
-    pendingDailySummaryModalTimerRef.current = null;
   }, []);
   const handleTamagotchiDailyRewardPress = useCallback(() => {
     if (!dailyRewardReady) {
@@ -53281,9 +54525,8 @@ function AppContent() {
   useEffect(
     () => () => {
       clearPendingDailyRewardModalTimer();
-      clearPendingDailySummaryModalTimer();
     },
-    [clearPendingDailyRewardModalTimer, clearPendingDailySummaryModalTimer]
+    [clearPendingDailyRewardModalTimer]
   );
   const handleTamagotchiTabPress = useCallback(
     (nextTabId) => {
@@ -53359,6 +54602,76 @@ function AppContent() {
     () => getTamagotchiMood(tamagotchiState, language, tamagotchiUsageState),
     [language, tamagotchiState, tamagotchiUsageState]
   );
+  const buildTamagotchiMenuSpeech = useCallback(() => {
+    const candidates = [];
+    const foodEmoji = tamagotchiDesiredFood?.emoji || t("tamagotchiHungryBubble");
+    const toyEmoji = tamagotchiDesiredToy?.emoji || "🧶";
+
+    if (tamagotchiCleanlinessPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+      candidates.push({ key: "tamagotchiSpeechNeedClean", replacements: {} });
+    }
+    if (tamagotchiHungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+      candidates.push(
+        { key: "tamagotchiSpeechHungry", replacements: { food: foodEmoji } },
+        { key: "tamagotchiSpeechHungrySoft", replacements: { food: foodEmoji } },
+        { key: "tamagotchiSpeechHungrySnarky", replacements: { food: foodEmoji } }
+      );
+    }
+    if (tamagotchiMoodPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+      candidates.push(
+        { key: "tamagotchiSpeechNeedPlay", replacements: { toy: toyEmoji } },
+        { key: "tamagotchiSpeechNeedPlaySnarky", replacements: { toy: toyEmoji } }
+      );
+    }
+    candidates.push({ key: "tamagotchiSpeechGeneral", replacements: {} });
+
+    const startIndex = Math.floor(Math.random() * candidates.length);
+    const attemptCount = Math.max(4, candidates.length * 2);
+    let fallbackText = "";
+    for (let attempt = 0; attempt < attemptCount; attempt += 1) {
+      const candidate = candidates[(startIndex + attempt) % candidates.length];
+      const nextText = String(tVariant(candidate.key, candidate.replacements) || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!nextText) continue;
+      fallbackText = fallbackText || nextText;
+      if (nextText !== tamagotchiMenuSpeechLastTextRef.current) {
+        tamagotchiMenuSpeechLastTextRef.current = nextText;
+        return nextText;
+      }
+    }
+    if (fallbackText) {
+      tamagotchiMenuSpeechLastTextRef.current = fallbackText;
+    }
+    return fallbackText;
+  }, [
+    t,
+    tVariant,
+    tamagotchiCleanlinessPercent,
+    tamagotchiDesiredFood?.emoji,
+    tamagotchiDesiredToy?.emoji,
+    tamagotchiHungerPercent,
+    tamagotchiMoodPercent,
+  ]);
+  useEffect(() => {
+    if (!tamagotchiVisible) {
+      setTamagotchiMenuSpeech("");
+      return undefined;
+    }
+    const showNextSpeech = () => {
+      const nextSpeech = buildTamagotchiMenuSpeech();
+      if (nextSpeech) setTamagotchiMenuSpeech(nextSpeech);
+    };
+    showNextSpeech();
+    const timer = setInterval(showNextSpeech, TAMAGOTCHI_SPEECH_DURATION_MS);
+    return () => clearInterval(timer);
+  }, [buildTamagotchiMenuSpeech, tamagotchiVisible]);
+  const tamagotchiHeroSpeech = capitalizeFirstCasedCharacter(
+    tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech
+      ? tamagotchiActionSpeech
+      : tamagotchiMenuSpeech || tamagotchiMood.label,
+    getFormatLocale(language)
+  );
   const tamagotchiHourlyRewardNow = useMinuteTicker(tamagotchiVisible);
   const tamagotchiHourlyRewardStatus = useMemo(
     () => resolveTamagotchiHourlyRewardStatus(tamagotchiState, tamagotchiHourlyRewardNow || Date.now()),
@@ -53417,9 +54730,8 @@ function AppContent() {
       onboardingStep === "done" &&
       tutorialSeen &&
       homeLayoutReady &&
-      !tutorialOverlayVisible &&
       !startupLogoVisible,
-    [homeLayoutReady, onboardingStep, startupLogoVisible, tutorialOverlayVisible, tutorialSeen]
+    [homeLayoutReady, onboardingStep, startupLogoVisible, tutorialSeen]
   );
   useEffect(() => {
     if (
@@ -53532,17 +54844,9 @@ function AppContent() {
       : tamagotchiHourlyRewardStatus.blockReason === "bored"
       ? "tamagotchiHourlyRewardBlockedBored"
       : null;
-  const tamagotchiHourlyRewardMessage = tamagotchiHourlyRewardStatus.ready
-    ? t("tamagotchiHourlyRewardReady", {
-        amount: tamagotchiHourlyRewardStatus.pendingReward,
-      })
-    : tamagotchiHourlyRewardBlockKey
+  const tamagotchiHourlyRewardCompactMessage = tamagotchiHourlyRewardBlockKey
     ? t(tamagotchiHourlyRewardBlockKey)
-    : t("tamagotchiHourlyRewardWaiting", {
-        amount: TAMAGOTCHI_HOURLY_REWARD_AMOUNT,
-        threshold: TAMAGOTCHI_HOURLY_REWARD_THRESHOLD,
-        time: tamagotchiHourlyRewardRemainingLabel,
-      });
+    : `${tamagotchiHourlyRewardRemainingLabel} · ${TAMAGOTCHI_HOURLY_REWARD_THRESHOLD}%+`;
   const tamagotchiCareStatCards = [
     {
       id: "fullness",
@@ -54502,6 +55806,7 @@ function AppContent() {
   });
   const [pendingFrequencyReminderPrompt, setPendingFrequencyReminderPrompt] = useState(null);
   const frequencyReminderPromptTrackedRef = useRef(false);
+  const frequencyReminderPromptScrollRef = useRef(null);
   const frequencyReminderPriorityLockRef = useRef(false);
   const modalHandoffBlockUntilRef = useRef(0);
   const queueModalCloseSettle = useCallback((delayMs = MODAL_CLOSE_SETTLE_MS) => {
@@ -54708,9 +56013,17 @@ function AppContent() {
     iosPlatformMajorVersion < 26
       ? 12
       : 0;
+  const iosNativeTabBarBottomLift =
+    Platform.OS === "ios" &&
+    Number.isFinite(iosPlatformMajorVersion) &&
+    iosPlatformMajorVersion >= 26 &&
+    (safeAreaInsets.bottom || 0) > 0
+      ? IOS_NATIVE_TAB_BAR_BOTTOM_LIFT
+      : 0;
   const iosTabInset =
     Platform.OS === "ios"
-      ? Math.max((safeAreaInsets.bottom || 0) - 8, legacyIosTabBarMinimumInset)
+      ? Math.max((safeAreaInsets.bottom || 0) - 8, legacyIosTabBarMinimumInset) +
+        iosNativeTabBarBottomLift
       : 0;
   const androidNavInset =
     Platform.OS === "android"
@@ -54737,8 +56050,6 @@ function AppContent() {
   const screenFabContentBottomPadding = screenContentBottomPadding + fabViewportOverlap;
   const tabButtonVerticalPadding = isCompactAndroid ? 10 : 14;
   const tabLabelTopMargin = isCompactAndroid ? 4 : 6;
-  const tutorialOverlayInset = resolvedTabBarHeight;
-  const tutorialCardOffset = resolvedTabBarHeight + (Platform.OS === "ios" ? 64 : 72);
   const rawTopSafeInset =
     Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : safeAreaInsets.top || 0;
   const topSafeInset =
@@ -54837,56 +56148,23 @@ function AppContent() {
   );
 
   const fabTutorialCutout = useMemo(() => {
-    const radius = FAB_TUTORIAL_HALO_SIZE / 2 + 1;
     const overlayWidth = Math.max(1, Number(fabTutorialOverlayMetrics?.width) || SCREEN_WIDTH);
     const overlayHeight = Math.max(1, Number(fabTutorialOverlayMetrics?.height) || SCREEN_HEIGHT);
-    const overlayOriginX = Number.isFinite(fabTutorialOverlayMetrics?.x)
-      ? fabTutorialOverlayMetrics.x
-      : 0;
-    const overlayOriginY = Number.isFinite(fabTutorialOverlayMetrics?.y)
-      ? fabTutorialOverlayMetrics.y
-      : 0;
-    const fallbackCenterX = overlayWidth - fabContainerRight - FAB_BUTTON_SIZE / 2;
-    const fallbackCenterY = overlayHeight - (tabBarBottomInset + fabContainerBottom + FAB_BUTTON_SIZE / 2);
-    const measuredCenterX = Number.isFinite(fabTutorialAnchor?.x)
-      ? fabTutorialAnchor.x - overlayOriginX
-      : null;
-    const measuredCenterYRaw = Number.isFinite(fabTutorialAnchor?.y)
-      ? fabTutorialAnchor.y - overlayOriginY
-      : null;
-    let measuredCenterY = measuredCenterYRaw;
-    if (Platform.OS === "android" && Number.isFinite(measuredCenterYRaw)) {
-      const androidStatusBarOffset = RNStatusBar.currentHeight || 0;
-      const measuredWithoutStatus = measuredCenterYRaw - androidStatusBarOffset;
-      measuredCenterY =
-        Math.abs(measuredWithoutStatus - fallbackCenterY) <
-        Math.abs(measuredCenterYRaw - fallbackCenterY)
-          ? measuredWithoutStatus
-          : measuredCenterYRaw;
-    }
-    const centerX = Number.isFinite(measuredCenterX) ? measuredCenterX : fallbackCenterX;
-    const centerY = Number.isFinite(measuredCenterY) ? measuredCenterY : fallbackCenterY;
-    const top = Math.max(0, centerY - radius);
-    const bottom = Math.min(overlayHeight, centerY + radius);
-    const left = Math.max(0, centerX - radius);
-    const right = Math.min(overlayWidth, centerX + radius);
-    return {
-      top,
-      bottom,
-      left,
-      right,
-      height: Math.max(0, bottom - top),
-      width: Math.max(0, right - left),
-      centerX,
-      centerY,
-      radius,
+    // A native Modal and the app root can report different window origins on
+    // Android/Fabric. Use the exact right/bottom insets that place the FAB so
+    // the button, halo, and mask always share one coordinate system.
+    return resolveFabTutorialCutout({
       overlayWidth,
       overlayHeight,
-    };
+      fabRight: fabContainerRight,
+      fabBottom: tabBarBottomInset + fabContainerBottom,
+      fabSize: FAB_BUTTON_SIZE,
+      haloSize: FAB_TUTORIAL_HALO_SIZE,
+      cutoutBleed: 1,
+    });
   }, [
     fabContainerBottom,
     fabContainerRight,
-    fabTutorialAnchor,
     fabTutorialOverlayMetrics,
     tabBarBottomInset,
   ]);
@@ -54965,10 +56243,9 @@ function AppContent() {
   const markStartupLogoDismissed = useCallback(() => {
     setStartupLogoDismissed(true);
   }, []);
-  const startupLogoVisible =
-    onboardingStep === "done" &&
-    !startupLogoDismissed &&
-    !startupHardLockPendingBeforePaywall;
+  // This is one launch animation shared by first-run and returning-user routing.
+  // The route may change while storage hydrates, but the splash must not restart.
+  const startupLogoVisible = !startupLogoDismissed;
   const startupLogoAnimationVisible = startupLogoVisible && startupLogoReady;
   const interfaceReady = useMemo(
     () =>
@@ -55083,12 +56360,7 @@ function AppContent() {
       speechInterfaceReady &&
       activeTab === "feed" &&
       !overlay &&
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME &&
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE &&
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING &&
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD &&
       !dailySummaryVisible &&
-      !tutorialOverlayVisible &&
       !tamagotchiVisible &&
       !skinPickerVisible &&
       !coinEntryVisible &&
@@ -55108,8 +56380,6 @@ function AppContent() {
       !potentialDetailsVisible &&
       !addCategoryModalVisible &&
       !pushDayThreePromptVisible &&
-      !tutorialVisible &&
-      !temptationTutorialVisible &&
       !fabTutorialVisible &&
       !queuedModalType &&
       !levelShareModal.visible &&
@@ -55126,7 +56396,6 @@ function AppContent() {
       editOverlayVisible,
       fabMenuVisible,
       fabTutorialVisible,
-      feedFirstTutorialStage,
       goalRenewalPromptVisible,
       speechInterfaceReady,
       keyboardVisible,
@@ -55144,10 +56413,7 @@ function AppContent() {
       skinPickerVisible,
       startupLogoVisible,
       tamagotchiVisible,
-      temptationTutorialVisible,
       termsModalVisible,
-      tutorialOverlayVisible,
-      tutorialVisible,
     ]
   );
   const heroCarouselSecondDayAllowed = useMemo(() => {
@@ -55251,7 +56517,7 @@ function AppContent() {
     if (!canQueueCoinValueModal()) return;
     queueCoinValueModal();
   }, [canQueueCoinValueModal, queueCoinValueModal, overlay]);
-  const overlayEnvironmentReady = interfaceReady && !dailySummaryVisible && !tutorialOverlayVisible;
+  const overlayEnvironmentReady = interfaceReady && !dailySummaryVisible;
   const ensureOverlayEnvironmentReady = useCallback(() => {
     if (
       onboardingStep === "done" &&
@@ -55650,7 +56916,6 @@ function AppContent() {
       interfaceReady &&
       activeTab === "feed" &&
       !dailySummaryVisible &&
-      !tutorialOverlayVisible &&
       !overlay &&
       !tamagotchiVisible &&
       !newGoalModal.visible &&
@@ -55677,7 +56942,6 @@ function AppContent() {
       breakdownVisible,
       skinPickerVisible,
       tamagotchiVisible,
-      tutorialOverlayVisible,
     ]
   );
   const dailyChallengePromptVisible =
@@ -55698,6 +56962,7 @@ function AppContent() {
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY &&
     onboardingStep === "done" &&
     !premiumPaywallState.visible &&
+    tycoonAutosaveEnabled &&
     tycoonAutosaveHungryBlock.active;
   useEffect(() => {
     if (!tycoonAutosaveHungryModalVisible) return;
@@ -55717,6 +56982,7 @@ function AppContent() {
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE &&
     onboardingStep === "done" &&
     !premiumPaywallState.visible &&
+    tycoonAutosaveEnabled &&
     !tycoonAutosaveDismissed &&
     !tycoonAutosaveSnoozedActive &&
     tycoonPendingEvents.length > 0;
@@ -55744,6 +57010,8 @@ function AppContent() {
         return dailyChallengeCompleteVisible;
       case QUEUED_MODAL_TYPES.FOCUS_DIGEST:
         return overlay?.type === "focus_digest";
+      case QUEUED_MODAL_TYPES.IMPULSE_ALERT:
+        return overlay?.type === "impulse_alert";
       case QUEUED_MODAL_TYPES.FAB_TUTORIAL:
         return fabTutorialVisible;
       case QUEUED_MODAL_TYPES.INCOME_PROMPT:
@@ -56056,7 +57324,6 @@ function AppContent() {
       tutorialSeen &&
       activeTab === "feed" &&
       !dailySummaryVisible &&
-      !tutorialOverlayVisible &&
       !overlay &&
       !tamagotchiVisible &&
       !newGoalModal.visible &&
@@ -56090,12 +57357,17 @@ function AppContent() {
       skinPickerVisible,
       spendPrompt.visible,
       tamagotchiVisible,
-      tutorialOverlayVisible,
       tutorialSeen,
     ]
   );
   const canShowCoinValueModalNow = useCallback(() => {
     if (startupHardLockPendingBeforePaywall) return false;
+    if (
+      nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+      nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE
+    ) {
+      return false;
+    }
     if (!coinValueModalAllowed || coinValueModalVisible) return false;
     if (isStoreReviewHandoffPending()) return false;
     if (premiumSoftPaywallPending || premiumPaywallState.visible) return false;
@@ -56129,6 +57401,7 @@ function AppContent() {
     premiumPaywallState.visible,
     premiumSoftPaywallPending,
     queuedModalType,
+    nextDecisionCoach.status,
     startupHardLockPendingBeforePaywall,
   ]);
   useEffect(() => {
@@ -56188,7 +57461,7 @@ function AppContent() {
   }, [activeTab, coinValueModalVisible]);
   const [moodDetailsVisible, setMoodDetailsVisible] = useState(false);
   const [potentialDetailsVisible, setPotentialDetailsVisible] = useState(false);
-  const [potentialDetailsText, setPotentialDetailsText] = useState("");
+  const [potentialDetailsData, setPotentialDetailsData] = useState(null);
   const tutorialBlockingVisible = useMemo(
     () =>
       blockingModalVisible ||
@@ -56216,18 +57489,13 @@ function AppContent() {
       cycleSavingsRevokedPromptVisible ||
       noGoalSavePromptVisible ||
       fabMenuVisible ||
-      (activeTab === "feed" &&
-        (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME ||
-          feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD)) ||
       editOverlayVisible,
     [
-      activeTab,
       blockingModalVisible,
       coinEntryVisible,
       dailySummaryVisible,
       editOverlayVisible,
       firstSaveGoalJarVisible,
-      feedFirstTutorialStage,
       fabMenuVisible,
       levelShareModal.visible,
       levelShareFlowLocked,
@@ -56335,9 +57603,16 @@ function AppContent() {
   const isProTheme = theme === PRO_THEME_ID;
   const openMoodDetails = useCallback(() => setMoodDetailsVisible(true), []);
   const closeMoodDetails = useCallback(() => setMoodDetailsVisible(false), []);
-  const openPotentialDetails = useCallback((description) => {
+  const openPotentialDetails = useCallback((details) => {
+    const normalizedDetails = details && typeof details === "object" ? details : {};
     markDidYouKnowFeatureUsed("potential_details");
-    setPotentialDetailsText(description);
+    setPotentialDetailsData({
+      forecastLabel:
+        typeof normalizedDetails.forecastLabel === "string" ? normalizedDetails.forecastLabel : "—",
+      periodDays: Math.max(1, Number(normalizedDetails.periodDays) || FORECAST_MONTH_DAYS),
+      cardCount: Math.max(0, Number(normalizedDetails.cardCount) || 0),
+      hasForecast: normalizedDetails.hasForecast === true,
+    });
     setPotentialDetailsVisible(true);
   }, [markDidYouKnowFeatureUsed]);
   const closePotentialDetails = useCallback(() => setPotentialDetailsVisible(false), []);
@@ -56755,6 +58030,7 @@ function AppContent() {
     if (getModalCloseSettleRemainingMs() > 0) return false;
     if (storeReviewInFlightRef.current) return false;
     if (getStoreReviewModalGuardRemainingMs() > 0) return false;
+    if (postActionPromptSlotRef.current <= 0) return false;
     if (queuedModalType || queuedModalActiveRef.current) return false;
     const hasQueuedModalReady = (queuedModalQueueRef.current || []).some((candidate) =>
       canShowQueuedModalRef.current(candidate)
@@ -56778,14 +58054,26 @@ function AppContent() {
       if (appStateRef.current !== "active") return false;
       if (!interfaceReady) return false;
       if (startupHardLockPendingBeforePaywall) return false;
+      if (
+        nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+        nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE
+      ) {
+        return false;
+      }
       if (getModalCloseSettleRemainingMs() > 0) return false;
       if (isStoreReviewHandoffPending()) return false;
-      if (tutorialOverlayVisible) return false;
       if (overlay) return false;
       if (visibleModalHostCount > 0) return false;
       if (blockingModalVisible) return false;
       if (coinValueModalVisible) return false;
       if (tutorialBlockingVisible) return false;
+      if (
+        POST_ACTION_PROMPT_MODAL_TYPES.has(type) &&
+        !USER_INITIATED_QUEUED_MODAL_TYPES.has(type) &&
+        postActionPromptSlotRef.current <= 0
+      ) {
+        return false;
+      }
       switch (type) {
         case QUEUED_MODAL_TYPES.DAILY_SUMMARY:
           return dailySummaryUnlocked && !!pendingDailySummaryData;
@@ -56806,6 +58094,8 @@ function AppContent() {
             !!pendingFocusDigest &&
             !focusDigestPromptShown
           );
+        case QUEUED_MODAL_TYPES.IMPULSE_ALERT:
+          return activeTab === "feed" && !!pendingImpulseAlert;
         case QUEUED_MODAL_TYPES.FAB_TUTORIAL:
           return (
             fabTutorialState === FAB_TUTORIAL_STATUS.SHOWING &&
@@ -56822,12 +58112,14 @@ function AppContent() {
           return (
             onboardingStep === "done" &&
             !premiumPaywallState.visible &&
+            tycoonAutosaveEnabled &&
             tycoonAutosaveHungryBlock.active
           );
         case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE:
           return (
             onboardingStep === "done" &&
             !premiumPaywallState.visible &&
+            tycoonAutosaveEnabled &&
             !tycoonAutosaveDismissed &&
             !tycoonAutosaveSnoozedActive &&
             tycoonPendingEvents.length > 0
@@ -56872,19 +58164,21 @@ function AppContent() {
       onboardingStep,
       overlay,
       noGoalSavePromptPending,
+      nextDecisionCoach.status,
       pendingDailySummaryData,
       pendingFocusDigest,
+      pendingImpulseAlert,
       premiumPaywallState.visible,
       shouldPromptIncome,
       startupHardLockPendingBeforePaywall,
       startupLogoVisible,
+      tycoonAutosaveEnabled,
       tycoonAutosaveHungryBlock.active,
       tycoonAutosaveDismissed,
       tycoonAutosaveSnoozedActive,
       tycoonPendingEvents.length,
       tycoonRewardModal.visible,
       tutorialBlockingVisible,
-      tutorialOverlayVisible,
       tutorialSeen,
       visibleModalHostCount,
     ]
@@ -56897,6 +58191,13 @@ function AppContent() {
     const nextIndex = queue.findIndex((candidate) => canShowQueuedModal(candidate));
     if (nextIndex < 0) return;
     const [nextType] = queue.splice(nextIndex, 1);
+    if (
+      (POST_ACTION_PROMPT_MODAL_TYPES.has(nextType) &&
+        !USER_INITIATED_QUEUED_MODAL_TYPES.has(nextType)) ||
+      nextType === QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED
+    ) {
+      consumePostActionPromptSlot(nextType);
+    }
     queuedModalActiveRef.current = nextType;
     queuedModalActivatedAtRef.current = Date.now();
     if (queuedModalStallTimerRef.current) {
@@ -56904,7 +58205,12 @@ function AppContent() {
       queuedModalStallTimerRef.current = null;
     }
     setQueuedModalType(nextType);
-  }, [canShowQueuedModal, queuedModalProcessTick, queuedModalType]);
+  }, [
+    canShowQueuedModal,
+    consumePostActionPromptSlot,
+    queuedModalProcessTick,
+    queuedModalType,
+  ]);
   useEffect(() => {
     if (queuedModalStallTimerRef.current) {
       clearTimeout(queuedModalStallTimerRef.current);
@@ -56961,7 +58267,7 @@ function AppContent() {
     setGoalLinkPrompt({ visible: true, item, intent, amountUSD: null });
   }, []);
   const [moodGradient, setMoodGradient] = useState(() =>
-    applyThemeToMoodGradient(getMoodGradient(), theme)
+    applyThemeToMoodGradient(getMoodGradient(), theme, colors)
   );
   const mainGoalWish = useMemo(
     () => selectMainGoalWish(wishes, activeGoalId || profile.goal),
@@ -57150,246 +58456,6 @@ function AppContent() {
     const divisor = averageSaveActionUSD > 0 ? averageSaveActionUSD : FALLBACK_SAVE_ACTION_USD;
     return Math.max(1, Math.ceil(remainingGoalUSD / divisor));
   }, [averageSaveActionUSD, remainingGoalUSD]);
-  const safeAppTutorialIndex = Math.min(
-    tutorialStepIndex,
-    Math.max(appTutorialSteps.length - 1, 0)
-  );
-  const tutorialContext = tutorialVisible
-    ? {
-        type: "app",
-        steps: appTutorialSteps,
-        stepIndex: safeAppTutorialIndex,
-      }
-    : temptationTutorialVisible
-    ? {
-        type: "temptation",
-        steps: TEMPTATION_TUTORIAL_STEPS,
-        stepIndex: temptationTutorialStepIndex,
-      }
-    : null;
-  const tutorialStepCount = tutorialContext?.steps.length || 0;
-  const tutorialCurrentIndex = tutorialContext?.stepIndex || 0;
-  const tutorialAdvanceHandler =
-    tutorialContext?.type === "app" ? handleTutorialNext : handleTemptationTutorialNext;
-  const tutorialSkipHandler =
-    tutorialContext?.type === "app" ? handleTutorialSkip : handleTemptationTutorialSkip;
-  const activeTutorialStep = tutorialContext
-    ? tutorialContext.steps[tutorialContext.stepIndex] ||
-      tutorialContext.steps[tutorialContext.steps.length - 1] ||
-      null
-    : null;
-  const tutorialIsTemptation = tutorialContext?.type === "temptation";
-  const tutorialTemptationStepId = tutorialIsTemptation ? activeTutorialStep?.id || null : null;
-  const tutorialBackdropPlacementStyle = tutorialIsTemptation
-    ? {
-        justifyContent: "flex-end",
-        alignItems: "stretch",
-        paddingTop: Math.max(topSafeInset + 16, 32),
-      }
-    : null;
-  const tutorialCardPositionStyle = tutorialIsTemptation
-    ? {
-        alignSelf: "center",
-        marginBottom: Platform.OS === "android" ? 56 : 52,
-        marginTop: Platform.OS === "android" ? 12 : 0,
-      }
-    : null;
-  // Push the temptation tutorial dialog lower on Android so it doesn't cover the highlighted card.
-  const baseTutorialBackdropPaddingBottom = 24 + tutorialCardOffset;
-  const androidGestureNav = Platform.OS === "android" && tabBarBottomInset <= 0;
-  const temptationTutorialBottomShift = Platform.OS === "android"
-    ? androidGestureNav
-      ? 0
-      : 120
-    : 72;
-  const tutorialBackdropPaddingBottom = tutorialIsTemptation
-    ? Math.max(24, baseTutorialBackdropPaddingBottom - temptationTutorialBottomShift)
-    : baseTutorialBackdropPaddingBottom;
-  const tutorialBackdropBottomInset = tutorialIsTemptation ? 0 : tutorialOverlayInset;
-  const tutorialHighlightTabs = useMemo(() => {
-    if (!tutorialContext) return null;
-    if (tutorialContext.type !== "app") return null;
-    const step = tutorialContext.steps[tutorialContext.stepIndex] || null;
-    if (!step?.tabs?.length) return null;
-    return new Set(step.tabs);
-  }, [tutorialContext]);
-  const tutorialHighlightMaskRect = useMemo(() => {
-    if (!tutorialIsTemptation || !tutorialHighlightRect) return null;
-    const inset = TUTORIAL_HIGHLIGHT_INSET || {};
-    const insetX = Number.isFinite(inset.x) ? inset.x : 0;
-    const insetY = Number.isFinite(inset.y) ? inset.y : 0;
-    const insetTop = Number.isFinite(inset.top) ? inset.top : insetY;
-    const insetBottom = Number.isFinite(inset.bottom) ? inset.bottom : insetY;
-    const insetLeft = Number.isFinite(inset.left) ? inset.left : insetX;
-    const insetRight = Number.isFinite(inset.right) ? inset.right : insetX;
-    const width = Math.max(0, tutorialHighlightRect.width - insetLeft - insetRight);
-    const height = Math.max(0, tutorialHighlightRect.height - insetTop - insetBottom);
-    return {
-      x: tutorialHighlightRect.x + insetLeft,
-      y: tutorialHighlightRect.y + insetTop,
-      width,
-      height,
-      radius: Math.max(
-        0,
-        TEMPTATION_CARD_RADIUS - Math.min(insetLeft, insetRight, insetTop, insetBottom)
-      ),
-    };
-  }, [tutorialHighlightRect, tutorialIsTemptation]);
-  const tutorialVisualPalette = activeTutorialStep?.palette || {
-    primary: "#6FAFFF",
-    secondary: "#95E7CE",
-    glow: "#7FA9FF",
-  };
-  const tutorialFeatureKeys = Array.isArray(activeTutorialStep?.featureKeys)
-    ? activeTutorialStep.featureKeys
-    : [];
-  const tutorialBadgeLabelKey =
-    tutorialFeatureKeys[0] || activeTutorialStep?.titleKey || "tutorialFeedTitle";
-  const tutorialVisualBars = Array.isArray(activeTutorialStep?.visualBars)
-    ? activeTutorialStep.visualBars
-    : [0.84, 0.56, 0.72, 0.9, 0.63];
-  const tutorialIsDarkTheme = theme === "dark";
-  const tutorialIsProTheme = theme === PRO_THEME_ID;
-  const tutorialCardBackground = tutorialIsDarkTheme
-    ? "#0E1626"
-    : tutorialIsProTheme
-    ? colors.primarySurface
-    : "#F8FAFF";
-  const tutorialCardBorderColor = tutorialIsDarkTheme
-    ? "rgba(255,255,255,0.12)"
-    : tutorialIsProTheme
-    ? colorWithAlpha(proThemeAccentColor, 0.34)
-    : "rgba(7,16,35,0.08)";
-  const tutorialFeatureBackground = tutorialIsDarkTheme
-    ? "rgba(255,255,255,0.08)"
-    : tutorialIsProTheme
-    ? colors.card
-    : "rgba(255,255,255,0.92)";
-  const tutorialFeatureBorderColor = tutorialIsDarkTheme
-    ? "rgba(255,255,255,0.2)"
-    : tutorialIsProTheme
-    ? colorWithAlpha(proThemeAccentColor, 0.24)
-    : "rgba(18,26,45,0.08)";
-  const tutorialFeatureTextColor = tutorialIsDarkTheme
-    ? "#E9F0FF"
-    : tutorialIsProTheme
-    ? colors.text
-    : "#17223F";
-  const tutorialDotInactiveColor = tutorialIsDarkTheme
-    ? "rgba(255,255,255,0.18)"
-    : tutorialIsProTheme
-    ? colorWithAlpha(proThemeAccentColor, 0.2)
-    : "rgba(11,22,48,0.14)";
-  const tutorialPrimaryButtonBg = tutorialIsProTheme ? proThemeAccentColor : colors.text;
-  const tutorialPrimaryButtonTextColor = tutorialIsProTheme
-    ? colors.onPrimary
-    : colors.background;
-  useEffect(() => {
-    if (!tutorialContext || !activeTutorialStep) {
-      tutorialCardEntrance.setValue(0);
-      return;
-    }
-    tutorialCardEntrance.setValue(0);
-    const enter = Animated.timing(tutorialCardEntrance, {
-      toValue: 1,
-      duration: 380,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-    enter.start();
-    return () => enter.stop();
-  }, [activeTutorialStep?.id, tutorialCardEntrance, tutorialContext?.type]);
-  useEffect(() => {
-    if (!tutorialContext || !activeTutorialStep) {
-      tutorialAmbientMotion.setValue(0);
-      tutorialPulseMotion.setValue(0);
-      return;
-    }
-    tutorialAmbientMotion.setValue(0);
-    tutorialPulseMotion.setValue(0);
-    const ambientLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(tutorialAmbientMotion, {
-          toValue: 1,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(tutorialAmbientMotion, {
-          toValue: 0,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    const pulseLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(tutorialPulseMotion, {
-          toValue: 1,
-          duration: 1300,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(tutorialPulseMotion, {
-          toValue: 0,
-          duration: 1300,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    ambientLoop.start();
-    pulseLoop.start();
-    return () => {
-      ambientLoop.stop();
-      pulseLoop.stop();
-    };
-  }, [activeTutorialStep?.id, tutorialAmbientMotion, tutorialContext?.type, tutorialPulseMotion]);
-  const tutorialCardOpacity = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  const tutorialCardTranslateY = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [22, 0],
-  });
-  const tutorialCardScale = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.96, 1],
-  });
-  const tutorialBackdropOpacity = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.2, 1],
-  });
-  const tutorialAmbientLift = tutorialAmbientMotion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-8, 8],
-  });
-  const tutorialAmbientDrift = tutorialAmbientMotion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-10, 10],
-  });
-  const tutorialAmbientRotate = tutorialAmbientMotion.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["-6deg", "6deg"],
-  });
-  const tutorialPulseScale = tutorialPulseMotion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.9, 1.08],
-  });
-  const tutorialPulseOpacity = tutorialPulseMotion.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.34, 0.08],
-  });
-  const tutorialBarsOpacity = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  const tutorialBarsTranslateY = tutorialCardEntrance.interpolate({
-    inputRange: [0, 1],
-    outputRange: [18, 0],
-  });
   const fabOverlayColor = theme === "dark"
     ? "rgba(5,7,13,0.78)"
     : theme === PRO_THEME_ID
@@ -58264,6 +59330,15 @@ function AppContent() {
           momentumWeight: 0.04,
           floorUSD: 9,
           capMultiplier: 1.24,
+        })
+      ),
+      [PREMIUM_FEATURE_KEYS.temptationAutoCollect]: formatLossLabel(
+        resolveFeatureLossUSD({
+          baseWeight: 0.64,
+          missedWeight: 0.3,
+          momentumWeight: 0.04,
+          floorUSD: 10,
+          capMultiplier: 1.32,
         })
       ),
     };
@@ -59920,7 +60995,11 @@ function AppContent() {
       if (!active) return;
       if (__DEV__) {
         console.info("[attribution-debug] RevenueCat AppsFlyer identity sync", {
-          appsFlyerIdSet: attributionSync?.appsFlyerIdSet === true,
+          status: attributionSync?.status || "failed_retryable",
+          confirmed: attributionSync?.confirmed === true,
+          didWriteAppsFlyerId: attributionSync?.didWriteAppsFlyerId === true,
+          previouslyWrittenAppsFlyerId:
+            attributionSync?.previouslyWrittenAppsFlyerId === true,
           fieldsSet: attributionSync?.fieldsSet || [],
           failedFields: attributionSync?.failedFields || [],
         });
@@ -60227,12 +61306,21 @@ function AppContent() {
       };
       logMonetizationEvent("premium_purchase_started", eventMeta);
       setPremiumPurchaseLoadingPlan(targetPlanId);
-      await Promise.all([
+      const [attributionPreflight] = await Promise.all([
         syncAppsFlyerAttributionToRevenueCat({
           reason: "purchase_preflight",
         }),
         syncRevenueCatDeviceIdentifiersSafe(),
       ]);
+      if (__DEV__) {
+        console.info("[attribution-debug] purchase preflight", {
+          status: attributionPreflight?.status || "failed_retryable",
+          confirmed: attributionPreflight?.confirmed === true,
+          hasProviderId: attributionPreflight?.hasProviderId === true,
+          hasCampaignFields: attributionPreflight?.hasCampaignFields === true,
+          retryAttempt: attributionPreflight?.retryAttempt || 0,
+        });
+      }
       const result = await purchasePlanPackage(selectedPackage, {
         trialEnabled: selectedTrialEnabled,
       });
@@ -60662,6 +61750,7 @@ function AppContent() {
   );
   const canShowSoftPaywallNow = useCallback(() => {
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
+    if (temptationSeriesModalVisible) return false;
     const firstSaveJarStatus = firstSaveGoalJarStatusRef.current;
     if (
       firstSaveGoalJarVisible ||
@@ -60728,6 +61817,7 @@ function AppContent() {
     premiumPaywallState.visible,
     premiumState.isPremium,
     queuedModalType,
+    temptationSeriesModalVisible,
     tutorialBlockingVisible,
     frequencyReminderPrompt.visible,
     pendingFrequencyReminderPrompt,
@@ -60839,6 +61929,7 @@ function AppContent() {
       !premiumState.isPremium &&
       isMonetizationSoftPaywallExperimentGroup &&
       !premiumSoftPaywallShown &&
+      temptationSeriesPaywallReleased &&
       Math.max(0, Number(temptationSaveActionCountRef.current) || 0) >=
         MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT
     ) {
@@ -60854,6 +61945,7 @@ function AppContent() {
     queueModalCloseSettle,
     queuePersist,
     resolveGroupCSoftPaywallTrigger,
+    temptationSeriesPaywallReleased,
   ]);
   const shouldShowPaywall = useCallback(() => {
     if (!isMonetizationExperimentControlGroup) return false;
@@ -60863,6 +61955,7 @@ function AppContent() {
   }, [installDateMs, isMonetizationExperimentControlGroup, temptationActionCount]);
   useEffect(() => {
     if (!isMonetizationSoftPaywallExperimentGroup) return;
+    if (!temptationSeriesPaywallReleased) return;
     if (!monetizationExperimentHydrated) return;
     const hasExperimentAssignment =
       Number.isFinite(Number(monetizationExperimentAssignedAt)) &&
@@ -60894,12 +61987,14 @@ function AppContent() {
     premiumState.isPremium,
     resolveGroupCSoftPaywallTrigger,
     temptationSaveActionCount,
+    temptationSeriesPaywallReleased,
   ]);
   useEffect(() => {
     if (!isMonetizationExperimentControlGroup) {
       pendingOnboardingSoftPaywallRef.current = false;
       return;
     }
+    if (!temptationSeriesPaywallReleased) return;
     if (!pendingOnboardingSoftPaywallRef.current) return;
     if (onboardingStep !== "done") return;
     if (!premiumSoftPaywallHydrated || !historyHydrated) return;
@@ -60925,9 +62020,11 @@ function AppContent() {
     premiumSoftPaywallShown,
     premiumState.isPremium,
     temptationSaveActionCount,
+    temptationSeriesPaywallReleased,
   ]);
   useEffect(() => {
     if (!isMonetizationExperimentGroupC) return;
+    if (!temptationSeriesPaywallReleased) return;
     if (
       !premiumSoftPaywallHydrated ||
       !dailySaveLimitHydrated ||
@@ -60969,9 +62066,11 @@ function AppContent() {
     premiumState.isPremium,
     todayTemptationActionCount,
     temptationActionCount,
+    temptationSeriesPaywallReleased,
   ]);
   useEffect(() => {
     if (!isMonetizationSoftPaywallExperimentGroup) return;
+    if (!temptationSeriesPaywallReleased) return;
     if (
       !premiumSoftPaywallHydrated ||
       !premiumDailySoftPaywallShownDayKeyHydrated ||
@@ -61027,6 +62126,7 @@ function AppContent() {
     resolveGroupCSoftPaywallTrigger,
     temptationActionCount,
     todayTemptationActionCount,
+    temptationSeriesPaywallReleased,
   ]);
   useEffect(() => {
     if (!isMonetizationSoftPaywallExperimentGroup) {
@@ -61507,6 +62607,7 @@ function AppContent() {
     (templateId) => {
       const normalizedTemplateId = typeof templateId === "string" ? templateId.trim() : "";
       if (!normalizedTemplateId) return false;
+      if (focusTemplateId && normalizedTemplateId === focusTemplateId) return false;
       const template = resolveTemplateCard(normalizedTemplateId);
       if (!template) return false;
       if (typeof resolveTemptationCategory === "function") {
@@ -61523,7 +62624,7 @@ function AppContent() {
             template.title);
       return typeof rawTitle === "string" && rawTitle.trim().length > 0;
     },
-    [language, resolveTemptationCategory, resolveTemplateCard]
+    [focusTemplateId, language, resolveTemptationCategory, resolveTemplateCard]
   );
   const dailyChallengeFallbackTemplateIds = useMemo(() => {
     const ids = [];
@@ -61657,8 +62758,8 @@ function AppContent() {
   );
   const moodPreset = useMemo(() => getMoodPreset(currentMood, language), [currentMood, language]);
   useEffect(() => {
-    setMoodGradient(applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme));
-  }, [moodPreset?.id, theme]);
+    setMoodGradient(applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme, colors));
+  }, [colors, moodPreset?.id, theme]);
   const moodGoalInfo = useMemo(() => {
     const aggregatedTargetUSD = heroGoalTargetUSD || 0;
     const savedUSD = heroGoalSavedUSD || 0;
@@ -61792,6 +62893,14 @@ function AppContent() {
   }, [ensureNotificationPermission, onboardingStep]);
 	  const tycoonFirstPendingId = tycoonPendingEvents[0]?.id || "ready";
   useEffect(() => {
+    if (!tycoonLedgerHydrated || tycoonAutosaveEnabled) return;
+    cancelScheduledTycoonAutosaveNotifications({ dismissDelivered: true }).catch(() => {});
+  }, [
+    cancelScheduledTycoonAutosaveNotifications,
+    tycoonAutosaveEnabled,
+    tycoonLedgerHydrated,
+  ]);
+  useEffect(() => {
     if (!tycoonLedgerHydrated) return;
     if (tycoonPendingEvents.length > 0) return;
     setTycoonAutosaveSnoozedUntil(0);
@@ -61800,7 +62909,7 @@ function AppContent() {
 	  useEffect(() => {
 	    if (startupHardLockPendingBeforePaywall) return;
 	    if (onboardingStep !== "done") return;
-	    if (tycoonSettings?.enabled === false) return;
+	    if (!tycoonAutosaveEnabled) return;
 	    if (!tycoonPendingEvents.length) return;
     let cancelled = false;
     const task = InteractionManager.runAfterInteractions(() => {
@@ -61843,7 +62952,7 @@ function AppContent() {
     tycoonAutosaveSnoozedUntil,
     tycoonFirstPendingId,
     tycoonPendingEvents.length,
-    tycoonSettings?.enabled,
+	    tycoonAutosaveEnabled,
   ]);
   useEffect(() => {
     if (!startupHardLockPendingBeforePaywall) return;
@@ -62017,13 +63126,14 @@ function AppContent() {
       if (!data || typeof data !== "object") return false;
       const summaryPayload = resolveDailySummaryPayloadFromData(data);
       if (!summaryPayload) return false;
+      if (dailySummarySeenKey === summaryPayload.todayKey) return false;
       setPendingDailySummaryData((prev) =>
         prev?.todayKey === summaryPayload.todayKey ? prev : summaryPayload
       );
       enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
       return true;
     },
-    [enqueueQueuedModal, resolveDailySummaryPayloadFromData]
+    [dailySummarySeenKey, enqueueQueuedModal, resolveDailySummaryPayloadFromData]
   );
   const handleDailySummaryNotificationOpen = useCallback(
     (data) => {
@@ -62086,7 +63196,12 @@ function AppContent() {
     ]
   );
   const dailySummaryBadgeState = useMemo(() => {
-    if (!dailySummaryUnlocked || !historyHydrated) {
+    if (
+      !dailySummaryUnlocked ||
+      !dailySummaryHydrated ||
+      !historyHydrated ||
+      dailySummarySeenForCurrentDay
+    ) {
       return { visible: false, timeLeftMs: 0 };
     }
     const nowTs = Date.now();
@@ -62107,6 +63222,8 @@ function AppContent() {
     buildDailySummaryPayloadForDay,
     currentDayKey,
     dailySummaryClockTick,
+    dailySummaryHydrated,
+    dailySummarySeenForCurrentDay,
     dailySummaryUnlocked,
     getDayKey,
     historyHydrated,
@@ -62120,46 +63237,45 @@ function AppContent() {
       playSound("tap");
       return;
     }
+    const queued = openDailySummaryFromBadge("tamagotchi_modal");
+    if (!queued) {
+      playSound("tap");
+      return;
+    }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     playSound("tap");
-    pendingDailySummaryModalOpenRef.current = true;
-    clearPendingDailySummaryModalTimer();
     closeTamagotchiOverlay();
   }, [
-    clearPendingDailySummaryModalTimer,
     closeTamagotchiOverlay,
     dailySummaryBadgeState.visible,
+    openDailySummaryFromBadge,
     playSound,
     triggerHaptic,
   ]);
-  useEffect(() => {
-    if (tamagotchiVisible) return;
-    if (!pendingDailySummaryModalOpenRef.current) return;
-    clearPendingDailySummaryModalTimer();
-    pendingDailySummaryModalTimerRef.current = setTimeout(() => {
-      pendingDailySummaryModalOpenRef.current = false;
-      openDailySummaryFromBadge("tamagotchi_modal");
-    }, Platform.OS === "android" ? 260 : 120);
-    return clearPendingDailySummaryModalTimer;
-  }, [
-    clearPendingDailySummaryModalTimer,
-    openDailySummaryFromBadge,
-    tamagotchiVisible,
-  ]);
   const dailySummaryCurrency = profile.currency || DEFAULT_PROFILE.currency;
-  const dailySummaryNetUSD = useMemo(() => {
-    const saved = Number(dailySummaryData?.savedUSD) || 0;
-    const spent = Number(dailySummaryData?.spentUSD) || 0;
-    return saved - spent;
+  const dailySummarySavedAmountLabel = useMemo(
+    () =>
+      formatCurrency(
+        convertToCurrency(Math.max(0, Number(dailySummaryData?.savedUSD) || 0), dailySummaryCurrency),
+        dailySummaryCurrency
+      ),
+    [dailySummaryCurrency, dailySummaryData?.savedUSD]
+  );
+  const dailySummarySpentAmountLabel = useMemo(
+    () =>
+      formatCurrency(
+        convertToCurrency(Math.max(0, Number(dailySummaryData?.spentUSD) || 0), dailySummaryCurrency),
+        dailySummaryCurrency
+      ),
+    [dailySummaryCurrency, dailySummaryData?.spentUSD]
+  );
+  const dailySummarySavedShare = useMemo(() => {
+    const saved = Math.max(0, Number(dailySummaryData?.savedUSD) || 0);
+    const spent = Math.max(0, Number(dailySummaryData?.spentUSD) || 0);
+    const total = saved + spent;
+    if (total <= 0) return 0;
+    return Math.max(0, Math.min(100, (saved / total) * 100));
   }, [dailySummaryData?.savedUSD, dailySummaryData?.spentUSD]);
-  const dailySummaryNetNegative = dailySummaryNetUSD < -0.0001;
-  const dailySummaryNetLabel = useMemo(() => {
-    const amount = formatCurrency(
-      convertToCurrency(Math.abs(dailySummaryNetUSD), dailySummaryCurrency),
-      dailySummaryCurrency
-    );
-    return dailySummaryNetNegative ? `-${amount}` : amount;
-  }, [dailySummaryCurrency, dailySummaryNetNegative, dailySummaryNetUSD]);
   const formatDailySummaryHistoryAmount = useCallback(
     (valueUSD = 0) => {
       const safeValue = Math.max(0, Number(valueUSD) || 0);
@@ -62467,16 +63583,17 @@ function AppContent() {
   );
   useEffect(() => {
     let isMounted = true;
+    const consumeNotificationResponse = (response) => {
+      if (!isMounted || !response) return;
+      handleNotificationOpenFromPush(response);
+      safeNotifications.clearLastNotificationResponseAsync().catch(() => {});
+    };
     safeNotifications
       .getLastNotificationResponseAsync()
-      .then((response) => {
-        if (!isMounted) return;
-        if (!response) return;
-        handleNotificationOpenFromPush(response);
-      })
+      .then(consumeNotificationResponse)
       .catch(() => {});
     const subscription = safeNotifications.addNotificationResponseReceivedListener(
-      handleNotificationOpenFromPush
+      consumeNotificationResponse
     );
     return () => {
       isMounted = false;
@@ -63005,6 +64122,7 @@ function AppContent() {
   useEffect(() => {
     if (startupHardLockPendingBeforePaywall) return;
     if (onboardingStep !== "done") return;
+    if (!tycoonAutosaveEnabled) return;
     if (!tycoonAutosaveHungryBlock.active) return;
     const dayKey = tycoonAutosaveHungryBlock.dayKey || getDayKey(Date.now());
     const count = Math.max(0, Number(tycoonAutosaveHungryBlock.count) || 0);
@@ -63045,6 +64163,7 @@ function AppContent() {
     sendImmediateNotification,
     startupHardLockPendingBeforePaywall,
     t,
+    tycoonAutosaveEnabled,
     tycoonAutosaveHungryBlock.active,
     tycoonAutosaveHungryBlock.count,
     tycoonAutosaveHungryBlock.dayKey,
@@ -63494,8 +64613,18 @@ function AppContent() {
 
   useEffect(() => {
     if (!isAndroid || !canSetSystemBarColors) return;
-    const targetNavColor = systemBarsDimActive ? overlaySystemColor : colors.card;
-    const targetButtonStyle = systemBarsDimActive ? systemBarIconStyle : isDarkTheme ? "light" : "dark";
+    const targetNavColor = startupLogoVisible
+      ? "#FFFFFF"
+      : systemBarsDimActive
+      ? overlaySystemColor
+      : colors.card;
+    const targetButtonStyle = startupLogoVisible
+      ? "dark"
+      : systemBarsDimActive
+      ? systemBarIconStyle
+      : isDarkTheme
+      ? "light"
+      : "dark";
     const targetStatusColor = "transparent";
     const previousState = systemBarsStateRef.current || {};
     const shouldUpdateNavColor = previousState.navColor !== targetNavColor;
@@ -63534,6 +64663,7 @@ function AppContent() {
     colors.background,
     isAndroid,
     isDarkTheme,
+    startupLogoVisible,
   ]);
   const saveOverlayPayload =
     overlay?.type === "save"
@@ -63592,10 +64722,15 @@ function AppContent() {
     key: "",
     phase: "classic",
   });
+  const saveOverlayUsesGoalDeposit = Boolean(
+    saveOverlayGoalTitle &&
+      !saveOverlayPayload?.isFirstSaveAction &&
+      saveOverlayPayload?.temptationSeriesRewardMode !== "pending"
+  );
   const saveOverlayPhase =
     saveOverlayPhaseState.key === saveOverlayKey
       ? saveOverlayPhaseState.phase
-      : saveOverlayGoalTitle && !saveOverlayPayload?.isFirstSaveAction
+      : saveOverlayUsesGoalDeposit
       ? "jar"
       : "classic";
   useEffect(() => {
@@ -63603,9 +64738,9 @@ function AppContent() {
     saveOverlayShownAtRef.current = Date.now();
     setSaveOverlayPhaseState({
       key: saveOverlayKey,
-      phase: saveOverlayGoalTitle && !saveOverlayPayload?.isFirstSaveAction ? "jar" : "classic",
+      phase: saveOverlayUsesGoalDeposit ? "jar" : "classic",
     });
-  }, [overlay?.type, saveOverlayGoalTitle, saveOverlayKey, saveOverlayPayload?.isFirstSaveAction]);
+  }, [overlay?.type, saveOverlayKey, saveOverlayUsesGoalDeposit]);
   const overlaySoundKeyRef = useRef(null);
   const overlaySoundTimersRef = useRef([]);
   const clearOverlaySoundTimers = useCallback(() => {
@@ -63742,16 +64877,7 @@ function AppContent() {
   useEffect(() => {
     const pending = pendingUsageStreakRef.current;
     if (!pending || pending.source !== "save") return;
-    const feedAddPendingStage = feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
     if (pendingSaveStreakAfterReminderRef.current) return;
-    if (
-      feedAddPendingStage &&
-      (frequencyReminderPrompt.visible ||
-        pendingFrequencyReminderPrompt ||
-        frequencyReminderPriorityLockRef.current)
-    ) {
-      return;
-    }
     const hasSaveOverlay =
       overlay?.type === "save" ||
       overlayQueueRef.current.some((entry) => entry?.type === "save");
@@ -63762,10 +64888,7 @@ function AppContent() {
     if (hasStreakOverlay) return;
     queueUsageStreakOverlay("save");
   }, [
-    feedFirstTutorialStage,
-    frequencyReminderPrompt.visible,
     overlay?.type,
-    pendingFrequencyReminderPrompt,
     queueUsageStreakOverlay,
     usageStreak?.lastDate,
   ]);
@@ -63865,9 +64988,6 @@ function AppContent() {
         }
       }
       const hasPendingLevel = !!pendingLevelCelebrationRef.current;
-      const tutorialFlowActive =
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING;
       const firstSaveFlowActive = saveOverlayPayload?.isFirstSaveAction === true;
       const rewardAmount = Math.max(0, Number(saveOverlayPayload?.coinReward) || 0);
       const rewardReveal = saveOverlayPayload?.onRevealReward;
@@ -63878,14 +64998,29 @@ function AppContent() {
         rewardReveal();
         return true;
       };
-      const shouldDelayStreakForReminder =
-        tutorialFlowActive &&
-        (frequencyReminderPrompt.visible ||
-          frequencyReminderPriorityLockRef.current);
-      if (tutorialFlowActive || firstSaveFlowActive) {
-        pendingSaveStreakAfterReminderRef.current = firstSaveFlowActive
-          ? false
-          : shouldDelayStreakForReminder;
+      const temptationSeriesRewardMode = saveOverlayPayload?.temptationSeriesRewardMode;
+      const temptationSeriesManagedReward =
+        temptationSeriesRewardMode === "pending" || temptationSeriesRewardMode === "direct";
+      if (temptationSeriesManagedReward) {
+        pendingSaveStreakAfterReminderRef.current = false;
+        dismissOverlay({
+          clearQueue: true,
+          analyticsAction: resolveSaveDismissAction(),
+          analyticsSource: "save_overlay",
+          analyticsValue: normalizedActionSource,
+        });
+        if (temptationSeriesRewardMode === "direct") {
+          revealSaveOverlayRewardOnce();
+        }
+        pendingUsageStreakRef.current = null;
+        pendingLevelCelebrationRef.current = null;
+        if (playerLevel > Math.max(1, Number(lastCelebratedLevel) || 1)) {
+          persistLastCelebratedLevel(playerLevel);
+        }
+        return;
+      }
+      if (firstSaveFlowActive) {
+        pendingSaveStreakAfterReminderRef.current = false;
         triggerPendingLevelCelebrate();
         dismissOverlay({
           clearQueue: false,
@@ -63905,11 +65040,7 @@ function AppContent() {
         ) {
           frequencyReminderPriorityLockRef.current = false;
         }
-        if (firstSaveFlowActive) {
-          pendingUsageStreakRef.current = null;
-        } else if (!shouldDelayStreakForReminder) {
-          queueUsageStreakOverlay("save");
-        }
+        pendingUsageStreakRef.current = null;
         return;
       }
       pendingSaveStreakAfterReminderRef.current = false;
@@ -63941,7 +65072,6 @@ function AppContent() {
     },
     [
       dismissOverlay,
-      feedFirstTutorialStage,
       frequencyReminderPrompt.visible,
       lastCelebratedLevel,
       overlay,
@@ -64653,7 +65783,7 @@ function AppContent() {
       spend_count: purchases.length,
       temptation_cards_count: temptations.length + quickTemptations.length,
       custom_temptation_count: Math.max(0, Number(customTemptationsCreatedCount) || 0),
-      tycoon_enabled: tycoonSettings?.enabled === false ? 0 : 1,
+      tycoon_enabled: tycoonAutosaveEnabled ? 1 : 0,
       tycoon_pending_count: tycoonPendingEvents.length,
       level: Math.max(1, Number(playerLevel) || 1),
     };
@@ -64708,7 +65838,7 @@ function AppContent() {
     temptations.length,
     tycoonLedgerHydrated,
     tycoonPendingEvents.length,
-    tycoonSettings?.enabled,
+    tycoonAutosaveEnabled,
     tycoonSettingsHydrated,
     usageStreak?.current,
     usageStreakHydrated,
@@ -64801,82 +65931,6 @@ function AppContent() {
       },
     };
   }, [currentDayKey, impulseEventsForInsights, language, resolveTemplateCard, titleOverrides]);
-  const focusRecentSpendTemplateCount = useMemo(() => {
-    const now = Date.now();
-    const cutoff = now - FOCUS_RECENT_WINDOW_MS;
-    const templateIds = new Set();
-    impulseEventsForInsights.forEach((event) => {
-      if (!event || event.action !== "spend" || !event.templateId) return;
-      const templateId =
-        typeof event.templateId === "string" ? event.templateId.trim() : event.templateId;
-      if (!templateId || !isFocusCandidateInFeed(templateId)) return;
-      const timestamp = Number(event.timestamp);
-      if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
-      templateIds.add(templateId);
-    });
-    return templateIds.size;
-  }, [impulseEventsForInsights, isFocusCandidateInFeed]);
-  const focusRecentSpends = useMemo(() => {
-    const now = Date.now();
-    const cutoff = now - FOCUS_RECENT_WINDOW_MS;
-    const recentMap = new Map();
-    impulseEventsForInsights.forEach((event) => {
-      if (!event || event.action !== "spend" || !event.templateId) return;
-      const templateId =
-        typeof event.templateId === "string" ? event.templateId.trim() : event.templateId;
-      if (!templateId || !isFocusCandidateInFeed(templateId)) return;
-      const timestamp = Number(event.timestamp);
-      if (!Number.isFinite(timestamp) || timestamp < cutoff) return;
-      const existing = recentMap.get(templateId) || {
-        templateId,
-        count: 0,
-        lastTimestamp: 0,
-        eventTitle: "",
-        eventEmoji: "",
-      };
-      const next = { ...existing, count: existing.count + 1 };
-      if (timestamp >= existing.lastTimestamp) {
-        next.lastTimestamp = timestamp;
-        next.eventTitle = event.title;
-        next.eventEmoji = event.emoji;
-      }
-      recentMap.set(templateId, next);
-    });
-    if (!recentMap.size) return [];
-    const resolved = Array.from(recentMap.values())
-      .filter((entry) => entry.count >= FOCUS_RECENT_MIN_SPEND_COUNT)
-      .map((entry) => {
-        const template = resolveTemplateCard(entry.templateId);
-        const templateLabel =
-          (typeof template?.title === "string"
-            ? template.title
-            : resolveLanguageMapValue(template?.title, language) ||
-              template?.title?.en ||
-              template?.title?.ru ||
-              "") ||
-          "";
-        const resolvedTitle =
-          resolveTemplateTitle(entry.templateId, templateLabel) ||
-          templateLabel ||
-          entry.eventTitle ||
-          t("defaultDealTitle");
-        const resolvedEmoji = template?.emoji || entry.eventEmoji || "✨";
-        return { ...entry, title: resolvedTitle, emoji: resolvedEmoji };
-      });
-    if (!resolved.length) return [];
-    resolved.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
-    });
-    return resolved;
-  }, [
-    impulseEventsForInsights,
-    isFocusCandidateInFeed,
-    language,
-    resolveTemplateCard,
-    resolveTemplateTitle,
-    t,
-  ]);
   const dailyChallengePreviousDayPressure = useMemo(() => {
     const previousDayKey = getDayKey(Date.now() - DAY_MS);
     const previousDayEvents = [];
@@ -64909,50 +65963,75 @@ function AppContent() {
     notifyImpulseRisk(impulseInsights.activeRisk);
   }, [impulseFeaturesUnlocked, impulseInsights.activeRisk, notifyImpulseRisk]);
   useEffect(() => {
-    if (!focusDigestHydrated) return;
+    if (!focusStateHydrated || !focusDigestHydrated) return;
     if (!focusModeUnlocked) return;
-    const todayKey = getDayKey(Date.now());
-    if (focusDigestSeenKey === todayKey) return;
-    if (pendingFocusDigest?.dateKey === todayKey) return;
-    if (!impulseInsights || (impulseInsights.eventCount || 0) < 1) return;
-    if (!purchases.length) return;
-    if (focusRecentSpendTemplateCount < FOCUS_MIN_UNIQUE_SPEND_TEMPLATES) return;
-    if (!focusRecentSpends.length) return;
-    const strong = impulseInsights.hotWin || null;
-    const eligibleStrong =
-      strong?.templateId && isFocusCandidateInFeed(strong.templateId) ? strong : null;
-    const weak = eligibleStrong?.templateId
-      ? focusRecentSpends.find((entry) => entry.templateId !== eligibleStrong.templateId) || null
-      : focusRecentSpends[0] || null;
-    if (!weak) return;
-    const positive =
-      !!eligibleStrong &&
-      (impulseInsights.totalSpendCount || 0) <= (impulseInsights.totalSaveCount || 0);
-    const strongTitle = keepEmojiWithText(eligibleStrong?.title || t("focusDigestMissing"));
-    const weakTitle = keepEmojiWithText(weak?.title || t("focusDigestMissing"));
-    const payload = {
-      title: positive ? t("focusDigestPositiveTitle") : t("focusDigestNegativeTitle"),
-      body: positive
-        ? t("focusDigestPositiveBody", { strong: strongTitle, weak: weakTitle })
-        : t("focusDigestNegativeBody", { weak: weakTitle }),
-      strong: eligibleStrong ? { ...eligibleStrong, title: strongTitle } : eligibleStrong,
-      weak: weak ? { ...weak, title: weakTitle } : weak,
-      positive,
-      targetId: weak?.templateId || eligibleStrong?.templateId || null,
+    if (!focusTemplateId || !focusExpiresAt) return;
+    const expiresAt = Number(focusExpiresAt) || 0;
+    if (!expiresAt) return;
+    const completeFocusWeek = () => {
+      if (Date.now() < expiresAt) return;
+      const template = resolveTemplateCard(focusTemplateId);
+      const title =
+        resolveTemptationTitle(template, language, titleOverrides[focusTemplateId]) ||
+        t("defaultDealTitle");
+      const sessionKey = `focus:${focusTemplateId}:${Number(focusStartedAt) || expiresAt}`;
+      const positive = focusSaveCount >= FOCUS_VICTORY_THRESHOLD;
+      const progressLabel = `${Math.max(0, focusSaveCount)} / ${FOCUS_VICTORY_THRESHOLD}`;
+      const payload = {
+        title: positive ? t("focusDigestPositiveTitle") : t("focusDigestNegativeTitle"),
+        body: positive
+          ? `${t("focusDigestPositiveBody", {
+              strong: progressLabel,
+              weak: title,
+            })}\n${t("focusRewardSubtitle", {
+              title,
+              amount: FOCUS_VICTORY_REWARD,
+            })}`
+          : t("focusDigestNegativeBody", { strong: progressLabel, weak: title }),
+        strong: { title: progressLabel },
+        weak: { title, templateId: focusTemplateId },
+        positive,
+        prompt: false,
+        review: true,
+        targetId: null,
+        rewardAmount: positive ? FOCUS_VICTORY_REWARD : 0,
+        saveCount: Math.max(0, focusSaveCount),
+        spendCount: Math.max(0, focusSpendCount),
+        sessionKey,
+      };
+      if (focusDigestSeenKey !== sessionKey) {
+        setPendingFocusDigest({ dateKey: sessionKey, payload });
+        setFocusDigestPromptShown(false);
+        enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
+      }
+      setFocusTemplateId(null);
+      setFocusStartedAt(null);
+      setFocusExpiresAt(null);
+      setFocusSaveCount(0);
+      setFocusSpendCount(0);
     };
-    setPendingFocusDigest({ dateKey: todayKey, payload });
-    setFocusDigestPromptShown(false);
+    const remainingMs = Math.max(0, expiresAt - Date.now());
+    if (remainingMs <= 0) {
+      completeFocusWeek();
+      return;
+    }
+    const timer = setTimeout(completeFocusWeek, remainingMs + 50);
+    return () => clearTimeout(timer);
   }, [
     focusDigestHydrated,
     focusDigestSeenKey,
+    focusExpiresAt,
     focusModeUnlocked,
-    focusRecentSpendTemplateCount,
-    focusRecentSpends,
-    isFocusCandidateInFeed,
-    impulseInsights,
-    pendingFocusDigest,
-    purchases.length,
+    focusSaveCount,
+    focusSpendCount,
+    focusStartedAt,
+    focusStateHydrated,
+    focusTemplateId,
+    language,
+    enqueueQueuedModal,
+    resolveTemplateCard,
     t,
+    titleOverrides,
   ]);
 
   useEffect(() => {
@@ -65013,7 +66092,10 @@ function AppContent() {
       existingTemplate && typeof resolveTemptationCategory === "function"
         ? resolveTemptationCategory(existingTemplate)
         : null;
-    if (isDailyChallengeExcludedCategory(existingCategory)) {
+    if (
+      isDailyChallengeExcludedCategory(existingCategory) ||
+      (focusTemplateId && dailyChallenge.templateId === focusTemplateId)
+    ) {
       setDailyChallenge({
         ...createInitialDailyChallengeState(),
         dateKey: resolvedTodayKey,
@@ -65084,6 +66166,7 @@ function AppContent() {
     dailyChallengeHydrated,
     dailyChallengeDrawFallbackTemplateIds,
     dailyChallengePreviousDayPressure,
+    focusTemplateId,
     isDailyChallengeOptionTemplateIdValid,
     language,
     profile.currency,
@@ -65164,8 +66247,12 @@ function AppContent() {
   ]);
   const handleDailyChallengeDismiss = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
-    dailyChallengeOfferDeferredRef.current = true;
     setDailyChallengePromptGate(false);
+    setDailyChallenge((prev) =>
+      prev?.status === DAILY_CHALLENGE_STATUS.OFFER
+        ? { ...prev, offerDismissed: true }
+        : prev
+    );
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
     logEvent("daily_challenge_dismissed", {
       template_id: dailyChallenge.templateId || "none",
@@ -65301,6 +66388,7 @@ function AppContent() {
         failedAt: Date.now(),
       };
     });
+    consumePostActionPromptSlot("daily_challenge_failed");
     triggerOverlayState(
       "cancel",
       t("dailyChallengeFailedText", { temptation: dailyChallengeDisplayTitle })
@@ -65310,6 +66398,7 @@ function AppContent() {
     dailyChallengeUnlocked,
     dailyChallenge.templateId,
     dailyChallengeDisplayTitle,
+    consumePostActionPromptSlot,
     logEvent,
     t,
     triggerOverlayState,
@@ -65850,11 +66939,11 @@ function AppContent() {
     try {
       const hydrationKeys = [
         STORAGE_KEYS.TUTORIAL,
-        STORAGE_KEYS.TEMPTATION_TUTORIAL,
         STORAGE_KEYS.WISHES,
         STORAGE_KEYS.PENDING,
         STORAGE_KEYS.PURCHASES,
         STORAGE_KEYS.PROFILE,
+        STORAGE_KEYS.UI_SESSION,
         STORAGE_KEYS.THEME,
         STORAGE_KEYS.PRO_THEME_ACCENT,
         STORAGE_KEYS.LANGUAGE,
@@ -65888,6 +66977,8 @@ function AppContent() {
         STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED,
         STORAGE_KEYS.HIDDEN_TEMPTATIONS,
         STORAGE_KEYS.ARCHIVED_TEMPTATIONS,
+        STORAGE_KEYS.TEMPTATION_SERIES,
+        STORAGE_KEYS.NEXT_DECISION_COACH,
         STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL,
         STORAGE_KEYS.HEALTH,
         STORAGE_KEYS.CLAIMED_REWARDS,
@@ -65931,8 +67022,6 @@ function AppContent() {
         STORAGE_KEYS.COIN_SLIDER_MAX,
         STORAGE_KEYS.FAB_TUTORIAL,
         STORAGE_KEYS.BUDGET_WIDGET_TUTORIAL,
-        STORAGE_KEYS.TUTORIAL_CARD_SHOWN,
-        STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN,
         STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH,
         STORAGE_KEYS.NORTH_STAR_METRIC,
         STORAGE_KEYS.COIN_VALUE_MODAL,
@@ -65968,24 +67057,16 @@ function AppContent() {
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
       const tutorialRaw = storedMap[STORAGE_KEYS.TUTORIAL] ?? null;
-      const temptationTutorialRaw = storedMap[STORAGE_KEYS.TEMPTATION_TUTORIAL] ?? null;
       setTutorialSeen(true);
-      setTutorialHydrated(true);
       if (tutorialRaw !== "done") {
         AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
       }
-      setTemptationTutorialStatus("done");
-      setTemptationTutorialSeen(true);
-      setTemptationTutorialCompleted(true);
-      setTemptationTutorialQueued(false);
-      if (temptationTutorialRaw !== "done") {
-        AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-      }
-      setTemptationTutorialHydrated(true);
       const wishesRaw = storedMap[STORAGE_KEYS.WISHES] ?? null;
       const pendingRaw = storedMap[STORAGE_KEYS.PENDING] ?? null;
       const purchasesRaw = storedMap[STORAGE_KEYS.PURCHASES] ?? null;
       const profileRaw = storedMap[STORAGE_KEYS.PROFILE] ?? null;
+      const uiSessionRaw = storedMap[STORAGE_KEYS.UI_SESSION] ?? null;
+      uiSessionRestorePendingRef.current = normalizeUiSessionState(uiSessionRaw);
       const themeRaw = storedMap[STORAGE_KEYS.THEME] ?? null;
       const proThemeAccentRaw = storedMap[STORAGE_KEYS.PRO_THEME_ACCENT] ?? null;
       const languageRaw = storedMap[STORAGE_KEYS.LANGUAGE] ?? null;
@@ -66027,6 +67108,8 @@ function AppContent() {
         storedMap[STORAGE_KEYS.TYCOON_AUTOSAVE_HUNGRY_LAST_SHOWN_AT] ?? null;
       const hiddenTemptationsRaw = storedMap[STORAGE_KEYS.HIDDEN_TEMPTATIONS] ?? null;
       const archivedTemptationsRaw = storedMap[STORAGE_KEYS.ARCHIVED_TEMPTATIONS] ?? null;
+      const temptationSeriesRaw = storedMap[STORAGE_KEYS.TEMPTATION_SERIES] ?? null;
+      const nextDecisionCoachRaw = storedMap[STORAGE_KEYS.NEXT_DECISION_COACH] ?? null;
       const defaultTemptationGrowthLockLevelRaw =
         storedMap[STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL] ?? null;
       const healthRaw = storedMap[STORAGE_KEYS.HEALTH] ?? null;
@@ -66075,8 +67158,6 @@ function AppContent() {
       const coinSliderMaxRaw = storedMap[STORAGE_KEYS.COIN_SLIDER_MAX] ?? null;
       const fabTutorialRaw = storedMap[STORAGE_KEYS.FAB_TUTORIAL] ?? null;
       const budgetWidgetTutorialRaw = storedMap[STORAGE_KEYS.BUDGET_WIDGET_TUTORIAL] ?? null;
-      const tutorialCardShownRaw = storedMap[STORAGE_KEYS.TUTORIAL_CARD_SHOWN] ?? null;
-      const feedAddTutorialShownRaw = storedMap[STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN] ?? null;
       const amountSliderConfirmCoachRaw =
         storedMap[STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH] ?? null;
       const northStarMetricRaw = storedMap[STORAGE_KEYS.NORTH_STAR_METRIC] ?? null;
@@ -66762,6 +67843,7 @@ function AppContent() {
           const rawActionCount = Math.max(0, Number(parsed?.actionCount) || 0);
           const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);
           normalizedRatingPrompt = {
+            triggerVersion: 2,
             firstOpenAt:
               typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
             completed: normalizedCompleted,
@@ -66769,6 +67851,10 @@ function AppContent() {
             lastAction: parsedLastAction,
             respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
             actionCount: normalizedActionCount,
+            seriesCompletionCount:
+              Number(parsed?.triggerVersion) === 2
+                ? Math.max(0, Number(parsed?.seriesCompletionCount) || 0)
+                : 0,
             actionPrompted: Boolean(parsed?.actionPrompted),
           };
           ratingPromptNeedsRewrite =
@@ -66778,6 +67864,9 @@ function AppContent() {
             normalizedRatingPrompt.respondedAt !== parsed?.respondedAt ||
             normalizedRatingPrompt.completed !== Boolean(parsed?.completed) ||
             normalizedRatingPrompt.actionCount !== rawActionCount ||
+            normalizedRatingPrompt.triggerVersion !== Number(parsed?.triggerVersion) ||
+            normalizedRatingPrompt.seriesCompletionCount !==
+              Math.max(0, Number(parsed?.seriesCompletionCount) || 0) ||
             normalizedRatingPrompt.actionPrompted !== Boolean(parsed?.actionPrompted) ||
             Object.prototype.hasOwnProperty.call(parsed, "actionCountStart") ||
             Object.prototype.hasOwnProperty.call(parsed, "firstSessionStatus") ||
@@ -66810,26 +67899,6 @@ function AppContent() {
       }
       setBudgetWidgetTutorialSeen(budgetWidgetTutorialRaw === "done");
       setBudgetWidgetTutorialHydrated(true);
-      const hasShownTutorialCard =
-        tutorialCardShownRaw === "1" ||
-        tutorialCardShownRaw === "true" ||
-        tutorialCardShownRaw === "done";
-      setTutorialCardShown(true);
-      setTutorialCardHydrated(true);
-      tutorialCardCompletedLoggedRef.current = true;
-      tutorialCardShownLoggedRef.current = true;
-      if (!hasShownTutorialCard) {
-        AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
-      }
-      const hasShownFeedAddTutorial =
-        feedAddTutorialShownRaw === "1" ||
-        feedAddTutorialShownRaw === "true" ||
-        feedAddTutorialShownRaw === "done";
-      setFeedAddTutorialShown(true);
-      setFeedAddTutorialHydrated(true);
-      if (!hasShownFeedAddTutorial) {
-        AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "done").catch(() => {});
-      }
       const hasSeenAmountSliderConfirmCoach =
         amountSliderConfirmCoachRaw === "1" ||
         amountSliderConfirmCoachRaw === "true" ||
@@ -66893,19 +67962,40 @@ function AppContent() {
         try {
           const parsedFocus = JSON.parse(focusTargetRaw);
           if (parsedFocus && typeof parsedFocus === "object" && typeof parsedFocus.templateId === "string") {
+            const now = Date.now();
+            const hasPersistedWindow =
+              Number(parsedFocus.startedAt) > 0 && Number(parsedFocus.expiresAt) > 0;
+            const hydratedStartedAt = hasPersistedWindow
+              ? Math.max(0, Number(parsedFocus.startedAt) || now)
+              : now;
+            const hydratedExpiresAt = hasPersistedWindow
+              ? Math.max(hydratedStartedAt, Number(parsedFocus.expiresAt) || 0)
+              : now + FOCUS_DURATION_MS;
             setFocusTemplateId(parsedFocus.templateId);
+            setFocusStartedAt(hydratedStartedAt);
+            setFocusExpiresAt(hydratedExpiresAt);
             setFocusSaveCount(Math.max(0, Number(parsedFocus.saveCount) || 0));
+            setFocusSpendCount(Math.max(0, Number(parsedFocus.spendCount) || 0));
           } else {
             setFocusTemplateId(null);
+            setFocusStartedAt(null);
+            setFocusExpiresAt(null);
             setFocusSaveCount(0);
+            setFocusSpendCount(0);
           }
         } catch (error) {
           setFocusTemplateId(null);
+          setFocusStartedAt(null);
+          setFocusExpiresAt(null);
           setFocusSaveCount(0);
+          setFocusSpendCount(0);
         }
       } else {
         setFocusTemplateId(null);
+        setFocusStartedAt(null);
+        setFocusExpiresAt(null);
         setFocusSaveCount(0);
+        setFocusSpendCount(0);
       }
       setFocusStateHydrated(true);
       if (focusDigestRaw) {
@@ -67331,27 +68421,33 @@ function AppContent() {
         setCustomTemptationsCreatedCount(storedCustomTemptationsCreated ?? 0);
       }
       setCustomTemptationsCreatedHydrated(true);
+      let resetLegacyTycoonPending = true;
       if (tycoonSettingsRaw) {
         try {
           const parsedTycoonSettings = JSON.parse(tycoonSettingsRaw);
-          setTycoonSettings({
-            enabled:
-              parsedTycoonSettings?.enabled === false
-                ? false
-                : TYCOON_MODE_DEFAULT_ENABLED,
-          });
+          resetLegacyTycoonPending = shouldResetLegacyTycoonPendingEvents(
+            parsedTycoonSettings
+          );
+          setTycoonSettings(normalizeTycoonSettings(parsedTycoonSettings));
         } catch (err) {
           console.warn("tycoon settings parse", err);
-          setTycoonSettings({ enabled: TYCOON_MODE_DEFAULT_ENABLED });
+          setTycoonSettings(normalizeTycoonSettings(null));
         }
       } else {
-        setTycoonSettings({ enabled: TYCOON_MODE_DEFAULT_ENABLED });
+        setTycoonSettings(normalizeTycoonSettings(null));
       }
       setTycoonSettingsHydrated(true);
       if (tycoonLedgerRaw) {
         try {
           const parsedTycoonLedger = JSON.parse(tycoonLedgerRaw);
-          setTycoonLedger(Array.isArray(parsedTycoonLedger) ? parsedTycoonLedger : []);
+          const normalizedTycoonLedger = Array.isArray(parsedTycoonLedger)
+            ? parsedTycoonLedger
+            : [];
+          setTycoonLedger(
+            resetLegacyTycoonPending
+              ? resetLegacyTycoonPendingEvents(normalizedTycoonLedger)
+              : normalizedTycoonLedger
+          );
         } catch (err) {
           console.warn("tycoon ledger parse", err);
           setTycoonLedger([]);
@@ -67430,6 +68526,39 @@ function AppContent() {
       } else {
         hydrateArchivedTemptations();
       }
+      try {
+        const storedTemptationSeries = normalizeTemptationSeriesState(
+          temptationSeriesRaw ? JSON.parse(temptationSeriesRaw) : null
+        );
+        const hydrationDayKey = getDayKey(Date.now());
+        const hydratedTemptationSeries = resetTemptationSeriesForDay(
+          storedTemptationSeries,
+          {
+            dayKey: hydrationDayKey,
+            timestamp: Date.now(),
+          }
+        );
+        if (
+          storedTemptationSeries.status !== TEMPTATION_SERIES_STATUS.IDLE &&
+          storedTemptationSeries.dayKey !== hydrationDayKey
+        ) {
+          AsyncStorage.setItem(
+            STORAGE_KEYS.TEMPTATION_SERIES,
+            JSON.stringify(hydratedTemptationSeries)
+          ).catch(() => {});
+        }
+        temptationSeriesRef.current = hydratedTemptationSeries;
+        setTemptationSeriesState(hydratedTemptationSeries);
+      } catch (error) {
+        console.warn("temptation series parse", error);
+        const fallbackTemptationSeries = createInitialTemptationSeriesState();
+        temptationSeriesRef.current = fallbackTemptationSeries;
+        setTemptationSeriesState(fallbackTemptationSeries);
+      }
+      setTemptationSeriesHydrated(true);
+      const hydratedNextDecisionCoach = normalizeNextDecisionCoachState(nextDecisionCoachRaw);
+      nextDecisionCoachRef.current = hydratedNextDecisionCoach;
+      setNextDecisionCoach(hydratedNextDecisionCoach);
       const parsedDefaultTemptationGrowthLockLevel = Number(defaultTemptationGrowthLockLevelRaw);
       if (
         Number.isFinite(parsedDefaultTemptationGrowthLockLevel) &&
@@ -67669,7 +68798,6 @@ function AppContent() {
       setAnalyticsOptOutState((prev) => prev);
       setRatingPromptState(createInitialRatingPromptState());
       setTamagotchiGreetingDayKey(null);
-      setTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
       setChallengeBadgeStore([]);
@@ -67701,10 +68829,19 @@ function AppContent() {
       firstSessionBucketRecordedRef.current = false;
       setFirstSessionDurationBucket("");
       setPremiumGroupCSoftPaywallShownDayKey("");
+      const fallbackTemptationSeries = createInitialTemptationSeriesState();
+      temptationSeriesRef.current = fallbackTemptationSeries;
+      setTemptationSeriesState(fallbackTemptationSeries);
+      setTemptationSeriesHydrated(true);
       deferredHydrationPayloadRef.current = null;
       deferredHydrationReadyRef.current = true;
       setDeferredHydrationReady(true);
     } finally {
+      if (nextDecisionCoachRef.current.status === NEXT_DECISION_COACH_STATUS.LOADING) {
+        const fallbackNextDecisionCoach = createEligibleNextDecisionCoach();
+        nextDecisionCoachRef.current = fallbackNextDecisionCoach;
+        setNextDecisionCoach(fallbackNextDecisionCoach);
+      }
       setHistoryHydrated(true);
       setPremiumInstallId((prev) => {
         const normalized = resolveNonEmptyString(prev);
@@ -67717,6 +68854,7 @@ function AppContent() {
       });
       setPremiumInstallSecretHydrated(true);
       setFirstSaveGoalJarHydrated(true);
+      setTemptationSeriesHydrated(true);
       setPremiumGroupCSoftPaywallShownDayKeyHydrated(true);
       setPremiumSoftPaywallHydrated(true);
       setPremiumHardPaywallHydrated(true);
@@ -67769,11 +68907,8 @@ function AppContent() {
       setTamagotchiGreetingDayHydrated(true);
       setTamagotchiSkinHydrated(true);
       setLifetimeSavedHydrated(true);
-      setTemptationTutorialHydrated(true);
       setProfileHydrated(true);
       setRatingPromptHydrated(true);
-      setTutorialCardHydrated(true);
-      setFeedAddTutorialHydrated(true);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
       setRefuseStatsHydrated(true);
@@ -67803,6 +68938,146 @@ function AppContent() {
     };
   }, []);
   useEffect(() => {
+    if (!startupHydrated || !profileHydrated || uiSessionHydrated) return;
+    const restoredSession = uiSessionRestorePendingRef.current;
+    uiSessionRestorePendingRef.current = null;
+    if (onboardingStep === "done" && restoredSession) {
+      setActiveTabState(restoredSession.activeTab);
+      updateTabHistory(restoredSession.tabHistory);
+      setProgressHubPane(restoredSession.navigation.progressHubPane);
+      setProgressSection(restoredSession.navigation.progressSection);
+      setRewardsPane(restoredSession.navigation.rewardsPane);
+      setHeroCarouselIndex(restoredSession.navigation.heroCarouselIndex);
+
+      if (restoredSession.profileEditor) {
+        setProfileDraft((currentDraft) => ({
+          ...currentDraft,
+          ...restoredSession.profileEditor.draft,
+        }));
+        setProfileEditMode(restoredSession.profileEditor.mode);
+      }
+      if (restoredSession.priceEditor) {
+        setPriceEditor((currentEditor) => ({
+          ...currentEditor,
+          ...restoredSession.priceEditor,
+          frequencyCustom:
+            restoredSession.priceEditor.frequencyCustom || currentEditor.frequencyCustom,
+          frequencyWeeklyDays: restoredSession.priceEditor.frequencyWeeklyDays.length
+            ? restoredSession.priceEditor.frequencyWeeklyDays
+            : currentEditor.frequencyWeeklyDays,
+          frequencyMonthlyDays: restoredSession.priceEditor.frequencyMonthlyDays.length
+            ? restoredSession.priceEditor.frequencyMonthlyDays
+            : currentEditor.frequencyMonthlyDays,
+        }));
+      }
+      if (restoredSession.quickTemptationEditor) {
+        setQuickSpendDraft(restoredSession.quickTemptationEditor.draft);
+        setQuickCustomLockedCategoryId(
+          restoredSession.quickTemptationEditor.lockedCategoryId
+        );
+        setShowCustomSpend(true);
+      }
+      if (restoredSession.pendingEditor) {
+        setNewPendingModal((currentModal) => ({
+          ...currentModal,
+          ...restoredSession.pendingEditor,
+          visible: true,
+        }));
+      }
+      if (restoredSession.goalEditor) {
+        setNewGoalModal((currentModal) => ({
+          ...currentModal,
+          ...restoredSession.goalEditor,
+          visible: true,
+        }));
+      }
+      if (restoredSession.linkedGoalEditor) {
+        setGoalEditorPrompt((currentPrompt) => ({
+          ...currentPrompt,
+          ...restoredSession.linkedGoalEditor,
+          visible: true,
+        }));
+      }
+      if (restoredSession.categoryEditor) {
+        setAddCategoryName(restoredSession.categoryEditor.addName);
+        setAddCategoryEmoji(restoredSession.categoryEditor.addEmoji);
+        setCategoryEditId(restoredSession.categoryEditor.editId);
+        setCategoryEditName(restoredSession.categoryEditor.editName);
+        setCategoryEditEmoji(restoredSession.categoryEditor.editEmoji);
+        setResumeManageCategoriesAfterAdd(
+          restoredSession.categoryEditor.resumeManageAfterAdd
+        );
+        setManageCategoriesVisible(restoredSession.categoryEditor.manageVisible);
+        setAddCategoryModalVisible(restoredSession.categoryEditor.addVisible);
+      }
+    }
+    setUiSessionHydrated(true);
+  }, [
+    onboardingStep,
+    profileHydrated,
+    startupHydrated,
+    uiSessionHydrated,
+    updateTabHistory,
+  ]);
+  useEffect(() => {
+    if (!uiSessionHydrated || onboardingStep !== "done") return;
+    const nextSession = createUiSessionState({
+      activeTab,
+      tabHistory,
+      progressHubPane,
+      progressSection,
+      rewardsPane,
+      heroCarouselIndex,
+      profileEditMode,
+      profileDraft,
+      priceEditor,
+      showCustomSpend,
+      quickSpendDraft,
+      quickCustomLockedCategoryId,
+      newPendingModal,
+      newGoalModal,
+      goalEditorPrompt,
+      addCategoryModalVisible,
+      manageCategoriesVisible,
+      resumeManageCategoriesAfterAdd,
+      addCategoryName,
+      addCategoryEmoji,
+      categoryEditId,
+      categoryEditName,
+      categoryEditEmoji,
+    });
+    if (!nextSession) return;
+    uiSessionSnapshotRef.current = nextSession;
+    queuePersist(STORAGE_KEYS.UI_SESSION, JSON.stringify(nextSession));
+  }, [
+    activeTab,
+    addCategoryEmoji,
+    addCategoryModalVisible,
+    addCategoryName,
+    categoryEditEmoji,
+    categoryEditId,
+    categoryEditName,
+    goalEditorPrompt,
+    heroCarouselIndex,
+    manageCategoriesVisible,
+    newGoalModal,
+    newPendingModal,
+    onboardingStep,
+    priceEditor,
+    profileDraft,
+    profileEditMode,
+    progressHubPane,
+    progressSection,
+    queuePersist,
+    quickCustomLockedCategoryId,
+    quickSpendDraft,
+    resumeManageCategoriesAfterAdd,
+    rewardsPane,
+    showCustomSpend,
+    tabHistory,
+    uiSessionHydrated,
+  ]);
+  useEffect(() => {
     if (!startupHydrated) return;
     let cancelled = false;
     const task = InteractionManager.runAfterInteractions(() => {
@@ -67828,22 +69103,15 @@ function AppContent() {
   useEffect(() => {
     if (onboardingStep !== "done") {
       setHomeLayoutReady(false);
-      setTutorialVisible(false);
-      setTutorialCardVisible(false);
-      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.DONE);
-      setFeedFirstTutorialSaveCoachVisible(false);
-      setFeedFirstTutorialNeedSoftPaywall(false);
     }
   }, [onboardingStep]);
 
   const handleStartupLogoComplete = useCallback(() => {
+    if (onboardingStep === "logo") {
+      goToOnboardingStep("language", { recordHistory: false });
+    }
     markStartupLogoDismissed();
-  }, [markStartupLogoDismissed]);
-
-  const handleOnboardingLogoComplete = useCallback(() => {
-    markStartupLogoDismissed();
-    goToOnboardingStep("language", { recordHistory: false });
-  }, [goToOnboardingStep, markStartupLogoDismissed]);
+  }, [goToOnboardingStep, markStartupLogoDismissed, onboardingStep]);
 
   const persistTamagotchiLastActiveAt = useCallback((timestamp = Date.now()) => {
     const normalized = Math.max(0, Number(timestamp) || 0);
@@ -68417,285 +69685,6 @@ function AppContent() {
     scheduleTamagotchiHungerNotifications();
   }, [scheduleTamagotchiHungerNotifications, tamagotchiState.hunger]);
 
-  const tutorialOverlayVisible = tutorialVisible || temptationTutorialVisible;
-  const feedFirstTutorialCanStart =
-    temptationCardsTutorialEnabled &&
-    onboardingStep === "done" &&
-    !startupHardLockPendingBeforePaywall &&
-    !premiumPaywallState.visible &&
-    interfaceReady &&
-    activeTab === "feed" &&
-    tutorialCardHydrated &&
-    !tutorialCardShown &&
-    Array.isArray(products) &&
-    products.length > 0 &&
-    !tutorialBlockingVisible &&
-    !overlay &&
-    !overlayActiveRef.current &&
-    !blockingModalVisible &&
-    overlayQueueRef.current.length === 0 &&
-    celebrationQueueRef.current.length === 0 &&
-    !celebrationGapTimerRef.current;
-  const feedAddTutorialSessionReady =
-    temptationCardsTutorialEnabled &&
-    feedAddTutorialHydrated &&
-    !feedAddTutorialShown &&
-    homeSessionCount > 0 &&
-    homeSessionActionBaseline >= 2;
-  const feedAddTutorialStageReady =
-    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.IDLE ||
-    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.DONE;
-  const feedAddTutorialCanStart =
-    feedAddTutorialSessionReady &&
-    feedAddTutorialStageReady &&
-    onboardingStep === "done" &&
-    !startupHardLockPendingBeforePaywall &&
-    !premiumPaywallState.visible &&
-    interfaceReady &&
-    activeTab === "feed" &&
-    !tutorialOverlayVisible &&
-    !tutorialBlockingVisible &&
-    !overlay &&
-    !overlayActiveRef.current &&
-    !blockingModalVisible &&
-    !queuedModalType &&
-    overlayQueueRef.current.length === 0 &&
-    celebrationQueueRef.current.length === 0 &&
-    !celebrationGapTimerRef.current;
-  useEffect(() => {
-    if (!feedAddTutorialCanStart) return;
-    setTutorialCardVisible(false);
-    setFeedFirstTutorialSaveCoachVisible(false);
-    setFeedFirstTutorialNeedSoftPaywall(false);
-    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING);
-    logEvent("feed_first_tutorial_step", { step: "add_pending_after_two_actions" });
-  }, [feedAddTutorialCanStart, logEvent]);
-  useEffect(() => {
-    if (!feedFirstTutorialCanStart) return;
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return;
-    const handoffRemaining = getModalCloseSettleRemainingMs();
-    if (handoffRemaining > 0) {
-      const timer = setTimeout(() => {
-        setFeedFirstTutorialStage((prev) => {
-          if (prev !== FEED_FIRST_TUTORIAL_STAGE.IDLE) return prev;
-          logEvent("feed_first_tutorial_step", { step: "welcome_shown" });
-          return FEED_FIRST_TUTORIAL_STAGE.WELCOME;
-        });
-      }, handoffRemaining + MODAL_HANDOFF_FRAME_SLACK_MS);
-      return () => clearTimeout(timer);
-    }
-    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.WELCOME);
-    logEvent("feed_first_tutorial_step", { step: "welcome_shown" });
-  }, [feedFirstTutorialCanStart, feedFirstTutorialStage, getModalCloseSettleRemainingMs, logEvent]);
-  const tutorialCardEligible =
-    temptationCardsTutorialEnabled &&
-    onboardingStep === "done" &&
-    !startupHardLockPendingBeforePaywall &&
-    !premiumPaywallState.visible &&
-    interfaceReady &&
-    activeTab === "feed" &&
-    tutorialCardHydrated &&
-    !tutorialCardShown &&
-    feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE &&
-    !tutorialBlockingVisible &&
-    Array.isArray(products) &&
-    products.length > 0;
-  useEffect(() => {
-    if (!tutorialCardEligible) {
-      if (tutorialCardVisible) {
-        setTutorialCardVisible(false);
-      }
-      return;
-    }
-    if (tutorialCardVisible) return;
-    setTutorialCardVisible(true);
-    if (!tutorialCardShownLoggedRef.current) {
-      tutorialCardShownLoggedRef.current = true;
-      logEvent("feed_first_tutorial_step", { step: "save_shown" });
-    }
-  }, [logEvent, tutorialCardEligible, tutorialCardVisible]);
-  useEffect(() => {
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE) {
-      feedFirstTutorialSaveAutoScrolledRef.current = false;
-      return;
-    }
-    if (activeTab !== "feed") return;
-    if (feedFirstTutorialSaveAutoScrolledRef.current) return;
-    feedFirstTutorialSaveAutoScrolledRef.current = true;
-    const timer = setTimeout(() => {
-      const scroller = feedScreenRef.current;
-      scroller?.scrollToTemptations?.({
-        animated: true,
-        extraOffset: IS_SHORT_DEVICE ? -18 : -10,
-      });
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [activeTab, feedFirstTutorialStage]);
-  useEffect(() => {
-    if (startupHardLockPendingBeforePaywall) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (activeTab !== "feed") {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (!interfaceReady) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (overlay || overlayActiveRef.current) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (overlayQueueRef.current.length) {
-      if (
-        !overlay &&
-        !overlayActiveRef.current &&
-        !blockingModalVisible &&
-        !frequencyReminderPrompt.visible &&
-        !pendingFrequencyReminderPrompt
-      ) {
-        if (frequencyReminderPriorityLockRef.current) {
-          frequencyReminderPriorityLockRef.current = false;
-        }
-        processOverlayQueueRef.current();
-      }
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (
-      frequencyReminderPriorityLockRef.current &&
-      !frequencyReminderPrompt.visible &&
-      !pendingFrequencyReminderPrompt
-    ) {
-      // Recover from a stale reminder-priority lock so onboarding flow can continue.
-      frequencyReminderPriorityLockRef.current = false;
-    }
-    const reminderFlowBlocking =
-      frequencyReminderPrompt.visible ||
-      pendingFrequencyReminderPrompt ||
-      frequencyReminderPriorityLockRef.current;
-    if (pendingUsageStreakRef.current) {
-      if (!reminderFlowBlocking) {
-        queueUsageStreakOverlay();
-      }
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (pendingLevelCelebrationRef.current || pendingGoalCelebration) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (coinValueModalVisible) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (blockingModalVisible || tutorialBlockingVisible) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (queuedModalType) {
-      if (queuedModalType === QUEUED_MODAL_TYPES.FAB_TUTORIAL) {
-        clearQueuedModal(QUEUED_MODAL_TYPES.FAB_TUTORIAL);
-      } else {
-        feedFirstTutorialAddScrolledRef.current = false;
-        return;
-      }
-    }
-    if (celebrationQueueRef.current.length || celebrationGapTimerRef.current) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (feedFirstTutorialNeedSoftPaywall) {
-      setFeedFirstTutorialNeedSoftPaywall(false);
-    }
-    if (premiumPaywallState.visible) {
-      feedFirstTutorialAddScrolledRef.current = false;
-      return;
-    }
-    if (feedFirstTutorialAddScrolledRef.current) return;
-    feedFirstTutorialAddScrolledRef.current = true;
-    const scrollFeedForAddCoach = (animated = true) => {
-      const scroller = feedScreenRef.current;
-      const didScrollTop = scroller?.scrollToTop?.({ animated });
-      if (!didScrollTop) {
-        scroller?.scrollToTemptations?.({
-          animated,
-          extraOffset: IS_SHORT_DEVICE ? -18 : -10,
-        });
-      }
-    };
-    const scrollTimer = setTimeout(() => {
-      scrollFeedForAddCoach(true);
-    }, 120);
-    const settleScrollTimer = setTimeout(() => {
-      // Reinforce top position after modal handoff animations finish.
-      scrollFeedForAddCoach(false);
-    }, 420);
-    const showTimer = setTimeout(() => {
-      setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.ADD);
-      logEvent("feed_first_tutorial_step", { step: "add_shown" });
-    }, 760);
-    return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(settleScrollTimer);
-      clearTimeout(showTimer);
-      feedFirstTutorialAddScrolledRef.current = false;
-    };
-  }, [
-    activeTab,
-    blockingModalVisible,
-    clearQueuedModal,
-    coinValueModalVisible,
-    frequencyReminderPrompt.visible,
-    feedFirstTutorialNeedSoftPaywall,
-    feedFirstTutorialStage,
-    interfaceReady,
-    logEvent,
-    overlay,
-    pendingFrequencyReminderPrompt,
-    pendingGoalCelebration,
-    premiumPaywallState.visible,
-    queueUsageStreakOverlay,
-    queuedModalType,
-    startupHardLockPendingBeforePaywall,
-    tutorialBlockingVisible,
-  ]);
-  useEffect(() => {
-    if (startupHardLockPendingBeforePaywall) {
-      feedFirstTutorialAddAutoScrolledRef.current = false;
-      return;
-    }
-    if (feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.ADD) {
-      feedFirstTutorialAddAutoScrolledRef.current = false;
-      return;
-    }
-    if (activeTab !== "feed") return;
-    if (feedFirstTutorialAddAutoScrolledRef.current) return;
-    feedFirstTutorialAddAutoScrolledRef.current = true;
-    const timer = setTimeout(() => {
-      feedScreenRef.current?.scrollToTop?.({ animated: true });
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [activeTab, feedFirstTutorialStage, startupHardLockPendingBeforePaywall]);
-  const canShowTutorialNow = useCallback(() => {
-    if (startupHardLockPendingBeforePaywall) return false;
-    if (overlay || overlayActiveRef.current) return false;
-    if (overlayQueueRef.current.length) return false;
-    if (celebrationQueueRef.current.length) return false;
-    if (celebrationGapTimerRef.current) return false;
-    if (blockingModalVisible) return false;
-    const lastDismissedAt = lastOverlayDismissedAtRef.current || 0;
-    if (Date.now() - lastDismissedAt < 600) return false;
-    return true;
-  }, [blockingModalVisible, overlay, startupHardLockPendingBeforePaywall]);
-  const shouldShowTutorial = false;
-  const shouldShowTemptationTutorial = false;
   const budgetWidgetTutorialEligible =
     !startupHardLockPendingBeforePaywall &&
     !premiumPaywallState.visible &&
@@ -68705,29 +69694,7 @@ function AppContent() {
     budgetWidgetTutorialHydrated &&
     !budgetWidgetTutorialSeen &&
     !budgetWidgetTutorialVisible &&
-    !tutorialOverlayVisible &&
     !tutorialBlockingVisible;
-
-  useEffect(() => {
-    if (!shouldShowTutorial) return;
-    if (!appTutorialSteps.length) return;
-    if (!homeLayoutReady) return;
-    if (startupLogoVisible) return;
-    if (!canShowTutorialNow()) return;
-    setTutorialStepIndex(0);
-    setTutorialVisible(true);
-  }, [appTutorialSteps.length, canShowTutorialNow, homeLayoutReady, shouldShowTutorial, startupLogoVisible]);
-
-  useEffect(() => {
-    if (!shouldShowTutorial) return;
-    if (!appTutorialSteps.length) return;
-    const fallbackTimer = setTimeout(() => {
-      if (!canShowTutorialNow()) return;
-      setTutorialStepIndex(0);
-      setTutorialVisible(true);
-    }, 1600);
-    return () => clearTimeout(fallbackTimer);
-  }, [appTutorialSteps.length, canShowTutorialNow, shouldShowTutorial]);
   useEffect(() => {
     if (!budgetWidgetTutorialEligible) return;
     if (budgetWidgetTutorialTimerRef.current) return;
@@ -68747,97 +69714,18 @@ function AppContent() {
     logEvent("budget_widget_tutorial_shown", { source: "progress" });
   }, [budgetWidgetTutorialVisible, logEvent]);
   useEffect(() => {
-    dailyChallengePendingRef.current = isDailyChallengePromptPending;
-    const wasPending = dailyChallengePendingPrevRef.current;
-    dailyChallengePendingPrevRef.current = isDailyChallengePromptPending;
     if (!isDailyChallengePromptPending) {
-      dailyChallengePromptQueuedRef.current = false;
-      dailyChallengeOfferDeferredRef.current = false;
       setDailyChallengePromptGate(false);
       return;
     }
-    if (!dailyChallengePromptQueuedRef.current) {
-      dailyChallengePromptQueuedRef.current = true;
-      setDailyChallengePromptGate(false);
-    }
-    if (!wasPending) {
-      const sessionCount = homeSessionRef.current?.sessionCount || 0;
-      dailyChallengeOfferDeferredRef.current = sessionCount > 1;
-      setDailyChallengePromptGate(false);
-    }
-  }, [isDailyChallengePromptPending]);
-  useEffect(() => {
-    if (!dailyChallengePromptAllowed) return;
-    if (!isDailyChallengePromptPending) return;
-    if (dailyChallengePromptGate) return;
-    if (dailyChallengeOfferDeferredRef.current) return;
-    setDailyChallengePromptGate(true);
-  }, [
-    dailyChallengePromptAllowed,
-    dailyChallengePromptGate,
-    isDailyChallengePromptPending,
-  ]);
-  useEffect(() => {
-    if (!dailyChallengePromptGate) return;
-    if (!isDailyChallengePromptPending) return;
+    setDailyChallengePromptGate(false);
     enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
-  }, [dailyChallengePromptGate, enqueueQueuedModal, isDailyChallengePromptPending]);
+  }, [enqueueQueuedModal, isDailyChallengePromptPending]);
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.DAILY_CHALLENGE) return;
     if (isDailyChallengePromptPending) return;
     clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
   }, [clearQueuedModal, isDailyChallengePromptPending, queuedModalType]);
-  useEffect(() => {
-    if (!shouldShowTemptationTutorial) return;
-    if (activeTab !== "feed") {
-      goToTab("feed", { recordHistory: false });
-    }
-    const timer = setTimeout(() => {
-      if (!canShowTutorialNow()) return;
-      setTemptationTutorialStepIndex(0);
-      setTemptationTutorialCompleted(false);
-      setTemptationTutorialVisible(true);
-      setTemptationTutorialSeen(true);
-      setTemptationTutorialQueued(false);
-    }, 260);
-    return () => clearTimeout(timer);
-  }, [activeTab, canShowTutorialNow, goToTab, shouldShowTemptationTutorial]);
-  useEffect(() => {
-    if (!tutorialOverlayVisible) {
-      setTutorialHighlightRect(null);
-    }
-  }, [tutorialOverlayVisible]);
-  useEffect(() => {
-    if (!temptationTutorialVisible) return;
-    tutorialHighlightAdjustCountRef.current = 0;
-    tutorialHighlightAlignAttemptsRef.current = 0;
-    tutorialScrollExtraRef.current = IS_SHORT_DEVICE ? -24 : -12;
-    const attemptScroll = () => {
-      const scroller = feedScreenRef.current;
-      if (scroller && typeof scroller.scrollToTemptations === "function") {
-        const didScroll = scroller.scrollToTemptations({
-          animated: true,
-          extraOffset: tutorialScrollExtraRef.current,
-        });
-        if (didScroll) {
-          scheduleTutorialHighlightMeasure(360);
-        }
-        return didScroll;
-      }
-      return false;
-    };
-    if (attemptScroll()) return;
-    const timer = setTimeout(attemptScroll, 350);
-    return () => clearTimeout(timer);
-  }, [scheduleTutorialHighlightMeasure, temptationTutorialVisible]);
-  // Align tutorial highlight without Android-specific adjustments: mirror iOS behavior.
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    if (!temptationTutorialVisible) {
-      tutorialHighlightAlignAttemptsRef.current = 0;
-    }
-  }, [temptationTutorialVisible]);
-
   useEffect(() => {
     if (!dailySummaryUnlocked) return;
     if (!pendingDailySummaryData) return;
@@ -70677,7 +71565,10 @@ useEffect(() => {
     );
     if (!exists) {
       setFocusTemplateId(null);
+      setFocusStartedAt(null);
+      setFocusExpiresAt(null);
       setFocusSaveCount(0);
+      setFocusSpendCount(0);
     }
   }, [focusTemplateId, quickTemptations, temptations]);
 
@@ -72153,11 +73044,6 @@ useEffect(() => {
       widgetCurrencyCode,
     ]
   );
-  const handleFeedFirstTutorialAddCreate = useCallback(() => {
-    completeFeedFirstTutorial("add_create");
-    handleFabNewTemptation();
-  }, [completeFeedFirstTutorial, handleFabNewTemptation]);
-
   const parseWidgetDeepLink = useCallback((url) => {
     if (!url || typeof url !== "string") return null;
     const normalized = url.trim();
@@ -72837,28 +73723,9 @@ useEffect(() => {
       ],
     ]).catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
-    await AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-    await AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
-    await AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "done").catch(() => {});
     await AsyncStorage.setItem(STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH, "false").catch(() => {});
     setTutorialSeen(true);
-    setTemptationTutorialSeen(true);
-    setTemptationTutorialStatus("done");
-    setTemptationTutorialVisible(false);
-    setTemptationTutorialStepIndex(0);
-    setTemptationTutorialQueued(false);
-    setTemptationTutorialCompleted(true);
-    setTutorialCardShown(true);
-    setTutorialCardHydrated(true);
-    setTutorialCardVisible(false);
-    setFeedAddTutorialShown(true);
-    setFeedAddTutorialHydrated(true);
     setAmountSliderConfirmCoachSeen(false);
-    setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.DONE);
-    setFeedFirstTutorialSaveCoachVisible(false);
-    setFeedFirstTutorialNeedSoftPaywall(false);
-    tutorialCardCompletedLoggedRef.current = true;
-    tutorialCardShownLoggedRef.current = true;
     setFabTutorialVisible(false);
     setFabTutorialStateAndPersist(FAB_TUTORIAL_STATUS.PENDING);
     setFabTutorialEligible(false);
@@ -73509,13 +74376,15 @@ useEffect(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
-  const registerUsageStreakAction = useCallback((actionType = "save", timestamp = Date.now()) => {
+  const registerUsageStreakAction = useCallback(
+    (actionType = "series", timestamp = Date.now(), { suppressOverlay = false } = {}) => {
     const dayKey = getDayKey(timestamp);
-    if (!dayKey) return;
-    const normalizedAction = actionType === "spend" ? "spend" : "save";
+    if (!dayKey) return null;
+    const normalizedAction =
+      actionType === "series" ? "series" : actionType === "spend" ? "spend" : "save";
     const prev = usageStreakRef.current || INITIAL_USAGE_STREAK;
     const lastDate = prev?.lastDate || null;
-    if (lastDate === dayKey) return;
+    if (lastDate === dayKey) return { snapshot: prev, weeklyReward: null };
     const yesterdayKey = getDayKey(timestamp - DAY_MS);
     const previousCount = Math.max(0, Number(prev?.current) || 0);
     const prevLostCount = Math.max(0, Number(prev?.lostCount) || 0);
@@ -73549,6 +74418,9 @@ useEffect(() => {
         reward_value: weeklyReward.rewardValue,
         week_index: weeklyReward.weekIndex,
       });
+      if (suppressOverlay) {
+        setHealthPoints((prevPoints) => prevPoints + weeklyReward.rewardValue);
+      }
     }
     usageStreakRef.current = nextSnapshot;
     setUsageStreak(nextSnapshot);
@@ -73575,7 +74447,7 @@ useEffect(() => {
       streakPayload.weeklyReward = weeklyReward;
     }
     const isFirstUsageAction = !lastDate && previousCount === 0 && Math.max(0, Number(prev.total) || 0) === 0;
-    if (!isFirstUsageAction) {
+    if (!isFirstUsageAction && !suppressOverlay) {
       pendingUsageStreakRef.current = {
         source: normalizedAction,
         payload: streakPayload,
@@ -73589,6 +74461,10 @@ useEffect(() => {
       action: normalizedAction,
       missed: missed ? 1 : 0,
     });
+    return {
+      snapshot: nextSnapshot,
+      weeklyReward: suppressOverlay ? weeklyReward : null,
+    };
   }, [logEvent, setHealthPoints]);
 
   const promptIncomeSavingsTransfer = useCallback(
@@ -73839,13 +74715,22 @@ useEffect(() => {
     (enabled) => {
       const nextValue = !!enabled;
       triggerHaptic();
+      if (!premiumState.isPremium) {
+        ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.temptationAutoCollect);
+        return;
+      }
       setTycoonSettings((prev) => ({
-        ...(prev || {}),
+        ...normalizeTycoonSettings(prev),
         enabled: nextValue,
       }));
       logEvent("tycoon_mode_toggle", { enabled: nextValue ? 1 : 0 });
     },
-    [logEvent, triggerHaptic]
+    [
+      ensurePremiumFeatureAccess,
+      logEvent,
+      premiumState.isPremium,
+      triggerHaptic,
+    ]
   );
   const handleSoundToggle = useCallback(
     (enabled) => {
@@ -74965,7 +75850,12 @@ useEffect(() => {
 
   const renderTamagotchiFoodList = () => {
     return (
-      <View style={styles.tamagotchiOptionGrid}>
+      <View
+        style={[
+          styles.tamagotchiOptionGrid,
+          IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionGridTall,
+        ]}
+      >
         {TAMAGOTCHI_FOOD_OPTIONS.map((food) => {
           const label = resolveLanguageMapValue(food.label, language) || food.label.en;
           const coinTier = getHealthCoinTierForAmount(food.cost);
@@ -74977,6 +75867,7 @@ useEffect(() => {
               key={food.id}
               style={[
                 styles.tamagotchiOptionCard,
+                IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionCardTall,
                 {
                   borderColor: isDesired ? "#F6A553" : colors.border,
                   backgroundColor: isDesired
@@ -74994,7 +75885,11 @@ useEffect(() => {
               ]}
               activeOpacity={0.9}
               accessibilityRole="button"
-              accessibilityLabel={label}
+              accessibilityLabel={`${label}. ${
+                isDesired ? `${t("tamagotchiFoodWantLabel")}. ` : ""
+              }${t("tamagotchiFoodBoostLabel", {
+                percent: food.hungerBoost,
+              })}. ×${displayCost}`}
               accessibilityState={{ disabled: tamagotchiIsFull }}
               onPress={() => {
                 playSound("tap");
@@ -75008,33 +75903,31 @@ useEffect(() => {
                   <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
                     {label}
                   </Text>
-                  {isDesired && (
-                    <View
-                      style={[
-                        styles.tamagotchiOptionBadge,
-                        { backgroundColor: colorWithAlpha("#F6A553", isDarkTheme ? 0.32 : 0.24) },
-                      ]}
-                    >
-                      <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                        {t("tamagotchiFoodWantLabel")}
-                      </Text>
-                    </View>
-                  )}
                 </View>
               </View>
-              <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
-                {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
-              </Text>
               <View style={styles.tamagotchiOptionMetaRow}>
-                <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
-                <Text
-                  style={[
-                    styles.tamagotchiFoodCostText,
-                    { color: colors.text, opacity: affordable ? 1 : 0.5 },
-                  ]}
-                >
-                  ×{displayCost}
-                </Text>
+                <View style={styles.tamagotchiOptionEffectColumn}>
+                  <Text
+                    style={[
+                      styles.tamagotchiOptionBoost,
+                      { color: isDarkTheme ? "#FFC56F" : "#9B4D00" },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t("tamagotchiFoodBoostLabel", { percent: food.hungerBoost })}
+                  </Text>
+                </View>
+                <View style={styles.tamagotchiFoodCost}>
+                  <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
+                  <Text
+                    style={[
+                      styles.tamagotchiFoodCostText,
+                      { color: colors.text, opacity: affordable ? 1 : 0.5 },
+                    ]}
+                  >
+                    ×{displayCost}
+                  </Text>
+                </View>
               </View>
             </TouchableOpacity>
           );
@@ -75044,7 +75937,12 @@ useEffect(() => {
   };
   const renderTamagotchiToyList = () => {
     return (
-      <View style={styles.tamagotchiOptionGrid}>
+      <View
+        style={[
+          styles.tamagotchiOptionGrid,
+          IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionGridTall,
+        ]}
+      >
         {TAMAGOTCHI_TOY_OPTIONS.map((toy) => {
           const label = resolveLanguageMapValue(toy.label, language) || toy.label.en;
           const isDesired = tamagotchiDesiredToy?.id === toy.id;
@@ -75055,6 +75953,7 @@ useEffect(() => {
               key={toy.id}
               style={[
                 styles.tamagotchiOptionCard,
+                IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionCardTall,
                 {
                   borderColor: isDesired ? "#F472B6" : colors.border,
                   backgroundColor: isDesired
@@ -75071,7 +75970,11 @@ useEffect(() => {
               ]}
               activeOpacity={0.9}
               accessibilityRole="button"
-              accessibilityLabel={label}
+              accessibilityLabel={`${label}. ${
+                isDesired ? `${t("tamagotchiPlayWantLabel")}. ` : ""
+              }${t("tamagotchiPlayBoostLabel", {
+                percent: toy.moodBoost,
+              })}. -${toy.cleanPenalty}% ${t("tamagotchiCleanlinessLabel")}. ×${toy.cost}`}
               onPress={() => {
                 playSound("tap");
                 playWithTamagotchiToy(toy.id);
@@ -75083,24 +75986,29 @@ useEffect(() => {
                   <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
                     {label}
                   </Text>
-                  {isDesired && (
-                    <View
-                      style={[
-                        styles.tamagotchiOptionBadge,
-                        { backgroundColor: colorWithAlpha("#F472B6", isDarkTheme ? 0.32 : 0.24) },
-                      ]}
-                    >
-                      <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                        {t("tamagotchiPlayWantLabel")}
-                      </Text>
-                    </View>
-                  )}
                 </View>
               </View>
-              <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={1}>
-                {t("tamagotchiPlayBoostLabel", { percent: toy.moodBoost })}
-              </Text>
               <View style={styles.tamagotchiOptionMetaRow}>
+                <View style={styles.tamagotchiOptionEffectColumn}>
+                  <Text
+                    style={[
+                      styles.tamagotchiOptionBoost,
+                      { color: isDarkTheme ? "#FF9FCC" : "#9B2864" },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t("tamagotchiPlayBoostLabel", { percent: toy.moodBoost })}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tamagotchiToyPenaltyText,
+                      { color: isDarkTheme ? "#FFA0AA" : "#A53A48" },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    −{toy.cleanPenalty}% {t("tamagotchiCleanlinessLabel")}
+                  </Text>
+                </View>
                 <View style={styles.tamagotchiFoodCost}>
                   <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
                   <Text
@@ -75112,9 +76020,6 @@ useEffect(() => {
                     ×{toy.cost}
                   </Text>
                 </View>
-                <Text style={[styles.tamagotchiToyPenaltyText, { color: colors.muted }]}>
-                  -{toy.cleanPenalty}%
-                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -75127,19 +76032,22 @@ useEffect(() => {
   const tamagotchiPreviewSurfaceColor = isDarkTheme
     ? colors.surfaceElevated
     : lightenColor(colors.card, 0.16);
-  const tamagotchiAndroidBlend = (baseColor, overlayColor, alpha) =>
-    isAndroidTamagotchiSurface
-      ? blendColors(baseColor || colors.card || "#FFFFFF", overlayColor, alpha)
-      : colorWithAlpha(overlayColor, alpha);
-  const tamagotchiPreviewAuraPrimaryColor = tamagotchiAndroidBlend(
-    tamagotchiPreviewSurfaceColor,
-    isDarkTheme ? "#5B8FFF" : "#8DD9FF",
-    isAndroidTamagotchiSurface ? (isDarkTheme ? 0.12 : 0.1) : isDarkTheme ? 0.22 : 0.26
+  const tamagotchiDirtVisualIntensity = Math.pow(
+    Math.min(1, Math.max(0, tamagotchiDirtyLevel)),
+    0.72
   );
-  const tamagotchiPreviewAuraSecondaryColor = tamagotchiAndroidBlend(
-    tamagotchiPreviewSurfaceColor,
-    isDarkTheme ? "#FF7AB0" : "#FFD6A5",
-    isAndroidTamagotchiSurface ? (isDarkTheme ? 0.08 : 0.1) : isDarkTheme ? 0.14 : 0.2
+  const tamagotchiMascotStageBaseColor = isDarkTheme
+    ? colors.surfaceMuted
+    : blendColors(colors.card || "#FFFFFF", colors.border || "#D8DEE8", 0.12);
+  const tamagotchiMascotStageSurfaceColor = blendColors(
+    tamagotchiMascotStageBaseColor,
+    isDarkTheme ? "#9A7B54" : "#C4A87E",
+    Math.min(0.62, 0.06 + tamagotchiDirtVisualIntensity * 0.54)
+  );
+  const tamagotchiMascotStageBorderColor = blendColors(
+    colors.border || (isDarkTheme ? "#2D3748" : "#D8DEE8"),
+    isDarkTheme ? "#B28D60" : "#9B7950",
+    Math.min(0.84, 0.12 + tamagotchiDirtVisualIntensity * 0.7)
   );
   const tamagotchiSkinButtonSurfaceColor = isAndroidTamagotchiSurface
     ? blendColors(tamagotchiPreviewSurfaceColor, colors.card || "#FFFFFF", isDarkTheme ? 0.62 : 0.84)
@@ -75180,7 +76088,12 @@ useEffect(() => {
   const renderTamagotchiCleanPanel = () => {
     return (
       <View style={styles.tamagotchiCleanPanel}>
-        <View style={styles.tamagotchiOptionGrid}>
+        <View
+          style={[
+            styles.tamagotchiOptionGrid,
+            IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionGridTall,
+          ]}
+        >
           {TAMAGOTCHI_CLEAN_TOOLS.map((tool) => {
             const label = resolveLanguageMapValue(tool.label, language) || tool.label.en;
             const selected = tamagotchiSelectedCleanTool?.id === tool.id;
@@ -75194,7 +76107,7 @@ useEffect(() => {
             const accent = isSoapTool ? "#6FCBFF" : "#99E18E";
             const accentLight = isSoapTool ? "#CDEEFF" : "#D4F4CA";
             const isActiveSelection = selected && hasSupply;
-            const boostText =
+            const accessibleBoostText =
               tool.moodBoost > 0
                 ? `+${tool.cleanBoost}% ${t("tamagotchiCleanlinessLabel")} · +${tool.moodBoost}% ${t("tamagotchiMoodLabel")}`
                 : `+${tool.cleanBoost}% ${t("tamagotchiCleanlinessLabel")}`;
@@ -75203,6 +76116,7 @@ useEffect(() => {
                 key={tool.id}
                 style={[
                   styles.tamagotchiOptionCard,
+                  IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionCardTall,
                   {
                     borderColor: isActiveSelection ? accent : colors.border,
                     backgroundColor: isActiveSelection
@@ -75220,7 +76134,10 @@ useEffect(() => {
                 ]}
                 activeOpacity={0.9}
                 accessibilityRole="button"
-                accessibilityLabel={label}
+                accessibilityLabel={`${label}. ${accessibleBoostText}. ${t("tamagotchiToolUsesLeftLabel", {
+                  current: remaining,
+                  total: maxUses,
+                })}. ×${displayCost}`}
                 accessibilityState={{ selected: isActiveSelection }}
                 onPress={() => {
                   playSound("tap");
@@ -75242,27 +76159,37 @@ useEffect(() => {
                     <Text style={[styles.tamagotchiOptionLabel, { color: colors.text }]} numberOfLines={2}>
                       {label}
                     </Text>
-                    {isActiveSelection && (
-                      <View
-                        style={[
-                          styles.tamagotchiOptionBadge,
-                          { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.32 : 0.24) },
-                        ]}
-                      >
-                        <Text style={[styles.tamagotchiOptionBadgeText, { color: colors.text }]} numberOfLines={1}>
-                          {t("tamagotchiToolSelectedLabel")}
-                        </Text>
-                      </View>
-                    )}
                   </View>
                 </View>
-                <Text style={[styles.tamagotchiOptionSub, { color: colors.muted }]} numberOfLines={2}>
-                  {boostText}
-                </Text>
                 <View style={styles.tamagotchiOptionMetaRow}>
-                  <Text style={[styles.tamagotchiSub, { color: colors.muted }]}>
-                    {t("tamagotchiToolUsesLeftLabel", { current: remaining, total: maxUses })}
-                  </Text>
+                  <View style={styles.tamagotchiOptionEffectColumn}>
+                    <Text
+                      style={[
+                        styles.tamagotchiOptionBoost,
+                        { color: isDarkTheme ? "#86D1FF" : "#176A9F" },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      +{tool.cleanBoost}% {t("tamagotchiCleanlinessLabel")}
+                    </Text>
+                    {tool.moodBoost > 0 && (
+                      <Text
+                        style={[
+                          styles.tamagotchiOptionBoost,
+                          { color: isDarkTheme ? "#FF9FCC" : "#9B2864" },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        +{tool.moodBoost}% {t("tamagotchiMoodLabel")}
+                      </Text>
+                    )}
+                    <Text style={[styles.tamagotchiOptionUses, { color: colors.muted }]}>
+                      {t("tamagotchiToolUsesLeftLabel", {
+                        current: remaining,
+                        total: maxUses,
+                      })}
+                    </Text>
+                  </View>
                   <View style={styles.tamagotchiFoodCost}>
                     <Image source={coinTier.asset} style={styles.tamagotchiFoodCostIcon} />
                     <Text
@@ -75289,15 +76216,12 @@ useEffect(() => {
   };
   const tamagotchiTabItems = useMemo(
     () => [
-      { id: "food", label: t("tamagotchiTabFood"), title: t("tamagotchiFoodMenuTitle") },
-      { id: "games", label: t("tamagotchiTabPlay"), title: t("tamagotchiPlayMenuTitle") },
-      { id: "clean", label: t("tamagotchiTabClean"), title: t("tamagotchiCleanMenuTitle") },
+      { id: "food", label: t("tamagotchiTabFood"), accent: "#FF9F1C" },
+      { id: "games", label: t("tamagotchiTabPlay"), accent: "#F86FAE" },
+      { id: "clean", label: t("tamagotchiTabClean"), accent: "#55AEEF" },
     ],
     [t]
   );
-  const activeTamagotchiTabTitle =
-    tamagotchiTabItems.find((tab) => tab.id === tamagotchiActiveTab)?.title ||
-    t("tamagotchiFoodMenuTitle");
   const renderTamagotchiTabContent = () => {
     if (tamagotchiActiveTab === "games") return renderTamagotchiToyList();
     if (tamagotchiActiveTab === "clean") return renderTamagotchiCleanPanel();
@@ -75408,6 +76332,10 @@ useEffect(() => {
       const snapshotManualConfigured = snapshotEntries.some(
         (entry) => entry.frequencyReminderManualConfigured === true
       );
+      const preserveConfiguredTimer = shouldPreserveTemptationScheduleOnAction({
+        explicitlyPreserve: preserveFrequencyTimer,
+        entries: snapshotEntries,
+      });
       const snapshotFrequency = normalizeFrequencyId(snapshotEntry.frequency) || "daily";
       const snapshotFrequencyCustom =
         snapshotFrequency === "custom"
@@ -75464,7 +76392,15 @@ useEffect(() => {
           }
         : null;
       setTemptationInteractions((prev) => {
-        const prevEntry = prev?.[primaryKey] || {};
+        const currentEntries = candidateKeys
+          .map((key) => prev?.[key])
+          .filter((entry) => entry && typeof entry === "object");
+        const prevEntry =
+          currentEntries.find((entry) =>
+            shouldPreserveTemptationScheduleOnAction({ entries: [entry] })
+          ) ||
+          currentEntries[0] ||
+          {};
         const now = Date.now();
         const previousActionCount =
           (Number(prevEntry.saveCount) || 0) + (Number(prevEntry.spendCount) || 0);
@@ -75550,7 +76486,7 @@ useEffect(() => {
           ? resolveFrequencyIntervalMs(frequency, frequencyCustom)
           : null;
         const repeatsActiveManualTimer =
-          !preserveFrequencyTimer &&
+          !preserveConfiguredTimer &&
           previousManualSkipTargetAt > 0 &&
           previousTimerResetAt > 0 &&
           Number.isFinite(frequencyIntervalMs) &&
@@ -75561,7 +76497,7 @@ useEffect(() => {
             ? previousManualSkipTargetAt
             : scheduledNextCheckAt;
         const skippedCycleNextCheckAt =
-          !preserveFrequencyTimer && frequency && cycleAnchorNextCheckAt > now
+          !preserveConfiguredTimer && frequency && cycleAnchorNextCheckAt > now
             ? buildResetNextCheckAtForFrequency({
                 fromTimestamp: cycleAnchorNextCheckAt,
                 frequencyId: frequency,
@@ -75581,7 +76517,7 @@ useEffect(() => {
             ? skippedCycleNextCheckAt
             : resetNextCheckAt;
         const manualAutosaveSkipTargetAt =
-          !preserveFrequencyTimer && frequency && cycleAnchorNextCheckAt > 0
+          !preserveConfiguredTimer && frequency && cycleAnchorNextCheckAt > 0
             ? cycleAnchorNextCheckAt
             : null;
         const normalizedAmount = Number(amountUSD);
@@ -75599,55 +76535,55 @@ useEffect(() => {
           previousInteractionAt: lastInteractionAt || priorInteractionAt || null,
           secondPreviousInteractionAt: priorInteractionAt || secondPriorInteractionAt || null,
           detectedIntervalMs,
-          frequency: preserveFrequencyTimer ? prevEntry.frequency ?? null : frequency || null,
-          frequencyCustom: preserveFrequencyTimer
+          frequency: preserveConfiguredTimer ? prevEntry.frequency ?? null : frequency || null,
+          frequencyCustom: preserveConfiguredTimer
             ? prevEntry.frequencyCustom ?? null
             : frequency === "custom"
             ? frequencyCustom || null
             : null,
-          intervalMs: preserveFrequencyTimer ? prevEntry.intervalMs ?? null : intervalMs || null,
-          nextCheckAt: preserveFrequencyTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,
-          lastTimerResetAt: preserveFrequencyTimer ? prevEntry.lastTimerResetAt ?? null : now,
-          missedCycles: preserveFrequencyTimer ? Math.max(0, Number(prevEntry.missedCycles) || 0) : 0,
-          lastMissedCheckAt: preserveFrequencyTimer ? prevEntry.lastMissedCheckAt ?? null : null,
-          manualAutosaveSkipTargetAt: preserveFrequencyTimer
+          intervalMs: preserveConfiguredTimer ? prevEntry.intervalMs ?? null : intervalMs || null,
+          nextCheckAt: preserveConfiguredTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,
+          lastTimerResetAt: preserveConfiguredTimer ? prevEntry.lastTimerResetAt ?? null : now,
+          missedCycles: preserveConfiguredTimer ? Math.max(0, Number(prevEntry.missedCycles) || 0) : 0,
+          lastMissedCheckAt: preserveConfiguredTimer ? prevEntry.lastMissedCheckAt ?? null : null,
+          manualAutosaveSkipTargetAt: preserveConfiguredTimer
             ? prevEntry.manualAutosaveSkipTargetAt ?? null
             : manualAutosaveSkipTargetAt,
-          manualAutosaveSkipCreatedAt: preserveFrequencyTimer
+          manualAutosaveSkipCreatedAt: preserveConfiguredTimer
             ? prevEntry.manualAutosaveSkipCreatedAt ?? null
             : manualAutosaveSkipTargetAt
             ? now
             : null,
           templateTitle: resolvedTitle || prevEntry.templateTitle || null,
           lastAmountUSD: resolvedAmount,
-          frequencyReminderHour: preserveFrequencyTimer
+          frequencyReminderHour: preserveConfiguredTimer
             ? prevEntry.frequencyReminderHour ?? null
             : frequency
             ? reminderTime.hour
             : null,
-          frequencyReminderMinute: preserveFrequencyTimer
+          frequencyReminderMinute: preserveConfiguredTimer
             ? prevEntry.frequencyReminderMinute ?? null
             : frequency
             ? reminderTime.minute
             : null,
-          frequencyWeeklyDay: preserveFrequencyTimer
+          frequencyWeeklyDay: preserveConfiguredTimer
             ? prevEntry.frequencyWeeklyDay ?? null
             : frequency
             ? weeklyDay
             : null,
-          frequencyMonthlyDay: preserveFrequencyTimer
+          frequencyMonthlyDay: preserveConfiguredTimer
             ? prevEntry.frequencyMonthlyDay ?? null
             : frequency
             ? monthlyDay
             : null,
-          frequencyWeeklyDays: preserveFrequencyTimer
+          frequencyWeeklyDays: preserveConfiguredTimer
             ? Array.isArray(prevEntry.frequencyWeeklyDays)
               ? prevEntry.frequencyWeeklyDays
               : []
             : frequency
             ? weeklyDays
             : [],
-          frequencyMonthlyDays: preserveFrequencyTimer
+          frequencyMonthlyDays: preserveConfiguredTimer
             ? Array.isArray(prevEntry.frequencyMonthlyDays)
               ? prevEntry.frequencyMonthlyDays
               : []
@@ -75658,7 +76594,7 @@ useEffect(() => {
           frequencyReminderManualConfigured:
             prevEntry.frequencyReminderManualConfigured === true || manualConfiguredFromItem,
         };
-        if (preserveFrequencyTimer) {
+        if (preserveConfiguredTimer) {
           nextEntry.frequencyReminderScheduledAt = prevEntry.frequencyReminderScheduledAt ?? null;
           nextEntry.frequencyReminderLocale = prevEntry.frequencyReminderLocale ?? null;
           nextEntry.frequencyReminderId = prevEntry.frequencyReminderId ?? null;
@@ -75693,7 +76629,7 @@ useEffect(() => {
         });
         return nextMap;
       });
-      if (!preserveFrequencyTimer) {
+      if (!preserveConfiguredTimer) {
         const candidateKeySet = new Set(candidateKeys);
         setTycoonLedger((prev) => {
           const list = Array.isArray(prev) ? prev : [];
@@ -75721,7 +76657,7 @@ useEffect(() => {
           return changed ? next : prev;
         });
       }
-      if (!preserveFrequencyTimer && existingReminderIds.length) {
+      if (!preserveConfiguredTimer && existingReminderIds.length) {
         Promise.all(
           existingReminderIds.map((reminderId) =>
             safeNotifications.cancelScheduledNotificationAsync(reminderId)
@@ -75729,7 +76665,7 @@ useEffect(() => {
         ).catch(() => {});
       }
       const templateKeysToCancel = Array.from(new Set(candidateKeys));
-      if (!preserveFrequencyTimer && templateKeysToCancel.length) {
+      if (!preserveConfiguredTimer && templateKeysToCancel.length) {
         cancelScheduledDecisionNotificationsForTemplates(templateKeysToCancel, {
           todayOnly: false,
         }).catch(() => {});
@@ -75944,6 +76880,12 @@ useEffect(() => {
       };
     });
   }, []);
+  const handleFrequencyReminderPromptTimePickerExpandedChange = useCallback((expanded) => {
+    if (!expanded) return;
+    setTimeout(() => {
+      frequencyReminderPromptScrollRef.current?.scrollToEnd?.({ animated: true });
+    }, 120);
+  }, []);
   const handleFrequencyReminderPromptWeeklyDayChange = useCallback((value) => {
     const normalized = normalizeFrequencyWeeklyDays(value) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
     setFrequencyReminderPrompt((prev) => ({
@@ -75960,6 +76902,10 @@ useEffect(() => {
       monthlyDays: normalized,
     }));
   }, []);
+  const frequencyReminderPromptAccent = colors.success || SAVE_ACTION_COLOR;
+  const frequencyReminderPromptAccentText = resolveForegroundForColor(
+    frequencyReminderPromptAccent
+  );
   const frequencyReminderForecastCurrency = profile.currency || DEFAULT_PROFILE.currency;
   const frequencyReminderForecastPriceStats = useMemo(() => {
     const normalizedTemplateId = resolveNonEmptyString(frequencyReminderPrompt.templateId);
@@ -76119,7 +77065,7 @@ useEffect(() => {
       Animated.spring(frequencyReminderForecastPulse, {
         toValue: 0,
         speed: 17,
-        bounciness: 9,
+        bounciness: 2,
         useNativeDriver: true,
       }),
     ]).start();
@@ -76140,29 +77086,6 @@ useEffect(() => {
     frequencyReminderForecastTargetUSD,
     frequencyReminderPrompt.visible,
   ]);
-  const frequencyReminderForecastCopy = useMemo(() => {
-    const normalizedLanguage = normalizeLanguage(language);
-    if (normalizedLanguage === "ru") {
-      return {
-        title: "Потенциальная экономия за 30 дней",
-        fomo: "Чем чаще отказываешься, тем больше денег остаётся тебе.",
-        checksSuffix: "напоминаний за 30 дней",
-        basisAverage: "Средняя цена",
-        basisLast: "Последняя цена",
-        basisTemplate: "Цена искушения",
-        basisMissing: "Добавьте цену искушения, чтобы включить прогноз.",
-      };
-    }
-    return localizeFallbackCopyStructure({
-      title: "Potential savings over 30 days",
-      fomo: "The more often you skip it, the more money stays with you.",
-      checksSuffix: "check-ins over 30 days",
-      basisAverage: "Average price",
-      basisLast: "Last logged price",
-      basisTemplate: "Temptation price",
-      basisMissing: "Add a temptation price to unlock the forecast.",
-    }, normalizedLanguage);
-  }, [language]);
   const formatFrequencyReminderForecastAmount = useCallback(
     (valueUSD) =>
       formatCurrency(
@@ -76173,9 +77096,58 @@ useEffect(() => {
     [frequencyReminderForecastCurrency]
   );
   const frequencyReminderForecastValueLabel = useMemo(
-    () => formatFrequencyReminderForecastAmount(frequencyReminderForecastDisplayUSD),
-    [formatFrequencyReminderForecastAmount, frequencyReminderForecastDisplayUSD]
+    () =>
+      frequencyReminderForecastPriceStats.source === "none"
+        ? "—"
+        : formatFrequencyReminderForecastAmount(frequencyReminderForecastDisplayUSD),
+    [
+      formatFrequencyReminderForecastAmount,
+      frequencyReminderForecastDisplayUSD,
+      frequencyReminderForecastPriceStats.source,
+    ]
   );
+  const frequencyReminderCadenceOptionMeta = useMemo(() => {
+    const unitPriceUSD = Math.max(
+      0,
+      Number(frequencyReminderForecastPriceStats.unitPriceUSD) || 0
+    );
+    const locale = getFormatLocale(language) || "en-US";
+    const formatCheckCount = (value) => {
+      const safeValue = Math.max(0, Number(value) || 0);
+      const roundedValue =
+        safeValue >= 10 ? Math.round(safeValue) : Math.round(safeValue * 10) / 10;
+      const fractionDigits = roundedValue % 1 === 0 ? 0 : 1;
+      return roundedValue.toLocaleString(locale, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+    };
+    return FREQUENCY_PICKER_OPTIONS.reduce((acc, option) => {
+      const checksPerMonth = resolveFrequencyChecksPerMonth({
+        frequencyId: option.id,
+        customFrequency: frequencyReminderPrompt.frequencyCustom,
+        weeklyDays: frequencyReminderPrompt.weeklyDays ?? frequencyReminderPrompt.weeklyDay,
+        monthlyDays: frequencyReminderPrompt.monthlyDays ?? frequencyReminderPrompt.monthlyDay,
+      });
+      acc[option.id] =
+        unitPriceUSD > 0
+          ? formatFrequencyReminderForecastAmount(unitPriceUSD * checksPerMonth)
+          : t("frequencyReminderCadenceChecks", {
+              count: formatCheckCount(checksPerMonth),
+            });
+      return acc;
+    }, {});
+  }, [
+    formatFrequencyReminderForecastAmount,
+    frequencyReminderForecastPriceStats.unitPriceUSD,
+    frequencyReminderPrompt.frequencyCustom,
+    frequencyReminderPrompt.monthlyDay,
+    frequencyReminderPrompt.monthlyDays,
+    frequencyReminderPrompt.weeklyDay,
+    frequencyReminderPrompt.weeklyDays,
+    language,
+    t,
+  ]);
   const frequencyReminderForecastChecksLabel = useMemo(() => {
     const safeChecks = Math.max(0, Number(frequencyReminderForecastChecksPerMonth) || 0);
     const roundedChecks =
@@ -76186,52 +77158,38 @@ useEffect(() => {
       minimumFractionDigits: fractionDigits,
       maximumFractionDigits: fractionDigits,
     });
-    return `≈ ${formattedChecks} ${frequencyReminderForecastCopy.checksSuffix}`;
+    return t("frequencyReminderForecastChecks", { count: formattedChecks });
   }, [
     frequencyReminderForecastChecksPerMonth,
-    frequencyReminderForecastCopy.checksSuffix,
     language,
+    t,
   ]);
   const frequencyReminderForecastBasisLabel = useMemo(() => {
     const source = frequencyReminderForecastPriceStats.source;
-    if (source === "none") return frequencyReminderForecastCopy.basisMissing;
-    let label = frequencyReminderForecastCopy.basisTemplate;
+    if (source === "none") return t("frequencyReminderForecastBasisMissing");
+    let label = t("frequencyReminderForecastBasisTemplate");
     let valueUSD = frequencyReminderForecastPriceStats.templateAmountUSD;
     if (source === "average") {
-      label = frequencyReminderForecastCopy.basisAverage;
+      label = t("frequencyReminderForecastBasisAverage");
       valueUSD = frequencyReminderForecastPriceStats.averageAmountUSD;
     } else if (source === "last") {
-      label = frequencyReminderForecastCopy.basisLast;
+      label = t("frequencyReminderForecastBasisLast");
       valueUSD = frequencyReminderForecastPriceStats.lastAmountUSD;
     }
     const amountLabel = formatFrequencyReminderForecastAmount(valueUSD);
-    if (!amountLabel) return frequencyReminderForecastCopy.basisMissing;
-    const sampleCount = Math.max(0, Number(frequencyReminderForecastPriceStats.sampleCount) || 0);
-    if (source === "average" && sampleCount > 1) {
-      const normalizedLanguage = normalizeLanguage(language);
-      const sampleSuffix =
-        normalizedLanguage === "ru"
-          ? ` · ${sampleCount} ${getRussianPluralWord(sampleCount, "запись", "записи", "записей")}`
-          : ` · ${sampleCount} logs`;
-      return `${label}: ${amountLabel}${sampleSuffix}`;
-    }
+    if (!amountLabel) return t("frequencyReminderForecastBasisMissing");
     return `${label}: ${amountLabel}`;
   }, [
     formatFrequencyReminderForecastAmount,
-    frequencyReminderForecastCopy.basisAverage,
-    frequencyReminderForecastCopy.basisLast,
-    frequencyReminderForecastCopy.basisMissing,
-    frequencyReminderForecastCopy.basisTemplate,
     frequencyReminderForecastPriceStats.averageAmountUSD,
     frequencyReminderForecastPriceStats.lastAmountUSD,
-    frequencyReminderForecastPriceStats.sampleCount,
     frequencyReminderForecastPriceStats.source,
     frequencyReminderForecastPriceStats.templateAmountUSD,
-    language,
+    t,
   ]);
   const frequencyReminderForecastValueScale = frequencyReminderForecastPulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.08],
+    outputRange: [1, 1.04],
   });
   useEffect(() => {
     if (!frequencyReminderPrompt.visible) {
@@ -76293,32 +77251,6 @@ useEffect(() => {
     const weeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
     const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
     const notificationsPermitted = await ensureNotificationPermission({ request: true });
-    if (!notificationsPermitted) {
-      trackModalAction(
-        "frequency_reminder_prompt",
-        "permission_denied",
-        frequencyReminderPrompt.source || "pending",
-        selectedFrequencyValue
-      );
-      setTemptationInteractions((prev) => {
-        const prevEntry = prev?.[templateId];
-        if (!prevEntry) return prev;
-        return {
-          ...(prev || {}),
-          [templateId]: {
-            ...prevEntry,
-            nextCheckAt: null,
-            frequencyReminderId: null,
-            frequencyReminderIds: [],
-            frequencyReminderScheduledAt: null,
-            frequencyReminderLocale: null,
-            frequencyReminderPlanKey: null,
-          },
-        };
-      });
-      closeFrequencyReminderPrompt("permission_denied");
-      return;
-    }
     applyFrequencySelectionToTemplate(
       templateId,
       frequency,
@@ -76332,9 +77264,19 @@ useEffect(() => {
         monthlyDays,
         markPromptShown: true,
         markManualConfigured: true,
-        notificationsPermitted: true,
+        notificationsPermitted,
       }
     );
+    if (!notificationsPermitted) {
+      trackModalAction(
+        "frequency_reminder_prompt",
+        "permission_denied",
+        frequencyReminderPrompt.source || "pending",
+        selectedFrequencyValue
+      );
+      closeFrequencyReminderPrompt("permission_denied");
+      return;
+    }
     trackModalAction(
       "frequency_reminder_prompt",
       "save",
@@ -76414,7 +77356,7 @@ useEffect(() => {
     if (!priorityReminderLocked && getModalCloseSettleRemainingMs() > 0) return false;
     if (frequencyReminderPrompt.visible) return false;
     if (!pendingFrequencyReminderPrompt) return false;
-    if (tutorialOverlayVisible || tutorialBlockingVisible) return false;
+    if (tutorialBlockingVisible) return false;
     if (overlayActiveRef.current) return false;
     if (!priorityReminderLocked && overlay) return false;
     if (blockingModalVisible) return false;
@@ -76440,7 +77382,6 @@ useEffect(() => {
     startupHardLockPendingBeforePaywall,
     stormActive,
     tutorialBlockingVisible,
-    tutorialOverlayVisible,
     getModalCloseSettleRemainingMs,
     isStoreReviewHandoffPending,
   ]);
@@ -76860,21 +77801,299 @@ useEffect(() => {
     : "";
   const goalLinkTemplateId = goalLinkPrompt.item ? resolveTemptationTemplateId(goalLinkPrompt.item) : null;
   const goalLinkCurrentGoalId = goalLinkTemplateId ? resolveTemptationGoalId(goalLinkTemplateId) : null;
-  const recordRatingPromptAction = useCallback(
-    (action) => {
+  const recordRatingPromptSeriesCompletion = useCallback(
+    () => {
       if (!ratingPromptHydrated) return;
-      if (!RATING_PROMPT_ACTION_TYPES.has(action)) return;
       updateRatingPromptState((prev) => {
         if (prev.completed || prev.actionPrompted) return prev;
         const currentCount = Math.max(0, Number(prev.actionCount) || 0);
+        const currentSeriesCount = Math.max(0, Number(prev.seriesCompletionCount) || 0);
         return {
           ...prev,
           actionCount: currentCount + 1,
+          seriesCompletionCount: currentSeriesCount + 1,
         };
       });
     },
     [ratingPromptHydrated, updateRatingPromptState]
   );
+  const todayTemptationMinuteTick = useMinuteTicker(activeTab === "feed");
+  const todayTemptationPlan = useMemo(
+    () => {
+      const tickTimestamp = todayTemptationMinuteTick || Date.now();
+      const timestamp =
+        currentDayKey === getDayKey(tickTimestamp) ? tickTimestamp : Date.now();
+      return buildTodayTemptationPlan({
+        products,
+        interactionStats: temptationInteractions,
+        historyEvents: visibleHistoryEvents,
+        timestamp,
+      });
+    },
+    [
+      currentDayKey,
+      products,
+      temptationInteractions,
+      todayTemptationMinuteTick,
+      visibleHistoryEvents,
+    ]
+  );
+  const displayTemptationSeries = useMemo(
+    () =>
+      reconcileTemptationSeriesTargets(temptationSeries, {
+        dayKey: todayTemptationPlan.dayKey,
+        targetIds: todayTemptationPlan.targetIds,
+        historyResolutions: todayTemptationPlan.resolutions,
+        timestamp: todayTemptationMinuteTick || Date.now(),
+      }),
+    [temptationSeries, todayTemptationMinuteTick, todayTemptationPlan]
+  );
+  useEffect(() => {
+    if (!temptationSeriesHydrated || !temptationInteractionsHydrated || !historyHydrated) return;
+    const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+    const reconciled = reconcileTemptationSeriesTargets(current, {
+      dayKey: todayTemptationPlan.dayKey,
+      targetIds: todayTemptationPlan.targetIds,
+      historyResolutions: todayTemptationPlan.resolutions,
+      timestamp: todayTemptationMinuteTick || Date.now(),
+    });
+    if (JSON.stringify(current) === JSON.stringify(reconciled)) return;
+    updateTemptationSeries(reconciled);
+  }, [
+    historyHydrated,
+    temptationInteractionsHydrated,
+    temptationSeriesHydrated,
+    todayTemptationMinuteTick,
+    todayTemptationPlan,
+    updateTemptationSeries,
+  ]);
+  const registerTemptationSeriesAction = useCallback(
+    (item, action, rewardCoins = 0, timestamp = Date.now()) => {
+      const temptationId = normalizeTemptationId(
+        resolveTemptationTemplateId(item) || item?.id
+      );
+      const actionDayPlan = buildTodayTemptationPlan({
+        products,
+        interactionStats: temptationInteractions,
+        historyEvents: visibleHistoryEvents,
+        timestamp,
+      });
+      const availableIds = actionDayPlan.targetIds;
+      const isFeedTemptation = temptationId && (Array.isArray(products) ? products : []).some(
+        (entry) =>
+          normalizeTemptationId(resolveTemptationTemplateId(entry) || entry?.id) === temptationId
+      );
+      if (!temptationSeriesHydrated || !isFeedTemptation) {
+        return {
+          state: normalizeTemptationSeriesState(temptationSeriesRef.current),
+          rewardMode: Number(rewardCoins) > 0 ? "direct" : "none",
+          becameReady: false,
+          isFirstResolution: false,
+        };
+      }
+      const previousSeries = normalizeTemptationSeriesState(temptationSeriesRef.current);
+      const result = applyTemptationSeriesAction(previousSeries, {
+        dayKey: getDayKey(timestamp),
+        availableIds,
+        temptationId,
+        action,
+        rewardCoins,
+        timestamp,
+      });
+      updateTemptationSeries(result.state);
+      const currentCoach = nextDecisionCoachRef.current;
+      if (
+        shouldQueueNextDecisionCoach({
+          coachStatus: currentCoach.status,
+          lifetimeDecisionCount: temptationActionCountRef.current,
+          previousResolutionCount: Object.keys(previousSeries.resolutions || {}).length,
+          action,
+          result,
+          availableTemptationCount: Array.isArray(products) ? products.length : 0,
+        })
+      ) {
+        const queuedCoach = {
+          status: NEXT_DECISION_COACH_STATUS.PENDING,
+          sourceTemptationId: temptationId,
+          targetTemptationId: null,
+          requestId: Math.max(1, Number(timestamp) || Date.now()),
+        };
+        nextDecisionCoachRef.current = queuedCoach;
+        setNextDecisionCoach(queuedCoach);
+        queuePersist(
+          STORAGE_KEYS.NEXT_DECISION_COACH,
+          serializeNextDecisionCoachState(queuedCoach)
+        );
+        logEvent("next_decision_coach", {
+          action: "queued",
+          series_progress: result.progress?.completed || 1,
+          series_total: result.progress?.total || 3,
+        });
+      } else if (
+        (currentCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+          currentCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE) &&
+        result.isFirstResolution === true &&
+        Math.max(0, Number(result.progress?.completed) || 0) >= 2
+      ) {
+        completeNextDecisionCoach("next_decision_completed");
+      }
+      if (
+        result.state.status === TEMPTATION_SERIES_STATUS.CLAIMED &&
+        result.state.postClaimActionCount >
+          previousSeries.postClaimActionCount
+      ) {
+        grantPostActionPromptSlot(action);
+      }
+      logEvent("temptation_decision", {
+        temptation_id: temptationId,
+        decision: `series_${action}`,
+        series_progress: result.progress?.completed || 0,
+        series_total: result.progress?.total || 0,
+        reward_mode: result.rewardMode,
+        first_resolution: result.isFirstResolution ? 1 : 0,
+        series_completed: result.becameReady ? 1 : 0,
+      });
+      return result;
+    },
+    [
+      products,
+      completeNextDecisionCoach,
+      grantPostActionPromptSlot,
+      queuePersist,
+      resolveTemptationTemplateId,
+      temptationInteractions,
+      temptationSeriesHydrated,
+      updateTemptationSeries,
+      visibleHistoryEvents,
+    ]
+  );
+  const handleTemptationSeriesClaim = useCallback(() => {
+    const claimedAt = Date.now();
+    const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+    const result = claimTemptationSeries(current, claimedAt);
+    if (!result.claimed) {
+      if (
+        current.status !== TEMPTATION_SERIES_STATUS.IDLE &&
+        current.dayKey !== getDayKey(claimedAt)
+      ) {
+        updateTemptationSeries(result.state);
+      }
+      return false;
+    }
+    updateTemptationSeries(result.state);
+    if (result.payoutCoins > 0) {
+      setHealthPoints((prev) => prev + result.payoutCoins);
+    }
+    registerUsageStreakAction("series", claimedAt, {
+      suppressOverlay: true,
+    });
+    temptationSeriesClaimedThisSessionRef.current = true;
+    recordRatingPromptSeriesCompletion();
+    pendingUsageStreakRef.current = null;
+    pendingLevelCelebrationRef.current = null;
+    if (playerLevel > Math.max(1, Number(lastCelebratedLevel) || 1)) {
+      persistLastCelebratedLevel(playerLevel);
+    }
+    logEvent("temptation_decision", {
+      temptation_id: "daily_series",
+      decision: "series_claim",
+      series_progress: result.state.targetIds.length,
+      series_total: result.state.targetIds.length,
+      reward_mode: "claimed",
+      first_resolution: 0,
+      series_completed: 1,
+    });
+    triggerSuccessHaptic();
+    return true;
+  }, [
+    lastCelebratedLevel,
+    persistLastCelebratedLevel,
+    playerLevel,
+    recordRatingPromptSeriesCompletion,
+    registerUsageStreakAction,
+    setHealthPoints,
+    updateTemptationSeries,
+  ]);
+  const handleTemptationSeriesOpenChest = useCallback(() => {
+    const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+    if (
+      current.status !== TEMPTATION_SERIES_STATUS.READY &&
+      current.status !== TEMPTATION_SERIES_STATUS.CLAIMED
+    ) {
+      return;
+    }
+    temptationSeriesReadyPresentedRef.current = current.seriesId;
+    setTemptationSeriesModalVisible(true);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+  }, []);
+  const handleTemptationSeriesCloseReady = useCallback(() => {
+    setTemptationSeriesModalVisible(false);
+    queueModalCloseSettle();
+  }, [queueModalCloseSettle]);
+  const handleTemptationSeriesContinue = useCallback(() => {
+    const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
+    setTemptationSeriesModalVisible(false);
+    queueModalCloseSettle();
+    if (current.status !== TEMPTATION_SERIES_STATUS.CLAIMED || !current.seriesId) return;
+    setTemptationSeriesContinuationRequestTick((tick) => tick + 1);
+    setTemptationSeriesPaywallReleasedId(current.seriesId);
+    if (
+      !premiumState.isPremium &&
+      isMonetizationSoftPaywallExperimentGroup &&
+      !premiumSoftPaywallShown &&
+      !premiumPaywallShownThisSessionRef.current
+    ) {
+      premiumSoftPaywallTriggerRef.current = resolveGroupCSoftPaywallTrigger(
+        "series_complete_after_reward"
+      );
+      setPremiumSoftPaywallPending(true);
+    }
+  }, [
+    isMonetizationSoftPaywallExperimentGroup,
+    premiumSoftPaywallShown,
+    premiumState.isPremium,
+    queueModalCloseSettle,
+    resolveGroupCSoftPaywallTrigger,
+  ]);
+  const handleTemptationSeriesContinuationHandled = useCallback((requestTick) => {
+    const handledTick = Math.max(0, Number(requestTick) || 0);
+    setTemptationSeriesContinuationRequestTick((currentTick) =>
+      currentTick === handledTick ? 0 : currentTick
+    );
+  }, []);
+  useEffect(() => {
+    if (!temptationSeriesHydrated) return undefined;
+    const current = normalizeTemptationSeriesState(temptationSeries);
+    if (current.status !== TEMPTATION_SERIES_STATUS.READY || !current.seriesId) return undefined;
+    if (temptationSeriesReadyPresentedRef.current === current.seriesId) return undefined;
+    if (activeTab !== "feed" || onboardingStep !== "done" || !interfaceReady) return undefined;
+    if (premiumPaywallState.visible || temptationSeriesModalVisible) return undefined;
+    if (blockingModalVisible || tutorialBlockingVisible) return undefined;
+    if (frequencyReminderPrompt.visible || pendingFrequencyReminderPrompt) return undefined;
+    if (queuedModalType || queuedModalActiveRef.current) return undefined;
+    if (overlay || overlayActiveRef.current) return undefined;
+    const timer = setTimeout(() => {
+      const latest = normalizeTemptationSeriesState(temptationSeriesRef.current);
+      if (latest.status !== TEMPTATION_SERIES_STATUS.READY) return;
+      temptationSeriesReadyPresentedRef.current = latest.seriesId;
+      setTemptationSeriesModalVisible(true);
+    }, 420);
+    return () => clearTimeout(timer);
+  }, [
+    activeTab,
+    blockingModalVisible,
+    frequencyReminderPrompt.visible,
+    interfaceReady,
+    onboardingStep,
+    overlay,
+    pendingFrequencyReminderPrompt,
+    premiumPaywallState.visible,
+    queuedModalType,
+    temptationSeries,
+    temptationSeriesHydrated,
+    temptationSeriesModalVisible,
+    tutorialBlockingVisible,
+  ]);
   const executeSpend = useCallback(
     (item, overrideAmountUSD = null, options = null) => {
       if (!item) return false;
@@ -76939,7 +78158,6 @@ useEffect(() => {
         category: spendCategory,
         quickEntryCategoryId: item?.quickEntryCategoryId || null,
       });
-      registerUsageStreakAction("spend", spendTimestamp);
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       if (spendReducesSavings) {
         setSavedTotalUSD((prev) => clampSavedBalanceUSD(prev - priceUSD));
@@ -76977,6 +78195,7 @@ useEffect(() => {
         logImpulseEvent("spend", item, priceUSD, title);
         requestMascotAnimation(Math.random() > 0.5 ? "sad" : "ohno");
       }
+      registerTemptationSeriesAction(item, "spend", 0, spendTimestamp);
       recordTemptationInteraction(templateId || item.id, "spend", item, priceUSD, {
         suppressFrequencyReminderPrompt: skipFrequencyReminderPrompt,
         preserveFrequencyTimer,
@@ -76984,7 +78203,6 @@ useEffect(() => {
       if (!isEssentialSpendCategory) {
         queueHomeSpeech("spend");
       }
-      recordRatingPromptAction("spend");
       return true;
     },
     [
@@ -76998,9 +78216,8 @@ useEffect(() => {
       logHistoryEvent,
       logImpulseEvent,
       recordTemptationInteraction,
-      recordRatingPromptAction,
+      registerTemptationSeriesAction,
       registerFocusLoss,
-      registerUsageStreakAction,
       requestMascotAnimation,
       revokeCycleSavingsForSpend,
       savedTotalUSD,
@@ -77581,12 +78798,6 @@ useEffect(() => {
         skipPendingDuplicateConfirm = false,
       } = options || {};
       playSound("tap");
-      const isTutorialSaveAction =
-        type === "save" &&
-        (tutorialCardVisible || feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE);
-      const isTutorialSpendAction =
-        type === "spend" &&
-        (tutorialCardVisible || feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE);
       let resolvedForcedGoalId = forcedGoalId;
       if (
         typeof resolvedForcedGoalId === "string" &&
@@ -77709,9 +78920,6 @@ useEffect(() => {
         }
         if (bypassSpendPrompt) {
           spendExecutionLockRef.current = false;
-        }
-        if (isTutorialSpendAction) {
-          dismissTutorialCardCoachDeferred("action_spend");
         }
         return;
       }
@@ -78213,6 +79421,12 @@ useEffect(() => {
         const coinReward = priceUSD
           ? computeRefuseCoinReward(priceUSD, profile.currency || DEFAULT_PROFILE.currency)
           : 0;
+        const seriesRewardResult = registerTemptationSeriesAction(
+          item,
+          "save",
+          coinReward,
+          saveTimestamp
+        );
         const coinTier = coinReward > 0 ? getHealthCoinTierForAmount(coinReward) : null;
         const depositCoinColor = coinTier ? getGoalJarCoinColor(coinTier.id) : SAVE_ACTION_COLOR;
         const existingGoalCoinColors =
@@ -78234,8 +79448,13 @@ useEffect(() => {
               ? [...existingGoalCoinColors, depositCoinColor].slice(-GOAL_JAR_MAX_DISPLAY_COINS)
               : existingGoalCoinColors,
           rewardChestCount,
+          temptationSeriesRewardMode: seriesRewardResult.rewardMode,
+          temptationSeriesPendingCoins: Math.max(
+            0,
+            Number(seriesRewardResult.state?.pendingCoins) || 0
+          ),
           onRevealReward:
-            coinReward > 0
+            coinReward > 0 && seriesRewardResult.rewardMode === "direct"
               ? () => {
                   setHealthPoints((prev) => prev + coinReward);
                 }
@@ -78274,7 +79493,6 @@ useEffect(() => {
           category: resolvedCategory,
           quickEntryCategoryId: item?.quickEntryCategoryId || null,
         });
-        registerUsageStreakAction("save", saveTimestamp);
         logEvent(
           "temptation_save",
           buildTemptationPayload(item, {
@@ -78287,7 +79505,6 @@ useEffect(() => {
           goal_id: normalizedTargetGoalId || null,
           price_usd: priceUSD,
         });
-        recordRatingPromptAction("save");
         if (!isEssentialSaveCategory) {
           logImpulseEvent("save", item, priceUSD, title);
         }
@@ -78300,14 +79517,16 @@ useEffect(() => {
           if (isFirstSaveAction) {
             markFirstSaveGoalJarPending();
           }
+        } else if (
+          coinReward > 0 &&
+          seriesRewardResult.rewardMode === "direct" &&
+          typeof saveOverlayPayloadWithReward.onRevealReward === "function"
+        ) {
+          saveOverlayPayloadWithReward.onRevealReward();
         }
         lastSaveOverlayDismissedAtRef.current = saveTimestamp;
         if (!isEssentialSaveCategory) {
           requestMascotAnimation("happy");
-        }
-        if (isTutorialSaveAction) {
-          // Keep tutorial coach teardown off the immediate action frame on iOS Fabric.
-          dismissTutorialCardCoachDeferred("action_save");
         }
         saveActionLogRef.current = [...recentSaves, { itemId: templateId || item.id, timestamp: saveTimestamp }];
         setDailySaveLimitState(
@@ -78453,6 +79672,7 @@ useEffect(() => {
         );
         setPendingList((prev) => [pendingEntry, ...prev]);
         logHistoryEvent("pending_added", { title: pendingTitle, amountUSD: priceUSD, pendingId: pendingEntry.id });
+        registerTemptationSeriesAction(item, "pause", 0, now);
         triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         void (async () => {
           const reminderId = await schedulePendingReminder(pendingTitle, pendingEntry.decisionDue, {
@@ -78487,7 +79707,7 @@ useEffect(() => {
       schedulePendingReminder,
       logHistoryEvent,
       markFirstSaveGoalJarPending,
-      registerUsageStreakAction,
+      registerTemptationSeriesAction,
       triggerCardFeedback,
       triggerCoinHaptics,
       buildTemptationPayload,
@@ -78499,7 +79719,6 @@ useEffect(() => {
       refuseStats,
       logImpulseEvent,
       logTemptationAction,
-      recordRatingPromptAction,
       dailySaveLimitState,
       enforceMonetizationTrialActionLimit,
       incrementMonetizationTrialActionCountRef,
@@ -78518,7 +79737,6 @@ useEffect(() => {
       moodPreset,
       requestMascotAnimation,
       handleFocusSaveProgress,
-      dismissTutorialCardCoachDeferred,
       ensureOverlayEnvironmentReady,
       logEvent,
       profile.currency,
@@ -78546,10 +79764,7 @@ useEffect(() => {
       mainGoalWish,
       profile.goal,
       profile.primaryGoals,
-      feedFirstTutorialStage,
-      tutorialCardVisible,
       overlay,
-      temptationTutorialStatus,
       openCategoryPrompt,
       shouldPromptCategory,
       premiumState.isPremium,
@@ -80002,12 +81217,6 @@ useEffect(() => {
   const toggleTemptationEditor = useCallback(
     (item) => {
       if (!item) return;
-      if (
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
-        feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME
-      ) {
-        completeFeedFirstTutorial("edit_open");
-      }
       triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
       setPriceEditor((prev) => {
         if (prev.item?.id === item.id) {
@@ -80028,6 +81237,7 @@ useEffect(() => {
             frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
             initialFrequency: null,
             scheduleConfigVisible: false,
+            isDuplicateCopy: false,
           };
         }
         const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
@@ -80085,14 +81295,13 @@ useEffect(() => {
           frequencyMonthlyDays: monthlyDays,
           initialFrequency: frequency,
           scheduleConfigVisible: showScheduleConfigByDefault,
+          isDuplicateCopy: false,
         };
       });
     },
     [
       language,
       profile.currency,
-      feedFirstTutorialStage,
-      completeFeedFirstTutorial,
       titleOverrides,
       descriptionOverrides,
       resolveTemptationCategory,
@@ -80119,6 +81328,7 @@ useEffect(() => {
       frequencyMonthlyDays: [...DEFAULT_FREQUENCY_MONTHLY_DAYS],
       initialFrequency: null,
       scheduleConfigVisible: false,
+      isDuplicateCopy: false,
     });
     if (!priceEditor.item) {
       editOverlayAnim.stopAnimation();
@@ -80126,22 +81336,6 @@ useEffect(() => {
       setEditOverlayVisible(false);
     }
   }, [editOverlayAnim, editOverlayVisible, priceEditor.item]);
-  useEffect(() => {
-    if (
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.SAVE &&
-      feedFirstTutorialStage !== FEED_FIRST_TUTORIAL_STAGE.WELCOME
-    ) {
-      return;
-    }
-    if (!priceEditor.item && !editOverlayVisible) return;
-    closePriceEditor();
-  }, [
-    closePriceEditor,
-    editOverlayVisible,
-    feedFirstTutorialStage,
-    priceEditor.item,
-  ]);
-
   useEffect(() => {
     priceEditorItemRef.current = priceEditor.item || null;
   }, [priceEditor.item]);
@@ -80311,6 +81505,181 @@ useEffect(() => {
   const handlePriceDescriptionChange = (value) => {
     setPriceEditor((prev) => ({ ...prev, description: value }));
   };
+
+  const duplicateTemptationCard = useCallback(() => {
+    const sourceItem = priceEditor.item;
+    if (!sourceItem || temptationDuplicateInFlightRef.current) return;
+    if (!hasFreeTemptationCardSlot) {
+      requestTemptationPremiumUnlock();
+      return;
+    }
+    if (!ensureTemptationCapacity({ showSoft: true })) return;
+
+    temptationDuplicateInFlightRef.current = true;
+    const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+    const ownerGender = profile.gender || "none";
+    const sourceTitle =
+      (priceEditor.title || "").trim() ||
+      resolveTemptationTitle(sourceItem, language, titleOverrides[sourceItem.id]);
+    const existingTitles = [...quickTemptations, ...temptations].map((card) =>
+      resolveTemptationTitle(card, language, titleOverrides[card?.id])
+    );
+    const duplicateTitle = buildDuplicateTemptationTitle(sourceTitle, existingTitles);
+    const parsedPrice = parseNumberInputValue(priceEditor.value || "");
+    const editedPriceUSD = Number.isFinite(parsedPrice) && parsedPrice > 0
+      ? clampTransactionAmountUSD(convertFromCurrency(parsedPrice, currencyCode))
+      : 0;
+    const amountUSD = editedPriceUSD || getTemptationPrice(sourceItem);
+    const pricePrecision = Number.isFinite(parsedPrice) && parsedPrice > 0
+      ? getManualInputPrecision(priceEditor.value || "")
+      : getTemptationPricePrecision(sourceItem);
+    const emoji = normalizeEmojiValue(
+      priceEditor.emoji,
+      sourceItem.emoji || DEFAULT_TEMPTATION_EMOJI
+    );
+    const category =
+      priceEditor.category && IMPULSE_CATEGORY_DEFS[priceEditor.category]
+        ? priceEditor.category
+        : resolveTemptationCategory(sourceItem);
+    let frequency = normalizeFrequencyId(priceEditor.frequency) || "daily";
+    let frequencyCustom = normalizeCustomFrequency(priceEditor.frequencyCustom) || null;
+    if (frequency === "biweekly") {
+      frequency = "custom";
+      frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
+    }
+    if (frequency === "custom" && !frequencyCustom) {
+      frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
+    }
+    if (frequency !== "custom") {
+      frequencyCustom = null;
+    }
+    const reminderTime =
+      normalizeFrequencyReminderTime({
+        hour: priceEditor.frequencyReminderHour,
+        minute: priceEditor.frequencyReminderMinute,
+      }) || {
+        hour: DEFAULT_FREQUENCY_REMINDER_HOUR,
+        minute: DEFAULT_FREQUENCY_REMINDER_MINUTE,
+      };
+    const weeklyDays = normalizeFrequencyWeeklyDays(
+      priceEditor.frequencyWeeklyDays ?? priceEditor.frequencyWeeklyDay
+    ) || [...DEFAULT_FREQUENCY_WEEKLY_DAYS];
+    const monthlyDays = normalizeFrequencyMonthlyDays(
+      priceEditor.frequencyMonthlyDays ?? priceEditor.frequencyMonthlyDay
+    ) || [...DEFAULT_FREQUENCY_MONTHLY_DAYS];
+    const frequencyIntervalMs = resolveFrequencyIntervalMs(frequency, frequencyCustom);
+    const createdAt = Date.now();
+    const duplicateId = `custom_habit_copy_${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
+    const newCustom = {
+      id: duplicateId,
+      title: duplicateTitle,
+      amountUSD,
+      pricePrecision,
+      currency: currencyCode,
+      emoji,
+      gender: ownerGender,
+      impulseCategory: category,
+      createdAt,
+      frequency,
+      frequencyCustom,
+      frequencyIntervalMs: frequency === "custom" ? frequencyIntervalMs || null : null,
+      frequencyReminderHour: reminderTime.hour,
+      frequencyReminderMinute: reminderTime.minute,
+      frequencyWeeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      frequencyMonthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: weeklyDays,
+      frequencyMonthlyDays: monthlyDays,
+      frequencyReminderManualConfigured: true,
+    };
+    const duplicateCard = createCustomTemptationCard(newCustom, currencyCode, ownerGender);
+    if (!duplicateCard) {
+      temptationDuplicateInFlightRef.current = false;
+      return;
+    }
+    duplicateCard.gender = ownerGender;
+    duplicateCard.quickTemptation = true;
+    duplicateCard.color = sourceItem.color || duplicateCard.color;
+    duplicateCard.frequency = frequency;
+    duplicateCard.frequencyCustom = frequency === "custom" ? frequencyCustom || null : null;
+    duplicateCard.frequencyIntervalMs = frequency === "custom" ? frequencyIntervalMs || null : null;
+    duplicateCard.frequencyReminderHour = reminderTime.hour;
+    duplicateCard.frequencyReminderMinute = reminderTime.minute;
+    duplicateCard.frequencyWeeklyDay = weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY;
+    duplicateCard.frequencyMonthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
+    duplicateCard.frequencyWeeklyDays = [...weeklyDays];
+    duplicateCard.frequencyMonthlyDays = [...monthlyDays];
+    duplicateCard.frequencyReminderManualConfigured = true;
+
+    const description = String(priceEditor.description || "").trim();
+    const sourceGoalId = resolveTemptationGoalId(sourceItem.id);
+    setQuickTemptations((prev) => [duplicateCard, ...(Array.isArray(prev) ? prev : [])]);
+    setCustomTemptationsCreatedCount((prev) => Math.max(0, Number(prev) || 0) + 1);
+    setCategoryOverrides((prev) => ({ ...prev, [duplicateId]: category }));
+    if (description) {
+      setDescriptionOverrides((prev) => ({ ...prev, [duplicateId]: description }));
+    }
+    if (canPersistTemptationGoalAssignments && sourceGoalId) {
+      setTemptationGoalMap((prev) => ({ ...prev, [duplicateId]: sourceGoalId }));
+    }
+    applyFrequencySelectionToTemplate(duplicateId, frequency, frequencyCustom, duplicateTitle, {
+      reminderTime,
+      weeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      monthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      weeklyDays,
+      monthlyDays,
+      markManualConfigured: true,
+      resetFromTimestamp: createdAt,
+    });
+    setPriceEditor({
+      item: duplicateCard,
+      value: formatNumberInputValue(
+        convertToCurrency(amountUSD, currencyCode),
+        pricePrecision !== null ? pricePrecision : getCurrencyDisplayPrecision(currencyCode)
+      ),
+      title: duplicateTitle,
+      emoji,
+      category,
+      description,
+      frequency,
+      frequencyCustom,
+      frequencyReminderHour: reminderTime.hour,
+      frequencyReminderMinute: reminderTime.minute,
+      frequencyWeeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+      frequencyMonthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+      frequencyWeeklyDays: [...weeklyDays],
+      frequencyMonthlyDays: [...monthlyDays],
+      initialFrequency: frequency,
+      scheduleConfigVisible: priceEditor.scheduleConfigVisible,
+      isDuplicateCopy: true,
+    });
+    logEvent("temptation_created", {
+      temptation_id: duplicateId,
+      is_custom: true,
+      category,
+      price: convertToCurrency(amountUSD, currencyCode),
+      frequency,
+    });
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    requestAnimationFrame(() => {
+      temptationDuplicateInFlightRef.current = false;
+    });
+  }, [
+    applyFrequencySelectionToTemplate,
+    canPersistTemptationGoalAssignments,
+    ensureTemptationCapacity,
+    hasFreeTemptationCardSlot,
+    language,
+    priceEditor,
+    profile.currency,
+    profile.gender,
+    quickTemptations,
+    requestTemptationPremiumUnlock,
+    resolveTemptationCategory,
+    resolveTemptationGoalId,
+    setCustomTemptationsCreatedCount,
+    temptations,
+    titleOverrides,
+  ]);
 
   const patchTemptationDisplay = useCallback((templateId, patch = {}) => {
     if (!templateId || !patch || typeof patch !== "object") return;
@@ -80515,10 +81884,6 @@ useEffect(() => {
       );
       const markPromptShown = options?.markPromptShown === true;
       const markManualConfigured = options?.markManualConfigured === true;
-      const notificationsPermitted =
-        typeof options?.notificationsPermitted === "boolean"
-          ? options.notificationsPermitted
-          : notificationPermissionGranted === true;
       if (frequency === "biweekly") {
         frequency = "custom";
         frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
@@ -80542,7 +81907,7 @@ useEffect(() => {
         const monthlyDay = monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY;
         const intervalMs = frequency === "custom" ? customIntervalMs || null : null;
         const nextCheckAt =
-          notificationsPermitted && fromTimestamp > 0
+          fromTimestamp > 0
             ? buildResetNextCheckAtForFrequency({
                 fromTimestamp,
                 frequencyId: frequency,
@@ -80562,7 +81927,7 @@ useEffect(() => {
             frequency: frequency || null,
             frequencyCustom: frequency === "custom" ? frequencyCustom || null : null,
             intervalMs,
-            nextCheckAt: notificationsPermitted ? nextCheckAt ?? prevEntry.nextCheckAt ?? null : null,
+            nextCheckAt: nextCheckAt ?? prevEntry.nextCheckAt ?? null,
             templateTitle: templateTitle || prevEntry.templateTitle || null,
             firstTimerConfiguredAt: prevEntry.firstTimerConfiguredAt || firstConfiguredAt,
             frequencyReminderHour: reminderTime.hour,
@@ -80587,7 +81952,7 @@ useEffect(() => {
         };
       });
     },
-    [notificationPermissionGranted, setTemptationInteractions]
+    [setTemptationInteractions]
   );
 
   const propagateTemptationEdit = useCallback(
@@ -81041,6 +82406,7 @@ useEffect(() => {
                 profile.currency || DEFAULT_PROFILE.currency
               ),
             });
+            registerTemptationSeriesAction(item, "skip", 0, Date.now());
             removeTemptationTemplate(item.id);
             if (priceEditor.item?.id === item.id) {
               closePriceEditor();
@@ -81049,7 +82415,15 @@ useEffect(() => {
         },
       ]);
     },
-    [closePriceEditor, logEvent, priceEditor.item, profile.currency, removeTemptationTemplate, t]
+    [
+      closePriceEditor,
+      logEvent,
+      priceEditor.item,
+      profile.currency,
+      registerTemptationSeriesAction,
+      removeTemptationTemplate,
+      t,
+    ]
   );
   const handleTemptationDelete = useCallback(
     (item) => {
@@ -81735,6 +83109,10 @@ useEffect(() => {
     if (overlay?.type === "focus_digest" && overlay?.message?.prompt) {
       focusPromptActiveRef.current = false;
     }
+    if (overlay?.type === "impulse_alert") {
+      setPendingImpulseAlert(null);
+      clearQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);
+    }
     if (overlayTimer.current) {
       clearTimeout(overlayTimer.current);
       overlayTimer.current = null;
@@ -81840,6 +83218,7 @@ useEffect(() => {
       }
     }
   }, [
+    clearQueuedModal,
     frequencyReminderPrompt.visible,
     goalRenewalPromptVisible,
     onboardingStep,
@@ -81906,8 +83285,32 @@ useEffect(() => {
   const promptFocusForTemptation = useCallback(
     (template) => {
       if (!focusTargetsUnlocked) return;
-      if (focusRecentSpendTemplateCount < FOCUS_MIN_UNIQUE_SPEND_TEMPLATES) return;
+      if (focusTemplateId) return;
       if (!template?.id) return;
+      if (
+        pendingFocusDigest?.payload?.prompt &&
+        pendingFocusDigest.payload.targetId === template.id
+      ) {
+        return;
+      }
+      const lastOfferParts =
+        typeof focusDigestSeenKey === "string" ? focusDigestSeenKey.split(":") : [];
+      const lastOfferAt = Number(lastOfferParts[2]) || 0;
+      if (
+        lastOfferParts[0] === "focus-offer" &&
+        lastOfferParts[1] === template.id &&
+        lastOfferAt > 0 &&
+        Date.now() - lastOfferAt < FOCUS_DURATION_MS
+      ) {
+        return;
+      }
+      if (
+        dailyChallenge.templateId === template.id &&
+        (dailyChallenge.status === DAILY_CHALLENGE_STATUS.OFFER ||
+          dailyChallenge.status === DAILY_CHALLENGE_STATUS.ACTIVE)
+      ) {
+        return;
+      }
       if (!isFocusCandidateInFeed(template.id)) return;
       if (typeof resolveTemptationCategory === "function") {
         const categoryId = resolveTemptationCategory(template);
@@ -81917,7 +83320,8 @@ useEffect(() => {
       if (overlay?.type === "focus_digest") return;
       focusPromptActiveRef.current = true;
       const title = resolveTemptationTitle(template, language, titleOverrides[template.id]) || t("defaultDealTitle");
-      triggerOverlayState("focus_digest", {
+      const promptKey = `focus-offer:${template.id}:${Date.now()}`;
+      const payload = {
         title: t("focusPromptTitle"),
         body: t("focusPromptBody", { title }),
         strong: null,
@@ -81925,18 +83329,26 @@ useEffect(() => {
         positive: false,
         targetId: template.id,
         prompt: true,
-      }, null);
+        review: false,
+      };
+      setPendingFocusDigest({ dateKey: promptKey, payload });
+      setFocusDigestPromptShown(false);
+      enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
     },
     [
-      focusRecentSpendTemplateCount,
+      enqueueQueuedModal,
+      dailyChallenge.status,
+      dailyChallenge.templateId,
+      focusDigestSeenKey,
+      focusTemplateId,
       focusTargetsUnlocked,
       isFocusCandidateInFeed,
       language,
       overlay,
+      pendingFocusDigest,
       resolveTemptationCategory,
       t,
       titleOverrides,
-      triggerOverlayState,
     ]
   );
 
@@ -81950,38 +83362,27 @@ useEffect(() => {
       }
       const key = template.id;
       const entry = focusLossCountersRef.current[key] || { count: 0 };
-      const nextCount = entry.count + 1;
+      const recentSpendCount = impulseEventsForInsights.reduce((count, event) => {
+        if (event?.action !== "spend" || event?.templateId !== key) return count;
+        const timestamp = Number(event.timestamp) || 0;
+        if (timestamp <= 0 || Date.now() - timestamp > FOCUS_DURATION_MS) return count;
+        return count + 1;
+      }, 0);
+      const nextCount = Math.max(entry.count + 1, recentSpendCount + 1);
       focusLossCountersRef.current[key] = { count: nextCount };
       if (nextCount >= FOCUS_LOSS_THRESHOLD) {
         focusLossCountersRef.current[key] = { count: 0 };
-        if (focusTemplateId === key) return;
+        if (focusTemplateId) return;
         promptFocusForTemptation(template);
       }
     },
-    [focusTargetsUnlocked, focusTemplateId, promptFocusForTemptation, resolveTemptationCategory]
-  );
-
-  const celebrateFocusVictory = useCallback(
-    (template) => {
-      if (!focusTargetsUnlocked) return;
-      if (!template) return;
-      const title = resolveTemptationTitle(template, language, titleOverrides[template.id]) || t("defaultDealTitle");
-      setFocusTemplateId(null);
-      setFocusSaveCount(0);
-      setFocusVictoryCount((prev) => Math.max(0, Number(prev) || 0) + 1);
-      resetFocusLossCounter(template.id);
-      if (queueCelebrationOverlayRef.current) {
-        queueCelebrationOverlayRef.current("focus_reward", {
-          title: t("focusRewardTitle"),
-          body: t("focusRewardSubtitle", { title, amount: FOCUS_VICTORY_REWARD }),
-          amount: FOCUS_VICTORY_REWARD,
-          onRevealReward: () => {
-            setHealthPoints((prev) => prev + FOCUS_VICTORY_REWARD);
-          },
-        });
-      }
-    },
-    [focusTargetsUnlocked, language, resetFocusLossCounter, setHealthPoints, t, titleOverrides]
+    [
+      focusTargetsUnlocked,
+      focusTemplateId,
+      impulseEventsForInsights,
+      promptFocusForTemptation,
+      resolveTemptationCategory,
+    ]
   );
 
   const handleFocusSaveProgress = useCallback(
@@ -81989,23 +83390,16 @@ useEffect(() => {
       if (!focusTargetsUnlocked) return;
       if (!template?.id || template.id !== focusTemplateId) return;
       resetFocusLossCounter(template.id);
-      setFocusSaveCount((prev) => {
-        const next = prev + 1;
-        if (next >= FOCUS_VICTORY_THRESHOLD) {
-          celebrateFocusVictory(template);
-          return 0;
-        }
-        return next;
-      });
+      setFocusSaveCount((prev) => Math.max(0, Number(prev) || 0) + 1);
     },
-    [celebrateFocusVictory, focusTargetsUnlocked, focusTemplateId, resetFocusLossCounter]
+    [focusTargetsUnlocked, focusTemplateId, resetFocusLossCounter]
   );
 
   const handleFocusSpend = useCallback(
     (template) => {
       if (!focusTargetsUnlocked) return;
       if (!template?.id || template.id !== focusTemplateId) return;
-      setFocusSaveCount(0);
+      setFocusSpendCount((prev) => Math.max(0, Number(prev) || 0) + 1);
     },
     [focusTargetsUnlocked, focusTemplateId]
   );
@@ -82020,8 +83414,12 @@ useEffect(() => {
         const categoryId = template ? resolveTemptationCategory(template) : null;
         if (isEssentialImpulseCategory(categoryId)) return;
       }
+      const startedAt = Date.now();
       setFocusTemplateId(templateId);
+      setFocusStartedAt(startedAt);
+      setFocusExpiresAt(startedAt + FOCUS_DURATION_MS);
       setFocusSaveCount(0);
+      setFocusSpendCount(0);
       resetFocusLossCounter(templateId);
       logEvent("focus_target_set", { template_id: templateId, source });
       logEvent("focus_accepted", { template_id: templateId, source });
@@ -82052,7 +83450,10 @@ useEffect(() => {
           style: "destructive",
           onPress: () => {
             setFocusTemplateId(null);
+            setFocusStartedAt(null);
+            setFocusExpiresAt(null);
             setFocusSaveCount(0);
+            setFocusSpendCount(0);
             resetFocusLossCounter(template.id);
           },
         },
@@ -82066,18 +83467,27 @@ useEffect(() => {
       if (!focusModeUnlocked) return;
       if (!pendingFocusDigest) return;
       const targetDateKey = pendingFocusDigest.dateKey;
+      if (focusDigestResolvedKeyRef.current === targetDateKey) return;
+      focusDigestResolvedKeyRef.current = targetDateKey;
       setFocusDigestSeenKey(targetDateKey);
       setPendingFocusDigest(null);
       setFocusDigestPromptShown(false);
       clearQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
       AsyncStorage.removeItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING).catch(() => {});
-      if (action === "later") {
+      const reviewPayload = pendingFocusDigest?.payload;
+      if (reviewPayload?.review) {
+        const rewardAmount = Math.max(0, Number(reviewPayload.rewardAmount) || 0);
+        if (reviewPayload.positive && rewardAmount > 0) {
+          setHealthPoints((prev) => prev + rewardAmount);
+          setFocusVictoryCount((prev) => Math.max(0, Number(prev) || 0) + 1);
+        }
+      } else if (action === "later") {
         logEvent("focus_digest_later", { date_key: targetDateKey });
       } else if (action === "focus") {
         logEvent("focus_digest_focus", { date_key: targetDateKey });
       }
     },
-    [clearQueuedModal, focusModeUnlocked, pendingFocusDigest, logEvent]
+    [clearQueuedModal, focusModeUnlocked, pendingFocusDigest, logEvent, setHealthPoints]
   );
 
   const handleFocusOverlayConfirm = useCallback(
@@ -82100,9 +83510,10 @@ useEffect(() => {
 
   const handleFocusOverlayLater = useCallback(() => {
     const isPrompt = overlay?.message?.prompt;
-    resolveFocusDigest("later");
+    const isReview = overlay?.message?.review;
+    resolveFocusDigest(isReview ? "done" : "later");
     dismissOverlay({
-      analyticsAction: "later",
+      analyticsAction: isReview ? "done" : "later",
       analyticsSource: "focus_digest",
     });
     if (isPrompt) {
@@ -82167,41 +83578,76 @@ useEffect(() => {
                 amount: amountLabel,
               })
             : t("impulseNotificationBody", { temptation: risk.title, amount: amountLabel });
-        triggerOverlayState("impulse_alert", {
+        const overlayPayload = {
           title: t("impulseAlertTitle"),
           body: overlayMessage,
           moodLine: moodPreset?.impulseOverlay || null,
           window: risk.windowLabel || null,
           amountLabel,
           temptation: risk.title || "",
-        });
-        await sendImmediateNotification({
-          title: pushTitle,
-          body: pushBody,
-          data: {
-            kind: "impulse_alert",
-            templateId,
-            title: risk.title || null,
-            amountUSD: Number(risk.amountUSD) || 0,
-            targetScreen: "feed",
+        };
+        setPendingImpulseAlert({
+          templateId,
+          payload: overlayPayload,
+          notification: {
+            title: pushTitle,
+            body: pushBody,
+            data: {
+              kind: "impulse_alert",
+              templateId,
+              title: risk.title || null,
+              amountUSD: Number(risk.amountUSD) || 0,
+              targetScreen: "feed",
+            },
           },
+          notificationSent: false,
         });
+        enqueueQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);
       } finally {
         impulseAlertInFlightRef.current.delete(templateId);
       }
     },
     [
       currentDayKey,
+      enqueueQueuedModal,
       impulseFeaturesUnlocked,
       moodPreset,
       profile.currency,
       resolveTemptationCategory,
       resolveTemplateCard,
-      sendImmediateNotification,
       t,
-      triggerOverlayState,
     ]
   );
+
+  useEffect(() => {
+    if (activeTab !== "feed") return;
+    if (!pendingImpulseAlert?.payload) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);
+  }, [activeTab, enqueueQueuedModal, pendingImpulseAlert]);
+
+  useEffect(() => {
+    if (queuedModalType !== QUEUED_MODAL_TYPES.IMPULSE_ALERT) return;
+    if (!pendingImpulseAlert?.payload) {
+      clearQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);
+      return;
+    }
+    if (overlay?.type !== "impulse_alert") {
+      triggerOverlayState("impulse_alert", pendingImpulseAlert.payload);
+    }
+    if (!pendingImpulseAlert.notificationSent && pendingImpulseAlert.notification) {
+      sendImmediateNotification(pendingImpulseAlert.notification);
+      setPendingImpulseAlert((prev) =>
+        prev ? { ...prev, notificationSent: true } : prev
+      );
+    }
+  }, [
+    clearQueuedModal,
+    overlay?.type,
+    pendingImpulseAlert,
+    queuedModalType,
+    sendImmediateNotification,
+    triggerOverlayState,
+  ]);
 
   const triggerCelebration = () => {
     const messages = getCelebrationMessages(language, activeGender);
@@ -82413,13 +83859,7 @@ useEffect(() => {
       }
     }, 0);
   }, [handleLevelCelebrate]);
-  const levelFlowDeferredForReminder =
-    (feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.SAVE ||
-      feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.ADD_PENDING) &&
-    (frequencyReminderPrompt.visible ||
-      frequencyReminderPriorityLockRef.current);
   const runPendingLevelCelebration = useCallback(() => {
-    if (levelFlowDeferredForReminder) return;
     const pending = pendingLevelCelebrationRef.current;
     if (!pending) return;
     const now = Date.now();
@@ -82459,7 +83899,6 @@ useEffect(() => {
   }, [
     blockingModalVisible,
     dispatchLevelCelebration,
-    levelFlowDeferredForReminder,
     overlayEnvironmentReady,
   ]);
   const runPendingLevelCelebrationRef = useRef(runPendingLevelCelebration);
@@ -82467,11 +83906,10 @@ useEffect(() => {
     runPendingLevelCelebrationRef.current = runPendingLevelCelebration;
   }, [runPendingLevelCelebration]);
   useEffect(() => {
-    if (levelFlowDeferredForReminder) return;
     if (!pendingLevelCelebrationRef.current) return;
     if (typeof runPendingLevelCelebrationRef.current !== "function") return;
     runPendingLevelCelebrationRef.current();
-  }, [levelFlowDeferredForReminder]);
+  }, []);
 
   useEffect(() => {
     if (levelCelebrationDrainGuardRef.current) return;
@@ -82515,7 +83953,6 @@ useEffect(() => {
       if (now - lastLogRangeAt < 250) return;
       levelFlowThrottleRef.current.logRangeAt = now;
       if (Platform.OS === "android") return;
-      if (levelFlowDeferredForReminder) return;
       if (levelCelebrationRunGuardRef.current) return;
       if (levelCelebrationInFlightRef.current) return;
       if (pendingLevelCelebrationRef.current) return;
@@ -82528,7 +83965,7 @@ useEffect(() => {
       levelReachedLoggedRef.current = end;
       AsyncStorage.setItem(STORAGE_KEYS.LEVEL_REACHED_LOGGED, String(end)).catch(() => {});
     },
-    [analyticsOptOut, levelFlowDeferredForReminder, logEvent]
+    [analyticsOptOut, logEvent]
   );
 
   useEffect(() => {
@@ -82536,7 +83973,6 @@ useEffect(() => {
     levelReachedLoggingGuardRef.current = true;
     try {
       if (Platform.OS === "android") return;
-      if (levelFlowDeferredForReminder) return;
       if (!levelReachedLoggedHydrated) return;
       if (
         !progressSavedTotalHydrated ||
@@ -82564,7 +84000,6 @@ useEffect(() => {
   }, [
     analyticsOptOut,
     levelReachedLoggedHydrated,
-    levelFlowDeferredForReminder,
     levelProgressOffsetHydrated,
     progressLifetimeSavedHydrated,
     logLevelReachedRange,
@@ -82576,7 +84011,6 @@ useEffect(() => {
     if (levelCelebrationEffectGuardRef.current) return;
     levelCelebrationEffectGuardRef.current = true;
     try {
-      if (levelFlowDeferredForReminder) return;
       if (!lastCelebratedLevelHydrated) return;
       if (resetInProgressRef.current) {
         if (
@@ -82644,7 +84078,6 @@ useEffect(() => {
   }, [
     lastCelebratedLevel,
     lastCelebratedLevelHydrated,
-    levelFlowDeferredForReminder,
     logEvent,
     progressLifetimeSavedUSD,
     persistLastCelebratedLevel,
@@ -82922,9 +84355,6 @@ useEffect(() => {
               console.warn("reset", error);
             }
             AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL, "done").catch(() => {});
-            AsyncStorage.setItem(STORAGE_KEYS.TEMPTATION_TUTORIAL, "done").catch(() => {});
-            AsyncStorage.setItem(STORAGE_KEYS.TUTORIAL_CARD_SHOWN, "true").catch(() => {});
-            AsyncStorage.setItem(STORAGE_KEYS.FEED_ADD_TUTORIAL_SHOWN, "done").catch(() => {});
             AsyncStorage.setItem(STORAGE_KEYS.AMOUNT_SLIDER_CONFIRM_COACH, "false").catch(() => {});
             safeNotifications.cancelAllScheduledNotificationsAsync();
             try {
@@ -82988,6 +84418,15 @@ useEffect(() => {
             setUsageStreak({ ...INITIAL_USAGE_STREAK });
             setUsageStreakHydrated(true);
             usageStreakBackfillRef.current = false;
+            const resetTemptationSeries = createInitialTemptationSeriesState();
+            temptationSeriesRef.current = resetTemptationSeries;
+            setTemptationSeriesState(resetTemptationSeries);
+            setTemptationSeriesHydrated(true);
+            setTemptationSeriesModalVisible(false);
+            setTemptationSeriesPaywallReleasedId(null);
+            setTemptationSeriesContinuationRequestTick(0);
+            temptationSeriesReadyPresentedRef.current = null;
+            temptationSeriesClaimedThisSessionRef.current = false;
             setStreakPledge({ ...INITIAL_STREAK_PLEDGE });
             setStreakPledgeHydrated(true);
             setDecisionStats({ ...INITIAL_DECISION_STATS });
@@ -83043,6 +84482,7 @@ useEffect(() => {
             pushDayThreePromptShownRef.current = false;
             lastSpendLoggingReminderRef.current = 0;
             goalSelectionTouchedRef.current = false;
+            setStartupLogoDismissed(false);
             goToOnboardingStep("logo", { recordHistory: false, resetHistory: true });
             setActiveTabState("feed");
             updateTabHistory([]);
@@ -83082,23 +84522,7 @@ useEffect(() => {
             setMoodState(createMoodStateForToday());
             impulseAlertCooldownRef.current = {};
             setTutorialSeen(true);
-            setTutorialVisible(false);
-            setTutorialStepIndex(0);
-            setTemptationTutorialSeen(true);
-            setTemptationTutorialStatus("done");
-            setTemptationTutorialVisible(false);
-            setTemptationTutorialStepIndex(0);
-            setTemptationTutorialQueued(false);
-            setTemptationTutorialCompleted(true);
-            setTutorialCardShown(true);
-            setTutorialCardHydrated(true);
-            setTutorialCardVisible(false);
-            setFeedAddTutorialShown(true);
-            setFeedAddTutorialHydrated(true);
             setAmountSliderConfirmCoachSeen(false);
-            setFeedFirstTutorialStage(FEED_FIRST_TUTORIAL_STAGE.DONE);
-            setFeedFirstTutorialSaveCoachVisible(false);
-            setFeedFirstTutorialNeedSoftPaywall(false);
             setDefaultTemptationGrowthLockLevel(null);
             setMonetizationTrialLocked(false);
             setMonetizationFirstSessionActionBaseline(0);
@@ -83113,8 +84537,6 @@ useEffect(() => {
             homeSessionRef.current.actionBaselineNeedsHydration = false;
             setHomeSessionCount(0);
             setHomeSessionActionBaseline(0);
-            tutorialCardCompletedLoggedRef.current = true;
-            tutorialCardShownLoggedRef.current = true;
             setLastCelebratedLevel(1);
             setLastCelebratedLevelHydrated(true);
             setCoinValueModalVisible(false);
@@ -83411,10 +84833,7 @@ useEffect(() => {
       incomeEntryModalVisible,
       dailySummaryVisible,
       dailyRewardModalVisible,
-      tutorialVisible,
       budgetWidgetTutorialVisible,
-      temptationTutorialVisible,
-      tutorialCardVisible,
       fabTutorialVisible,
       ratingPromptVisible,
       tamagotchiVisible,
@@ -83473,10 +84892,7 @@ useEffect(() => {
     spendPrompt.visible,
     startupHardLockPendingBeforePaywall,
     tamagotchiVisible,
-    temptationTutorialVisible,
     termsModalVisible,
-    tutorialCardVisible,
-    tutorialVisible,
   ]);
   const openBugReport = useCallback(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
@@ -83756,6 +85172,32 @@ useEffect(() => {
     !blockingModalVisible &&
     !bugReportVisible &&
     !helpGuideVisible;
+  const nextDecisionCoachProgress = getTemptationSeriesProgress(displayTemptationSeries);
+  const nextDecisionCoachPresentationAllowed =
+    (nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+      nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE) &&
+    activeTab === "feed" &&
+    onboardingStep === "done" &&
+    interfaceReady &&
+    !startupLogoVisible &&
+    !startupHardLockPendingBeforePaywall &&
+    !blockingModalVisible &&
+    !budgetWidgetTutorialVisible &&
+    !showImageSourceSheet &&
+    !editOverlayVisible &&
+    !premiumPaywallState.visible &&
+    !temptationSeriesModalVisible &&
+    !frequencyReminderPrompt.visible &&
+    !pendingFrequencyReminderPrompt &&
+    !overlay &&
+    !stormActive;
+  const nextDecisionCoachRequest = nextDecisionCoachPresentationAllowed
+    ? {
+        ...nextDecisionCoach,
+        completed: nextDecisionCoachProgress.completed,
+        total: nextDecisionCoachProgress.total,
+      }
+    : null;
   const renderActiveScreen = () => {
     if (activeTab === "cart" && progressHubPane === "rewards" && !deferredHydrationReady) {
       return (
@@ -83971,7 +85413,7 @@ useEffect(() => {
             onSoundToggle={handleSoundToggle}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
-            tycoonModeEnabled={tycoonSettings?.enabled !== false}
+            tycoonModeEnabled={tycoonAutosaveEnabled}
             onTycoonModeToggle={handleTycoonModeToggle}
             history={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
@@ -84004,12 +85446,21 @@ useEffect(() => {
             onTemptationAction={handleTemptationAction}
             onTemptationEditToggle={toggleTemptationEditor}
             onTemptationArchiveToggle={handleTemptationArchiveToggle}
+            temptationSeries={displayTemptationSeries}
+            todayTemptationPlan={todayTemptationPlan}
+            temptationSeriesContinuationRequestTick={temptationSeriesContinuationRequestTick}
+            onTemptationSeriesContinuationHandled={
+              handleTemptationSeriesContinuationHandled
+            }
+            onTemptationSeriesAction={registerTemptationSeriesAction}
+            onTemptationSeriesOpenChest={handleTemptationSeriesOpenChest}
             onNewTemptation={handleFabNewTemptation}
             onTemptationLockedPress={requestTemptationPremiumUnlock}
             t={t}
             tVariant={tVariant}
             language={language}
             colors={colors}
+            theme={theme}
             currency={profile.currency || DEFAULT_PROFILE.currency}
             freeDayStats={freeDayStats}
             usageStreak={usageStreak}
@@ -84111,16 +85562,12 @@ useEffect(() => {
             interactionStats={temptationInteractions}
             resolveCardRefuseStats={resolveCardRefuseStats}
             playSound={playSound}
-            tutorialTemptationStepId={tutorialTemptationStepId}
-            tutorialHighlightMeasureTick={tutorialHighlightMeasureTick}
-            onTutorialHighlightLayoutChange={handleTutorialHighlightLayoutChange}
             showAmountSliderConfirmCoach={!amountSliderConfirmCoachSeen}
             onAmountSliderConfirmCoachComplete={markAmountSliderConfirmCoachSeen}
-            showTemptationCoachMark={false}
-            onTemptationCoachMarkAction={handleTutorialCardCoachAction}
-            showTemptationAddCoachMark={false}
-            onTemptationAddCoachDismiss={handleFeedFirstTutorialAddDismiss}
-            onTemptationAddCoachCreate={handleFeedFirstTutorialAddCreate}
+            nextDecisionCoachRequest={nextDecisionCoachRequest}
+            onNextDecisionCoachShown={handleNextDecisionCoachShown}
+            onNextDecisionCoachDismiss={completeNextDecisionCoach}
+            onNextDecisionCoachUnavailable={handleNextDecisionCoachUnavailable}
             allowThinkAction={thinkingUnlocked}
             isPremiumUser={premiumState.isPremium}
             activeChallenge={activeChallenge}
@@ -84180,9 +85627,7 @@ useEffect(() => {
         ? handleOnboardingBack
         : undefined;
     let onboardContent = null;
-    if (onboardingDisplayStep === "logo") {
-      onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;
-    } else if (onboardingDisplayStep === "language") {
+    if (onboardingDisplayStep === "language") {
       onboardContent = (
         <LanguageScreen
           colors={colors}
@@ -84264,7 +85709,10 @@ useEffect(() => {
       onboardingGoalModal.visible ||
       termsModalVisible;
     const shouldShowOnboardingStatusGlass =
-      shouldRenderStatusGlass && Boolean(onboardContent) && !onboardingStatusDimActive;
+      shouldRenderStatusGlass &&
+      Boolean(onboardContent) &&
+      !startupLogoVisible &&
+      !onboardingStatusDimActive;
     const onboardingStatusGlassConfig = shouldShowOnboardingStatusGlass
       ? {
           height: statusGlassHeight,
@@ -84307,12 +85755,19 @@ useEffect(() => {
 	                  solid
 	                />
 	              )}
+	              {startupLogoVisible && (
+	                <View style={[styles.logoSplashOverlay, styles.logoSplashStartupSurface]}>
+	                  {startupLogoAnimationVisible ? (
+	                    <LogoSplash onDone={handleStartupLogoComplete} />
+	                  ) : null}
+	                </View>
+	              )}
 	              <StatusBar
 	                style="dark"
 	                translucent
 	                backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
 	              />
-              {onboardContent || <LogoSplash onDone={handleOnboardingLogoComplete} />}
+              {onboardContent}
               {backGestureResponder && (
                 <View pointerEvents="box-none" style={styles.backGestureWrapper}>
                   <View style={styles.backGestureEdge} {...backGestureResponder.panHandlers} />
@@ -84387,12 +85842,12 @@ useEffect(() => {
 	                />
 	              )}
 	              {startupLogoVisible && (
-	                <View style={[styles.logoSplashOverlay, { backgroundColor: colors.background }]}>
+	                <View style={[styles.logoSplashOverlay, styles.logoSplashStartupSurface]}>
 	                  {startupLogoAnimationVisible ? <LogoSplash onDone={handleStartupLogoComplete} /> : null}
 	                </View>
 	              )}
               <StatusBar
-                style={systemBarIconStyle}
+                style={startupLogoVisible ? "dark" : systemBarIconStyle}
                 translucent
                 backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
               />
@@ -85606,52 +87061,95 @@ useEffect(() => {
           </Modal>
         )}
         {!startupHardLockPendingBeforePaywall && dailySummaryVisible && dailySummaryData && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <View style={styles.dailySummaryBackdrop}>
+          <Modal
+            visible
+            transparent
+            animationType={reduceMotion ? "none" : "fade"}
+            statusBarTranslucent
+            onRequestClose={handleDailySummaryDismiss}
+          >
+            <View
+              style={[
+                styles.dailySummaryBackdrop,
+                {
+                  backgroundColor: colorWithAlpha(colors.overlay || "#111318", 0.72),
+                  paddingBottom: Math.max(
+                    UI_SPACING.sm,
+                    (safeAreaInsets.bottom || 0) + UI_SPACING.xs
+                  ),
+                },
+              ]}
+            >
               <Pressable
                 style={StyleSheet.absoluteFillObject}
-                onPress={handleDailySummaryContinue}
+                onPress={handleDailySummaryDismiss}
+                accessible={false}
               />
               <View
                 style={[
                   styles.dailySummaryCard,
-                  { backgroundColor: colors.card, borderColor: colors.border },
+                  {
+                    backgroundColor: colors.surfaceElevated || colors.card,
+                    direction: isRtlLanguage(language) ? "rtl" : "ltr",
+                    maxHeight: Math.round(viewportHeight * 0.88),
+                    shadowColor: colors.shadow || colors.overlay,
+                  },
                 ]}
+                accessibilityViewIsModal
               >
-                    <View
-                      style={[
-                        styles.dailySummaryGlow,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    />
-                    <View style={styles.dailySummaryCardContent}>
+                    <View style={styles.dailySummaryHandle} pointerEvents="none">
+                      <View
+                        style={[
+                          styles.dailySummaryHandleBar,
+                          { backgroundColor: colorWithAlpha(colors.muted, 0.42) },
+                        ]}
+                      />
+                    </View>
+                    <ScrollView
+                      style={styles.dailySummaryScroll}
+                      contentContainerStyle={styles.dailySummaryCardContent}
+                      showsVerticalScrollIndicator={false}
+                      nestedScrollEnabled
+                      bounces={false}
+                      overScrollMode="never"
+                    >
                       <View style={styles.dailySummaryHeroRow}>
                         <View
                           style={[
                             styles.dailySummaryIconWrap,
                             {
-                              backgroundColor: isDarkTheme
-                                ? "rgba(255,255,255,0.08)"
-                                : "rgba(17,17,17,0.05)",
-                              borderColor: colors.border,
+                              backgroundColor:
+                                colors.primarySurface || colorWithAlpha(colors.primary, 0.12),
                             },
                           ]}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
                         >
-                          <Text style={styles.dailySummaryIconText}>
-                            {dailySummaryData?.isEmpty ? "😿" : "🌙"}
-                          </Text>
+                          <View style={styles.dailySummaryIconBars}>
+                            <View
+                              style={[
+                                styles.dailySummaryIconBar,
+                                styles.dailySummaryIconBarShort,
+                                { backgroundColor: colors.primary },
+                              ]}
+                            />
+                            <View
+                              style={[
+                                styles.dailySummaryIconBar,
+                                styles.dailySummaryIconBarMedium,
+                                { backgroundColor: colors.primary },
+                              ]}
+                            />
+                            <View
+                              style={[
+                                styles.dailySummaryIconBar,
+                                styles.dailySummaryIconBarTall,
+                                { backgroundColor: colors.primary },
+                              ]}
+                            />
+                          </View>
                         </View>
                         <View style={styles.dailySummaryHeroText}>
-                          <View
-                            style={[
-                              styles.dailySummaryBadge,
-                              { backgroundColor: colors.background, borderColor: colors.border },
-                            ]}
-                          >
-                            <Text style={[styles.dailySummaryBadgeText, { color: colors.muted }]}>
-                              {t("dailySummaryBadgeLabel")}
-                            </Text>
-                          </View>
                           <Text style={[styles.dailySummaryTitle, { color: colors.text }]}>
                             {t("dailySummaryTitle")}
                           </Text>
@@ -85661,60 +87159,138 @@ useEffect(() => {
                               : t("dailySummarySubtitle")}
                           </Text>
                           {dailySummaryCountdownMs > 0 ? (
-                            <Text style={[styles.dailySummaryTimer, { color: colors.muted }]}>
-                              {t("dailySummaryBurnLabel", {
-                                time: formatDailySummaryCountdown(dailySummaryCountdownMs),
-                              })}
-                            </Text>
+                            <View style={styles.dailySummaryTimerRow}>
+                              <View
+                                style={[
+                                  styles.dailySummaryTimerDot,
+                                  { backgroundColor: colors.warning },
+                                ]}
+                              />
+                              <Text style={[styles.dailySummaryTimer, { color: colors.muted }]}>
+                                {t("dailySummaryBurnLabel", {
+                                  time: formatDailySummaryCountdown(dailySummaryCountdownMs),
+                                })}
+                              </Text>
+                            </View>
                           ) : null}
                         </View>
+                        <Pressable
+                          onPress={handleDailySummaryDismiss}
+                          accessibilityRole="button"
+                          accessibilityLabel={t("levelShareModalClose")}
+                          hitSlop={8}
+                          style={({ pressed }) => [
+                            styles.dailySummaryClose,
+                            { backgroundColor: colors.surfaceMuted || colors.background },
+                            pressed && !reduceMotion && styles.dailySummaryPressablePressed,
+                          ]}
+                        >
+                          <View style={styles.dailySummaryCloseGlyph} pointerEvents="none">
+                            <View
+                              style={[
+                                styles.dailySummaryCloseStroke,
+                                styles.dailySummaryCloseStrokeForward,
+                                { backgroundColor: colors.muted },
+                              ]}
+                            />
+                            <View
+                              style={[
+                                styles.dailySummaryCloseStroke,
+                                styles.dailySummaryCloseStrokeBackward,
+                                { backgroundColor: colors.muted },
+                              ]}
+                            />
+                          </View>
+                        </Pressable>
                       </View>
                       <View
                         style={[
                           styles.dailySummaryHighlight,
                           {
-                            backgroundColor: isDarkTheme
-                              ? "rgba(255,255,255,0.06)"
-                              : "rgba(17,17,17,0.03)",
-                            borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+                            backgroundColor: colors.surfaceMuted || colors.background,
                           },
                         ]}
                       >
-                        <Text style={[styles.dailySummaryHighlightLabel, { color: colors.muted }]}>
-                          {t("dailySummarySavedLabel")}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.dailySummaryHighlightValue,
-                            { color: dailySummaryNetNegative ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR },
-                          ]}
-                        >
-                          {dailySummaryNetLabel}
+                        <View style={styles.dailySummaryHighlightHeader}>
+                          <Text style={[styles.dailySummaryHighlightLabel, { color: colors.muted }]}>
+                            {t("dailySummarySavedLabel")}
+                          </Text>
+                          <View
+                            style={[
+                              styles.dailySummaryCountPill,
+                              {
+                                backgroundColor: colorWithAlpha(
+                                  colors.success,
+                                  isDarkTheme ? 0.18 : 0.1
+                                ),
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.dailySummaryCountPillText,
+                                { color: colors.success },
+                              ]}
+                            >
+                              ×{dailySummaryData.declines || 0}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.dailySummaryHighlightValue, { color: colors.success }]}>
+                          {dailySummarySavedAmountLabel}
                         </Text>
                         <Text style={[styles.dailySummaryHighlightSub, { color: colors.muted }]}>
                           {dailySummaryData?.isEmpty
                             ? t("dailySummarySavedSubEmpty")
                             : t("dailySummarySavedSub")}
                         </Text>
+                        {!dailySummaryData?.isEmpty ? (
+                          <View
+                            style={[
+                              styles.dailySummaryActivityTrack,
+                              {
+                                backgroundColor: colorWithAlpha(
+                                  colors.error,
+                                  isDarkTheme ? 0.34 : 0.2
+                                ),
+                              },
+                            ]}
+                            accessibilityElementsHidden
+                            importantForAccessibility="no-hide-descendants"
+                          >
+                            <View
+                              style={[
+                                styles.dailySummaryActivitySaved,
+                                {
+                                  width: `${dailySummarySavedShare}%`,
+                                  backgroundColor: colors.success,
+                                },
+                              ]}
+                            />
+                          </View>
+                        ) : null}
                       </View>
                       <View style={styles.dailySummaryStatsRow}>
-                        <TouchableOpacity
-                          style={[
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("statsDeclines")}: ${
+                            dailySummaryData.declines || 0
+                          }, ${dailySummarySavedAmountLabel}`}
+                          accessibilityState={{ expanded: dailySummaryBreakdownType === "saves" }}
+                          style={({ pressed }) => [
                             styles.dailySummaryStatCard,
-                            dailySummaryBreakdownType === "saves" && styles.dailySummaryStatCardActive,
                             {
-                              backgroundColor: isDarkTheme
-                                ? "rgba(255,255,255,0.08)"
-                                : "rgba(255,255,255,0.94)",
+                              backgroundColor:
+                                dailySummaryBreakdownType === "saves"
+                                  ? colorWithAlpha(colors.success, isDarkTheme ? 0.2 : 0.1)
+                                  : colors.surfaceMuted || colors.background,
                               borderColor:
                                 dailySummaryBreakdownType === "saves"
-                                  ? colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.75 : 0.58)
-                                  : isDarkTheme
-                                  ? "rgba(255,255,255,0.12)"
-                                  : "rgba(0,0,0,0.05)",
+                                  ? colorWithAlpha(colors.success, 0.7)
+                                  : "transparent",
                             },
+                            pressed && !reduceMotion && styles.dailySummaryPressablePressed,
                           ]}
-                          activeOpacity={0.88}
                           onPress={() => handleDailySummaryBreakdownPress("saves")}
                         >
                           <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
@@ -85723,24 +87299,35 @@ useEffect(() => {
                           <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
                             {t("statsDeclines")}
                           </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
+                          <Text
+                            style={[styles.dailySummaryStatAmount, { color: colors.success }]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.78}
+                          >
+                            {dailySummarySavedAmountLabel}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`${t("dailySummarySpendsLabel")}: ${
+                            dailySummaryData.spends || 0
+                          }, ${dailySummarySpentAmountLabel}`}
+                          accessibilityState={{ expanded: dailySummaryBreakdownType === "spends" }}
+                          style={({ pressed }) => [
                             styles.dailySummaryStatCard,
-                            dailySummaryBreakdownType === "spends" && styles.dailySummaryStatCardActive,
                             {
-                              backgroundColor: isDarkTheme
-                                ? "rgba(255,255,255,0.08)"
-                                : "rgba(255,255,255,0.94)",
+                              backgroundColor:
+                                dailySummaryBreakdownType === "spends"
+                                  ? colorWithAlpha(colors.error, isDarkTheme ? 0.2 : 0.1)
+                                  : colors.surfaceMuted || colors.background,
                               borderColor:
                                 dailySummaryBreakdownType === "spends"
-                                  ? colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.75 : 0.58)
-                                  : isDarkTheme
-                                  ? "rgba(255,255,255,0.12)"
-                                  : "rgba(0,0,0,0.05)",
+                                  ? colorWithAlpha(colors.error, 0.7)
+                                  : "transparent",
                             },
+                            pressed && !reduceMotion && styles.dailySummaryPressablePressed,
                           ]}
-                          activeOpacity={0.88}
                           onPress={() => handleDailySummaryBreakdownPress("spends")}
                         >
                           <Text style={[styles.dailySummaryStatValue, { color: colors.text }]}>
@@ -85749,17 +87336,22 @@ useEffect(() => {
                           <Text style={[styles.dailySummaryStatLabel, { color: colors.muted }]}>
                             {t("dailySummarySpendsLabel")}
                           </Text>
-                        </TouchableOpacity>
+                          <Text
+                            style={[styles.dailySummaryStatAmount, { color: colors.error }]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.78}
+                          >
+                            {dailySummarySpentAmountLabel}
+                          </Text>
+                        </Pressable>
                       </View>
                       {dailySummaryBreakdownType && (
                         <View
                           style={[
                             styles.dailySummaryBreakdownCard,
                             {
-                              backgroundColor: isDarkTheme
-                                ? "rgba(255,255,255,0.06)"
-                                : "rgba(17,17,17,0.03)",
-                              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+                              backgroundColor: colors.surfaceMuted || colors.background,
                             },
                           ]}
                         >
@@ -85767,40 +87359,54 @@ useEffect(() => {
                             <Text style={[styles.dailySummaryBreakdownTitle, { color: colors.text }]}>
                               {dailySummaryBreakdownTitle}
                             </Text>
-                            <TouchableOpacity
-                              style={[styles.dailySummaryBreakdownClose, { borderColor: colors.border }]}
+                            <Pressable
                               onPress={() => setDailySummaryBreakdownType(null)}
-                              activeOpacity={0.8}
+                              accessibilityRole="button"
+                              accessibilityLabel={t("weeklyBreakdownCloseA11y")}
+                              hitSlop={8}
+                              style={({ pressed }) => [
+                                styles.dailySummaryBreakdownClose,
+                                { backgroundColor: colors.surfaceElevated || colors.card },
+                                pressed && !reduceMotion && styles.dailySummaryPressablePressed,
+                              ]}
                             >
-                              <Text style={[styles.dailySummaryBreakdownCloseText, { color: colors.muted }]}>
-                                ✕
-                              </Text>
-                            </TouchableOpacity>
+                              <View style={styles.dailySummaryCloseGlyph} pointerEvents="none">
+                                <View
+                                  style={[
+                                    styles.dailySummaryCloseStroke,
+                                    styles.dailySummaryCloseStrokeForward,
+                                    { backgroundColor: colors.muted },
+                                  ]}
+                                />
+                                <View
+                                  style={[
+                                    styles.dailySummaryCloseStroke,
+                                    styles.dailySummaryCloseStrokeBackward,
+                                    { backgroundColor: colors.muted },
+                                  ]}
+                                />
+                              </View>
+                            </Pressable>
                           </View>
                           {dailySummaryBreakdownEntries.length ? (
-                            <FlatList
-                              style={styles.dailySummaryBreakdownList}
-                              contentContainerStyle={styles.dailySummaryBreakdownListContent}
-                              data={dailySummaryBreakdownEntries}
-                              keyExtractor={(entry, index) =>
-                                `${entry?.id || entry?.kind || "entry"}-${entry?.timestamp || "ts"}-${index}`
-                              }
-                              renderItem={({ item: entry, index }) => (
+                            <View style={styles.dailySummaryBreakdownListContent}>
+                              {dailySummaryBreakdownEntries.map((entry, index) => (
                                 <View
+                                  key={`${entry?.id || entry?.kind || "entry"}-${
+                                    entry?.timestamp || "ts"
+                                  }-${index}`}
                                   style={[
                                     styles.dailySummaryBreakdownItem,
                                     index === dailySummaryBreakdownEntries.length - 1 &&
                                       styles.dailySummaryBreakdownItemLast,
                                     {
-                                      borderBottomColor: isDarkTheme
-                                        ? "rgba(255,255,255,0.08)"
-                                        : "rgba(0,0,0,0.06)",
+                                      borderBottomColor: colors.separator || colors.border,
                                     },
                                   ]}
                                 >
                                   <Text
                                     style={[styles.dailySummaryBreakdownItemTitle, { color: colors.text }]}
-                                    numberOfLines={1}
+                                    numberOfLines={2}
                                     ellipsizeMode="tail"
                                   >
                                     {describeDailySummaryHistoryEntry(entry)}
@@ -85809,16 +87415,8 @@ useEffect(() => {
                                     {formatDailySummaryHistoryMeta(entry)}
                                   </Text>
                                 </View>
-                              )}
-                              showsVerticalScrollIndicator
-                              nestedScrollEnabled
-                              bounces
-                              alwaysBounceVertical
-                              overScrollMode="never"
-                              keyboardShouldPersistTaps="handled"
-                              removeClippedSubviews={false}
-                              scrollEventThrottle={16}
-                            />
+                              ))}
+                            </View>
                           ) : (
                             <Text style={[styles.dailySummaryBreakdownEmpty, { color: colors.muted }]}>
                               {t("historyEmpty")}
@@ -85831,10 +87429,7 @@ useEffect(() => {
                           style={[
                             styles.dailySummaryEmptyCard,
                             {
-                              backgroundColor: isDarkTheme
-                                ? "rgba(255,255,255,0.06)"
-                                : "rgba(17,17,17,0.03)",
-                              borderColor: isDarkTheme ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.06)",
+                              backgroundColor: colors.surfaceMuted || colors.background,
                             },
                           ]}
                         >
@@ -85843,26 +87438,47 @@ useEffect(() => {
                             style={styles.dailySummaryEmptyCat}
                             resizeMode="contain"
                           />
-                          <Text style={[styles.dailySummaryEmptyText, { color: colors.text }]}>
-                            {t("dailySummaryEmptyMessage")}
-                          </Text>
-                          <Text style={[styles.dailySummaryEmptyMotivation, { color: colors.muted }]}>
-                            {t("dailySummaryEmptyMotivation")}
-                          </Text>
+                          <View style={styles.dailySummaryEmptyCopy}>
+                            <Text style={[styles.dailySummaryEmptyText, { color: colors.text }]}>
+                              {t("dailySummaryEmptyMessage")}
+                            </Text>
+                            <Text style={[styles.dailySummaryEmptyMotivation, { color: colors.muted }]}>
+                              {t("dailySummaryEmptyMotivation")}
+                            </Text>
+                          </View>
                         </View>
                       )}
-                      <TouchableOpacity
-                        style={[styles.dailySummaryButton, { backgroundColor: colors.text }]}
+                    </ScrollView>
+                    <View
+                      style={[
+                        styles.dailySummaryFooter,
+                        { borderTopColor: colors.separator || colors.border },
+                      ]}
+                    >
+                      <Pressable
                         onPress={handleDailySummaryContinue}
-                        activeOpacity={0.9}
+                        accessibilityRole="button"
+                        style={({ pressed }) => [
+                          styles.dailySummaryButton,
+                          { backgroundColor: colors.primary },
+                          pressed && !reduceMotion && styles.dailySummaryPressablePressed,
+                        ]}
                       >
-                        <Text style={[styles.dailySummaryButtonText, { color: colors.background }]}>
+                        <Text
+                          style={[
+                            styles.dailySummaryButtonText,
+                            {
+                              color:
+                                colors.onPrimary || resolveForegroundForColor(colors.primary),
+                            },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.82}
+                        >
                           {t("dailySummaryContinue")}
                         </Text>
-                        <Text style={[styles.dailySummaryButtonIcon, { color: colors.background }]}>
-                          →
-                        </Text>
-                      </TouchableOpacity>
+                      </Pressable>
                       <Text style={[styles.dailySummaryHint, { color: colors.muted }]}>
                         {t("dailySummaryHint")}
                       </Text>
@@ -86386,8 +88002,6 @@ useEffect(() => {
               proThemeOnAccentColor={colors.onPrimary}
               proThemeSurfaceColor={colors.surfaceMuted}
               proThemeBorderColor={colors.primaryBorder}
-              tutorialIsTemptation={tutorialIsTemptation}
-              tutorialHighlightTabs={tutorialHighlightTabs}
               isCompactAndroid={isCompactAndroid}
               tabLabelFontSize={tabLabelFontSize}
               tabLabelTopMargin={tabLabelTopMargin}
@@ -86550,6 +88164,20 @@ useEffect(() => {
           onCollectAll={handleTycoonRewardCollectAll}
           onOpenChests={handleTycoonRewardOpenChests}
         />
+        <TemptationSeriesCompletionModal
+          visible={!startupHardLockPendingBeforePaywall && temptationSeriesModalVisible}
+          series={temptationSeries}
+          usageStreak={usageStreak}
+          colors={colors}
+          isDarkMode={isDarkTheme}
+          reduceMotion={reduceMotion}
+          language={language}
+          playSound={playSound}
+          t={t}
+          onClaim={handleTemptationSeriesClaim}
+          onCloseReady={handleTemptationSeriesCloseReady}
+          onContinue={handleTemptationSeriesContinue}
+        />
         <NewPendingModal
           visible={!startupHardLockPendingBeforePaywall && newPendingModal.visible}
           colors={colors}
@@ -86635,110 +88263,6 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-        {temptationCardsTutorialEnabled &&
-          !startupHardLockPendingBeforePaywall &&
-          !premiumPaywallState.visible &&
-          feedFirstTutorialStage === FEED_FIRST_TUTORIAL_STAGE.WELCOME &&
-          activeTab === "feed" && (
-          <Modal
-            visible
-            transparent
-            animationType="fade"
-            statusBarTranslucent
-            onRequestClose={handleFeedFirstTutorialWelcomeSkip}
-          >
-            <TouchableWithoutFeedback onPress={handleFeedFirstTutorialWelcomeSkip}>
-              <View style={styles.feedFirstTutorialBackdrop}>
-                <TouchableWithoutFeedback onPress={() => {}}>
-                  <Animated.View
-                    style={[
-                      styles.feedFirstTutorialCard,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: isDarkTheme ? "rgba(245,200,105,0.42)" : "rgba(232,183,74,0.38)",
-                        opacity: feedFirstTutorialWelcomeOpacity,
-                        transform: [
-                          { translateY: feedFirstTutorialWelcomeTranslateY },
-                          { scale: feedFirstTutorialWelcomeScale },
-                        ],
-                      },
-                    ]}
-                  >
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        styles.feedFirstTutorialOrbPrimary,
-                        {
-                          backgroundColor: colorWithAlpha("#F5C869", isDarkTheme ? 0.2 : 0.24),
-                          transform: [{ translateY: feedFirstTutorialOrbLift }],
-                        },
-                      ]}
-                    />
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        styles.feedFirstTutorialOrbSecondary,
-                        {
-                          backgroundColor: colorWithAlpha("#FFDFA4", isDarkTheme ? 0.14 : 0.2),
-                          transform: [{ translateY: feedFirstTutorialOrbDrift }],
-                        },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.feedFirstTutorialBadge,
-                        {
-                          backgroundColor: isDarkTheme ? "rgba(245,200,105,0.14)" : "rgba(245,200,105,0.2)",
-                          borderColor: isDarkTheme ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.55)",
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.feedFirstTutorialBadgeEmoji, { color: isDarkTheme ? "#FFE8B8" : "#6E4600" }]}>
-                        ✨
-                      </Text>
-                      <Text style={[styles.feedFirstTutorialBadgeText, { color: isDarkTheme ? "#FFE8B8" : "#6E4600" }]}>
-                        {t("feedTutorialWelcomeBadge")}
-                      </Text>
-                    </View>
-                    <Text style={[styles.feedFirstTutorialTitle, { color: colors.text }]}>
-                      {t("feedTutorialWelcomeTitle")}
-                    </Text>
-                    <Text style={[styles.feedFirstTutorialDesc, { color: isDarkTheme ? "#E9D5AE" : "#6D5A3E" }]}>
-                      {t("feedTutorialWelcomeDesc")}
-                    </Text>
-                    <Text style={[styles.feedFirstTutorialHint, { color: isDarkTheme ? "#D9C395" : "#7C6643" }]}>
-                      {t("feedTutorialWelcomeHint")}
-                    </Text>
-                    <View style={styles.feedFirstTutorialActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.feedFirstTutorialGhost,
-                          { borderColor: isDarkTheme ? "rgba(245,200,105,0.45)" : "rgba(232,183,74,0.42)" },
-                        ]}
-                        onPress={handleFeedFirstTutorialWelcomeSkip}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={[styles.feedFirstTutorialGhostText, { color: isDarkTheme ? "#E9D5AE" : "#7C6643" }]}>
-                          {t("tutorialSkip")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.feedFirstTutorialPrimary, { backgroundColor: "#F5C869" }]}
-                        onPress={handleFeedFirstTutorialWelcomeContinue}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={[styles.feedFirstTutorialPrimaryText, { color: "#3B2A00" }]}>
-                          {t("feedTutorialWelcomeAction")}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </Animated.View>
-                </TouchableWithoutFeedback>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
-
         <BudgetWidgetTutorialModal
           visible={
             !startupHardLockPendingBeforePaywall &&
@@ -86751,377 +88275,6 @@ useEffect(() => {
           onClose={dismissBudgetWidgetTutorial}
         />
 
-        {!startupHardLockPendingBeforePaywall &&
-          !premiumPaywallState.visible &&
-          tutorialContext &&
-          activeTutorialStep && (
-          <Modal
-            visible
-            transparent
-            animationType="fade"
-            statusBarTranslucent
-            onRequestClose={tutorialSkipHandler}
-          >
-            <View
-              style={[
-                styles.tutorialBackdrop,
-                tutorialBackdropPlacementStyle,
-                { paddingBottom: tutorialBackdropPaddingBottom },
-              ]}
-              pointerEvents="box-none"
-            >
-              {tutorialIsTemptation ? (
-                <>
-                  <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-                    <Svg
-                      width="100%"
-                      height="100%"
-                      viewBox={`0 0 ${SCREEN_WIDTH} ${SCREEN_HEIGHT}`}
-                      pointerEvents="none"
-                    >
-                      <Defs>
-                        <Mask id="tutorialHighlightMask">
-                          <SvgRect x="0" y="0" width="100%" height="100%" fill="#fff" />
-                          {tutorialHighlightMaskRect && (
-                            <SvgRect
-                              x={tutorialHighlightMaskRect.x}
-                              y={tutorialHighlightMaskRect.y}
-                              width={tutorialHighlightMaskRect.width}
-                              height={tutorialHighlightMaskRect.height}
-                              rx={tutorialHighlightMaskRect.radius}
-                              ry={tutorialHighlightMaskRect.radius}
-                              fill="#000"
-                            />
-                          )}
-                        </Mask>
-                      </Defs>
-                      <SvgRect
-                        x="0"
-                        y="0"
-                        width="100%"
-                        height="100%"
-                        fill="rgba(0,0,0,0.6)"
-                        mask="url(#tutorialHighlightMask)"
-                      />
-                    </Svg>
-                  </View>
-                  {tutorialHighlightMaskRect && (
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.tutorialHighlightFocus,
-                        {
-                          top: tutorialHighlightMaskRect.y,
-                          left: tutorialHighlightMaskRect.x,
-                          width: tutorialHighlightMaskRect.width,
-                          height: tutorialHighlightMaskRect.height,
-                          borderRadius: tutorialHighlightMaskRect.radius,
-                        },
-                      ]}
-                    />
-                  )}
-                </>
-              ) : (
-                <View
-                  pointerEvents="none"
-                  style={[StyleSheet.absoluteFillObject, { bottom: tutorialBackdropBottomInset }]}
-                >
-                  <Animated.View
-                    style={[
-                      StyleSheet.absoluteFillObject,
-                      styles.tutorialBackdropDim,
-                      { opacity: tutorialBackdropOpacity },
-                    ]}
-                  />
-                  <Animated.View
-                    style={[
-                      styles.tutorialBackdropBlob,
-                      styles.tutorialBackdropBlobPrimary,
-                      {
-                        backgroundColor: tutorialVisualPalette.glow,
-                        opacity: tutorialPulseOpacity,
-                        transform: [{ translateY: tutorialAmbientLift }],
-                      },
-                    ]}
-                  />
-                  <Animated.View
-                    style={[
-                      styles.tutorialBackdropBlob,
-                      styles.tutorialBackdropBlobSecondary,
-                      {
-                        backgroundColor: tutorialVisualPalette.secondary,
-                        opacity: tutorialPulseOpacity,
-                        transform: [{ translateY: tutorialAmbientDrift }],
-                      },
-                    ]}
-                  />
-                </View>
-              )}
-              <Animated.View
-                {...ANDROID_STABLE_ALPHA_PROPS}
-                style={[
-                  styles.tutorialCard,
-                  tutorialIsTemptation && styles.tutorialCardCompact,
-                  tutorialCardPositionStyle,
-                  { backgroundColor: tutorialCardBackground, borderColor: tutorialCardBorderColor },
-                  {
-                    opacity: resolveModalCompositeOpacity(
-                      tutorialCardOpacity
-                    ),
-                    transform: [{ translateY: tutorialCardTranslateY }, { scale: tutorialCardScale }],
-                  },
-                ]}
-              >
-                {tutorialIsTemptation ? (
-                  <>
-                    <View style={styles.tutorialCompactHeader}>
-                      <View
-                        style={[
-                          styles.tutorialCompactIconWrap,
-                          {
-                            backgroundColor: tutorialFeatureBackground,
-                            borderColor: tutorialFeatureBorderColor,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.tutorialCompactIcon}>{activeTutorialStep.icon}</Text>
-                      </View>
-                      <View style={styles.tutorialCompactHeaderCopy}>
-                        <Text style={[styles.tutorialCompactTitle, { color: colors.text }]}>
-                          {t(activeTutorialStep.titleKey)}
-                        </Text>
-                        <Text style={[styles.tutorialCompactStepText, { color: colors.muted }]}>
-                          {`${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}/${tutorialStepCount}`}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.tutorialCompactDescription, { color: colors.muted }]}>
-                      {t(activeTutorialStep.descriptionKey)}
-                    </Text>
-                    <View style={styles.tutorialCompactProgressRow}>
-                      <View style={styles.tutorialDots}>
-                        {tutorialContext.steps.map((step, index) => (
-                          <View
-                            key={step.id}
-                            style={[
-                              styles.tutorialDot,
-                              index < tutorialCurrentIndex && styles.tutorialDotCompleted,
-                              index === tutorialCurrentIndex && styles.tutorialDotActive,
-                              {
-                                backgroundColor:
-                                  index <= tutorialCurrentIndex
-                                    ? colors.text
-                                    : tutorialDotInactiveColor,
-                              },
-                            ]}
-                          />
-                        ))}
-                      </View>
-                      <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
-                        {t("tutorialProgress", {
-                          current: `${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}`,
-                          total: `${tutorialStepCount}`,
-                        })}
-                      </Text>
-                    </View>
-                    <View style={styles.tutorialCompactActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.tutorialCompactSkipButton,
-                          {
-                            backgroundColor: tutorialFeatureBackground,
-                            borderColor: tutorialFeatureBorderColor,
-                          },
-                        ]}
-                        onPress={tutorialSkipHandler}
-                      >
-                        <Text style={[styles.tutorialCompactSkipText, { color: colors.muted }]}>
-                          {t("tutorialSkip")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.tutorialCompactPrimaryButton, { backgroundColor: tutorialPrimaryButtonBg }]}
-                        onPress={tutorialAdvanceHandler}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={[styles.tutorialCompactPrimaryText, { color: tutorialPrimaryButtonTextColor }]}>
-                          {tutorialStepCount && tutorialCurrentIndex === tutorialStepCount - 1
-                            ? t("tutorialDone")
-                            : t("tutorialNext")}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <View style={styles.tutorialTopRow}>
-                      <View
-                        style={[
-                          styles.tutorialStepBadge,
-                          {
-                            backgroundColor: tutorialFeatureBackground,
-                            borderColor: tutorialFeatureBorderColor,
-                          },
-                        ]}
-                      >
-                        <Text style={styles.tutorialIcon}>{activeTutorialStep.icon}</Text>
-                        <Text style={[styles.tutorialStepBadgeText, { color: tutorialFeatureTextColor }]} numberOfLines={1}>
-                          {t(tutorialBadgeLabelKey)}
-                        </Text>
-                      </View>
-                      <View style={[styles.tutorialStepCounter, { borderColor: tutorialFeatureBorderColor }]}>
-                        <Text style={[styles.tutorialStepCounterText, { color: colors.muted }]}>
-                          {`${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}/${tutorialStepCount}`}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={[styles.tutorialVisualWrap, { borderColor: tutorialFeatureBorderColor }]}>
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.tutorialVisualPulse,
-                          {
-                            borderColor: tutorialVisualPalette.glow,
-                            opacity: tutorialPulseOpacity,
-                            transform: [{ scale: tutorialPulseScale }],
-                          },
-                        ]}
-                      />
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.tutorialVisualOrb,
-                          styles.tutorialVisualOrbPrimary,
-                          {
-                            backgroundColor: tutorialVisualPalette.primary,
-                            transform: [{ translateY: tutorialAmbientLift }, { rotate: tutorialAmbientRotate }],
-                          },
-                        ]}
-                      />
-                      <Animated.View
-                        pointerEvents="none"
-                        style={[
-                          styles.tutorialVisualOrb,
-                          styles.tutorialVisualOrbSecondary,
-                          {
-                            backgroundColor: tutorialVisualPalette.secondary,
-                            transform: [{ translateY: tutorialAmbientDrift }, { rotate: tutorialAmbientRotate }],
-                          },
-                        ]}
-                      />
-                      <View style={styles.tutorialVisualGrid} pointerEvents="none" />
-                      <View style={styles.tutorialVisualBarsRow} pointerEvents="none">
-                        {tutorialVisualBars.map((value, index) => {
-                          const normalized = Math.min(1, Math.max(0.18, Number(value) || 0));
-                          return (
-                            <View key={`${activeTutorialStep.id}_bar_${index}`} style={styles.tutorialVisualBarTrack}>
-                              <Animated.View
-                                style={[
-                                  styles.tutorialVisualBarFill,
-                                  {
-                                    height: `${Math.round(normalized * 100)}%`,
-                                    backgroundColor:
-                                      index % 2 === 0
-                                        ? tutorialVisualPalette.primary
-                                        : tutorialVisualPalette.secondary,
-                                    opacity: tutorialBarsOpacity,
-                                    transform: [{ translateY: tutorialBarsTranslateY }],
-                                  },
-                                ]}
-                              />
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                    <Text style={[styles.tutorialTitle, { color: colors.text }]}>
-                      {t(activeTutorialStep.titleKey)}
-                    </Text>
-                    <Text style={[styles.tutorialDescription, { color: colors.muted }]}>
-                      {t(activeTutorialStep.descriptionKey)}
-                    </Text>
-                    {!!tutorialFeatureKeys.length && (
-                      <View style={styles.tutorialFeatureRow}>
-                        {tutorialFeatureKeys.slice(0, 4).map((key) => (
-                          <View
-                            key={`${activeTutorialStep.id}_${key}`}
-                            style={[
-                              styles.tutorialFeatureChip,
-                              {
-                                backgroundColor: tutorialFeatureBackground,
-                                borderColor: tutorialFeatureBorderColor,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[styles.tutorialFeatureChipText, { color: tutorialFeatureTextColor }]}
-                              numberOfLines={1}
-                            >
-                              {t(key)}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                    <View style={styles.tutorialProgressRow}>
-                      <View style={styles.tutorialDots}>
-                        {tutorialContext.steps.map((step, index) => (
-                          <View
-                            key={step.id}
-                            style={[
-                              styles.tutorialDot,
-                              index < tutorialCurrentIndex && styles.tutorialDotCompleted,
-                              index === tutorialCurrentIndex && styles.tutorialDotActive,
-                              {
-                                backgroundColor:
-                                  index <= tutorialCurrentIndex
-                                    ? colors.text
-                                    : tutorialDotInactiveColor,
-                              },
-                            ]}
-                          />
-                        ))}
-                      </View>
-                      <Text style={[styles.tutorialProgressText, { color: colors.muted }]}>
-                        {t("tutorialProgress", {
-                          current: `${Math.min(tutorialCurrentIndex + 1, tutorialStepCount)}`,
-                          total: `${tutorialStepCount}`,
-                        })}
-                      </Text>
-                    </View>
-                    <View style={styles.tutorialActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.tutorialSkipButton,
-                          {
-                            backgroundColor: tutorialFeatureBackground,
-                            borderColor: tutorialFeatureBorderColor,
-                          },
-                        ]}
-                        onPress={tutorialSkipHandler}
-                      >
-                        <Text style={[styles.tutorialSkipText, { color: colors.muted }]}>
-                          {t("tutorialSkip")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.tutorialPrimaryButton, { backgroundColor: tutorialPrimaryButtonBg }]}
-                        onPress={tutorialAdvanceHandler}
-                        activeOpacity={0.9}
-                      >
-                        <Text style={[styles.tutorialPrimaryText, { color: tutorialPrimaryButtonTextColor }]}>
-                          {tutorialStepCount && tutorialCurrentIndex === tutorialStepCount - 1
-                            ? t("tutorialDone")
-                            : t("tutorialNext")}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </Animated.View>
-            </View>
-          </Modal>
-        )}
         <Modal
           visible={!startupHardLockPendingBeforePaywall && tamagotchiModalMounted}
           transparent
@@ -87482,6 +88635,7 @@ useEffect(() => {
 	                  <View
 	                    style={[
 	                      styles.tamagotchiPreview,
+	                      IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiPreviewTall,
 	                      tamagotchiClosing && styles.tamagotchiNoShadow,
                       {
                         borderColor: colors.border,
@@ -87489,203 +88643,50 @@ useEffect(() => {
                       },
                     ]}
                   >
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.tamagotchiPreviewAura,
-                        isAndroidTamagotchiSurface && styles.tamagotchiPreviewAuraAndroid,
-                        {
-                          backgroundColor: tamagotchiPreviewAuraPrimaryColor,
-                        },
-                      ]}
-                    />
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.tamagotchiPreviewAuraSecondary,
-                        isAndroidTamagotchiSurface && styles.tamagotchiPreviewAuraSecondaryAndroid,
-                        {
-	                          backgroundColor: tamagotchiPreviewAuraSecondaryColor,
-	                        },
-	                      ]}
-	                    />
-                    <Text style={[styles.tamagotchiHeroLogo, { color: colors.text }]} numberOfLines={1}>
-                      {t("tamagotchiName")}
-                    </Text>
-                    <View
-                      style={[
-                        styles.tamagotchiHeroSpeechBubble,
-                        tamagotchiClosing && styles.tamagotchiNoShadow,
-                        {
-                          backgroundColor: colorWithAlpha(
-                            isDarkTheme ? colors.surfaceElevated : lightenColor(colors.card, 0.26),
-                            isDarkTheme ? 0.94 : 0.98
-                          ),
-                          borderColor: colorWithAlpha(
-                            isDarkTheme ? "#9BCBFF" : "#80B7E0",
-                            isDarkTheme ? 0.54 : 0.44
-                          ),
-                        },
-                      ]}
-                    >
+	                    <View style={styles.tamagotchiHeroCopy}>
+                      <Text style={[styles.tamagotchiHeroLogo, { color: colors.text }]} numberOfLines={1}>
+                        {t("tamagotchiName")}
+                      </Text>
                       <View
-                        pointerEvents="none"
                         style={[
-                          styles.tamagotchiHeroSpeechTail,
+                          styles.tamagotchiHeroSpeechBubble,
+                          tamagotchiClosing && styles.tamagotchiNoShadow,
                           {
                             backgroundColor: colorWithAlpha(
-                              isDarkTheme ? colors.surfaceElevated : lightenColor(colors.card, 0.26),
-                              isDarkTheme ? 0.94 : 0.98
+                              colors.primary,
+                              isDarkTheme ? 0.16 : 0.08
                             ),
                             borderColor: colorWithAlpha(
-                              isDarkTheme ? "#9BCBFF" : "#80B7E0",
-                              isDarkTheme ? 0.54 : 0.44
+                              colors.primary,
+                              isDarkTheme ? 0.28 : 0.14
                             ),
                           },
                         ]}
-                      />
-                      <Text
-                        style={[
-                          styles.tamagotchiHeroSpeechText,
-                          {
-                            color:
-                              tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech
-                                ? colors.text
-                                : colors.muted,
-                          },
-                        ]}
-                        numberOfLines={3}
-                        adjustsFontSizeToFit
-                        allowAndroidAutoFit
-                        minimumFontScale={0.82}
                       >
-                        {tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech
-                          ? tamagotchiActionSpeech
-                          : tamagotchiMood.label}
-                      </Text>
-                    </View>
-	                    <View style={styles.skinPickerControl}>
-		                      <TouchableOpacity
-		                        style={[
-	                          styles.skinPickerButton,
-	                          {
-	                            borderColor: colors.border,
-	                            backgroundColor: tamagotchiSkinButtonSurfaceColor,
-	                          },
-                            isAndroidTamagotchiSurface && styles.skinPickerButtonAndroid,
-	                          !catCustomizationUnlocked && styles.skinPickerButtonLocked,
-	                        ]}
-	                        onPress={openSkinPicker}
-	                        accessibilityRole="button"
-	                        accessibilityLabel={t("tamagotchiOutfitsLabel")}
-	                        hitSlop={8}
-	                        activeOpacity={0.85}
-	                      >
-                        <Image
-                          source={tamagotchiAvatarSource}
+                        <Text
                           style={[
-                            styles.skinPickerPreviewImage,
-                            !catCustomizationUnlocked && styles.skinPickerIconLocked,
+                            styles.tamagotchiHeroSpeechText,
+                            {
+                              color: colors.text,
+                            },
                           ]}
-                        />
-                        <View style={styles.skinPickerLabelRow}>
-                          <Text style={[styles.skinPickerLabelText, { color: colors.text }]} numberOfLines={1}>
-                            {t("tamagotchiOutfitsLabel")}
-                          </Text>
-                          <Text style={[styles.skinPickerChevron, { color: colors.muted }]}>›</Text>
-                        </View>
-                        {!catCustomizationUnlocked && (
-                          <View
-                            style={[
-                              styles.skinPickerLockBadge,
-                              isDarkTheme
-                                ? {
-                                    backgroundColor: blendHexColors(
-                                      "#1A2046",
-                                      proThemeAccentColor || PREMIUM_UI_ACCENT_DARK,
-                                      0.78
-                                    ),
-                                    borderColor: colorWithAlpha("#F5EEFF", 0.68),
-                                    shadowColor: colorWithAlpha(
-                                      proThemeAccentColor || PREMIUM_UI_ACCENT_DARK,
-                                      0.95
-                                    ),
-                                  }
-                                : {
-                                    backgroundColor: colorWithAlpha(
-                                      proThemeAccentColor || PREMIUM_UI_ACCENT_LIGHT,
-                                      0.9
-                                    ),
-                                    borderColor: colorWithAlpha("#FFFFFF", 0.76),
-                                    shadowColor: colorWithAlpha(
-                                      proThemeAccentColor || PREMIUM_UI_ACCENT_LIGHT,
-                                      0.55
-                                    ),
-                                  },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.skinPickerLockText,
-                                { color: isDarkTheme ? "#FFFFFF" : "#0D1330" },
-                              ]}
-                            >
-                              PRO
-                            </Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                      {dailySummaryBadgeState.visible && (
-                        <Animated.View
-                          style={{ transform: [{ scale: tamagotchiDailySummaryPulseAnim }] }}
+                          numberOfLines={3}
+                          adjustsFontSizeToFit
+                          allowAndroidAutoFit
+                          minimumFontScale={0.82}
                         >
-                          <TouchableOpacity
-                            style={[
-                              styles.tamagotchiDailySummaryButton,
-                              {
-                                borderColor: colorWithAlpha(colors.warning, isDarkTheme ? 0.38 : 0.3),
-                                backgroundColor: isDarkTheme
-                                  ? colorWithAlpha(colors.warning, 0.1)
-                                  : colorWithAlpha(colors.warning, 0.08),
-                                shadowColor: colorWithAlpha(colors.warning, isDarkTheme ? 0.22 : 0.16),
-                              },
-                            ]}
-                            onPress={handleTamagotchiDailySummaryPress}
-                            accessibilityRole="button"
-                            accessibilityLabel={t("dailySummaryBadgeCTA")}
-                            activeOpacity={0.88}
-                          >
-                            <View
-                              pointerEvents="none"
-                              style={[
-                                styles.tamagotchiDailySummaryGlow,
-                                {
-                                  backgroundColor: colorWithAlpha(
-                                    colors.warning,
-                                    isDarkTheme ? 0.14 : 0.1
-                                  ),
-                                },
-                              ]}
-                            />
-                            <Text style={styles.tamagotchiDailySummaryIcon}>📊</Text>
-                            <Text style={[styles.tamagotchiDailySummaryLabel, { color: colors.text }]}>
-                              {t("dailySummaryBadgeCTA")}
-                            </Text>
-                            {!!dailySummaryBadgeCountdownLabel && (
-                              <Text
-                                style={[styles.tamagotchiDailySummaryTimer, { color: colors.muted }]}
-                                numberOfLines={1}
-                              >
-                                {dailySummaryBadgeCountdownLabel}
-                              </Text>
-                            )}
-                          </TouchableOpacity>
-                        </Animated.View>
-                      )}
+                          {tamagotchiHeroSpeech}
+                        </Text>
+                      </View>
                     </View>
 	                    <View
 	                      style={[
 	                        styles.tamagotchiMascotWrap,
+	                        IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiMascotWrapTall,
+                            {
+                              borderColor: tamagotchiMascotStageBorderColor,
+                              backgroundColor: tamagotchiMascotStageSurfaceColor,
+                            },
 	                        tamagotchiCleanTargetHighlightVisible &&
 	                          styles.tamagotchiMascotWrapCleanHighlight,
                           tamagotchiCleanTargetHighlightVisible &&
@@ -87715,6 +88716,53 @@ useEffect(() => {
 	                        isTamagotchiCleanToolSelected ? handleTamagotchiCleanStroke : undefined
 	                      }
 	                    >
+                      {tamagotchiDirtyLevel >= 0.12 && (
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.tamagotchiMascotDirtLayer,
+                            {
+                              opacity: Math.min(
+                                1,
+                                0.28 + tamagotchiDirtVisualIntensity * 0.72
+                              ),
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.tamagotchiMascotDirtVeil,
+                              {
+                                opacity: Math.min(
+                                  0.24,
+                                  0.04 + tamagotchiDirtVisualIntensity * 0.2
+                                ),
+                              },
+                            ]}
+                          />
+                          {ALMI_DIRT_SPOTS.map((spot, index) => (
+                            <View
+                              key={`stage_dirt_spot_${index}`}
+                              style={[
+                                styles.almiMascotDirtySpot,
+                                {
+                                  top: spot.top,
+                                  left: spot.left,
+                                  width: spot.width,
+                                  height: spot.height,
+                                  borderRadius: Math.round(Math.min(spot.width, spot.height) / 2),
+                                  opacity: Math.min(
+                                    1,
+                                    spot.opacity * (0.72 + tamagotchiDirtVisualIntensity * 0.72)
+                                  ),
+                                  backgroundColor: spot.color,
+                                  transform: [{ rotate: `${spot.rotate}deg` }],
+                                },
+                              ]}
+                            />
+                          ))}
+                        </View>
+                      )}
                       <AlmiTamagotchi
                         override={mascotOverride}
                         onOverrideComplete={handleMascotAnimationComplete}
@@ -87723,7 +88771,9 @@ useEffect(() => {
                           tamagotchiMood?.tone === "urgent"
                         }
                         isPlayDeprived={tamagotchiNeedsPlay}
-                        desaturation={tamagotchiDirtyLevel}
+                        desaturation={tamagotchiDirtVisualIntensity * 0.78}
+                        dirtyOverlayEnabled={false}
+                        transitionFallbackEnabled
                         animations={tamagotchiAnimations}
                         animationSetKey={tamagotchiAnimationSetKey}
                         imageOffsetX={0}
@@ -87961,12 +89011,21 @@ useEffect(() => {
                         />
                       </View>
                       <View style={styles.tamagotchiHourlyRewardBody}>
-                        <Text style={[styles.tamagotchiHourlyRewardTitle, { color: colors.text }]}>
+                        <Text
+                          style={[styles.tamagotchiHourlyRewardTitle, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
                           {t("tamagotchiHourlyRewardTitle")}
                         </Text>
-                        <Text style={[styles.tamagotchiHourlyRewardMessage, { color: colors.muted }]}>
-                          {tamagotchiHourlyRewardMessage}
-                        </Text>
+                        {!tamagotchiHourlyRewardStatus.ready && (
+                          <Text
+                            style={[styles.tamagotchiHourlyRewardMessage, { color: colors.muted }]}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {tamagotchiHourlyRewardCompactMessage}
+                          </Text>
+                        )}
                         {!tamagotchiHourlyRewardStatus.ready &&
                           !tamagotchiHourlyRewardStatus.blockReason && (
                             <View
@@ -88001,6 +89060,10 @@ useEffect(() => {
                               tamagotchiHourlyRewardAccent,
                               isDarkTheme ? 0.28 : 0.18
                             ),
+                            backgroundColor: colorWithAlpha(
+                              tamagotchiHourlyRewardAccent,
+                              isDarkTheme ? 0.16 : 0.1
+                            ),
                           },
                         ]}
                       >
@@ -88015,14 +89078,6 @@ useEffect(() => {
                           ]}
                         >
                           {tamagotchiHourlyRewardAmountLabel}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.tamagotchiHourlyRewardAmountCaption,
-                            { color: tamagotchiHourlyRewardAccent },
-                          ]}
-                        >
-                          {t("tamagotchiCoinsLabel")}
                         </Text>
                       </View>
                     </View>
@@ -88052,28 +89107,14 @@ useEffect(() => {
                   <View
                     style={[
                       styles.tamagotchiControlPanel,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colorWithAlpha(colors.card, isDarkTheme ? 0.92 : 0.97),
-                      },
+                      IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiControlPanelTall,
                     ]}
                   >
                     <View style={styles.tamagotchiControlHeader}>
-                      <View style={styles.tamagotchiControlTitleWrap}>
-                        <Text style={[styles.tamagotchiFoodTitle, { color: colors.text }]} numberOfLines={1}>
-                          {activeTamagotchiTabTitle}
-                        </Text>
-                        <Text style={[styles.tamagotchiSub, { color: colors.muted }]} numberOfLines={1}>
-                          {tamagotchiState.lastFedAt
-                            ? `${t("tamagotchiFedAtLabel")}: ${new Date(
-                                tamagotchiState.lastFedAt
-                              ).toLocaleString(getFormatLocale(language))}`
-                            : t("tamagotchiAwaitingFirstCoin")}
-                        </Text>
-                      </View>
                       <View
                         style={[
                           styles.tamagotchiTabsRow,
+                          IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiTabsRowTall,
                           {
                             borderColor: colors.border,
                             backgroundColor: isDarkTheme ? colors.surfaceMuted : lightenColor(colors.card, 0.1),
@@ -88082,19 +89123,23 @@ useEffect(() => {
                       >
                         {tamagotchiTabItems.map((tab) => {
                           const active = tab.id === tamagotchiActiveTab;
-                          const accent = colors.primary;
+                          const accent = tab.accent;
                           const activeTabBackground =
                             Platform.OS === "android"
-                              ? blendColors(colors.card || "#FFFFFF", accent, isDarkTheme ? 0.28 : 0.22)
-                              : colorWithAlpha(accent, isDarkTheme ? 0.24 : 0.2);
+                              ? blendColors(colors.card || "#FFFFFF", accent, isDarkTheme ? 0.72 : 0.82)
+                              : accent;
+                          const activeTabForeground = resolveForegroundForColor(activeTabBackground);
                           return (
                             <TouchableOpacity
                               key={tab.id}
                               style={[
                                 styles.tamagotchiTabButton,
+                                IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiTabButtonTall,
                                 {
-                                  borderColor: active ? colorWithAlpha(accent, 0.9) : colors.border,
-                                  backgroundColor: active ? activeTabBackground : colors.card,
+                                  borderColor: colorWithAlpha(accent, active ? 0.94 : isDarkTheme ? 0.5 : 0.34),
+                                  backgroundColor: active
+                                    ? activeTabBackground
+                                    : colorWithAlpha(accent, isDarkTheme ? 0.1 : 0.08),
                                   shadowColor: active && Platform.OS !== "android" ? accent : "transparent",
                                 },
                               ]}
@@ -88107,12 +89152,25 @@ useEffect(() => {
                               <Text
                                 style={[
                                   styles.tamagotchiTabButtonText,
-                                  { color: colors.text, opacity: active ? 1 : 0.76 },
+                                  {
+                                    color: active ? activeTabForeground : colors.text,
+                                    opacity: active ? 1 : 0.82,
+                                  },
                                 ]}
-                                numberOfLines={2}
+                                numberOfLines={1}
                               >
                                 {tab.label}
                               </Text>
+                              <View
+                                style={[
+                                  styles.tamagotchiTabSelectionMark,
+                                  {
+                                    backgroundColor: active
+                                      ? colorWithAlpha(activeTabForeground, 0.88)
+                                      : "transparent",
+                                  },
+                                ]}
+                              />
                             </TouchableOpacity>
                           );
                         })}
@@ -88121,6 +89179,7 @@ useEffect(() => {
                     <Animated.View
                       style={[
                         styles.tamagotchiTabContentWrap,
+                        IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiTabContentWrapTall,
                         {
                           opacity: tamagotchiTabContentAnim,
                           transform: [
@@ -88251,7 +89310,11 @@ useEffect(() => {
                   ]}
                 >
                   <View style={styles.skinPickerHeader}>
-                    <Text style={[styles.skinPickerTitle, { color: colors.text }]}>
+                    <Text
+                      style={[styles.skinPickerTitle, { color: colors.text }]}
+                      accessibilityRole="header"
+                      accessibilityLabel={t("tamagotchiOutfitsLabel")}
+                    >
                       {t("tamagotchiSkinTitle")}
                     </Text>
                     <TouchableOpacity
@@ -88571,23 +89634,27 @@ useEffect(() => {
             onRequestClose={() => closeFrequencyReminderPrompt("request_close")}
             statusBarTranslucent
           >
-            <TouchableWithoutFeedback onPress={() => closeFrequencyReminderPrompt("backdrop")}>
+            <TouchableWithoutFeedback
+              onPress={() => closeFrequencyReminderPrompt("backdrop")}
+              accessible={false}
+            >
               <View style={[styles.quickModalBackdrop, modalKeyboardPaddingStyle]}>
-                <TouchableWithoutFeedback onPress={() => {}}>
+                <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
                   <View
                     style={[
                       styles.quickModalCard,
                       styles.frequencyReminderPromptCard,
                       {
-                        backgroundColor: colors.card,
+                        backgroundColor: colors.surfaceElevated || colors.card,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        maxWidth: 440,
+                        maxWidth: 400,
                       },
                     ]}
                   >
                     <View style={styles.frequencyReminderPromptContent}>
                       <ScrollView
+                        ref={frequencyReminderPromptScrollRef}
                         style={[styles.quickModalBodyScroll, styles.frequencyReminderPromptScroll]}
                         contentContainerStyle={[
                           styles.quickModalBodyScrollContent,
@@ -88597,21 +89664,54 @@ useEffect(() => {
                         showsVerticalScrollIndicator={false}
                         nestedScrollEnabled
                       >
-                        <Text style={[styles.quickModalTitle, { color: colors.text }]}>
-                          {t("frequencyReminderPromptTitle")}
-                        </Text>
-                        <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
-                          {t("frequencyReminderPromptSubtitle", {
-                            temptation:
-                              frequencyReminderPrompt.title || t("defaultDealTitle"),
-                          })}
-                        </Text>
+                        <View style={styles.frequencyReminderPromptHeader}>
+                          <View
+                            style={[
+                              styles.frequencyReminderPromptTemptation,
+                              {
+                                backgroundColor: colorWithAlpha(
+                                  frequencyReminderPromptAccent,
+                                  isDarkTheme ? 0.2 : 0.1
+                                ),
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={styles.frequencyReminderPromptTemptationEmoji}
+                              accessible={false}
+                            >
+                              {frequencyReminderPrompt.emoji || "🐱"}
+                            </Text>
+                          </View>
+                          <View style={styles.frequencyReminderPromptHeaderCopy}>
+                            <Text
+                              style={[styles.frequencyReminderPromptTitle, { color: colors.text }]}
+                              accessibilityRole="header"
+                            >
+                              {t("frequencyReminderPromptTitle")}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.frequencyReminderPromptSubtitle,
+                                { color: colors.muted },
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {t("frequencyReminderPromptSubtitle", {
+                                temptation:
+                                  frequencyReminderPrompt.title || t("defaultDealTitle"),
+                              })}
+                            </Text>
+                          </View>
+                        </View>
                         <View
                           style={[
                             styles.frequencyReminderForecastCard,
                             {
-                              backgroundColor: colorWithAlpha("#2FCB71", isDarkTheme ? 0.18 : 0.1),
-                              borderColor: colorWithAlpha("#1CA24E", isDarkTheme ? 0.55 : 0.34),
+                              backgroundColor: colorWithAlpha(
+                                frequencyReminderPromptAccent,
+                                isDarkTheme ? 0.18 : 0.085
+                              ),
                             },
                           ]}
                         >
@@ -88619,34 +89719,71 @@ useEffect(() => {
                             pointerEvents="none"
                             style={[
                               styles.frequencyReminderForecastGlow,
-                              { backgroundColor: colorWithAlpha("#66E19A", isDarkTheme ? 0.34 : 0.28) },
+                              {
+                                backgroundColor: colorWithAlpha(
+                                  frequencyReminderPromptAccent,
+                                  isDarkTheme ? 0.24 : 0.16
+                                ),
+                              },
                             ]}
                           />
-                          <Text style={[styles.frequencyReminderForecastTitle, { color: colors.text }]}>
-                            {frequencyReminderForecastCopy.title}
-                          </Text>
-                          <AnimatedText
-                            style={[
-                              styles.frequencyReminderForecastValue,
-                              { transform: [{ scale: frequencyReminderForecastValueScale }] },
-                            ]}
-                          >
-                            {frequencyReminderForecastValueLabel}
-                          </AnimatedText>
-                          <Text style={[styles.frequencyReminderForecastMeta, { color: colors.muted }]}>
-                            {frequencyReminderForecastBasisLabel}
-                          </Text>
+                          <View style={styles.frequencyReminderForecastHeader}>
+                            <Text
+                              style={[
+                                styles.frequencyReminderForecastTitle,
+                                { color: colors.text },
+                              ]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.84}
+                            >
+                              {t("frequencyReminderForecastTitle")}
+                            </Text>
+                          </View>
+                          <View style={styles.frequencyReminderForecastMetrics}>
+                            <AnimatedText
+                              style={[
+                                styles.frequencyReminderForecastValue,
+                                {
+                                  color: frequencyReminderPromptAccent,
+                                  transform: [{ scale: frequencyReminderForecastValueScale }],
+                                },
+                              ]}
+                              accessibilityLiveRegion="polite"
+                            >
+                              {frequencyReminderForecastValueLabel}
+                            </AnimatedText>
+                            <View
+                              pointerEvents="none"
+                              style={[
+                                styles.frequencyReminderForecastDivider,
+                                {
+                                  backgroundColor: colorWithAlpha(
+                                    frequencyReminderPromptAccent,
+                                    isDarkTheme ? 0.4 : 0.24
+                                  ),
+                                },
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.frequencyReminderForecastChecks,
+                                { color: frequencyReminderPromptAccent },
+                              ]}
+                              numberOfLines={2}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.84}
+                            >
+                              {frequencyReminderForecastChecksLabel}
+                            </Text>
+                          </View>
                           <Text
                             style={[
                               styles.frequencyReminderForecastMeta,
-                              styles.frequencyReminderForecastChecks,
                               { color: colors.muted },
                             ]}
                           >
-                            {frequencyReminderForecastChecksLabel}
-                          </Text>
-                          <Text style={styles.frequencyReminderForecastFomo}>
-                            {frequencyReminderForecastCopy.fomo}
+                            {frequencyReminderForecastBasisLabel}
                           </Text>
                         </View>
                         <FrequencyPicker
@@ -88656,21 +89793,41 @@ useEffect(() => {
                           onCustomChange={handleFrequencyReminderPromptCustomFrequencyChange}
                           colors={colors}
                           t={t}
+                          variant="cards"
+                          optionMetaById={frequencyReminderCadenceOptionMeta}
+                          activeColor={frequencyReminderPromptAccent}
+                          label={t("frequencyReminderCadenceLabel")}
                         />
-                        <FrequencySchedulePicker
-                          frequency={frequencyReminderPrompt.frequency}
-                          reminderHour={frequencyReminderPrompt.reminderHour}
-                          reminderMinute={frequencyReminderPrompt.reminderMinute}
-                          weeklyDay={frequencyReminderPrompt.weeklyDay}
-                          monthlyDay={frequencyReminderPrompt.monthlyDay}
-                          weeklyDays={frequencyReminderPrompt.weeklyDays}
-                          monthlyDays={frequencyReminderPrompt.monthlyDays}
-                          onReminderTimeChange={handleFrequencyReminderPromptTimeChange}
-                          onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}
-                          onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}
-                          colors={colors}
-                          t={t}
-                        />
+                        <View
+                          style={[
+                            styles.frequencyReminderScheduleSurface,
+                            {
+                              backgroundColor: colorWithAlpha(
+                                colors.text,
+                                isDarkTheme ? 0.055 : 0.035
+                              ),
+                            },
+                          ]}
+                        >
+                          <FrequencySchedulePicker
+                            frequency={frequencyReminderPrompt.frequency}
+                            reminderHour={frequencyReminderPrompt.reminderHour}
+                            reminderMinute={frequencyReminderPrompt.reminderMinute}
+                            weeklyDay={frequencyReminderPrompt.weeklyDay}
+                            monthlyDay={frequencyReminderPrompt.monthlyDay}
+                            weeklyDays={frequencyReminderPrompt.weeklyDays}
+                            monthlyDays={frequencyReminderPrompt.monthlyDays}
+                            onReminderTimeChange={handleFrequencyReminderPromptTimeChange}
+                            onTimePickerExpandedChange={
+                              handleFrequencyReminderPromptTimePickerExpandedChange
+                            }
+                            onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}
+                            onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}
+                            colors={colors}
+                            t={t}
+                            compact
+                          />
+                        </View>
                       </ScrollView>
                       <View style={[styles.quickModalActions, styles.frequencyReminderPromptActions]}>
                         <TouchableOpacity
@@ -88687,13 +89844,16 @@ useEffect(() => {
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                          style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                          style={[
+                            styles.quickModalPrimary,
+                            { backgroundColor: frequencyReminderPromptAccent },
+                          ]}
                           onPress={handleFrequencyReminderPromptSave}
                         >
                           <Text
                             style={[
                               styles.quickModalPrimaryText,
-                              { color: colors.background },
+                              { color: frequencyReminderPromptAccentText },
                             ]}
                           >
                             {t("frequencyReminderPromptSave")}
@@ -88775,6 +89935,7 @@ useEffect(() => {
                   editWeeklyDays={priceEditor.frequencyWeeklyDays}
                   editMonthlyDays={priceEditor.frequencyMonthlyDays}
                   showScheduleConfig={priceEditor.scheduleConfigVisible}
+                  isDuplicateCopy={priceEditor.isDuplicateCopy}
                   onEditTitleChange={handlePriceTitleChange}
                   onEditPriceChange={handlePriceInputChange}
                   onEditEmojiChange={handlePriceEmojiChange}
@@ -88788,6 +89949,7 @@ useEffect(() => {
                   onEditSave={savePriceEdit}
                   onEditCancel={closePriceEditor}
                   onEditDelete={() => promptTemptationDelete(priceEditor.item)}
+                  onEditDuplicate={duplicateTemptationCard}
                   onEditGoalSelect={() => {
                     setGoalLinkPrompt({
                       visible: true,
@@ -88850,34 +90012,163 @@ useEffect(() => {
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View
                     style={[
-                      styles.moodDetailsCard,
+                      styles.potentialDetailsCard,
                       { backgroundColor: colors.card, borderColor: colors.border },
                     ]}
+                    accessibilityViewIsModal
                   >
-                    <Text
-                      style={[
-                        styles.moodDetailsLabel,
-                        isRtlLanguage(language) && styles.heroPotentialRtlCentered,
-                        { color: colors.text },
-                      ]}
+                    <ScrollView
+                      style={styles.potentialDetailsScroll}
+                      contentContainerStyle={styles.potentialDetailsContent}
+                      showsVerticalScrollIndicator={false}
                     >
-                      {t("potentialBlockTitle")}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.moodDetailsDescription,
-                        isRtlLanguage(language) && styles.heroPotentialRtlCentered,
-                        { color: colors.muted },
-                      ]}
-                    >
-                      {potentialDetailsText}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.potentialDetailsTitle,
+                          isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                          { color: colors.text },
+                        ]}
+                      >
+                        {t("potentialDetailsTitle")}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.potentialDetailsIntro,
+                          isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                          { color: colors.muted },
+                        ]}
+                      >
+                        {t(
+                          potentialDetailsData?.hasForecast
+                            ? "potentialDetailsIntro"
+                            : "potentialDetailsEmptyIntro"
+                        )}
+                      </Text>
+
+                      <View
+                        style={[
+                          styles.potentialDetailsSummary,
+                          {
+                            backgroundColor: colorWithAlpha(colors.primary, isDarkTheme ? 0.12 : 0.08),
+                          },
+                        ]}
+                      >
+                        <View style={styles.potentialDetailsSummaryHeader}>
+                          <Text
+                            style={[
+                              styles.potentialDetailsSummaryLabel,
+                              isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {t("potentialBlockTitle")}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.potentialDetailsPeriod,
+                              isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {t("potentialBlockPeriodDays", {
+                              count: potentialDetailsData?.periodDays || FORECAST_MONTH_DAYS,
+                            })}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.potentialDetailsValue,
+                            isRtlLanguage(language) && styles.heroPotentialAmountLtr,
+                            { color: colors.text },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.68}
+                        >
+                          {potentialDetailsData?.hasForecast
+                            ? potentialDetailsData.forecastLabel
+                            : "—"}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.potentialDetailsBasis,
+                            isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                            { color: colors.muted },
+                          ]}
+                        >
+                          {t("potentialDetailsCardsLabel", {
+                            count: potentialDetailsData?.cardCount || 0,
+                          })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.potentialDetailsSection}>
+                        <Text
+                          style={[
+                            styles.potentialDetailsSectionTitle,
+                            isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {t("potentialDetailsHowTitle")}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.potentialDetailsSectionBody,
+                            isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                            { color: colors.muted },
+                          ]}
+                        >
+                          {t("potentialDetailsHowBody")}
+                        </Text>
+                      </View>
+
+                      <View style={styles.potentialDetailsSection}>
+                        <Text
+                          style={[
+                            styles.potentialDetailsSectionTitle,
+                            isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                            { color: colors.text },
+                          ]}
+                        >
+                          {t("potentialDetailsAccuracyTitle")}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.potentialDetailsSectionBody,
+                            isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                            { color: colors.muted },
+                          ]}
+                        >
+                          {t("potentialDetailsAccuracyBody")}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={[
+                          styles.potentialDetailsNote,
+                          isRtlLanguage(language) && styles.heroPotentialRtlCentered,
+                          {
+                            color: colors.text,
+                            backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.05),
+                          },
+                        ]}
+                      >
+                        {t("potentialDetailsNote")}
+                      </Text>
+                    </ScrollView>
                     <TouchableOpacity
-                      style={[styles.moodDetailsButton, { borderColor: colors.text }]}
+                      style={[styles.potentialDetailsButton, { backgroundColor: colors.primary }]}
                       onPress={closePotentialDetails}
+                      accessibilityRole="button"
                     >
-                      <Text style={[styles.moodDetailsButtonText, { color: colors.text }]}>
-                        {t("profileOk") || "Ок"}
+                      <Text
+                        style={[
+                          styles.potentialDetailsButtonText,
+                          { color: colors.onPrimary || resolveForegroundForColor(colors.primary) },
+                        ]}
+                      >
+                        {t("potentialDetailsClose")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -89049,6 +90340,7 @@ useEffect(() => {
                   <Text style={[styles.focusDigestBody, { color: colors.muted }]}>
                     {overlay.message?.body || ""}
                   </Text>
+                  {!overlay.message?.prompt && (
                   <View style={styles.focusDigestStats}>
                     <View
                       style={[
@@ -89093,15 +90385,19 @@ useEffect(() => {
                       )}
                     </View>
                   </View>
+                  )}
                   <View style={styles.focusDigestButtons}>
                     <TouchableOpacity
                       style={[styles.focusDigestSecondary, { borderColor: colors.border }]}
                       onPress={handleFocusOverlayLater}
                     >
                       <Text style={[styles.focusDigestSecondaryText, { color: colors.muted }]}>
-                        {t("focusDigestDismiss")}
+                        {overlay.message?.review
+                          ? t("dailyChallengeCompleteCta")
+                          : t("focusDigestDismiss")}
                       </Text>
                     </TouchableOpacity>
+                    {!overlay.message?.review && (
                     <TouchableOpacity
                       style={[
                         styles.focusDigestPrimary,
@@ -89126,6 +90422,7 @@ useEffect(() => {
                         {t("focusDigestButton")}
                       </Text>
                     </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -90922,6 +92219,426 @@ const styles = StyleSheet.create({
   archiveSection: {
     marginTop: 8,
   },
+  temptationSeriesProgressCard: {
+    marginTop: 14,
+    marginBottom: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    gap: 10,
+    overflow: "hidden",
+  },
+  temptationSeriesClaimedCard: {
+    minHeight: 72,
+    marginTop: 14,
+    marginBottom: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  temptationSeriesClaimedStatus: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationSeriesClaimedCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  temptationSeriesClaimedTitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
+  },
+  temptationSeriesClaimedMeta: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+    marginTop: 1,
+  },
+  temptationSeriesClaimedReward: {
+    width: 54,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationSeriesClaimedChest: {
+    width: 42,
+    height: 34,
+  },
+  temptationSeriesClaimedAmountRow: {
+    minHeight: 16,
+    marginTop: -4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+  },
+  temptationSeriesClaimedCoin: {
+    width: 14,
+    height: 14,
+  },
+  temptationSeriesClaimedAmount: {
+    ...createCtaText({ fontSize: 11 }),
+    fontVariant: ["tabular-nums"],
+  },
+  temptationSeriesProgressHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  temptationSeriesProgressCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  temptationSeriesProgressTitle: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
+  },
+  temptationSeriesProgressSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "500" }),
+    marginTop: 4,
+  },
+  temptationSeriesChestCompact: {
+    width: 62,
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationSeriesChestCompactImage: {
+    width: 52,
+    height: 46,
+  },
+  temptationSeriesChestAmountRow: {
+    minHeight: 18,
+    marginTop: -5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  temptationSeriesChestCoin: {
+    width: 16,
+    height: 16,
+  },
+  temptationSeriesChestAmount: {
+    ...createCtaText({ fontSize: 12 }),
+    fontVariant: ["tabular-nums"],
+  },
+  temptationSeriesProgressMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  temptationSeriesProgressCount: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+    fontVariant: ["tabular-nums"],
+  },
+  temptationSeriesProgressBalance: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    flexShrink: 1,
+    textAlign: "right",
+  },
+  temptationSeriesProgressTrack: {
+    height: 7,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+  temptationSeriesProgressFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  temptationSeriesRemainingText: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+  },
+  temptationSeriesOpenButton: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    marginTop: 2,
+  },
+  temptationSeriesOpenButtonText: {
+    ...createCtaText({ fontSize: 14 }),
+    color: "#2C210A",
+  },
+  feedTemptationSectionHeader: {
+    marginTop: 22,
+    marginBottom: 10,
+    gap: 4,
+  },
+  feedTemptationSectionTitleRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  feedTemptationSectionTitle: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
+    flexShrink: 1,
+  },
+  feedTemptationSectionCount: {
+    minWidth: 28,
+    minHeight: 24,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  feedTemptationSectionCountText: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "800" }),
+    fontVariant: ["tabular-nums"],
+  },
+  feedTemptationSectionHint: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "600" }),
+    maxWidth: 330,
+  },
+  temptationCheckedTodayBadge: {
+    alignSelf: "flex-start",
+    minHeight: 28,
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  temptationCheckedTodayBadgeText: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "800" }),
+  },
+  temptationSeriesSheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(4,8,20,0.56)",
+    padding: 12,
+  },
+  temptationSeriesSheet: {
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 18,
+    shadowColor: "#000000",
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 18,
+  },
+  temptationSeriesSheetHandle: {
+    alignSelf: "center",
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    marginBottom: 16,
+  },
+  temptationSeriesSheetTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 26, fontWeight: "800" }),
+    marginBottom: 16,
+  },
+  temptationSeriesSheetAction: {
+    minHeight: 52,
+    justifyContent: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  temptationSeriesSheetActionText: {
+    ...createBodyText({ fontSize: 16, lineHeight: 21, fontWeight: "700" }),
+  },
+  temptationSeriesSheetCancel: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  temptationSeriesSheetCancelText: {
+    ...createCtaText({ fontSize: 14 }),
+  },
+  temptationSeriesCompletionBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(3,7,18,0.82)",
+    paddingHorizontal: 16,
+    paddingVertical: 22,
+    overflow: "hidden",
+  },
+  temptationSeriesCompletionAmbientGlow: {
+    position: "absolute",
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+  },
+  temptationSeriesCompletionCard: {
+    width: "100%",
+    maxWidth: 420,
+    maxHeight: "94%",
+    borderRadius: 28,
+    borderWidth: 1,
+    overflow: "hidden",
+    shadowOpacity: 0.34,
+    shadowRadius: 34,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 24,
+  },
+  temptationSeriesCompletionClose: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 4,
+  },
+  temptationSeriesCompletionScroll: {
+    alignSelf: "stretch",
+  },
+  temptationSeriesCompletionContent: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 18,
+    alignItems: "center",
+  },
+  temptationSeriesCompletionEyebrow: {
+    minHeight: 34,
+    maxWidth: "78%",
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  temptationSeriesCompletionEyebrowText: {
+    ...createCtaText({ fontSize: 12 }),
+    flexShrink: 1,
+  },
+  temptationSeriesCompletionHero: {
+    width: 250,
+    height: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  temptationSeriesCompletionHeroHalo: {
+    position: "absolute",
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+    borderWidth: 2,
+  },
+  temptationSeriesCompletionChestImage: {
+    width: 156,
+    height: 138,
+  },
+  temptationSeriesCompletionMascot: {
+    position: "absolute",
+    width: 64,
+    height: 64,
+    right: 8,
+    bottom: 3,
+  },
+  temptationSeriesCompletionTitle: {
+    ...createBodyText({ fontSize: 27, lineHeight: 32, fontWeight: "900" }),
+    textAlign: "center",
+    letterSpacing: -0.5,
+  },
+  temptationSeriesRewardPanel: {
+    alignSelf: "stretch",
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  temptationSeriesRewardAmount: {
+    ...createBodyText({ fontSize: 38, lineHeight: 42, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -1.2,
+  },
+  temptationSeriesRewardValue: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  temptationSeriesRewardCoin: {
+    width: 38,
+    height: 38,
+  },
+  temptationSeriesReadyProgress: {
+    ...createBodyText({ fontSize: 22, lineHeight: 28, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+  },
+  temptationSeriesCompletionReward: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
+    textAlign: "center",
+    marginTop: 5,
+  },
+  temptationSeriesSummaryList: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 11,
+    gap: 8,
+  },
+  temptationSeriesSummaryItem: {
+    width: "48.5%",
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  temptationSeriesSummarySymbol: {
+    ...createBodyText({ fontSize: 20, lineHeight: 24, fontWeight: "900" }),
+    width: 22,
+    textAlign: "center",
+  },
+  temptationSeriesSummaryText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    flex: 1,
+  },
+  temptationSeriesRhythmChip: {
+    minHeight: 38,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 8,
+  },
+  temptationSeriesRhythmIcon: {
+    fontSize: 16,
+  },
+  temptationSeriesRhythmChipText: {
+    ...createCtaText({ fontSize: 13 }),
+  },
+  temptationSeriesCompletionPrimary: {
+    alignSelf: "stretch",
+    minHeight: 54,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    marginTop: 14,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 8,
+  },
+  temptationSeriesCompletionPrimaryText: {
+    ...createCtaText({ fontSize: 15 }),
+  },
   tycoonAutosaveBackdrop: {
     flex: 1,
     backgroundColor: "rgba(3,8,20,0.62)",
@@ -91306,11 +93023,6 @@ const styles = StyleSheet.create({
     overflow: "visible",
     zIndex: 7,
   },
-  feedCategoryToolbarCoachExpanded: {
-    marginBottom: 176,
-    zIndex: 40,
-    elevation: 20,
-  },
   feedCategoryRail: {
     flex: 1,
     minWidth: 0,
@@ -91422,85 +93134,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "visible",
     zIndex: 18,
-  },
-  feedTemptationAddWrapExpanded: {
-    zIndex: 42,
-    elevation: 22,
-  },
-  feedTemptationAddHalo: {
-    position: "absolute",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    opacity: 0,
-  },
-  feedTemptationAddHaloVisible: {
-    opacity: 1,
-  },
-  feedTemptationAddButtonFocused: {
-    shadowColor: "#FFCE73",
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 8,
-  },
-  feedTemptationAddCoachBubble: {
-    position: "absolute",
-    width: Math.min(SCREEN_WIDTH - 32, 318),
-    right: -4,
-    top: UI_TOUCH_TARGET.current + UI_SPACING.xs,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 12,
-    zIndex: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  feedTemptationAddCoachTitle: {
-    ...createBodyText({ fontSize: 14, fontWeight: "700", lineHeight: 18 }),
-  },
-  feedTemptationAddCoachDesc: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "500" }),
-    marginTop: 6,
-  },
-  feedTemptationAddCoachActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 10,
-  },
-  feedTemptationAddCoachGhost: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  feedTemptationAddCoachGhostText: {
-    ...createSecondaryText({ fontSize: 12, fontWeight: "600" }),
-  },
-  feedTemptationAddCoachPrimary: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  feedTemptationAddCoachPrimaryText: {
-    ...createCtaText({ fontSize: 12 }),
-  },
-  feedTemptationAddCoachArrow: {
-    position: "absolute",
-    top: -7,
-    right: 16,
-    width: 14,
-    height: 14,
-    transform: [{ rotate: "45deg" }],
-    borderTopWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
   },
   feedTailPlaceholderWrap: {
     marginTop: 14,
@@ -91630,7 +93263,7 @@ const styles = StyleSheet.create({
   },
   moodGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
-    opacity: 0.55,
+    opacity: MOOD_GRADIENT_OVERLAY_OPACITY,
     transform: [{ rotate: "-10deg" }],
   },
   heroMoodGradient: {
@@ -91659,10 +93292,9 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
   },
   heroLevelBadge: {
-    maxWidth: IS_EXTRA_COMPACT_DEVICE ? 58 : 68,
-    minWidth: 0,
-    flexShrink: 1,
-    paddingHorizontal: IS_EXTRA_COMPACT_DEVICE ? 5 : 7,
+    width: IS_EXTRA_COMPACT_DEVICE ? 48 : 52,
+    flexShrink: 0,
+    paddingHorizontal: IS_EXTRA_COMPACT_DEVICE ? 4 : 5,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
@@ -91740,6 +93372,92 @@ const styles = StyleSheet.create({
   },
   moodDetailsButtonText: {
     ...createCtaText({ textTransform: "uppercase" }),
+  },
+  potentialDetailsCard: {
+    width: "100%",
+    maxHeight: "84%",
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+  },
+  potentialDetailsScroll: {
+    flexGrow: 0,
+  },
+  potentialDetailsContent: {
+    gap: 16,
+    paddingBottom: 4,
+  },
+  potentialDetailsTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 22,
+    lineHeight: 27,
+    textAlign: "left",
+  },
+  potentialDetailsIntro: {
+    ...createBodyText({ fontSize: 15, lineHeight: 21, textAlign: "left" }),
+  },
+  potentialDetailsSummary: {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  potentialDetailsSummaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  potentialDetailsSummaryLabel: {
+    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+    lineHeight: 16,
+    flex: 1,
+    minWidth: 0,
+  },
+  potentialDetailsPeriod: {
+    ...createBodyText({ fontSize: 11, fontWeight: "700" }),
+    lineHeight: 15,
+    flexShrink: 0,
+  },
+  potentialDetailsValue: {
+    ...createBodyText({ fontSize: 32, fontWeight: "900" }),
+    fontFamily: INTER_FONTS.extraBold,
+    lineHeight: 38,
+    marginTop: 4,
+    includeFontPadding: false,
+  },
+  potentialDetailsBasis: {
+    ...createSecondaryText({ fontSize: 12 }),
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  potentialDetailsSection: {
+    gap: 5,
+  },
+  potentialDetailsSectionTitle: {
+    ...createBodyText({ fontSize: 14, fontWeight: "800" }),
+    lineHeight: 18,
+  },
+  potentialDetailsSectionBody: {
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+  },
+  potentialDetailsNote: {
+    ...createBodyText({ fontSize: 13, lineHeight: 19 }),
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  potentialDetailsButton: {
+    marginTop: 16,
+    minHeight: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  potentialDetailsButtonText: {
+    ...createCtaText({ fontSize: 15, textTransform: "none" }),
+    lineHeight: 20,
   },
   budgetManualPromptBackdrop: {
     flex: 1,
@@ -91967,6 +93685,11 @@ const styles = StyleSheet.create({
   almiMascotImage: {
     width: "120%",
     height: "120%",
+  },
+  almiMascotFallbackImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
   },
   almiMascotDirtyLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -93195,7 +94918,7 @@ const styles = StyleSheet.create({
   tamagotchiCardContent: {
     flexGrow: 1,
     paddingHorizontal: UI_SPACING.md,
-    gap: UI_SPACING.xs,
+    gap: UI_SPACING.sm,
   },
   tamagotchiCardScroll: {
     flex: 1,
@@ -93436,12 +95159,12 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 15 }),
   },
   tamagotchiStatLabel: {
-    ...createBodyText({ fontSize: 12, lineHeight: 15 }),
+    ...createBodyText({ fontSize: 11, lineHeight: 14 }),
     fontWeight: "600",
     minWidth: 0,
   },
   tamagotchiStatValue: {
-    ...createBodyText({ fontSize: 22, lineHeight: 25, fontWeight: "800" }),
+    ...createBodyText({ fontSize: 18, lineHeight: 21, fontWeight: "800" }),
     flexShrink: 1,
   },
   tamagotchiProgress: {
@@ -93454,20 +95177,20 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tamagotchiHourlyRewardCard: {
-    width: "96%",
+    width: "100%",
     alignSelf: "center",
-    minHeight: 80,
+    minHeight: 64,
     borderWidth: 1,
     borderRadius: UI_RADIUS.card,
-    paddingHorizontal: UI_SPACING.sm,
+    paddingHorizontal: UI_SPACING.xs,
     paddingVertical: UI_SPACING.xs,
-    gap: UI_SPACING.xs,
+    gap: UI_SPACING.xxs,
     shadowOpacity: 0,
     elevation: 0,
   },
   tamagotchiHourlyRewardMainRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: UI_SPACING.xs,
     minWidth: 0,
   },
@@ -93478,8 +95201,8 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   tamagotchiHourlyRewardCoinWrap: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -93487,8 +95210,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   tamagotchiHourlyRewardCoin: {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     resizeMode: "contain",
   },
   tamagotchiHourlyRewardTopRow: {
@@ -93500,7 +95223,7 @@ const styles = StyleSheet.create({
   tamagotchiHourlyRewardBody: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 1,
     justifyContent: "center",
   },
   tamagotchiHourlyRewardEyebrow: {
@@ -93516,14 +95239,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   tamagotchiHourlyRewardTitle: {
-    ...createCtaText({ fontSize: 15 }),
-    lineHeight: 18,
+    ...createCtaText({ fontSize: 14 }),
+    lineHeight: 17,
     flex: 1,
     minWidth: 0,
   },
   tamagotchiHourlyRewardAmount: {
-    ...createCtaText({ fontSize: 24 }),
-    lineHeight: 27,
+    ...createCtaText({ fontSize: 18 }),
+    lineHeight: 21,
     flexShrink: 0,
   },
   tamagotchiHourlyRewardAmountCaption: {
@@ -93532,13 +95255,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tamagotchiHourlyRewardAmountPanel: {
-    minWidth: 72,
-    maxWidth: 92,
-    minHeight: 70,
-    alignSelf: "stretch",
-    borderRadius: 0,
-    borderWidth: 0,
-    borderLeftWidth: 1,
+    minWidth: 52,
+    maxWidth: 64,
+    minHeight: 42,
+    borderRadius: UI_RADIUS.control,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: scaleTamagotchiMetric(8, 6),
@@ -93547,8 +95268,8 @@ const styles = StyleSheet.create({
   },
   tamagotchiHourlyRewardMessage: {
     ...createBodyText({
-      fontSize: 12,
-      lineHeight: 15,
+      fontSize: 11,
+      lineHeight: 14,
     }),
   },
   tamagotchiHourlyRewardProgress: {
@@ -93563,19 +95284,23 @@ const styles = StyleSheet.create({
   },
   tamagotchiHourlyRewardClaimButton: {
     width: "100%",
-    minHeight: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
     borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: scaleTamagotchiMetric(7, 6),
-    paddingVertical: scaleTamagotchiMetric(8, 6),
+    paddingVertical: 0,
     shadowOpacity: 0,
     elevation: 0,
   },
   tamagotchiHourlyRewardClaimText: {
     ...createCtaText({ fontSize: 15 }),
+    lineHeight: 18,
     color: "#FFFFFF",
     textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+    transform: [{ translateY: -1 }],
   },
   tamagotchiActions: {
     flexDirection: "row",
@@ -93614,55 +95339,46 @@ const styles = StyleSheet.create({
   },
   tamagotchiPreview: {
     width: "100%",
-    alignItems: "center",
-    justifyContent: "flex-end",
+    flexDirection: "row",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
     borderWidth: 0,
     borderRadius: UI_RADIUS.card,
-    minHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 136 : 148, 132),
-    paddingTop: scaleTamagotchiMetric(42, 36),
-    paddingBottom: scaleTamagotchiMetric(5, 4),
+    minHeight: scaleTamagotchiMetric(IS_SHORT_DEVICE ? 142 : 152, 136),
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.xs,
     marginBottom: 0,
     overflow: "hidden",
     shadowOpacity: 0,
     elevation: 0,
   },
-  tamagotchiPreviewAura: {
-    position: "absolute",
-    top: -scaleTamagotchiMetric(20, 12),
-    width: scaleTamagotchiMetric(148, 112),
-    height: scaleTamagotchiMetric(104, 80),
-    borderRadius: scaleTamagotchiMetric(96, 68),
-  },
-  tamagotchiPreviewAuraAndroid: {
-    top: -scaleTamagotchiMetric(12, 8),
-    width: scaleTamagotchiMetric(122, 94),
-    height: scaleTamagotchiMetric(88, 68),
-    borderRadius: scaleTamagotchiMetric(76, 56),
-    left: "50%",
-    marginLeft: -scaleTamagotchiMetric(94, 70),
-  },
-  tamagotchiPreviewAuraSecondary: {
-    position: "absolute",
-    bottom: -scaleTamagotchiMetric(18, 12),
-    right: -scaleTamagotchiMetric(14, 9),
-    width: scaleTamagotchiMetric(98, 74),
-    height: scaleTamagotchiMetric(70, 54),
-    borderRadius: scaleTamagotchiMetric(80, 56),
-  },
-  tamagotchiPreviewAuraSecondaryAndroid: {
-    bottom: -scaleTamagotchiMetric(18, 12),
-    right: -scaleTamagotchiMetric(8, 4),
-    width: scaleTamagotchiMetric(92, 68),
-    height: scaleTamagotchiMetric(68, 50),
-    borderRadius: scaleTamagotchiMetric(46, 34),
+  tamagotchiPreviewTall: {
+    minHeight: 176,
+    paddingVertical: UI_SPACING.sm,
   },
   tamagotchiMascotWrap: {
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    width: "62%",
-    alignSelf: "center",
-    minHeight: scaleTamagotchiMetric(102, 92),
+    width: "46%",
+    alignSelf: "stretch",
+    minHeight: scaleTamagotchiMetric(118, 102),
+    borderWidth: 1,
+    borderRadius: UI_RADIUS.control,
+    overflow: "hidden",
+    zIndex: 4,
+  },
+  tamagotchiMascotWrapTall: {
+    minHeight: 150,
+  },
+  tamagotchiMascotDirtLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+  },
+  tamagotchiMascotDirtVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#6C5438",
   },
   tamagotchiMascotWrapCleanHighlight: {
     borderWidth: 2,
@@ -93679,48 +95395,40 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   tamagotchiMascotLarge: {
-    width: scaleTamagotchiMetric(108, 96),
-    height: scaleTamagotchiMetric(108, 96),
+    width: scaleTamagotchiMetric(126, 108),
+    height: scaleTamagotchiMetric(126, 108),
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    zIndex: 2,
+  },
+  tamagotchiHeroCopy: {
+    width: "50%",
+    minWidth: 0,
+    justifyContent: "center",
+    alignItems: "stretch",
+    gap: UI_SPACING.xs,
+    alignSelf: "stretch",
+    zIndex: 8,
   },
   tamagotchiHeroLogo: {
-    position: "absolute",
-    top: scaleTamagotchiMetric(14, 10),
-    left: scaleTamagotchiMetric(26, 18),
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 28,
-    lineHeight: 32,
-    zIndex: 12,
+    fontSize: 24,
+    lineHeight: 28,
+    textAlign: "center",
+    width: "100%",
   },
   tamagotchiHeroSpeechBubble: {
-    position: "absolute",
-    left: scaleTamagotchiMetric(16, 10),
-    top: scaleTamagotchiMetric(48, 42),
-    width: scaleTamagotchiMetric(132, 108),
-    minHeight: scaleTamagotchiMetric(66, 58),
-    borderRadius: UI_RADIUS.card,
-    borderWidth: 0,
-    paddingHorizontal: scaleTamagotchiMetric(13, 10),
-    paddingVertical: scaleTamagotchiMetric(10, 8),
+    width: "100%",
+    minHeight: scaleTamagotchiMetric(58, 52),
+    borderRadius: UI_RADIUS.control,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: UI_SPACING.xs,
+    paddingVertical: UI_SPACING.xs,
     justifyContent: "center",
-    zIndex: 16,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  tamagotchiHeroSpeechTail: {
-    position: "absolute",
-    right: -scaleTamagotchiMetric(10, 7),
-    top: "47%",
-    width: scaleTamagotchiMetric(20, 15),
-    height: scaleTamagotchiMetric(20, 15),
-    borderRightWidth: 1,
-    borderTopWidth: 1,
-    borderRadius: scaleTamagotchiMetric(5, 4),
-    transform: [{ rotate: "45deg" }],
-    opacity: 0,
   },
   tamagotchiHeroSpeechText: {
-    ...createCtaText({ fontSize: 15, textAlign: "left" }),
-    lineHeight: 20,
+    ...createCtaText({ fontSize: 14, textAlign: "center" }),
+    lineHeight: 18,
     width: "100%",
   },
   tamagotchiToyOrbit: {
@@ -93816,17 +95524,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: UI_RADIUS.card,
     overflow: "hidden",
-    minHeight: 72,
+    minHeight: 58,
   },
   tamagotchiStatCard: {
     flex: 1,
     minWidth: 0,
     borderWidth: 0,
     borderRadius: 0,
-    paddingHorizontal: scaleTamagotchiMetric(8, 6),
-    paddingVertical: UI_SPACING.xxs,
-    gap: 2,
-    minHeight: 72,
+    paddingHorizontal: scaleTamagotchiMetric(7, 5),
+    paddingVertical: scaleTamagotchiMetric(6, 4),
+    gap: 1,
+    minHeight: 58,
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -93848,15 +95556,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   tamagotchiStatIconWrap: {
-    width: 28,
-    height: 28,
+    width: 23,
+    height: 23,
     borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   tamagotchiStatIcon: {
-    fontSize: 19,
+    fontSize: 16,
   },
   tamagotchiStatCopy: {
     flex: 1,
@@ -93864,47 +95572,64 @@ const styles = StyleSheet.create({
   },
   tamagotchiControlPanel: {
     flexGrow: 0,
-    borderWidth: 1,
-    borderRadius: UI_RADIUS.card,
-    padding: UI_SPACING.xs,
-    gap: UI_SPACING.xxs,
-    overflow: "hidden",
+    gap: UI_SPACING.xs,
+    overflow: "visible",
+  },
+  tamagotchiControlPanelTall: {
+    minHeight: 314,
   },
   tamagotchiControlHeader: {
-    gap: UI_SPACING.xxs,
+    gap: 0,
   },
   tamagotchiControlTitleWrap: {
     minWidth: 0,
   },
   tamagotchiTabsRow: {
     flexDirection: "row",
-    gap: UI_SPACING.xxs,
+    gap: UI_SPACING.xs,
     marginTop: 0,
     minWidth: 0,
     borderWidth: 1,
     borderRadius: UI_RADIUS.control,
-    padding: 2,
+    padding: UI_SPACING.xxs,
+  },
+  tamagotchiTabsRowTall: {
+    minHeight: 58,
   },
   tamagotchiTabButton: {
     flex: 1,
     minHeight: UI_TOUCH_TARGET.current,
-    borderWidth: 0,
+    borderWidth: 1,
     borderRadius: UI_RADIUS.control,
     paddingVertical: UI_SPACING.xxs,
     paddingHorizontal: scaleTamagotchiMetric(4, 3),
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0,
+    gap: scaleTamagotchiMetric(3, 2),
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 0,
+  },
+  tamagotchiTabButtonTall: {
+    minHeight: 50,
   },
   tamagotchiTabButtonText: {
     ...createCtaText({ fontSize: 15 }),
     lineHeight: 18,
   },
+  tamagotchiTabSelectionMark: {
+    width: 22,
+    height: 3,
+    borderRadius: UI_RADIUS.pill,
+  },
   tamagotchiTabContentWrap: {
     flexGrow: 0,
     marginTop: 0,
     overflow: "visible",
+  },
+  tamagotchiTabContentWrapTall: {
+    flexGrow: 1,
   },
   tamagotchiOptionScroller: {
     flexGrow: 0,
@@ -93917,40 +95642,49 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
     paddingBottom: scaleTamagotchiMetric(2, 2),
   },
+  tamagotchiOptionGridTall: {
+    rowGap: UI_SPACING.xs,
+  },
   tamagotchiOptionCard: {
     width: "49.2%",
     minHeight: 78,
     borderWidth: 1,
     borderRadius: UI_RADIUS.card,
     paddingHorizontal: UI_SPACING.xs,
-    paddingVertical: 6,
-    gap: 1,
+    paddingVertical: UI_SPACING.xxs,
+    gap: UI_SPACING.xxs,
     overflow: "hidden",
     shadowOpacity: 0,
     elevation: 0,
   },
+  tamagotchiOptionCardTall: {
+    minHeight: 82,
+    paddingVertical: UI_SPACING.xs,
+  },
   tamagotchiOptionCardTop: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "flex-start",
     gap: scaleTamagotchiMetric(6, 4),
     minHeight: 22,
   },
   tamagotchiOptionEmoji: {
-    fontSize: 19,
+    fontSize: 20,
     flexShrink: 0,
   },
   tamagotchiOptionLabel: {
     ...TYPOGRAPHY.blockTitle,
-    fontSize: 14,
-    lineHeight: 17,
-    width: "100%",
+    fontSize: 15,
+    lineHeight: 18,
+    flex: 1,
     minWidth: 0,
   },
   tamagotchiOptionTitleStack: {
     flex: 1,
     minWidth: 0,
-    gap: scaleTamagotchiMetric(2, 1),
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scaleTamagotchiMetric(4, 3),
   },
   tamagotchiOptionSub: {
     ...createBodyText({ fontSize: 12, lineHeight: 15 }),
@@ -93958,22 +95692,29 @@ const styles = StyleSheet.create({
   tamagotchiOptionMetaRow: {
     marginTop: "auto",
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: scaleTamagotchiMetric(4, 3),
     minHeight: scaleTamagotchiMetric(16, 14),
   },
-  tamagotchiOptionBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingHorizontal: scaleTamagotchiMetric(4.5, 3.5),
-    paddingVertical: scaleTamagotchiMetric(1, 0.5),
-    maxWidth: "100%",
+  tamagotchiOptionEffectRow: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: scaleTamagotchiMetric(6, 4),
   },
-  tamagotchiOptionBadgeText: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
-    letterSpacing: 0.35,
-    lineHeight: 13,
+  tamagotchiOptionEffectColumn: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 1,
+  },
+  tamagotchiOptionBoost: {
+    ...createCtaText({ fontSize: 12 }),
+    lineHeight: 15,
+  },
+  tamagotchiOptionUses: {
+    ...createBodyText({ fontSize: 11, lineHeight: 14 }),
   },
   tamagotchiFoodCost: {
     flexDirection: "row",
@@ -94407,20 +96148,42 @@ const styles = StyleSheet.create({
   goalJarPotentialPill: {
     alignSelf: "flex-start",
     maxWidth: "72%",
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 10,
+    marginTop: 5,
   },
   goalJarPotentialPillCollapsed: {
-    alignSelf: "flex-start",
+    alignSelf: "stretch",
+    width: "100%",
     maxWidth: "100%",
-    paddingHorizontal: 12,
+    minHeight: 32,
+    justifyContent: "center",
   },
-  goalJarPotentialText: {
-    ...createBodyText({ fontSize: 13, fontWeight: "500", textAlign: "left" }),
-    lineHeight: 17,
+  goalJarPotentialCompactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: UI_SPACING.xxs,
+  },
+  goalJarPotentialCompactRowRtl: {
+    flexDirection: "row-reverse",
+  },
+  goalJarPotentialCompactLabel: {
+    ...createSecondaryText({ fontSize: 11, fontWeight: "600", textAlign: "left" }),
+    lineHeight: 15,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  goalJarPotentialValue: {
+    ...createBodyText({ fontSize: 16, fontWeight: "800", textAlign: "right" }),
+    fontFamily: INTER_FONTS.extraBold,
+    lineHeight: 20,
+    includeFontPadding: false,
+    flexShrink: 1,
+    maxWidth: "48%",
+  },
+  goalJarPotentialStatus: {
+    ...createSecondaryText({ fontSize: 10, textAlign: "left" }),
+    lineHeight: 14,
+    marginTop: 3,
   },
   heroBudgetCard: {
     gap: 12,
@@ -95611,22 +97374,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 12,
   },
-  heroPotentialExpandedRow: {
+  heroPotentialHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-  },
-  heroPotentialMetricColumn: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "flex-start",
-  },
-  heroPotentialControlsColumn: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: "stretch",
-    gap: 6,
+    gap: 12,
   },
   heroPotentialBody: {
     ...createBodyText({ fontSize: 14 }),
@@ -95665,9 +97417,19 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 13, fontWeight: "700" }),
     lineHeight: 17,
     textAlign: "left",
+    flex: 1,
+    minWidth: 0,
+  },
+  heroPotentialValueRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 12,
+    marginTop: 10,
   },
   heroPotentialValueWrap: {
-    width: "100%",
+    flex: 1,
+    minWidth: 0,
     alignItems: "flex-start",
     justifyContent: "center",
     paddingHorizontal: 0,
@@ -95681,6 +97443,19 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     flexShrink: 1,
   },
+  heroPotentialPeriodText: {
+    ...createSecondaryText({ fontSize: 11, fontWeight: "700" }),
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  heroPotentialExplainCta: {
+    ...createCtaText({ fontSize: 11, textTransform: "none" }),
+    lineHeight: 15,
+    textAlign: "right",
+    textDecorationLine: "underline",
+    paddingBottom: 2,
+    flexShrink: 0,
+  },
   heroPotentialRtlCentered: {
     writingDirection: "rtl",
     textAlign: "center",
@@ -95690,12 +97465,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   heroPotentialSegmentedControl: {
-    width: "100%",
-    maxWidth: 220,
-    alignSelf: "stretch",
+    width: 174,
+    maxWidth: "52%",
+    alignSelf: "center",
     marginTop: 0,
     borderRadius: 12,
-    minHeight: 30,
+    minHeight: 32,
   },
   heroPotentialSegmentedControlCompact: {
     width: "74%",
@@ -95705,7 +97480,7 @@ const styles = StyleSheet.create({
     minHeight: 27,
   },
   heroPotentialSegmentedOption: {
-    paddingVertical: 5,
+    paddingVertical: 6,
     paddingHorizontal: 3,
   },
   heroPotentialSegmentedOptionCompact: {
@@ -95713,13 +97488,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   heroPotentialSegmentedText: {
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.06,
     textTransform: "none",
   },
   heroPotentialSegmentedTextActive: {
-    color: "#5D4014",
+    fontWeight: "900",
   },
   heroPotentialPeriodBadge: {
     borderWidth: 1,
@@ -95746,10 +97521,10 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 12 }),
   },
   heroPotentialStatus: {
-    ...createSecondaryText({ fontSize: 11 }),
-    lineHeight: 15,
-    textAlign: "center",
-    marginTop: 2,
+    ...createSecondaryText({ fontSize: 12 }),
+    lineHeight: 16,
+    textAlign: "left",
+    marginTop: 8,
   },
   heroPotentialDelta: {
     ...createCtaText({ fontSize: 13 }),
@@ -95890,10 +97665,10 @@ const styles = StyleSheet.create({
   },
   dailySummaryBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
+    justifyContent: "flex-end",
     alignItems: "center",
-    padding: 24,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingTop: UI_SPACING.lg,
   },
   dailyChallengeBackdrop: {
     flex: 1,
@@ -95904,185 +97679,279 @@ const styles = StyleSheet.create({
   },
   dailySummaryCard: {
     width: "100%",
-    maxWidth: 360,
-    maxHeight: Math.round(SCREEN_HEIGHT * 0.86),
-    borderRadius: 28,
-    padding: 24,
-    borderWidth: 1,
+    maxWidth: 440,
+    borderRadius: UI_RADIUS.sheet,
     overflow: "hidden",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 28,
+    elevation: 12,
   },
-  dailySummaryGlow: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.12,
+  dailySummaryHandle: {
+    height: UI_SPACING.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dailySummaryHandleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: UI_RADIUS.pill,
+  },
+  dailySummaryScroll: {
+    width: "100%",
+    flexShrink: 1,
   },
   dailySummaryCardContent: {
-    gap: 18,
-    paddingBottom: 6,
+    gap: UI_SPACING.md,
+    paddingHorizontal: UI_SPACING.lg,
+    paddingBottom: UI_SPACING.lg,
   },
   dailySummaryHeroRow: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "flex-start",
+    gap: UI_SPACING.sm,
   },
   dailySummaryHeroText: {
     flex: 1,
+    minWidth: 0,
   },
   dailySummaryIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
   },
-  dailySummaryIconText: {
-    fontSize: 28,
+  dailySummaryIconBars: {
+    height: 22,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 3,
   },
-  dailySummaryBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginBottom: 6,
+  dailySummaryIconBar: {
+    width: 4,
+    borderRadius: 2,
   },
-  dailySummaryBadgeText: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+  dailySummaryIconBarShort: {
+    height: 9,
+  },
+  dailySummaryIconBarMedium: {
+    height: 15,
+  },
+  dailySummaryIconBarTall: {
+    height: 22,
   },
   dailySummaryTitle: {
-    ...TYPOGRAPHY.blockTitle,
+    ...createBodyText({ fontSize: 24, lineHeight: 29, fontWeight: "900" }),
   },
   dailySummarySubtitle: {
-    ...createBodyText({ fontSize: 16, marginTop: 4 }),
+    ...createBodyText({ fontSize: 13, lineHeight: 18, marginTop: 3 }),
+  },
+  dailySummaryTimerRow: {
+    minHeight: 20,
+    marginTop: UI_SPACING.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  dailySummaryTimerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   dailySummaryTimer: {
-    ...createSecondaryText({ fontSize: 12, marginTop: 6 }),
-    fontWeight: "700",
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
     fontVariant: ["tabular-nums"],
   },
+  dailySummaryClose: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dailySummaryCloseGlyph: {
+    width: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dailySummaryCloseStroke: {
+    position: "absolute",
+    width: 16,
+    height: 2,
+    borderRadius: 1,
+  },
+  dailySummaryCloseStrokeForward: {
+    transform: [{ rotate: "45deg" }],
+  },
+  dailySummaryCloseStrokeBackward: {
+    transform: [{ rotate: "-45deg" }],
+  },
+  dailySummaryPressablePressed: {
+    opacity: 0.9,
+    transform: [{ scale: UI_MOTION.pressScale }],
+  },
   dailySummaryHighlight: {
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.md,
+  },
+  dailySummaryHighlightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
   },
   dailySummaryHighlightLabel: {
-    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  dailySummaryCountPill: {
+    minHeight: 24,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: UI_RADIUS.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  dailySummaryCountPillText: {
+    ...createCtaText({ fontSize: 11, lineHeight: 14, fontWeight: "800" }),
   },
   dailySummaryHighlightValue: {
-    fontSize: 32,
-    fontWeight: "800",
-    marginTop: 8,
+    ...createBodyText({ fontSize: 36, lineHeight: 41, fontWeight: "900" }),
+    marginTop: UI_SPACING.xs,
+    fontVariant: ["tabular-nums"],
   },
   dailySummaryHighlightSub: {
-    ...createBodyText({ fontSize: 14, marginTop: 6 }),
+    ...createBodyText({ fontSize: 13, lineHeight: 18, marginTop: 3 }),
+  },
+  dailySummaryActivityTrack: {
+    height: 6,
+    marginTop: UI_SPACING.sm,
+    borderRadius: UI_RADIUS.pill,
+    overflow: "hidden",
+  },
+  dailySummaryActivitySaved: {
+    height: "100%",
+    borderRadius: UI_RADIUS.pill,
   },
   dailySummaryStatsRow: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "stretch",
+    gap: UI_SPACING.xs,
   },
   dailySummaryStatCard: {
     flex: 1,
-    borderRadius: 20,
-    paddingVertical: 16,
+    minWidth: 0,
+    minHeight: 116,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.sm,
     borderWidth: 1,
-    alignItems: "center",
-  },
-  dailySummaryStatCardActive: {
-    transform: [{ translateY: -1 }],
+    alignItems: "flex-start",
+    justifyContent: "space-between",
   },
   dailySummaryStatValue: {
-    fontSize: 26,
-    fontWeight: "800",
+    ...createBodyText({ fontSize: 28, lineHeight: 32, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
   },
   dailySummaryStatLabel: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase", marginTop: 8 }),
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+  },
+  dailySummaryStatAmount: {
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "800" }),
+    width: "100%",
   },
   dailySummaryBreakdownCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.md,
+    gap: UI_SPACING.xs,
   },
   dailySummaryBreakdownHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: UI_SPACING.xs,
   },
   dailySummaryBreakdownTitle: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "800" }),
+    flex: 1,
+    minWidth: 0,
   },
   dailySummaryBreakdownClose: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 1,
+    width: 36,
+    height: 36,
+    borderRadius: UI_RADIUS.control,
     alignItems: "center",
     justifyContent: "center",
-  },
-  dailySummaryBreakdownCloseText: {
-    ...createCtaText({ fontSize: 11 }),
-  },
-  dailySummaryBreakdownList: {
-    maxHeight: 152,
+    flexShrink: 0,
   },
   dailySummaryBreakdownListContent: {
     gap: 0,
-    paddingRight: 2,
   },
   dailySummaryBreakdownItem: {
-    paddingVertical: 8,
+    paddingVertical: UI_SPACING.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   dailySummaryBreakdownItemLast: {
     borderBottomWidth: 0,
   },
   dailySummaryBreakdownItemTitle: {
-    ...createBodyText({ fontSize: 13, fontWeight: "600" }),
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
   },
   dailySummaryBreakdownItemMeta: {
-    ...createSecondaryText({ fontSize: 12, marginTop: 3 }),
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, marginTop: 2 }),
   },
   dailySummaryBreakdownEmpty: {
-    ...createSecondaryText({ fontSize: 13 }),
+    ...createSecondaryText({ fontSize: 13, lineHeight: 18 }),
     textAlign: "center",
-    paddingVertical: 6,
+    paddingVertical: UI_SPACING.xs,
   },
   dailySummaryEmptyCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.sm,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: UI_SPACING.sm,
   },
   dailySummaryEmptyCat: {
-    width: 76,
-    height: 76,
+    width: 64,
+    height: 64,
+    flexShrink: 0,
+  },
+  dailySummaryEmptyCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
   },
   dailySummaryEmptyText: {
-    ...createBodyText({ fontSize: 14, textAlign: "center" }),
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "800" }),
   },
   dailySummaryEmptyMotivation: {
-    ...createSecondaryText({ fontSize: 13, textAlign: "center" }),
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+  },
+  dailySummaryFooter: {
+    paddingHorizontal: UI_SPACING.lg,
+    paddingTop: UI_SPACING.sm,
+    paddingBottom: UI_SPACING.md,
+    gap: UI_SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   dailySummaryButton: {
-    borderRadius: 18,
-    paddingVertical: 14,
+    minHeight: Math.max(48, UI_TOUCH_TARGET.current),
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.md,
+    paddingVertical: UI_SPACING.sm,
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
   },
   dailySummaryButtonText: {
-    ...createCtaText({ fontSize: 15 }),
-  },
-  dailySummaryButtonIcon: {
-    ...createCtaText({ fontSize: 16 }),
+    ...createCtaText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
   },
   dailySummaryHint: {
-    ...createSecondaryText({ textAlign: "center" }),
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, textAlign: "center" }),
   },
   ratingPromptKeyboardAvoider: {
     flex: 1,
@@ -99842,6 +101711,12 @@ const styles = StyleSheet.create({
     gap: 6,
     flexShrink: 1,
   },
+  progressAnalyticsSummaryMetric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    gap: 1,
+  },
   progressAnalyticsSummaryDivider: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 32,
@@ -99852,6 +101727,10 @@ const styles = StyleSheet.create({
   progressAnalyticsSummaryValue: {
     ...createBodyText({ fontSize: 20, lineHeight: 24, fontWeight: "800" }),
     flexShrink: 1,
+    textAlign: "right",
+  },
+  progressAnalyticsSummaryPeriod: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "700" }),
     textAlign: "right",
   },
   progressAnalyticsSummaryHint: {
@@ -99900,6 +101779,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: UI_SPACING.md,
     flexWrap: "wrap",
+  },
+  progressForecastExplainer: {
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.sm,
+    gap: 7,
+  },
+  progressForecastExplainerHeader: {
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  progressForecastExplainerTitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "800" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  progressForecastPeriodBadge: {
+    minHeight: 24,
+    borderRadius: UI_RADIUS.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  progressForecastPeriodBadgeText: {
+    ...createCtaText({ fontSize: 10, lineHeight: 13 }),
+  },
+  progressForecastExplainerBody: {
+    ...createBodyText({ fontSize: 12, lineHeight: 18 }),
+    opacity: 0.82,
+  },
+  progressForecastExplainerMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  progressForecastExplainerStatus: {
+    ...createBodyText({ fontSize: 11, lineHeight: 15, fontWeight: "800" }),
+    flex: 1,
+    minWidth: 140,
+  },
+  progressForecastExplainerCount: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 14, fontWeight: "700" }),
+    flexShrink: 1,
+  },
+  progressForecastHowSection: {
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    gap: 4,
+  },
+  progressForecastHowTitle: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "800" }),
+  },
+  progressForecastHowBody: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 17 }),
+  },
+  progressForecastCategoryIntro: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 16, fontWeight: "700" }),
+    paddingHorizontal: 2,
+  },
+  progressForecastAccuracySection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 2,
+    paddingTop: UI_SPACING.sm,
+    gap: 4,
   },
   progressAnalyticsScroll: {
     width: "100%",
@@ -100422,6 +102372,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: UI_SPACING.md,
     paddingTop: 8,
     gap: UI_SPACING.sm,
+    maxHeight: IS_SHORT_DEVICE ? "92%" : "94%",
+    overflow: "hidden",
   },
   progressInsightSheetHandle: {
     width: 36,
@@ -100435,6 +102387,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
+    paddingBottom: 2,
   },
   progressPotentialModalTitle: {
     ...createBodyText({ fontSize: 19, lineHeight: 24, fontWeight: "800" }),
@@ -100455,6 +102408,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  progressPotentialModalScroll: {
+    flexShrink: 1,
+  },
+  progressPotentialModalScrollContent: {
+    gap: UI_SPACING.sm,
+  },
   progressPotentialModalStatsRow: {
     flexDirection: "row",
     alignItems: "stretch",
@@ -100462,6 +102421,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: UI_SPACING.sm,
     paddingVertical: 10,
     gap: UI_SPACING.sm,
+    minHeight: 78,
   },
   progressPotentialModalStat: {
     flex: 1,
@@ -100475,16 +102435,53 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
   },
   progressPotentialModalStatValue: {
-    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
+    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "800" }),
+  },
+  progressPotentialModalStatHint: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 14 }),
   },
   progressPotentialModalDelta: {
     ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "700" }),
   },
-  progressPotentialChartWrap: {
-    gap: 6,
+  progressPotentialChartSection: {
     borderRadius: UI_RADIUS.control,
-    paddingTop: 4,
-    paddingBottom: 8,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingTop: UI_SPACING.sm,
+    paddingBottom: 9,
+    gap: 9,
+    overflow: "hidden",
+  },
+  progressPotentialChartHeader: {
+    gap: 2,
+  },
+  progressPotentialChartTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "800" }),
+  },
+  progressPotentialChartSubtitle: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 14 }),
+  },
+  progressPotentialChartRangeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: UI_SPACING.sm,
+  },
+  progressPotentialChartRangeItem: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  progressPotentialChartRangeItemEnd: {
+    alignItems: "flex-end",
+  },
+  progressPotentialChartRangeDay: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "700" }),
+  },
+  progressPotentialChartRangeValue: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+  },
+  progressPotentialChartWrap: {
+    gap: 5,
     overflow: "hidden",
   },
   progressPotentialChartLabels: {
@@ -100497,6 +102494,34 @@ const styles = StyleSheet.create({
     ...createSecondaryText({ fontSize: 10 }),
     flex: 1,
     textAlign: "center",
+  },
+  progressPotentialExplanationSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: UI_SPACING.sm,
+    gap: 4,
+  },
+  progressPotentialExplanationTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "800" }),
+  },
+  progressPotentialExplanationBody: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 18 }),
+  },
+  progressPotentialExplanationMeta: {
+    ...createBodyText({ fontSize: 11, lineHeight: 15, fontWeight: "800" }),
+    marginTop: 2,
+  },
+  progressPotentialExplanationNote: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 15 }),
+  },
+  progressPotentialModalDone: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: UI_SPACING.md,
+  },
+  progressPotentialModalDoneText: {
+    ...createCtaText({ fontSize: 13, lineHeight: 17 }),
   },
   progressCategoryModalRoot: {
     flex: 1,
@@ -100997,10 +103022,90 @@ const styles = StyleSheet.create({
   },
   temptationCard: {
     borderRadius: TEMPTATION_CARD_RADIUS,
-    padding: UI_SPACING.md,
-    gap: UI_SPACING.xs,
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.md,
+    paddingBottom: UI_SPACING.md,
+    gap: 10,
     position: "relative",
     overflow: "visible",
+  },
+  temptationCardContent: {
+    position: "relative",
+    zIndex: 1,
+    gap: 10,
+  },
+  nextDecisionCoach: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 11,
+    paddingBottom: 8,
+    gap: 5,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#8A651B",
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  nextDecisionCoachHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  nextDecisionCoachProgress: {
+    minWidth: 44,
+    minHeight: 26,
+    borderRadius: 13,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  nextDecisionCoachProgressText: {
+    ...createCtaText({ fontSize: 11 }),
+    color: "#352400",
+    fontVariant: ["tabular-nums"],
+  },
+  nextDecisionCoachTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  nextDecisionCoachBody: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "600" }),
+  },
+  nextDecisionCoachDismiss: {
+    minHeight: 32,
+    alignSelf: "flex-end",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  nextDecisionCoachDismissText: {
+    ...createCtaText({ fontSize: 11 }),
+    textDecorationLine: "underline",
+  },
+  temptationSeriesQuickActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 2,
+    paddingTop: 10,
+  },
+  temptationSeriesQuickAction: {
+    minHeight: UI_TOUCH_TARGET.current,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  temptationSeriesQuickActionText: {
+    ...createCtaText({ fontSize: 12 }),
   },
   temptationTextureContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -101085,12 +103190,57 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: UI_SPACING.sm,
   },
+  temptationIdentityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  temptationIdentityContent: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    justifyContent: "center",
+  },
   temptationEmoji: {
-    fontSize: 28,
+    fontSize: 25,
+    lineHeight: 31,
+    textAlign: "center",
   },
   emojiDisplayWrapper: {
-    width: 40,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  temptationHeaderMeta: {
+    flexShrink: 0,
+    maxWidth: "40%",
+    alignSelf: "flex-start",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  temptationMetaBadge: {
+    minHeight: 20,
+    maxWidth: "100%",
+    borderRadius: UI_RADIUS.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationMetaBadgeWithIcon: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  temptationMetaBadgeText: {
+    ...createCtaText({ fontSize: 10 }),
+    lineHeight: 13,
+    flexShrink: 1,
+    minWidth: 0,
   },
   temptationBadgeStack: {
     alignSelf: "flex-end",
@@ -101121,30 +103271,113 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   temptationTitle: {
-    ...createBodyText({ fontSize: 19, lineHeight: 24, fontWeight: "800" }),
+    ...createBodyText({ fontSize: 20, lineHeight: 28, fontWeight: "800" }),
+    flexShrink: 1,
+    minWidth: 0,
+    paddingVertical: 2,
+    ...Platform.select({
+      android: {
+        includeFontPadding: false,
+      },
+      default: {},
+    }),
+  },
+  temptationStatusRail: {
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    overflow: "hidden",
+  },
+  temptationStatusMetrics: {
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  temptationStatusMetric: {
+    maxWidth: "100%",
+    minHeight: 38,
+    paddingVertical: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  temptationStatusMetricTimer: {
+    alignSelf: "flex-start",
+    flexShrink: 1,
+  },
+  temptationStatusMetricTimerSplit: {
+    flexGrow: 1.08,
+    flexBasis: 0,
+    minWidth: 0,
+  },
+  temptationStatusMetricTimerText: {
+    ...createBodyText({ fontSize: 10.25, lineHeight: 14, fontWeight: "700" }),
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  temptationStatusMetricScore: {
+    flexShrink: 1,
+  },
+  temptationStatusMetricScoreFlexible: {
+    flexGrow: 0.92,
+    flexBasis: 0,
+    minWidth: 0,
+  },
+  temptationStatusMetricScoreSolo: {
+    width: "100%",
+  },
+  temptationStatusMetricScoreSplit: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "rgba(127,127,127,0.18)",
+    paddingLeft: 10,
+  },
+  temptationStatusMetricText: {
+    ...createBodyText({ fontSize: 10.5, lineHeight: 14, fontWeight: "700" }),
+    flexShrink: 1,
+    minWidth: 0,
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.1,
+  },
+  temptationStatusMetricScoreText: {
+    ...createBodyText({ fontSize: 9.75, lineHeight: 13, fontWeight: "700" }),
+  },
+  temptationStatusMetricCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  temptationStatusMetricLabel: {
+    ...createSecondaryText({ fontSize: 9.5 }),
+    lineHeight: 12,
+    fontWeight: "700",
+  },
+  temptationStatusDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(127,127,127,0.18)",
+    marginTop: 8,
+    paddingTop: 9,
   },
   temptationBudgetAlert: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minWidth: 0,
+    alignSelf: "stretch",
+    gap: 8,
+    maxWidth: "100%",
   },
   temptationBudgetAlertIcon: {
-    fontSize: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   temptationBudgetAlertText: {
-    flex: 1,
     minWidth: 0,
     flexShrink: 1,
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 16,
+    ...createBodyText({ fontSize: 12, lineHeight: 17, fontWeight: "700" }),
   },
   titleEditWrapper: {
     flex: 1,
@@ -101181,10 +103414,19 @@ const styles = StyleSheet.create({
     paddingRight: 14,
   },
   temptationDesc: {
-    fontSize: 14,
-    lineHeight: 19,
-    marginTop: 2,
-    marginBottom: 6,
+    ...createBodyText({ fontSize: 14, lineHeight: 20, fontWeight: "500" }),
+    marginTop: 1,
+  },
+  temptationGoalDestination: {
+    alignSelf: "stretch",
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  temptationGoalDestinationText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    flexShrink: 1,
   },
   temptationPriceRow: {
     flexDirection: "row",
@@ -101243,11 +103485,10 @@ const styles = StyleSheet.create({
   },
   temptationAmountModalGlow: {
     position: "absolute",
-    right: -58,
-    bottom: 128,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+    right: -82,
+    bottom: -92,
+    width: 260,
+    height: 260,
   },
   temptationAmountModalTopbar: {
     flexDirection: "row",
@@ -101318,7 +103559,7 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     justifyContent: "flex-start",
     paddingTop: 2,
-    paddingBottom: 0,
+    paddingBottom: 10,
   },
   temptationAmountModalCard: {
     borderRadius: 24,
@@ -101529,10 +103770,13 @@ const styles = StyleSheet.create({
   temptationAmountModalActions: {
     flexDirection: "row",
     gap: 8,
+    flexShrink: 0,
+    paddingBottom: 4,
   },
   temptationAmountBottomDock: {
     gap: 10,
     paddingTop: 12,
+    flexShrink: 0,
   },
   temptationAmountBottomDockCompact: {
     gap: 6,
@@ -101545,7 +103789,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    overflow: "visible",
     ...Platform.select({
       android: {
         elevation: 0,
@@ -101839,7 +104083,7 @@ const styles = StyleSheet.create({
     flexWrap: "nowrap",
     alignItems: "stretch",
     gap: 8,
-    marginTop: UI_SPACING.xs,
+    marginTop: 2,
   },
   temptationActionsMain: {
     flex: 1,
@@ -101854,20 +104098,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   temptationPauseButton: {
-    width: UI_TOUCH_TARGET.current,
-    minWidth: UI_TOUCH_TARGET.current,
-    borderRadius: UI_RADIUS.control,
+    width: 84,
+    minWidth: 84,
+    height: 52,
+    minHeight: 52,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 2,
-    overflow: "hidden",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    gap: 1,
+    position: "relative",
   },
   temptationPauseButtonIcon: {
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: "800",
-    marginTop: 0,
+    fontSize: 18,
+    lineHeight: 21,
     textAlign: "center",
     ...Platform.select({
       android: {
@@ -101876,6 +104122,16 @@ const styles = StyleSheet.create({
       },
       default: {},
     }),
+  },
+  temptationPauseButtonLabel: {
+    ...createCtaText({ fontSize: 9.5 }),
+    lineHeight: 12,
+    textAlign: "center",
+    maxWidth: "100%",
+  },
+  temptationPressablePressed: {
+    transform: [{ scale: UI_MOTION.pressScale }],
+    opacity: 0.9,
   },
   pauseFreezeModalRoot: {
     flex: 1,
@@ -102046,51 +104302,6 @@ const styles = StyleSheet.create({
   temptationLockedFeatureChild: {
     flex: 1,
   },
-  temptationCoachMarkSlot: {
-    flexGrow: 1,
-    position: "relative",
-  },
-  temptationCoachMarkGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-    borderWidth: 2,
-  },
-  temptationCoachMarkTooltipWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: "100%",
-    marginBottom: 8,
-    alignItems: "center",
-    zIndex: 4,
-  },
-  temptationCoachMarkTooltip: {
-    maxWidth: 240,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 4,
-  },
-  temptationCoachMarkTooltipText: {
-    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
-    textAlign: "center",
-  },
-  temptationCoachMarkTooltipArrow: {
-    width: 0,
-    height: 0,
-    marginTop: -1,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderTopWidth: 8,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderTopColor: "#000",
-  },
   temptationTutorialAccent: {
     borderWidth: 2,
     borderColor: "#F6C16B",
@@ -102100,22 +104311,23 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   temptationButtonPrimary: {
-    flex: 1.2,
-    minHeight: UI_TOUCH_TARGET.current,
-    borderRadius: UI_RADIUS.control,
-    paddingVertical: 12,
+    flex: 1.04,
+    minHeight: 52,
+    borderRadius: 14,
+    paddingVertical: 11,
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
     ...Platform.select({
       android: {
         elevation: 1,
       },
       default: {
-        shadowColor: "rgba(16,27,69,0.22)",
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 3 },
+        shadowColor: "rgba(16,27,69,0.18)",
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
       },
     }),
   },
@@ -102127,28 +104339,36 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   temptationButtonPrimaryText: {
-    fontWeight: "900",
-    fontSize: 17,
-    lineHeight: 22,
-    textAlign: "center",
-    flexShrink: 1,
-  },
-  temptationButtonSecondary: {
-    flex: 0.88,
-    minHeight: UI_TOUCH_TARGET.current,
-    borderRadius: UI_RADIUS.control,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  temptationButtonSecondaryText: {
-    fontWeight: "800",
-    fontSize: 16,
+    ...createCtaText({ fontSize: 16 }),
     lineHeight: 21,
     textAlign: "center",
     flexShrink: 1,
+    zIndex: 1,
+  },
+  temptationButtonSecondary: {
+    flex: 0.96,
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  temptationButtonSecondaryText: {
+    ...createCtaText({ fontSize: 15 }),
+    lineHeight: 21,
+    textAlign: "center",
+    flexShrink: 1,
+    zIndex: 1,
+  },
+  temptationButtonDecision: {
+    paddingHorizontal: 4,
+  },
+  temptationButtonDecisionText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   temptationButtonGhost: {
     flex: 1,
@@ -102168,7 +104388,7 @@ const styles = StyleSheet.create({
     borderColor: SPEND_ACTION_COLOR,
   },
   temptationButtonSpendFilledText: {
-    color: "#FFFFFF",
+    color: "#30030A",
   },
   temptationButtonOutline: {
     flex: 1,
@@ -102249,348 +104469,6 @@ const styles = StyleSheet.create({
   detailDesc: {
     marginTop: 12,
     lineHeight: 20,
-  },
-  tutorialBackdrop: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  tutorialBackdropDim: {
-    backgroundColor: "rgba(4,8,20,0.75)",
-  },
-  tutorialBackdropBlob: {
-    position: "absolute",
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-  },
-  tutorialBackdropBlobPrimary: {
-    top: -72,
-    left: -92,
-  },
-  tutorialBackdropBlobSecondary: {
-    bottom: 120,
-    right: -90,
-  },
-  tutorialCard: {
-    width: "100%",
-    maxWidth: 372,
-    borderRadius: 30,
-    padding: 20,
-    borderWidth: 1,
-    gap: 14,
-    ...Platform.select({
-      android: {
-        elevation: 8,
-      },
-      default: {
-        shadowColor: "rgba(5,9,20,0.45)",
-        shadowOpacity: 0.42,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: 14 },
-      },
-    }),
-  },
-  tutorialCardCompact: {
-    maxWidth: 326,
-    borderRadius: 22,
-    padding: 14,
-    gap: 10,
-  },
-  tutorialHighlightFocus: {
-    position: "absolute",
-    ...Platform.select({
-      android: {
-        borderWidth: 0,
-        borderColor: "transparent",
-        elevation: 0,
-      },
-      default: {
-        borderWidth: 2,
-        borderColor: "#F6C16B",
-        shadowColor: "rgba(246,193,107,0.65)",
-        shadowOpacity: 0.95,
-        shadowRadius: 32,
-        shadowOffset: { width: 0, height: 18 },
-      },
-    }),
-  },
-  tutorialCompactHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  tutorialCompactIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "visible",
-  },
-  tutorialCompactIcon: {
-    fontSize: 22,
-    lineHeight: Platform.OS === "android" ? 30 : 26,
-    textAlign: "center",
-    ...Platform.select({
-      android: {
-        includeFontPadding: true,
-        textAlignVertical: "center",
-      },
-      default: null,
-    }),
-    transform: [{ translateY: 1 }],
-  },
-  tutorialCompactHeaderCopy: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  tutorialCompactTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-    flexShrink: 1,
-  },
-  tutorialCompactStepText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  tutorialCompactDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  tutorialCompactProgressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  tutorialCompactActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  tutorialCompactSkipButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 13,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
-  tutorialCompactSkipText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  tutorialCompactPrimaryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
-  tutorialCompactPrimaryText: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  tutorialTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  tutorialStepBadge: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  tutorialStepBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    flexShrink: 1,
-  },
-  tutorialStepCounter: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tutorialStepCounterText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  tutorialVisualWrap: {
-    borderRadius: 22,
-    minHeight: 128,
-    borderWidth: 1,
-    overflow: "hidden",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(255,255,255,0.04)",
-  },
-  tutorialVisualPulse: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    top: -42,
-    right: -24,
-  },
-  tutorialVisualOrb: {
-    position: "absolute",
-    borderRadius: 999,
-  },
-  tutorialVisualOrbPrimary: {
-    width: 76,
-    height: 76,
-    top: -12,
-    left: -20,
-    opacity: 0.45,
-  },
-  tutorialVisualOrbSecondary: {
-    width: 58,
-    height: 58,
-    top: 44,
-    right: 18,
-    opacity: 0.48,
-  },
-  tutorialVisualGrid: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  tutorialVisualBarsRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 78,
-    gap: 8,
-  },
-  tutorialVisualBarTrack: {
-    flex: 1,
-    borderRadius: 999,
-    overflow: "hidden",
-    justifyContent: "flex-end",
-    height: "100%",
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  tutorialVisualBarFill: {
-    width: "100%",
-    borderRadius: 999,
-  },
-  tutorialIcon: {
-    fontSize: 20,
-    lineHeight: 20,
-  },
-  tutorialTitle: {
-    fontSize: 23,
-    fontWeight: "800",
-    textAlign: "left",
-    letterSpacing: -0.3,
-  },
-  tutorialDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: "left",
-  },
-  tutorialFeatureRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  tutorialFeatureChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    maxWidth: "100%",
-  },
-  tutorialFeatureChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  tutorialProgressRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 12,
-  },
-  tutorialDots: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  tutorialDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-  },
-  tutorialDotCompleted: {
-    width: 14,
-  },
-  tutorialDotActive: {
-    width: 28,
-  },
-  tutorialProgressText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  tutorialActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 2,
-  },
-  tutorialSkipButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tutorialSkipText: {
-    textAlign: "center",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tutorialPrimaryButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 15,
-    alignItems: "center",
-    ...Platform.select({
-      android: {},
-      default: {
-        shadowColor: "rgba(7,16,35,0.36)",
-        shadowOpacity: 0.26,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 8 },
-      },
-    }),
-  },
-  tutorialPrimaryText: {
-    fontSize: 15,
-    fontWeight: "700",
   },
   variantRow: {
     flexDirection: "row",
@@ -105712,10 +107590,27 @@ const styles = StyleSheet.create({
   settingRow: {
     marginBottom: 18,
   },
+  settingPremiumFeatureRow: {
+    borderRadius: 18,
+    borderWidth: 1.2,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
   settingRowContent: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  settingPremiumTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 6,
+  },
+  settingPremiumTitle: {
+    marginBottom: 0,
+    flexShrink: 1,
   },
   settingRowActions: {
     flexDirection: "row",
@@ -106864,92 +108759,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
   },
-  feedFirstTutorialBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(55,42,16,0.44)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-  feedFirstTutorialCard: {
-    width: "100%",
-    maxWidth: 380,
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
-    overflow: "hidden",
-  },
-  feedFirstTutorialOrbPrimary: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    top: -96,
-    right: -72,
-  },
-  feedFirstTutorialOrbSecondary: {
-    position: "absolute",
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    bottom: -84,
-    left: -66,
-  },
-  feedFirstTutorialBadge: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 10,
-  },
-  feedFirstTutorialBadgeEmoji: {
-    fontSize: 13,
-    lineHeight: 16,
-  },
-  feedFirstTutorialBadgeText: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
-    letterSpacing: 0.7,
-  },
-  feedFirstTutorialTitle: {
-    ...createBodyText({ fontSize: 20, lineHeight: 26, fontWeight: "800", textAlign: "center" }),
-  },
-  feedFirstTutorialDesc: {
-    ...createBodyText({ fontSize: 14, lineHeight: 21, textAlign: "center" }),
-    marginTop: 10,
-  },
-  feedFirstTutorialHint: {
-    ...createSecondaryText({ fontSize: 13, lineHeight: 19, textAlign: "center", fontWeight: "600" }),
-    marginTop: 8,
-  },
-  feedFirstTutorialActions: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 16,
-    gap: 10,
-  },
-  feedFirstTutorialGhost: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  feedFirstTutorialGhostText: {
-    ...createSecondaryText({ fontSize: 13, fontWeight: "600" }),
-  },
-  feedFirstTutorialPrimary: {
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  feedFirstTutorialPrimaryText: {
-    ...createCtaText({ fontSize: 13 }),
-  },
   budgetTutorialBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -107701,6 +109510,42 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 10,
   },
+  frequencyCadenceGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  frequencyCadenceOption: {
+    width: "48.6%",
+    minHeight: 62,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    justifyContent: "space-between",
+    gap: 5,
+  },
+  frequencyCadenceOptionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  frequencyCadenceOptionLabel: {
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "800" }),
+    flex: 1,
+  },
+  frequencyCadenceOptionMeta: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 15, fontWeight: "700" }),
+    fontVariant: ["tabular-nums"],
+  },
+  frequencyCadenceOptionCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   frequencyPickerLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -107772,9 +109617,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  frequencyTimeToggleChevron: {
+  frequencyTimeToggleCopy: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  frequencyTimeToggleSummary: {
     fontSize: 13,
+    lineHeight: 17,
     fontWeight: "700",
+    fontVariant: ["tabular-nums"],
   },
   timeWheelRow: {
     flexDirection: "row",
@@ -107824,6 +109678,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  frequencyDayGridCompact: {
+    flexWrap: "nowrap",
+    gap: 5,
+    alignItems: "stretch",
+  },
   frequencyDayChip: {
     borderRadius: 12,
     borderWidth: 1,
@@ -107833,28 +109692,78 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  frequencyDayChipCompact: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
+    height: 48,
+  },
   frequencyDayChipText: {
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "700",
+    includeFontPadding: false,
+    textAlign: "center",
+    textAlignVertical: "center",
   },
   frequencyReminderPromptCard: {
     minHeight: 0,
+    borderRadius: 16,
+    padding: 16,
   },
   frequencyReminderPromptContent: {
     width: "100%",
     flexShrink: 1,
     minHeight: 0,
-    gap: 14,
+    gap: 10,
   },
   frequencyReminderPromptScroll: {
     flexShrink: 1,
     minHeight: 0,
   },
   frequencyReminderPromptScrollContent: {
-    paddingBottom: 6,
+    gap: 10,
+    paddingBottom: 2,
   },
   frequencyReminderPromptActions: {
-    paddingTop: 2,
+    gap: 8,
+    paddingTop: 0,
+  },
+  frequencyReminderPromptHeader: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  frequencyReminderPromptTemptation: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  frequencyReminderPromptTemptationEmoji: {
+    fontSize: 24,
+    lineHeight: 29,
+  },
+  frequencyReminderPromptHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  frequencyReminderPromptTitle: {
+    ...createBodyText({ fontSize: 19, lineHeight: 23, fontWeight: "900" }),
+    letterSpacing: -0.25,
+  },
+  frequencyReminderPromptSubtitle: {
+    ...createSecondaryText({ fontSize: 13, lineHeight: 17, fontWeight: "600" }),
+  },
+  frequencyReminderScheduleSurface: {
+    width: "100%",
+    borderRadius: 14,
+    padding: 8,
   },
   frequencyMonthCalendarGrid: {
     width: "100%",
@@ -107883,25 +109792,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
-  frequencyReminderPromptBadge: {
-    alignSelf: "center",
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: "rgba(255,210,120,0.28)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  frequencyReminderPromptBadgeEmoji: {
-    fontSize: 28,
-  },
   frequencyReminderForecastCard: {
     width: "100%",
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    gap: 4,
+    gap: 5,
     overflow: "hidden",
   },
   frequencyReminderForecastGlow: {
@@ -107909,24 +109805,38 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
-    top: -124,
-    right: -80,
-    opacity: 0.9,
+    top: -132,
+    right: -92,
+    opacity: 0.8,
+  },
+  frequencyReminderForecastHeader: {
+    width: "100%",
   },
   frequencyReminderForecastTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "800" }),
+  },
+  frequencyReminderForecastMetrics: {
+    width: "100%",
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   frequencyReminderForecastValue: {
-    fontSize: 42,
-    lineHeight: 46,
+    flex: 1,
+    minWidth: 0,
+    fontSize: 36,
+    lineHeight: 40,
     fontWeight: "900",
-    color: "#1EA64A",
-    letterSpacing: -0.8,
+    letterSpacing: -0.65,
     fontVariant: ["tabular-nums"],
     includeFontPadding: false,
+  },
+  frequencyReminderForecastDivider: {
+    width: 1,
+    height: 40,
+    borderRadius: 1,
+    flexShrink: 0,
   },
   frequencyReminderForecastMeta: {
     fontSize: 12,
@@ -107934,14 +109844,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   frequencyReminderForecastChecks: {
-    marginTop: -1,
-  },
-  frequencyReminderForecastFomo: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "700",
-    color: "#20A94D",
-    marginTop: 3,
+    width: 104,
+    flexShrink: 0,
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+    includeFontPadding: false,
   },
   frequencyModalCard: {
     width: "100%",
@@ -108891,6 +110801,19 @@ const styles = StyleSheet.create({
   chestRewardHint: {
     ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "700" }),
     textAlign: "center",
+  },
+  chestRewardTapProgress: {
+    minHeight: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 7,
+  },
+  chestRewardTapProgressStep: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
   },
   chestRewardRevealBlock: {
     alignItems: "center",
@@ -110900,6 +112823,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: -0.2,
   },
+  temptationEditHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.xs,
+  },
+  temptationEditHeaderAction: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationEditHeaderActionPressed: {
+    transform: [{ scale: 0.94 }],
+  },
   temptationEditClose: {
     width: UI_TOUCH_TARGET.current,
     height: UI_TOUCH_TARGET.current,
@@ -110922,6 +112860,21 @@ const styles = StyleSheet.create({
     paddingTop: UI_SPACING.md,
     paddingBottom: UI_SPACING.lg,
     gap: UI_SPACING.lg,
+  },
+  temptationEditDuplicateHint: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.sm,
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.sm,
+  },
+  temptationEditDuplicateHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
   },
   temptationEditFieldRow: {
     flexDirection: "row",
@@ -112090,6 +114043,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 1000,
+    elevation: Platform.OS === "android" ? 1000 : 0,
+  },
+  logoSplashStartupSurface: {
+    backgroundColor: "#FFFFFF",
   },
   logoSplash: {
     flex: 1,
@@ -113580,10 +115537,11 @@ function CoinEntryModal({
   const sheetMaxHeight = Math.max(360, viewportHeight - Math.max(safeInsets.top, 8) - 8);
   const sheetBottomPadding = Math.max(UI_SPACING.sm, systemBottomInset + UI_SPACING.xs);
   const errorColor = colors.error || SPEND_ACTION_COLOR;
-  const spendButtonColor = colors.error || COIN_ENTRY_SPEND_BACKGROUND;
-  const saveButtonColor = colors.success || COIN_ENTRY_SAVE_BACKGROUND;
-  const spendButtonTextColor = resolveForegroundForColor(spendButtonColor);
-  const saveButtonTextColor = resolveForegroundForColor(saveButtonColor);
+  const actionButtonPalette = resolveTemptationActionButtonPalette(isDarkTheme);
+  const spendButtonColor = actionButtonPalette.spendBackground;
+  const saveButtonColor = actionButtonPalette.saveBackground;
+  const spendButtonTextColor = actionButtonPalette.spendForeground;
+  const saveButtonTextColor = actionButtonPalette.saveForeground;
   const categoryActiveBackground = isProTheme ? colors.primary : colors.text;
   const categoryActiveForeground = isProTheme
     ? colors.onPrimary || resolveForegroundForColor(colors.primary)
@@ -114906,6 +116864,9 @@ function FrequencyPicker({
   sliderMaxLabelLines = 1,
   activeColor = null,
   activeTextColor = null,
+  variant = "segmented",
+  optionMetaById = null,
+  label = null,
 }) {
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const pendingCustomRef = useRef(false);
@@ -114957,26 +116918,109 @@ function FrequencyPicker({
     onCustomChange?.(nextCustom);
   };
   const customSummary = value === "custom" ? formatCustomFrequencySummary(customValue, t) : "";
+  const useCardVariant = variant === "cards";
+  const cardAccent = activeColor || colors.success || SAVE_ACTION_COLOR;
+  const isDarkPalette =
+    colors.appearance === "dark" || colors.background === THEMES.dark.background;
   return (
     <View style={[styles.frequencyPickerWrap, style]}>
       <Text style={[styles.frequencyPickerLabel, { color: colors.muted }, labelStyle]}>
-        {t("frequencyPickerLabel")}
+        {label || t("frequencyPickerLabel")}
       </Text>
-      <SegmentedSlider
-        value={value}
-        options={options}
-        onChange={handleFrequencyChange}
-        colors={colors}
-        style={sliderStyle}
-        optionStyle={sliderOptionStyle}
-        indicatorStyle={sliderIndicatorStyle}
-        textStyle={sliderTextStyle}
-        activeTextStyle={sliderActiveTextStyle}
-        autoFitText={sliderAutoFitText}
-        maxLabelLines={sliderMaxLabelLines}
-        activeColor={activeColor}
-        activeTextColor={activeTextColor}
-      />
+      {useCardVariant ? (
+        <View style={styles.frequencyCadenceGrid} accessible={false}>
+          {options.map((option) => {
+            const isActive = option.id === value;
+            const optionMeta = resolveNonEmptyString(optionMetaById?.[option.id]);
+            return (
+              <Pressable
+                key={option.id}
+                style={({ pressed }) => [
+                  styles.frequencyCadenceOption,
+                  {
+                    backgroundColor: isActive
+                      ? colorWithAlpha(cardAccent, isDarkPalette ? 0.18 : 0.09)
+                      : colorWithAlpha(colors.text, isDarkPalette ? 0.055 : 0.035),
+                    borderColor: isActive
+                      ? colorWithAlpha(cardAccent, isDarkPalette ? 0.62 : 0.38)
+                      : colorWithAlpha(colors.text, isDarkPalette ? 0.14 : 0.1),
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  },
+                ]}
+                onPress={() => handleFrequencyChange(option.id)}
+                accessibilityRole="radio"
+                accessibilityLabel={
+                  optionMeta
+                    ? t("frequencyReminderCadenceOptionA11y", {
+                        cadence: option.label,
+                        amount: optionMeta,
+                      })
+                    : option.label
+                }
+                accessibilityState={{ selected: isActive }}
+              >
+                <View style={styles.frequencyCadenceOptionHeader}>
+                  <Text
+                    style={[
+                      styles.frequencyCadenceOptionLabel,
+                      { color: isActive ? cardAccent : colors.text },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
+                    {option.label}
+                  </Text>
+                  {isActive ? (
+                    <View
+                      style={[
+                        styles.frequencyCadenceOptionCheck,
+                        {
+                          backgroundColor: colorWithAlpha(
+                            cardAccent,
+                            isDarkPalette ? 0.24 : 0.14
+                          ),
+                        },
+                      ]}
+                    >
+                      <TemptationSeriesCheckIcon size={12} color={cardAccent} />
+                    </View>
+                  ) : null}
+                </View>
+                {optionMeta ? (
+                  <Text
+                    style={[
+                      styles.frequencyCadenceOptionMeta,
+                      { color: isActive ? cardAccent : colors.muted },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
+                    {optionMeta}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <SegmentedSlider
+          value={value}
+          options={options}
+          onChange={handleFrequencyChange}
+          colors={colors}
+          style={sliderStyle}
+          optionStyle={sliderOptionStyle}
+          indicatorStyle={sliderIndicatorStyle}
+          textStyle={sliderTextStyle}
+          activeTextStyle={sliderActiveTextStyle}
+          autoFitText={sliderAutoFitText}
+          maxLabelLines={sliderMaxLabelLines}
+          activeColor={activeColor}
+          activeTextColor={activeTextColor}
+        />
+      )}
       {value === "custom" && (
         <View style={styles.frequencyCustomRow}>
           <Text style={[styles.frequencyCustomSummary, { color: colors.text }]}>
@@ -115301,6 +117345,7 @@ function WeeklyDayPicker({
   onChange,
   colors,
   t,
+  compact = false,
 }) {
   const selectedDays = normalizeFrequencyWeeklyDays(values ?? value) || [
     ...DEFAULT_FREQUENCY_WEEKLY_DAYS,
@@ -115332,7 +117377,7 @@ function WeeklyDayPicker({
       <Text style={[styles.frequencyPickerLabel, { color: colors.muted }]}>
         {t("frequencyWeeklyDayLabel")}
       </Text>
-      <View style={styles.frequencyDayGrid}>
+      <View style={[styles.frequencyDayGrid, compact && styles.frequencyDayGridCompact]}>
         {WEEKDAY_SELECTOR_ORDER.map((day) => {
           const isActive = selectedSet.has(day);
           const dayLabelKey = WEEKDAY_LABEL_KEYS[day] || WEEKDAY_LABEL_KEYS[1];
@@ -115341,6 +117386,7 @@ function WeeklyDayPicker({
               key={day}
               style={[
                 styles.frequencyDayChip,
+                compact && styles.frequencyDayChipCompact,
                 {
                   borderColor: isActive ? colors.text : colors.border,
                   backgroundColor: isActive
@@ -115356,6 +117402,9 @@ function WeeklyDayPicker({
                   styles.frequencyDayChipText,
                   { color: isActive ? colors.text : colors.muted },
                 ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.84}
               >
                 {t(dayLabelKey)}
               </Text>
@@ -115446,7 +117495,7 @@ function MonthlyDayPicker({
   );
 }
 
-function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
+function FrequencyTimeToggle({ expanded = false, summary = "", onPress, colors, t }) {
   return (
     <TouchableOpacity
       style={[
@@ -115459,14 +117508,33 @@ function FrequencyTimeToggle({ expanded = false, onPress, colors, t }) {
       onPress={onPress}
       activeOpacity={0.82}
       accessibilityRole="button"
+      accessibilityLabel={
+        summary
+          ? t("frequencyReminderSelectedTime", { time: summary })
+          : t("frequencyReminderTimeLabel")
+      }
       accessibilityState={{ expanded }}
     >
-      <Text style={[styles.frequencyTimeToggleButtonText, { color: colors.text }]}>
-        {t("frequencyReminderTimeLabel")}
-      </Text>
-      <Text style={[styles.frequencyTimeToggleChevron, { color: colors.muted }]}>
-        {expanded ? "▴" : "▾"}
-      </Text>
+      <View style={styles.frequencyTimeToggleCopy}>
+        <Text style={[styles.frequencyTimeToggleButtonText, { color: colors.text }]}>
+          {t("frequencyReminderTimeLabel")}
+        </Text>
+        {summary ? (
+          <Text style={[styles.frequencyTimeToggleSummary, { color: colors.muted }]}>
+            {summary}
+          </Text>
+        ) : null}
+      </View>
+      <Svg width={16} height={16} viewBox="0 0 16 16">
+        <SvgPath
+          d={expanded ? "m4.5 9.5 3.5-3 3.5 3" : "m4.5 6.5 3.5 3 3.5-3"}
+          fill="none"
+          stroke={colors.muted}
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
     </TouchableOpacity>
   );
 }
@@ -115480,20 +117548,33 @@ function FrequencySchedulePicker({
   weeklyDays = DEFAULT_FREQUENCY_WEEKLY_DAYS,
   monthlyDays = DEFAULT_FREQUENCY_MONTHLY_DAYS,
   onReminderTimeChange,
+  onTimePickerExpandedChange = null,
   onWeeklyDayChange,
   onMonthlyDayChange,
   colors,
   t,
+  compact = false,
 }) {
   const normalizedFrequency = normalizeFrequencyId(frequency) || "daily";
+  const [dailyTimeExpanded, setDailyTimeExpanded] = useState(false);
   const [weeklyTimeExpanded, setWeeklyTimeExpanded] = useState(false);
   const [monthlyTimeExpanded, setMonthlyTimeExpanded] = useState(false);
+  const reminderTimeSummary = formatReminderTimeLabel(reminderHour, reminderMinute);
+  const toggleTimePicker = useCallback(
+    (expanded, setExpanded) => {
+      const nextExpanded = !expanded;
+      setExpanded(nextExpanded);
+      onTimePickerExpandedChange?.(nextExpanded);
+    },
+    [onTimePickerExpandedChange]
+  );
   useEffect(() => {
     if (normalizedFrequency === "daily") {
       setWeeklyTimeExpanded(false);
       setMonthlyTimeExpanded(false);
       return;
     }
+    setDailyTimeExpanded(false);
     if (normalizedFrequency === "weekly") {
       setMonthlyTimeExpanded(false);
       return;
@@ -115503,6 +117584,28 @@ function FrequencySchedulePicker({
     }
   }, [normalizedFrequency]);
   if (normalizedFrequency === "daily") {
+    if (compact) {
+      return (
+        <View style={styles.frequencyScheduleWrap}>
+          <FrequencyTimeToggle
+            expanded={dailyTimeExpanded}
+            summary={reminderTimeSummary}
+            onPress={() => toggleTimePicker(dailyTimeExpanded, setDailyTimeExpanded)}
+            colors={colors}
+            t={t}
+          />
+          {dailyTimeExpanded ? (
+            <TimeWheelPicker
+              hour={reminderHour}
+              minute={reminderMinute}
+              onChange={onReminderTimeChange}
+              colors={colors}
+              t={t}
+            />
+          ) : null}
+        </View>
+      );
+    }
     return (
       <TimeWheelPicker
         hour={reminderHour}
@@ -115522,10 +117625,12 @@ function FrequencySchedulePicker({
           onChange={onWeeklyDayChange}
           colors={colors}
           t={t}
+          compact={compact}
         />
         <FrequencyTimeToggle
           expanded={weeklyTimeExpanded}
-          onPress={() => setWeeklyTimeExpanded((prev) => !prev)}
+          summary={reminderTimeSummary}
+          onPress={() => toggleTimePicker(weeklyTimeExpanded, setWeeklyTimeExpanded)}
           colors={colors}
           t={t}
         />
@@ -115553,7 +117658,8 @@ function FrequencySchedulePicker({
         />
         <FrequencyTimeToggle
           expanded={monthlyTimeExpanded}
-          onPress={() => setMonthlyTimeExpanded((prev) => !prev)}
+          summary={reminderTimeSummary}
+          onPress={() => toggleTimePicker(monthlyTimeExpanded, setMonthlyTimeExpanded)}
           colors={colors}
           t={t}
         />
@@ -117703,7 +119809,7 @@ function LanguageScreen({
 }
 
 function LogoSplash({ onDone }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState("A");
   const onDoneRef = useRef(onDone);
   const animationIdRef = useRef(0);
   const completedRef = useRef(false);
@@ -117718,8 +119824,8 @@ function LogoSplash({ onDone }) {
     const animationId = animationIdRef.current + 1;
     animationIdRef.current = animationId;
     completedRef.current = false;
-    setText("");
-    let index = 0;
+    setText("A");
+    let index = 1;
     let stepTimer = null;
     let doneTimer = null;
     const step = () => {
@@ -118250,7 +120356,8 @@ const SaveCelebration = forwardRef(function SaveCelebration(
     const displayActions = Number.isFinite(Number(remainingActions))
       ? Math.max(0, Number(remainingActions))
       : 0;
-    const countdownEnabled = !!goalCopy && displayActions > 0;
+    const seriesRewardPending = payload?.temptationSeriesRewardMode === "pending";
+    const countdownEnabled = !!goalCopy && displayActions > 0 && !seriesRewardPending;
     const countdownSlots = useMemo(
       () => buildSaveCountdownSlots(displayActions, language),
       [displayActions, language]
@@ -118631,12 +120738,17 @@ const SaveCelebration = forwardRef(function SaveCelebration(
       0,
       Number(payload?.rewardChestCount) || (rewardAmount > 0 ? 1 : 0)
     );
+    const seriesPendingCoins = Math.max(0, Number(payload?.temptationSeriesPendingCoins) || 0);
     const savedAmountLabel = typeof payload?.savedAmountLabel === "string" ? payload.savedAmountLabel : "";
     const saveCount = Math.max(0, Number(payload?.saveCount) || 0);
     const saveCountLocale = getFormatLocale(language) || "en-US";
     const savedValue = savedAmountLabel || "0";
-    const rewardChestValue = rewardChestCount.toLocaleString(saveCountLocale);
-    const rewardChestLabel = getChestCountNoun(rewardChestCount, language, { capitalized: true });
+    const rewardChestValue = seriesRewardPending
+      ? `+${rewardAmount.toLocaleString(saveCountLocale)}`
+      : rewardChestCount.toLocaleString(saveCountLocale);
+    const rewardChestLabel = seriesRewardPending
+      ? t("temptationSeriesChestBalance", { coins: seriesPendingCoins })
+      : getChestCountNoun(rewardChestCount, language, { capitalized: true });
     const skipsValue = saveCount.toLocaleString(saveCountLocale);
     const rawSaveTitle = typeof payload?.title === "string" ? payload.title.trim() : "";
     const { emoji: saveTitleEmoji, title: saveTitleText } = useMemo(
@@ -119324,7 +121436,15 @@ const RewardCelebration = ({ colors, message, t, mascotHappySource }) => {
   );
 };
 
-const HealthCelebration = ({ colors, payload, t, language, onClose, playSound }) => {
+const HealthCelebration = ({
+  colors,
+  payload,
+  t,
+  language,
+  onClose,
+  playSound,
+  reduceMotion = false,
+}) => {
   const data = payload && typeof payload === "object" ? payload : { reason: payload };
   const amount =
     (typeof data.amount === "number" && Number.isFinite(data.amount)) ||
@@ -119359,6 +121479,7 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
     data.reason ||
     t("healthCelebrateTitle", { amount: formatHealthRewardLabel(amount, language) });
   const rewardGrantedRef = useRef(false);
+  const tapCountRef = useRef(0);
   const [tapCount, setTapCount] = useState(0);
   const [opened, setOpened] = useState(false);
   const sparkles = useMemo(
@@ -119392,18 +121513,28 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
       })
     );
   }, [amount]);
-  const entryOpacity = useRef(new Animated.Value(0)).current;
-  const entryTranslate = useRef(new Animated.Value(18)).current;
-  const cardScale = useRef(new Animated.Value(0.96)).current;
-  const chestScale = useRef(new Animated.Value(0.92)).current;
-  const chestTilt = useRef(new Animated.Value(0)).current;
+  const entryOpacity = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const entryTranslate = useRef(new Animated.Value(reduceMotion ? 0 : 18)).current;
+  const cardScale = useRef(new Animated.Value(reduceMotion ? 1 : 0.96)).current;
+  const chestScale = useRef(new Animated.Value(reduceMotion ? 1 : 0.92)).current;
+  const chestTilt = useRef(new Animated.Value(reduceMotion ? 0.5 : 0)).current;
   const haloSpin = useRef(new Animated.Value(0)).current;
-  const auraPulse = useRef(new Animated.Value(0)).current;
+  const auraPulse = useRef(new Animated.Value(reduceMotion ? 0.5 : 0)).current;
   const revealBurst = useRef(new Animated.Value(0)).current;
   const gradientId = useRef(`chest_reward_${Math.random().toString(36).slice(2, 8)}`).current;
   const ringId = useRef(`chest_ring_${Math.random().toString(36).slice(2, 8)}`).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      entryOpacity.setValue(1);
+      entryTranslate.setValue(0);
+      cardScale.setValue(1);
+      chestScale.setValue(1);
+      chestTilt.setValue(0.5);
+      haloSpin.setValue(0);
+      auraPulse.setValue(0.5);
+      return undefined;
+    }
     Animated.parallel([
       Animated.timing(entryOpacity, {
         toValue: 1,
@@ -119493,54 +121624,72 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
       spin.stop();
       glowAnim.stop();
     };
-  }, [auraPulse, cardScale, chestScale, chestTilt, entryOpacity, entryTranslate, haloSpin]);
+  }, [
+    auraPulse,
+    cardScale,
+    chestScale,
+    chestTilt,
+    entryOpacity,
+    entryTranslate,
+    haloSpin,
+    reduceMotion,
+  ]);
 
   const grantReward = useCallback(() => {
-    if (rewardGrantedRef.current) return;
-    rewardGrantedRef.current = true;
+    if (rewardGrantedRef.current) return true;
     if (typeof data.onRevealReward === "function") {
-      data.onRevealReward();
+      const result = data.onRevealReward();
+      if (result === false) return false;
     }
+    rewardGrantedRef.current = true;
+    return true;
   }, [data]);
 
   const handleChestTap = useCallback(() => {
     if (opened) return;
     triggerSelectionHaptic();
     playSound?.("tap");
-    Animated.sequence([
-      Animated.timing(chestScale, {
-        toValue: 1.08,
-        duration: 120,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.timing(chestScale, {
-        toValue: 1,
-        duration: 180,
-        easing: Easing.inOut(Easing.quad),
-        useNativeDriver: true,
-      }),
-    ]).start();
-    setTapCount((prev) => {
-      const next = Math.min(tapsRequired, prev + 1);
-      if (next >= tapsRequired) {
-        setOpened(true);
-        revealBurst.setValue(0);
-        Animated.timing(revealBurst, {
-          toValue: 1,
-          duration: 520,
-          easing: Easing.out(Easing.cubic),
+    if (!reduceMotion) {
+      Animated.sequence([
+        Animated.timing(chestScale, {
+          toValue: 1.08,
+          duration: 120,
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
-        }).start();
-        triggerSuccessHaptic();
-        triggerCoinRewardHaptics();
-        playSound?.("reward");
-        playSound?.("coin");
-        grantReward();
-      }
-      return next;
-    });
-  }, [chestScale, grantReward, opened, playSound, revealBurst, tapsRequired]);
+        }),
+        Animated.timing(chestScale, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    const next = Math.min(tapsRequired, tapCountRef.current + 1);
+    tapCountRef.current = next;
+    setTapCount(next);
+    if (next < tapsRequired) return;
+    if (grantReward() === false) {
+      const retryCount = Math.max(0, tapsRequired - 1);
+      tapCountRef.current = retryCount;
+      setTapCount(retryCount);
+      return;
+    }
+    setOpened(true);
+    revealBurst.setValue(0);
+    if (!reduceMotion) {
+      Animated.timing(revealBurst, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+    triggerSuccessHaptic();
+    triggerCoinRewardHaptics();
+    playSound?.("reward");
+    playSound?.("coin");
+  }, [chestScale, grantReward, opened, playSound, reduceMotion, revealBurst, tapsRequired]);
 
   const handleClose = useCallback(() => {
     if (!opened) return;
@@ -119576,19 +121725,16 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
     inputRange: [0, 0.18, 1],
     outputRange: [0, 1, 0],
   });
-  const chestSource =
-    tapCount >= Math.max(2, tapsRequired - 1) || opened
-      ? rewardChestTier?.assets?.glow
-      : tapCount >= 1
-      ? rewardChestTier?.assets?.open
-      : rewardChestTier?.assets?.closed;
+  const chestSource = opened
+    ? rewardChestTier?.assets?.glow || rewardChestTier?.assets?.open
+    : rewardChestTier?.assets?.closed;
   const tapsLeft = Math.max(0, tapsRequired - tapCount);
   const statusHint = opened ? t("chestRewardOpenedStatus") : getChestRewardTapHint(t, tapsLeft);
 
   return (
     <View style={styles.chestRewardOverlay}>
       <View style={[styles.chestRewardBackdrop, { backgroundColor: backdropColor }]} />
-      {opened && coinRainAssets.length ? (
+      {opened && !reduceMotion && coinRainAssets.length ? (
         <CoinRainOverlay
           dropCount={Math.max(8, Math.min(10, coinRainAssets.length + 4))}
           assets={coinRainAssets}
@@ -119640,19 +121786,21 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
           <SvgRect x="0" y="0" width="100%" height="100%" rx="32" ry="32" fill={`url(#${gradientId})`} />
         </Svg>
         <View style={styles.chestRewardCardContent}>
-          <ChestRewardBadge
-            amount={amount}
-            count={resolvedChestCount}
-            tierId={data.tierId || rewardChestTier?.id || null}
-            language={language}
-            iconSize={24}
-            textColor={primaryTextColor}
-            style={[
-              styles.chestRewardBadgePill,
-              { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.22 : 0.12), borderColor: cardBorder },
-            ]}
-            mystery={!opened}
-          />
+          {data.hideBadge ? null : (
+            <ChestRewardBadge
+              amount={amount}
+              count={resolvedChestCount}
+              tierId={data.tierId || rewardChestTier?.id || null}
+              language={language}
+              iconSize={24}
+              textColor={primaryTextColor}
+              style={[
+                styles.chestRewardBadgePill,
+                { backgroundColor: colorWithAlpha(accent, isDarkTheme ? 0.22 : 0.12), borderColor: cardBorder },
+              ]}
+              mystery={!opened}
+            />
+          )}
           <Text style={[styles.chestRewardTitle, { color: primaryTextColor }]}>{title}</Text>
           <Text style={[styles.chestRewardSubtitle, { color: secondaryTextColor }]}>
             {opened ? openedSubtitle : closedSubtitle}
@@ -119662,6 +121810,9 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
             onPress={handleChestTap}
             style={styles.chestRewardHeroButton}
             disabled={opened}
+            accessibilityRole="button"
+            accessibilityLabel={statusHint}
+            accessibilityState={{ disabled: opened }}
           >
             <View style={styles.chestRewardHero}>
               <Animated.View
@@ -119783,6 +121934,31 @@ const HealthCelebration = ({ colors, payload, t, language, onClose, playSound })
           <Text style={[styles.chestRewardHint, { color: opened ? accent : secondaryTextColor }]}>
             {statusHint}
           </Text>
+          {!opened ? (
+            <View
+              style={styles.chestRewardTapProgress}
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+            >
+              {Array.from({ length: tapsRequired }).map((_, index) => {
+                const complete = index < tapCount;
+                return (
+                  <View
+                    key={`chest_tap_${index}`}
+                    style={[
+                      styles.chestRewardTapProgressStep,
+                      {
+                        backgroundColor: complete
+                          ? accent
+                          : colorWithAlpha(primaryTextColor, isDarkTheme ? 0.18 : 0.12),
+                        transform: [{ scale: complete ? 1 : 0.84 }],
+                      },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+          ) : null}
           {opened ? (
             <View style={styles.chestRewardRevealBlock}>
               <CoinRewardBreakdown

@@ -33,6 +33,8 @@ These rules are mandatory for every Codex change in this repository.
 - If the change can affect UI, layout, color, typography, surfaces, modals, navigation, paywalls, cards, charts, widgets, or visual state, review the affected screen in all theme modes from `THEME_IDS`: `light`, `dark`, and `pro`.
 - For PRO theme changes, also verify the affected UI with the configured PRO accent options when the accent color can affect the result.
 - The visual review must check readable contrast, missing backgrounds, clipped or overlapping text, disabled/active states, modal backdrops, borders, shadows, and icon visibility.
+- Compare repeated controls as a set: sibling labels must share a visual baseline or center, and equal-role controls must keep equal heights. Treat one raised, lowered, wrapped, or optically off-center item as a failed visual check, including across localized labels.
+- Check space distribution inside every surface: flag unexplained empty regions, tiny metrics stranded in corners, and lopsided visual weight unless the asymmetry is clearly intentional and supports the reading order.
 - Prefer simulator or device screenshots for affected screens. If the app cannot be run locally, state the blocker and still run the static theme check.
 
 ## Functional Parity Gate for Design Changes

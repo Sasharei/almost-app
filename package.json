@@ -17,6 +17,9 @@
     "check:functional-parity": "node scripts/check-ui-functional-parity.js",
     "check:analytics-contract": "node scripts/check-analytics-contract.js",
     "check:native-analytics-config": "node scripts/check-native-analytics-config.js",
+    "test:attribution": "node --test scripts/tests/attribution-state-machine.test.js",
+    "test:ui-session": "node --test scripts/tests/ui-session-state.test.js scripts/tests/fab-tutorial-geometry.test.js",
+    "test:engagement": "node --test scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/today-temptations.test.js scripts/tests/next-decision-coach.test.js scripts/tests/tycoon-access.test.js",
     "check:security-audit": "node scripts/check-security-audit.js",
     "check:applovin-cost": "node scripts/check-applovin-cost-import.js",
     "check:localization": "node scripts/check-localization.js",
@@ -25,7 +28,8 @@
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
+    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:ui-session && npm run test:engagement && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
+    "release:gate": "npm run verify && npm run check:applovin-cost",
     "version:bump": "node scripts/bump-version.js"
   },
   "dependencies": {

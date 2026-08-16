@@ -1,6 +1,16 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PREMIUM_ENTITLEMENT_ID, PREMIUM_PRODUCT_IDS } from "./constants";
+// Shared with executable Node tests; keep RevenueCat decisions independent from the SDK bridge.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  ATTRIBUTION_SYNC_RESULTS,
+} = require("../analytics/attributionStateMachine");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  REVENUECAT_CUSTOMER_STATES,
+  syncRevenueCatAttribution,
+} = require("../analytics/revenueCatAttributionSync");
 
 let Purchases = null;
 let PurchasesLogLevel = null;
@@ -18,8 +28,6 @@ const REVENUECAT_FACEBOOK_ANONYMOUS_ID_SYNCED_KEY =
   "@almost/revenuecat/facebook-anonymous-id-synced-v1";
 const REVENUECAT_IMMUTABLE_ATTRIBUTION_STATE_KEY =
   "@almost/revenuecat/immutable-attribution-state-v1";
-const REVENUECAT_IMMUTABLE_ATTRIBUTION_FIELD_PREFIX =
-  "@almost/revenuecat/immutable-attribution-field-v1/";
 const REVENUECAT_IMMUTABLE_ATTRIBUTION_NEW_CUSTOMER_WINDOW_MS = 15 * 60 * 1000;
 const REVENUECAT_IMMUTABLE_ATTRIBUTION_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const REVENUECAT_IMMUTABLE_ATTRIBUTION_STATES = Object.freeze({
@@ -60,6 +68,7 @@ const normalizeAttributionIdentifier = (value) => {
   if (
     lowered === "unknown" ||
     lowered === "organic" ||
+    lowered === "restricted" ||
     lowered === "null" ||
     lowered === "undefined"
   ) {
@@ -947,82 +956,82 @@ const REVENUECAT_ATTRIBUTION_SETTERS = [
   ["creative", "setCreative"],
 ];
 
-const syncPurchasesAttributionOnce = async (attribution = {}) => {
+const buildUnavailableAttributionResult = (status, reason) => ({
+  schemaVersion: 2,
+  status,
+  ok: false,
+  reason,
+  confirmed: false,
+  appsFlyerIdSet: false,
+  didWriteAppsFlyerId: false,
+  previouslyWrittenAppsFlyerId: false,
+  preservedExistingCustomer: false,
+  fieldsSet: [],
+  failedFields: [],
+  skippedFields: [],
+  attributesSynced: false,
+  fieldDelivery: {},
+});
+
+const syncPurchasesAttributionOnce = async ({ attribution = {}, delivery = {} } = {}) => {
   if (!isPurchasesAvailable()) {
-    return { ok: false, reason: "module_unavailable", appsFlyerIdSet: false, fieldsSet: [] };
+    return buildUnavailableAttributionResult(
+      ATTRIBUTION_SYNC_RESULTS.failedRetryable,
+      "module_unavailable"
+    );
   }
   if (!attribution || typeof attribution !== "object") {
-    return { ok: false, reason: "invalid_attribution", appsFlyerIdSet: false, fieldsSet: [] };
+    return buildUnavailableAttributionResult(
+      ATTRIBUTION_SYNC_RESULTS.failedTerminal,
+      "invalid_attribution"
+    );
   }
   const immutableAttributionState = await hydrateRevenueCatImmutableAttributionState();
-  if (immutableAttributionState !== REVENUECAT_IMMUTABLE_ATTRIBUTION_STATES.writable) {
-    const preserved =
-      immutableAttributionState === REVENUECAT_IMMUTABLE_ATTRIBUTION_STATES.preserve;
-    return {
-      ok: preserved,
-      reason: preserved
-        ? "existing_customer_attribution_preserved"
-        : "customer_state_unavailable",
-      appsFlyerIdSet: preserved && !!normalizeAttributionIdentifier(attribution?.appsFlyerId),
-      fieldsSet: [],
-      failedFields: [],
-      skippedFields: preserved
-        ? REVENUECAT_ATTRIBUTION_SETTERS.map(([field]) => field).filter((field) =>
-            normalizeAttributionIdentifier(attribution?.[field])
-          )
-        : [],
-      attributesSynced: false,
-      preserved,
-    };
+  const customerState =
+    immutableAttributionState === REVENUECAT_IMMUTABLE_ATTRIBUTION_STATES.writable
+      ? REVENUECAT_CUSTOMER_STATES.writable
+      : immutableAttributionState === REVENUECAT_IMMUTABLE_ATTRIBUTION_STATES.preserve
+      ? REVENUECAT_CUSTOMER_STATES.preserve
+      : REVENUECAT_CUSTOMER_STATES.unavailable;
+  const setters = Object.fromEntries(
+    REVENUECAT_ATTRIBUTION_SETTERS.map(([field, methodName]) => [
+      field,
+      typeof Purchases?.[methodName] === "function"
+        ? (value) => Purchases[methodName](value)
+        : null,
+    ])
+  );
+  const result = await syncRevenueCatAttribution({
+    attribution,
+    delivery,
+    customerState,
+    setters,
+    syncAttributes:
+      typeof Purchases.syncAttributesAndOfferingsIfNeeded === "function"
+        ? () => Purchases.syncAttributesAndOfferingsIfNeeded()
+        : null,
+  });
+  if (result.failedFields.length) {
+    console.warn("purchases attribution fields failed", result.failedFields.join(","));
   }
-  const fieldsSet = [];
-  const failedFields = [];
-  const skippedFields = [];
-  for (const [field, methodName] of REVENUECAT_ATTRIBUTION_SETTERS) {
-    const value = normalizeAttributionIdentifier(attribution?.[field]);
-    if (!value || typeof Purchases?.[methodName] !== "function") continue;
-    const fieldStorageKey = `${REVENUECAT_IMMUTABLE_ATTRIBUTION_FIELD_PREFIX}${field}`;
-    try {
-      if ((await AsyncStorage.getItem(fieldStorageKey)) === "1") {
-        skippedFields.push(field);
-        continue;
-      }
-    } catch (_error) {}
-    try {
-      await Purchases[methodName](value);
-      fieldsSet.push(field);
-      try {
-        await AsyncStorage.setItem(fieldStorageKey, "1");
-      } catch (_error) {}
-    } catch (error) {
-      failedFields.push(field);
-      console.warn(`purchases attribution ${field}`, error);
-    }
+  if (result.uploadFailed) {
+    console.warn("purchases attribution explicit sync failed");
   }
-  let attributesSynced = false;
-  if (fieldsSet.length && typeof Purchases.syncAttributesAndOfferingsIfNeeded === "function") {
-    try {
-      await Purchases.syncAttributesAndOfferingsIfNeeded();
-      attributesSynced = true;
-    } catch (error) {
-      console.warn("purchases attribution explicit sync", error);
-    }
-  }
-  const appsFlyerIdSet =
-    fieldsSet.includes("appsFlyerId") || skippedFields.includes("appsFlyerId");
   return {
-    ok: appsFlyerIdSet,
-    reason: appsFlyerIdSet ? null : "missing_appsflyer_id",
-    appsFlyerIdSet,
-    fieldsSet,
-    failedFields,
-    skippedFields,
-    attributesSynced,
+    ...result,
+    reason:
+      result.status === ATTRIBUTION_SYNC_RESULTS.preservedExisting
+        ? "existing_customer_attribution_preserved"
+        : customerState === REVENUECAT_CUSTOMER_STATES.unavailable
+        ? "customer_state_unavailable"
+        : null,
+    appsFlyerIdSet: result.confirmed === true,
+    preserved: result.preservedExistingCustomer === true,
   };
 };
 
-export const syncPurchasesAttributionSafe = (attribution = {}) => {
+export const syncPurchasesAttributionSafe = (request = {}) => {
   return enqueueRevenueCatImmutableAttributionSync(() =>
-    syncPurchasesAttributionOnce(attribution)
+    syncPurchasesAttributionOnce(request)
   );
 };

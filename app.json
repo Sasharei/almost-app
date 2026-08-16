@@ -6,6 +6,15 @@
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#ffffff"
+    },
+    "androidNavigationBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#ffffff",
+      "enforceContrast": false
+    },
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-blank.png",

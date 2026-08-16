@@ -2,6 +2,7 @@ const INVALID_WRITE_ONCE_VALUES = new Set([
   "",
   "unknown",
   "organic",
+  "restricted",
   "null",
   "undefined",
   "00000000-0000-0000-0000-000000000000",
