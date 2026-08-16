@@ -17,7 +17,6 @@ export const QUEUED_MODAL_TYPES = {
   NO_GOAL_SAVE_PROMPT: "no_goal_save_prompt",
   TYCOON_AUTOSAVE_HUNGRY: "tycoon_autosave_hungry",
   TYCOON_AUTOSAVE: "tycoon_autosave",
-  TYCOON_REWARD: "tycoon_reward",
 };
 
 // Attention prompts are deferred until a successful save/spend and share one
@@ -43,7 +42,6 @@ export const POST_ACTION_PROMPT_MODAL_PRIORITY = Object.freeze({
   [QUEUED_MODAL_TYPES.INCOME_PROMPT]: 80,
   [QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY]: 90,
   [QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE]: 100,
-  [QUEUED_MODAL_TYPES.TYCOON_REWARD]: 110,
 });
 
 // Explicit taps/deep links must never wait for the background prompt budget.

@@ -78,3 +78,9 @@ tmp/
 
 # Local QA evidence (screenshots, logs, bundles, and accessibility dumps)
 /artifacts/
+/.codex_tmp_*
+/.derived-sim/
+/.tmp-bundle-*/
+/.tmp_symbolicate/
+/.tmp-video-venv/
+/tmp_device_logs/

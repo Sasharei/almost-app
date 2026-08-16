@@ -190,6 +190,40 @@ test("claim pays once and later same-day rewards go directly to balance", () => 
   assert.equal(laterAction.state.postClaimActionCount, 1);
 });
 
+test("a save after the series is ready joins that chest instead of opening a separate reward", () => {
+  const first = applyTemptationSeriesAction(null, {
+    availableIds: ["coffee", "delivery", "games"],
+    temptationId: "coffee",
+    action: "save",
+    rewardCoins: 5,
+    timestamp: DAY_ONE,
+  });
+  const second = applyTemptationSeriesAction(first.state, {
+    availableIds: ["coffee", "delivery", "games"],
+    temptationId: "delivery",
+    action: "skip",
+    timestamp: DAY_ONE + 1_000,
+  });
+  const ready = applyTemptationSeriesAction(second.state, {
+    availableIds: ["coffee", "delivery", "games"],
+    temptationId: "games",
+    action: "skip",
+    timestamp: DAY_ONE + 2_000,
+  });
+  const autosaveLikeAction = applyTemptationSeriesAction(ready.state, {
+    availableIds: ["coffee", "delivery", "games"],
+    temptationId: "coffee",
+    action: "save",
+    rewardCoins: 7,
+    timestamp: DAY_ONE + 3_000,
+  });
+
+  assert.equal(autosaveLikeAction.state.status, TEMPTATION_SERIES_STATUS.READY);
+  assert.equal(autosaveLikeAction.rewardMode, "pending");
+  assert.equal(autosaveLikeAction.state.pendingCoins, 12);
+  assert.equal(autosaveLikeAction.becameReady, false);
+});
+
 test("the next day starts a fresh series after a previous claim", () => {
   const first = applyTemptationSeriesAction(null, {
     availableIds: ["coffee", "delivery", "games"],

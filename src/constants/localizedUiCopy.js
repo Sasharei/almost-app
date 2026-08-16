@@ -148,6 +148,19 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   ko: { day: "일", hour: "시간", minute: "분" },
 };
 
+export const FRIDGE_DOOR_NOTE_LABELS = {
+  ru: "Список покупок",
+  en: "Shopping list",
+  es: "Lista de compras",
+  fr: "Liste d’achats",
+  de: "Einkaufsliste",
+  pt: "Lista de compras",
+  it: "Lista acquisti",
+  ar: "قائمة المشتريات",
+  zh: "购物清单",
+  ko: "구매 목록",
+};
+
 export const TEMPTATION_SAVINGS_SCORE_LABELS = {
   ru: "Рейтинг экономии",
   en: "Savings score",

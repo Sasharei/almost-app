@@ -141,7 +141,7 @@
     },
     {
       "id": "tycoon-autocollect-premium-flow",
-      "description": "Temptation auto-collect defaults off, is effective only for an active Premium user who opts in, opens the feature paywall from the highlighted locked switch, stops generation and notifications while inaccessible, and keeps ready, hungry, notification, review, confirmation, exclusion, snooze, and reward actions reachable after opt-in.",
+      "description": "Temptation auto-collect defaults off, is effective only for an active Premium user who opts in, opens the feature paywall from a normally styled locked switch, stops generation and notifications while inaccessible, keeps review actions reachable, and routes save rewards through the shared daily series instead of a duplicate auto-collect chest.",
       "file": "App.js",
       "requiredFragments": [
         "const tycoonAutosaveEnabled = isTycoonAutosaveEnabled({",
@@ -150,8 +150,9 @@
         "if (!tycoonAutosaveEnabled) {",
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.temptationAutoCollect);",
         "tycoonModeEnabled={tycoonAutosaveEnabled}",
-        "styles.settingPremiumFeatureRow",
+        "{tycoonModeLocked ? (",
         "{t(\"featureLockedPremiumLabel\")}",
+        "setTycoonLedger((prev) => retireLegacyTycoonRewards(prev));",
         "cancelScheduledTycoonAutosaveNotifications({ dismissDelivered: true })",
         "onToggleSpent={handleTycoonToggleSpent}",
         "onAmountChange={handleTycoonAutosaveAmountChange}",
@@ -159,12 +160,13 @@
         "onSnooze={handleTycoonAutosaveSnooze}",
         "onConfirm={handleTycoonAutosaveConfirm}",
         "onClose={handleTycoonAutosaveClose}",
-        "onCollectAll={handleTycoonRewardCollectAll}",
-        "onOpenChests={handleTycoonRewardOpenChests}"
+        "rewardRoute: \"temptation_series\""
       ],
       "requiredPatterns": [
         "case QUEUED_MODAL_TYPES\\.TYCOON_AUTOSAVE:[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0",
-        "tycoonAutosaveModalVisible =[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0"
+        "tycoonAutosaveModalVisible =[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0",
+        "handleTemptationAction\\(\"save\", card,[\\s\\S]*?suppressSaveOverlay: true",
+        "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{(?:(?!setTycoonRewardModal|QUEUED_MODAL_TYPES\\.TYCOON_REWARD|rewardByEventId).)*?rewardRoute: \"temptation_series\""
       ]
     },
     {
@@ -376,7 +378,7 @@
     },
     {
       "id": "new-user-next-decision-coach",
-      "description": "A user's first-ever resolved temptation queues one persisted, non-blocking next-decision coach independently of attribution and monetization install markers. The Feed may switch to All only when the target is outside the current filter, auto-scrolls to the next unresolved temptation, keeps the real card actions interactive, and permanently completes the coach after a second distinct resolution, an explicit dismissal, a filter change, or an unavailable target.",
+      "description": "A user's first-ever resolved temptation queues one persisted, non-blocking next-decision coach independently of attribution and monetization install markers. The Feed may switch to All only when the target is outside the current filter, maps the target to its virtualized feed index and auto-scrolls there rather than trusting a cell-local layout offset, keeps the real card actions interactive, and permanently completes the coach after a second distinct resolution, an explicit dismissal, a filter change, or an unavailable target.",
       "file": "App.js",
       "requiredFragments": [
         "STORAGE_KEYS.NEXT_DECISION_COACH",
@@ -389,6 +391,10 @@
         "onNextDecisionCoachShown={handleNextDecisionCoachShown}",
         "onNextDecisionCoachDismiss={completeNextDecisionCoach}",
         "setSelectedFeedCategoryId(\"all\")",
+        "const index = Number(feedIndexByTemplateRef.current.get(normalizedKey));",
+        "buildNextDecisionCoachScrollRequest({ index, animated });",
+        "listRef.current.scrollToIndex(scrollRequest);",
+        "onScrollToIndexFailed={handleFeedScrollToIndexFailed}",
         "scrollToTemptationCard({",
         "showNextDecisionCoach={isNextDecisionCoachTarget}",
         "onNextDecisionCoachDismiss?.(\"filter_changed\")",
@@ -1235,7 +1241,7 @@
     },
     {
       "id": "post-action-prompt-policy",
-      "description": "The centralized prompt policy gates only attention prompts after an action; transactional auto-collect, hunger, and earned-reward modals remain outside that slot while retaining deterministic queue priorities.",
+      "description": "The centralized prompt policy gates only attention prompts after an action; transactional auto-collect and hunger modals remain outside that slot while retaining deterministic queue priorities.",
       "file": "src/constants/tutorialUiConstants.js",
       "requiredFragments": [
         "IMPULSE_ALERT: \"impulse_alert\"",
@@ -1975,6 +1981,21 @@
         "adjustsFontSizeToFit",
         "minimumFontScale={0.75}",
         "onPress={handleToggleFridge}"
+      ]
+    },
+    {
+      "id": "fridge-door-shopping-list-preview",
+      "description": "The closed Fridge door shows several compact, due-sorted previews on a pinned-note surface while keeping full item actions inside the opened Fridge.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const fridgeDoorPreviewLimit = IS_SHORT_DEVICE ? 2 : 3;",
+        "const fridgeDoorPreviewItems = sorted.slice(0, fridgeDoorPreviewLimit);",
+        "const fridgeDoorHiddenCount = Math.max(0, pendingCount - fridgeDoorPreviewItems.length);",
+        "fridgeDoorPreviewItems.map((item, index) => {",
+        "styles.fridgeDoorNote",
+        "styles.fridgeDoorNoteMore",
+        "onPress={handleToggleFridge}",
+        "sorted.map(renderPendingShelf)"
       ]
     },
     {

@@ -5,6 +5,7 @@ const {
   TYCOON_SETTINGS_VERSION,
   isTycoonAutosaveEnabled,
   normalizeTycoonSettings,
+  retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   shouldResetLegacyTycoonPendingEvents,
 } = require("../../src/engagement/tycoonAccess");
@@ -49,4 +50,25 @@ test("premium-gate migration preserves history and archives only stale pending i
     skipReason: "premium_gate_migration",
   });
   assert.deepEqual(migrated[1], entries[1]);
+});
+
+test("legacy auto-collect rewards are retired because the daily series owns payout", () => {
+  const entries = [
+    { id: "unclaimed", status: "saved", rewardAmount: 4, rewardClaimed: false },
+    { id: "claimed", status: "saved", rewardAmount: 5, rewardClaimed: true },
+    { id: "pending", status: "pending", rewardAmount: 0, rewardClaimed: false },
+  ];
+  const migrated = retireLegacyTycoonRewards(entries, 5678);
+
+  assert.deepEqual(migrated[0], {
+    id: "unclaimed",
+    status: "saved",
+    rewardAmount: 4,
+    rewardClaimed: true,
+    rewardRetiredAt: 5678,
+    rewardRoute: "temptation_series",
+  });
+  assert.equal(migrated[1], entries[1]);
+  assert.equal(migrated[2], entries[2]);
+  assert.equal(retireLegacyTycoonRewards(migrated, 9999), migrated);
 });

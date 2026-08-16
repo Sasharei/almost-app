@@ -118,8 +118,27 @@ const resolveNextDecisionCoachTarget = ({
   return candidates[0] || null;
 };
 
+const buildNextDecisionCoachScrollRequest = ({
+  index,
+  animated = true,
+  viewPosition = 0.06,
+} = {}) => {
+  const normalizedIndex = Math.floor(Number(index));
+  if (!Number.isFinite(normalizedIndex) || normalizedIndex < 0) return null;
+  const normalizedViewPosition = Math.min(
+    1,
+    Math.max(0, Number(viewPosition) || 0)
+  );
+  return {
+    index: normalizedIndex,
+    animated: animated !== false,
+    viewPosition: normalizedViewPosition,
+  };
+};
+
 module.exports = {
   NEXT_DECISION_COACH_STATUS,
+  buildNextDecisionCoachScrollRequest,
   createEligibleNextDecisionCoach,
   normalizeNextDecisionCoachState,
   resolveNextDecisionCoachTarget,

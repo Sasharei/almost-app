@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   NEXT_DECISION_COACH_STATUS,
+  buildNextDecisionCoachScrollRequest,
   normalizeNextDecisionCoachState,
   resolveNextDecisionCoachTarget,
   serializeNextDecisionCoachState,
@@ -74,6 +75,21 @@ test("target selection skips the completed source and keeps feed order", () => {
     sourceTemptationId: "coffee",
   });
   assert.equal(target.id, "delivery");
+});
+
+test("coach scrolling targets the virtualized feed index instead of a cell-local offset", () => {
+  const request = buildNextDecisionCoachScrollRequest({
+    index: 1,
+    animated: true,
+  });
+
+  assert.deepEqual(request, {
+    index: 1,
+    animated: true,
+    viewPosition: 0.06,
+  });
+  assert.equal(Object.hasOwn(request, "offset"), false);
+  assert.equal(buildNextDecisionCoachScrollRequest({ index: -1 }), null);
 });
 
 test("a visible coach restores as pending until the user acts or dismisses it", () => {
