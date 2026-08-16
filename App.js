@@ -258,6 +258,7 @@ import {
   WEEKDAY_SELECTOR_ORDER,
   WEEKDAY_LABEL_KEYS,
   FREQUENCY_COUNTDOWN_TOKENS,
+  FRIDGE_DOOR_NOTE_LABELS,
   TEMPTATION_SAVINGS_SCORE_LABELS,
   TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES,
   TEMPTATION_DUPLICATE_ACTION_LABELS,
@@ -546,6 +547,7 @@ const {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   NEXT_DECISION_COACH_STATUS,
+  buildNextDecisionCoachScrollRequest,
   createEligibleNextDecisionCoach,
   normalizeNextDecisionCoachState,
   resolveNextDecisionCoachTarget,
@@ -556,6 +558,7 @@ const {
 const {
   isTycoonAutosaveEnabled,
   normalizeTycoonSettings,
+  retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   shouldResetLegacyTycoonPendingEvents,
 } = require("./src/engagement/tycoonAccess");
@@ -28648,100 +28651,6 @@ function TycoonAutosaveHungryModal({
   );
 }
 
-function TycoonRewardModal({
-  visible,
-  rewards = [],
-  count = 0,
-  reward = 0,
-  colors,
-  t,
-  onCollectAll,
-  onOpenChests,
-}) {
-  const burst = useRef(new Animated.Value(0)).current;
-  const rewardList = Array.isArray(rewards) ? rewards.filter((entry) => Math.max(0, Number(entry?.amount) || 0) > 0) : [];
-  const resolvedCount = Math.max(0, Number(count) || rewardList.length);
-  const resolvedReward =
-    Math.max(0, Number(reward) || 0) ||
-    rewardList.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount) || 0), 0);
-  const previewRewards = rewardList.length
-    ? rewardList.slice(0, 8)
-    : Array.from({ length: Math.max(1, Math.min(5, resolvedCount || 1)) }).map((_, index) => ({
-        id: `preview-${index}`,
-        amount: resolvedReward,
-      }));
-  useEffect(() => {
-    if (!visible) {
-      burst.setValue(0);
-      return;
-    }
-    burst.setValue(0);
-    Animated.timing(burst, {
-      toValue: 1,
-      duration: 650,
-      easing: Easing.out(Easing.back(1.4)),
-      useNativeDriver: true,
-    }).start();
-  }, [burst, visible]);
-  const handleRequestClose = onCollectAll || onOpenChests || (() => {});
-  return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleRequestClose}>
-      <View style={styles.tycoonRewardBackdrop}>
-        <View style={[styles.tycoonRewardCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.tycoonRewardChestRow}>
-            {previewRewards.map((entry, index) => {
-              const tier = getChestRewardTierForAmount(entry.amount || resolvedReward);
-              return (
-              <Animated.Image
-                key={entry.id || index}
-                source={tier?.assets?.closed || DEFAULT_CHEST_REWARD_TIER.assets.closed}
-                style={[
-                  styles.tycoonRewardChest,
-                  {
-                    opacity: burst,
-                    transform: [
-                      {
-                        translateY: burst.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [30 + index * 6, 0],
-                        }),
-                      },
-                      {
-                        scale: burst.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.55, 1],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-              );
-            })}
-          </View>
-          <Text style={[styles.tycoonRewardTitle, { color: colors.text }]}>{t("tycoonAutosaveRewardTitle")}</Text>
-          <Text style={[styles.tycoonRewardBody, { color: colors.muted }]}>
-            {t("tycoonAutosaveRewardBody", { count: resolvedCount })}
-          </Text>
-          <TouchableOpacity style={[styles.tycoonRewardButton, { backgroundColor: colors.text }]} onPress={onOpenChests}>
-            <Text style={[styles.tycoonRewardButtonText, { color: colors.background }]}>
-              {t("tycoonAutosaveRewardOpen")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tycoonRewardSecondaryButton, { borderColor: colors.border }]}
-            onPress={onCollectAll}
-          >
-            <Text style={[styles.tycoonRewardButtonText, { color: colors.text }]}>
-              {t("tycoonAutosaveRewardCollect")}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const FeedScreen = React.memo(
   forwardRef(function FeedScreen(
     {
@@ -29006,7 +28915,6 @@ const FeedScreen = React.memo(
     ? progressLifetimeSavedUSD
     : lifetimeSavedUSD;
   const listRef = useRef(null);
-  const cardLayoutOffsetsRef = useRef(new Map());
   const feedIndexByTemplateRef = useRef(new Map());
   const nextDecisionCoachScrollHandledRef = useRef(null);
   const seriesContinuationRequestSeenRef = useRef(0);
@@ -29885,27 +29793,6 @@ const FeedScreen = React.memo(
     },
     []
   );
-  const registerTemptationCardLayout = useCallback((item, layoutY) => {
-    if (!item) return;
-    const y = Number(layoutY);
-    if (!Number.isFinite(y)) return;
-    const itemKey =
-      typeof item?.id === "number"
-        ? normalizeInteractionKey(String(item.id))
-        : normalizeInteractionKey(item?.id);
-    const templateKey =
-      typeof item?.templateId === "number"
-        ? normalizeInteractionKey(String(item.templateId))
-        : normalizeInteractionKey(item?.templateId);
-    if (!itemKey && !templateKey) return;
-    const offset = Math.max(0, y - 12);
-    if (itemKey) {
-      cardLayoutOffsetsRef.current.set(itemKey, offset);
-    }
-    if (templateKey) {
-      cardLayoutOffsetsRef.current.set(templateKey, offset);
-    }
-  }, []);
   const scrollToTemptationCard = useCallback(
     ({ templateId, animated = true } = {}) => {
       if (!listRef.current) return false;
@@ -29915,35 +29802,12 @@ const FeedScreen = React.memo(
           : normalizeInteractionKey(templateId);
       if (!normalizedKey) return false;
       const index = Number(feedIndexByTemplateRef.current.get(normalizedKey));
-      if (index === 0 && heroSectionHeightRef.current > 0) {
-        try {
-          listRef.current.scrollToOffset({
-            offset: Math.max(0, heroSectionHeightRef.current - 12),
-            animated,
-          });
-          return true;
-        } catch {
-          return false;
-        }
-      }
-      const offset = Number(cardLayoutOffsetsRef.current.get(normalizedKey));
-      if (Number.isFinite(offset)) {
-        try {
-          listRef.current.scrollToOffset({ offset: Math.max(0, offset), animated });
-          return true;
-        } catch (error) {
-          return false;
-        }
-      }
-      if (!Number.isFinite(index) || index < 0 || typeof listRef.current.scrollToIndex !== "function") {
+      const scrollRequest = buildNextDecisionCoachScrollRequest({ index, animated });
+      if (!scrollRequest || typeof listRef.current.scrollToIndex !== "function") {
         return false;
       }
       try {
-        listRef.current.scrollToIndex({
-          index: Math.round(index),
-          animated,
-          viewPosition: 0.06,
-        });
+        listRef.current.scrollToIndex(scrollRequest);
         return true;
       } catch (error) {
         return false;
@@ -32779,13 +32643,7 @@ const FeedScreen = React.memo(
         }
       }
       return (
-        <View
-          collapsable={false}
-          onLayout={(event) => {
-            registerTemptationCardLayout(item, event?.nativeEvent?.layout?.y);
-          }}
-        >
-          <TemptationCard
+        <TemptationCard
             item={item}
             language={language}
             colors={colors}
@@ -32860,7 +32718,6 @@ const FeedScreen = React.memo(
             categoryBudget={categoryBudget}
             onCategoryBudgetPress={onTemptationCategoryBudgetPress}
           />
-        </View>
       );
     },
     [
@@ -32917,7 +32774,6 @@ const FeedScreen = React.memo(
       titleOverrides,
       resolveAssignedGoalLabel,
       wishesById,
-      registerTemptationCardLayout,
     ]
   );
   const feedTailPlaceholder = useMemo(
@@ -39704,55 +39560,55 @@ const ProgressScreen = React.memo(function ProgressScreen({
             </View>
           </Pressable>
         </View>
-        <Pressable
-          onPress={toggleProgressAnalytics}
-          style={({ pressed }) => [
-            styles.progressForecastExplainer,
-            { backgroundColor: colors.primarySurface || colors.surfaceMuted },
-            pressed && styles.progressAnalyticsPressablePressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={`${t("potentialDetailsTitle")}. ${t(
-            progressPotentialCardCount > 0
-              ? "potentialDetailsIntro"
-              : "potentialDetailsEmptyIntro"
-          )}`}
-          accessibilityHint={progressAnalyticsExpanded ? t("heroCollapse") : t("heroExpand")}
-          accessibilityState={{ expanded: progressAnalyticsExpanded }}
-        >
-          <View style={styles.progressForecastExplainerHeader}>
-            <Text style={[styles.progressForecastExplainerTitle, { color: colors.text }]}>
-              {t("potentialDetailsTitle")}
-            </Text>
-            <View
-              style={[
-                styles.progressForecastPeriodBadge,
-                { backgroundColor: colors.primarySurfaceStrong || colors.surfaceElevated },
-              ]}
-            >
-              <Text style={[styles.progressForecastPeriodBadgeText, { color: colors.text }]}>
-                {t("potentialPeriodMonth")}
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.progressForecastExplainerBody, { color: colors.text }]}>
-            {t(
-              progressPotentialCardCount > 0
-                ? "potentialDetailsIntro"
-                : "potentialDetailsEmptyIntro"
-            )}
-          </Text>
-          <View style={styles.progressForecastExplainerMeta}>
-            <Text style={[styles.progressForecastExplainerStatus, { color: colors.text }]}>
-              {t(progressPotentialStatusKey)}
-            </Text>
-            <Text style={[styles.progressForecastExplainerCount, { color: colors.muted }]}>
-              {t("potentialDetailsCardsLabel", { count: progressPotentialCardCount })}
-            </Text>
-          </View>
-        </Pressable>
         {progressAnalyticsExpanded ? (
           <>
+            <Pressable
+              onPress={toggleProgressAnalytics}
+              style={({ pressed }) => [
+                styles.progressForecastExplainer,
+                { backgroundColor: colors.primarySurface || colors.surfaceMuted },
+                pressed && styles.progressAnalyticsPressablePressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`${t("potentialDetailsTitle")}. ${t(
+                progressPotentialCardCount > 0
+                  ? "potentialDetailsIntro"
+                  : "potentialDetailsEmptyIntro"
+              )}`}
+              accessibilityHint={t("heroCollapse")}
+              accessibilityState={{ expanded: true }}
+            >
+              <View style={styles.progressForecastExplainerHeader}>
+                <Text style={[styles.progressForecastExplainerTitle, { color: colors.text }]}>
+                  {t("potentialDetailsTitle")}
+                </Text>
+                <View
+                  style={[
+                    styles.progressForecastPeriodBadge,
+                    { backgroundColor: colors.primarySurfaceStrong || colors.surfaceElevated },
+                  ]}
+                >
+                  <Text style={[styles.progressForecastPeriodBadgeText, { color: colors.text }]}>
+                    {t("potentialPeriodMonth")}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.progressForecastExplainerBody, { color: colors.text }]}>
+                {t(
+                  progressPotentialCardCount > 0
+                    ? "potentialDetailsIntro"
+                    : "potentialDetailsEmptyIntro"
+                )}
+              </Text>
+              <View style={styles.progressForecastExplainerMeta}>
+                <Text style={[styles.progressForecastExplainerStatus, { color: colors.text }]}>
+                  {t(progressPotentialStatusKey)}
+                </Text>
+                <Text style={[styles.progressForecastExplainerCount, { color: colors.muted }]}>
+                  {t("potentialDetailsCardsLabel", { count: progressPotentialCardCount })}
+                </Text>
+              </View>
+            </Pressable>
             <View style={styles.progressForecastHowSection}>
               <Text style={[styles.progressForecastHowTitle, { color: colors.text }]}>
                 {t("potentialDetailsHowTitle")}
@@ -42769,6 +42625,9 @@ const PendingScreen = React.memo(function PendingScreen({
 
   const handleHint =
     resolveLanguageMapValue(FRIDGE_HANDLE_HINT, language) || FRIDGE_HANDLE_HINT.en;
+  const fridgeDoorNoteLabel =
+    resolveLanguageMapValue(FRIDGE_DOOR_NOTE_LABELS, language) ||
+    FRIDGE_DOOR_NOTE_LABELS.en;
   const fridgeIntroCopy = localizeFallbackCopyStructure(
     FRIDGE_INTRO_COPY[normalizeLanguage(language)] ||
       FRIDGE_INTRO_COPY[resolveTranslationLanguage(language)] ||
@@ -42888,11 +42747,28 @@ const PendingScreen = React.memo(function PendingScreen({
     outputRange: [0.55, 0.16, 0],
   });
   const fridgeAccent = colors.primary || colors.text;
+  const isFridgeDarkTheme =
+    colors.appearance === "dark" || colors.background === THEMES.dark.background;
   const fridgePremiumAccent = premiumAccent || PREMIUM_UI_ACCENT_LIGHT;
   const fridgeOnAccent = colors.onPrimary || colors.background;
   const fridgePanelSurface = colors.surfaceElevated || colors.card;
   const fridgeMutedSurface = colors.surfaceMuted || colorWithAlpha(colors.text, 0.05);
   const fridgeEdgeColor = colors.border;
+  const fridgeDoorNoteSurface = blendColors(
+    fridgePanelSurface,
+    colors.warning,
+    isFridgeDarkTheme ? 0.12 : 0.08
+  );
+  const fridgeDoorNoteRuleColor = colorWithAlpha(
+    colors.warning,
+    isFridgeDarkTheme ? 0.26 : 0.18
+  );
+  const fridgeDoorNoteAccentText = blendColors(
+    fridgeAccent,
+    colors.text,
+    isFridgeDarkTheme ? 0.22 : 0.42
+  );
+  const fridgeDoorNoteShadowColor = colors.shadow || "#000000";
   const fridgeHandleShellColor = colors.surface || fridgeMutedSurface;
   const fridgeHandleInnerColor = colors.text;
   const shelfPlaceholderBg = colorWithAlpha(colors.text, 0.025);
@@ -43381,6 +43257,10 @@ const PendingScreen = React.memo(function PendingScreen({
   const nextPendingCountdown = nextPendingItem
     ? formatCountdown((nextPendingItem.decisionDue || 0) - nowTick)
     : null;
+  const fridgeDoorPreviewLimit = IS_SHORT_DEVICE ? 2 : 3;
+  const fridgeDoorPreviewItems = sorted.slice(0, fridgeDoorPreviewLimit);
+  const fridgeDoorHiddenCount = Math.max(0, pendingCount - fridgeDoorPreviewItems.length);
+  const isFridgeRtlLayout = isRtlLanguage(language);
   const fridgeBody = (
     <View style={[styles.fridgeStage, { paddingBottom: fridgeBottomVisualGap }]}>
       <View
@@ -43475,6 +43355,8 @@ const PendingScreen = React.memo(function PendingScreen({
         <View style={[styles.fridgePanelContent, fridgeInteriorClearanceStyle]}>
           <Animated.View
             pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             style={[
               styles.fridgeClosedContent,
               {
@@ -43603,6 +43485,8 @@ const PendingScreen = React.memo(function PendingScreen({
           />
           <Animated.View
             pointerEvents="none"
+            accessibilityElementsHidden={fridgeOpen}
+            importantForAccessibility={fridgeOpen ? "no-hide-descendants" : "auto"}
             style={[styles.fridgeDoorContent, { opacity: doorContentOpacity }]}
           >
             <View style={styles.fridgeDoorBrandRow}>
@@ -43698,64 +43582,221 @@ const PendingScreen = React.memo(function PendingScreen({
             </View>
 
             <View style={styles.fridgeDoorClosedState}>
-              {nextPendingItem ? (
+              {fridgeDoorPreviewItems.length ? (
                 <View
                   style={[
-                    styles.fridgeNextPreview,
-                    { backgroundColor: fridgeMutedSurface, borderColor: colors.border },
+                    styles.fridgeDoorNote,
+                    {
+                      backgroundColor: fridgeDoorNoteSurface,
+                      shadowColor: fridgeDoorNoteShadowColor,
+                      transform: [
+                        { rotate: isFridgeRtlLayout ? "0.5deg" : "-0.5deg" },
+                      ],
+                    },
                   ]}
                 >
                   <View
                     style={[
-                      styles.fridgeNextPreviewEmoji,
-                      { backgroundColor: fridgePanelSurface },
+                      styles.fridgeDoorMagnet,
+                      {
+                        backgroundColor: fridgeAccent,
+                        shadowColor: fridgeDoorNoteShadowColor,
+                      },
+                      isFridgeRtlLayout
+                        ? styles.fridgeDoorMagnetRtl
+                        : styles.fridgeDoorMagnetLtr,
                     ]}
                   >
-                    <Text style={styles.fridgeNextPreviewEmojiText}>
-                      {nextPendingDisplay?.emoji || "❄️"}
-                    </Text>
+                    <View
+                      style={[
+                        styles.fridgeDoorMagnetHighlight,
+                        { backgroundColor: colorWithAlpha(fridgeOnAccent, 0.72) },
+                      ]}
+                    />
                   </View>
-                  <View style={styles.fridgeNextPreviewCopy}>
+                  <View
+                    style={[
+                      styles.fridgeDoorNoteHeader,
+                      isFridgeRtlLayout && styles.fridgeDoorNoteRowRtl,
+                    ]}
+                  >
                     <Text
-                      style={[styles.fridgeNextPreviewTitle, { color: colors.text }]}
-                      numberOfLines={2}
+                      style={[
+                        styles.fridgeDoorNoteHeading,
+                        { color: colors.text },
+                        isFridgeRtlLayout && styles.fridgeDoorNoteTextRtl,
+                      ]}
+                      numberOfLines={1}
                       adjustsFontSizeToFit
-                      minimumFontScale={0.82}
-                      ellipsizeMode="tail"
+                      minimumFontScale={0.8}
                     >
-                      {nextPendingDisplay?.title || t("defaultDealTitle")}
+                      {fridgeDoorNoteLabel}
                     </Text>
+                    <View
+                      style={[
+                        styles.fridgeDoorNoteCount,
+                        { backgroundColor: colorWithAlpha(fridgeAccent, 0.13) },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.fridgeDoorNoteCountText,
+                          { color: fridgeDoorNoteAccentText },
+                        ]}
+                      >
+                        {pendingCount}
+                      </Text>
+                    </View>
+                  </View>
+                  <View
+                    style={[
+                      styles.fridgeDoorNoteRule,
+                      { backgroundColor: fridgeDoorNoteRuleColor },
+                    ]}
+                  />
+                  {fridgeDoorPreviewItems.map((item, index) => {
+                    const previewDisplay = resolvePendingEntryDisplay(
+                      item,
+                      t("defaultDealTitle")
+                    );
+                    const previewDiff = (item.decisionDue || 0) - nowTick;
+                    const previewCountdown = formatCountdown(previewDiff);
+                    return (
+                      <React.Fragment key={`fridge-door-preview-${item.id || index}`}>
+                        <View
+                          style={[
+                            styles.fridgeDoorNoteRow,
+                            isFridgeRtlLayout && styles.fridgeDoorNoteRowRtl,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.fridgeDoorNoteEmoji,
+                              { backgroundColor: colorWithAlpha(fridgeAccent, 0.1) },
+                            ]}
+                          >
+                            <Text style={styles.fridgeDoorNoteEmojiText}>
+                              {previewDisplay.emoji || "❄️"}
+                            </Text>
+                          </View>
+                          <View style={styles.fridgeDoorNoteCopy}>
+                            <Text
+                              style={[
+                                styles.fridgeDoorNoteTitle,
+                                { color: colors.text },
+                                isFridgeRtlLayout && styles.fridgeDoorNoteTextRtl,
+                              ]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {previewDisplay.title || t("defaultDealTitle")}
+                            </Text>
+                            <View
+                              style={[
+                                styles.fridgeDoorNoteMeta,
+                                isFridgeRtlLayout && styles.fridgeDoorNoteRowRtl,
+                              ]}
+                            >
+                              <Text
+                                style={[styles.fridgeDoorNoteMetaText, { color: colors.muted }]}
+                                numberOfLines={1}
+                              >
+                                {formatTemptationPriceLabel(item, currency)}
+                              </Text>
+                              <View
+                                style={[
+                                  styles.fridgeDoorNoteMetaDot,
+                                  { backgroundColor: fridgeDoorNoteRuleColor },
+                                ]}
+                              />
+                              <Text
+                                style={[
+                                  styles.fridgeDoorNoteCountdown,
+                                  {
+                                    color:
+                                      previewDiff <= 0
+                                        ? colors.error || "#C75B54"
+                                        : fridgeDoorNoteAccentText,
+                                  },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {previewCountdown}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                        {index < fridgeDoorPreviewItems.length - 1 ? (
+                          <View
+                            style={[
+                              styles.fridgeDoorNoteSeparator,
+                              isFridgeRtlLayout && styles.fridgeDoorNoteSeparatorRtl,
+                              { backgroundColor: fridgeDoorNoteRuleColor },
+                            ]}
+                          />
+                        ) : null}
+                      </React.Fragment>
+                    );
+                  })}
+                  <View
+                    style={[
+                      styles.fridgeDoorNoteFooter,
+                      isFridgeRtlLayout && styles.fridgeDoorNoteRowRtl,
+                    ]}
+                  >
                     <Text
-                      style={[styles.fridgeNextPreviewPrice, { color: colors.muted }]}
+                      style={[
+                        styles.fridgeDoorNoteHint,
+                        { color: colors.muted },
+                        isFridgeRtlLayout && styles.fridgeDoorNoteTextRtl,
+                      ]}
                       numberOfLines={1}
                     >
-                      {formatTemptationPriceLabel(nextPendingItem, currency)}
+                      {handleHint}
                     </Text>
+                    {fridgeDoorHiddenCount > 0 ? (
+                      <View
+                        style={[
+                          styles.fridgeDoorNoteMore,
+                          { backgroundColor: colorWithAlpha(colors.text, 0.07) },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.fridgeDoorNoteMoreText, { color: colors.text }]}
+                        >
+                          +{fridgeDoorHiddenCount}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <Text
-                    style={[
-                      styles.fridgeNextPreviewCountdown,
-                      {
-                        color:
-                          (nextPendingItem.decisionDue || 0) - nowTick <= 0
-                            ? colors.error || "#C75B54"
-                            : fridgeAccent,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {nextPendingCountdown}
-                  </Text>
                 </View>
               ) : (
-                <View style={styles.fridgeClosedEmpty}>
-                  <Text style={styles.fridgeClosedEmptyIcon}>🧊</Text>
-                  <Text style={[styles.fridgeClosedEmptyTitle, { color: colors.text }]}>
-                    {t("pendingEmptyTitle")}
-                  </Text>
-                  <Text style={[styles.fridgeClosedEmptySubtitle, { color: colors.muted }]}>
-                    {t("pendingEmptySubtitle")}
-                  </Text>
+                <View
+                  style={[
+                    styles.fridgeDoorNote,
+                    styles.fridgeDoorEmptyNote,
+                    {
+                      backgroundColor: fridgeDoorNoteSurface,
+                      shadowColor: fridgeDoorNoteShadowColor,
+                      transform: [
+                        { rotate: isFridgeRtlLayout ? "0.5deg" : "-0.5deg" },
+                      ],
+                    },
+                  ]}
+                >
+                  <View style={styles.fridgeClosedEmpty}>
+                    <Text style={styles.fridgeClosedEmptyIcon}>🧊</Text>
+                    <Text
+                      style={[styles.fridgeClosedEmptyTitle, { color: colors.text }]}
+                    >
+                      {t("pendingEmptyTitle")}
+                    </Text>
+                    <Text
+                      style={[styles.fridgeClosedEmptySubtitle, { color: colors.muted }]}
+                    >
+                      {t("pendingEmptySubtitle")}
+                    </Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -47593,21 +47634,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
   });
   const profilePremiumBadgeText = getReadableTextColor(profilePremiumAccent);
   const tycoonModeLocked = !isPremiumUser;
-  const tycoonPremiumSurface =
-    Platform.OS === "android"
-      ? blendColors(
-          colors.card || "#FFFFFF",
-          profilePremiumAccent,
-          tycoonModeLocked ? (isDarkTheme ? 0.3 : 0.16) : isDarkTheme ? 0.2 : 0.1
-        )
-      : colorWithAlpha(
-          profilePremiumAccent,
-          tycoonModeLocked ? (isDarkTheme ? 0.18 : 0.1) : isDarkTheme ? 0.12 : 0.07
-        );
-  const tycoonPremiumBorder = colorWithAlpha(
-    profilePremiumAccent,
-    tycoonModeLocked ? (isDarkTheme ? 0.62 : 0.42) : isDarkTheme ? 0.46 : 0.3
-  );
   const incomeSection = (
     isEditing ? (
       <View style={styles.profileEditableEditor}>
@@ -48587,55 +48613,57 @@ const ProfileScreen = React.memo(function ProfileScreen({
             </Pressable>
           </View>
         </View>
-        <View
-          style={[
-            styles.settingRow,
-            styles.settingPremiumFeatureRow,
-            {
-              backgroundColor: tycoonPremiumSurface,
-              borderColor: tycoonPremiumBorder,
-            },
-          ]}
-        >
+        <View style={styles.settingRow}>
           <View style={styles.settingRowContent}>
             <View style={{ flex: 1 }}>
-              <View
-                style={[
-                  styles.settingPremiumTitleRow,
-                  isProfileRtlLayout && styles.profileRowRtl,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.settingLabel,
-                    styles.settingPremiumTitle,
-                    { color: colors.text },
-                  ]}
-                >
-                  {t("tycoonModeLabel")}
-                </Text>
+              {tycoonModeLocked ? (
                 <View
                   style={[
-                    styles.profileActionPremiumPill,
-                    {
-                      backgroundColor: colorWithAlpha(
-                        profilePremiumAccent,
-                        isDarkTheme ? 0.22 : 0.14
-                      ),
-                      borderColor: tycoonPremiumBorder,
-                    },
+                    styles.settingPremiumTitleRow,
+                    isProfileRtlLayout && styles.profileRowRtl,
                   ]}
                 >
                   <Text
                     style={[
-                      styles.profileActionPremiumPillText,
-                      { color: profilePremiumAccent },
+                      styles.settingLabel,
+                      styles.settingPremiumTitle,
+                      { color: colors.muted },
                     ]}
                   >
-                    {t("featureLockedPremiumLabel")}
+                    {t("tycoonModeLabel")}
                   </Text>
+                  <View
+                    style={[
+                      styles.profileActionPremiumPill,
+                      {
+                        backgroundColor: colorWithAlpha(
+                          profilePremiumAccent,
+                          isDarkTheme ? 0.22 : 0.14
+                        ),
+                        borderColor: colorWithAlpha(
+                          profilePremiumAccent,
+                          isDarkTheme ? 0.46 : 0.3
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.profileActionPremiumPillText,
+                        { color: profilePremiumAccent },
+                      ]}
+                    >
+                      {t("featureLockedPremiumLabel")}
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <Text
+                  style={[styles.settingLabel, { color: colors.muted }]}
+                >
+                  {t("tycoonModeLabel")}
+                </Text>
+              )}
               <Text style={[styles.profileHintText, { color: colors.muted }]}>{t("tycoonModeHint")}</Text>
             </View>
             <Pressable
@@ -48649,9 +48677,9 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 styles.settingToggle,
                 {
                   backgroundColor: tycoonModeEnabled
-                    ? profilePremiumAccent
-                    : colorWithAlpha(profilePremiumAccent, isDarkTheme ? 0.22 : 0.14),
-                  borderColor: tycoonPremiumBorder,
+                    ? colors.text
+                    : colorWithAlpha(colors.text, 0.15),
+                  borderColor: colors.border,
                 },
               ]}
             >
@@ -48659,9 +48687,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 style={[
                   styles.settingToggleHandle,
                   {
-                    backgroundColor: tycoonModeEnabled
-                      ? getReadableTextColor(profilePremiumAccent)
-                      : colors.card,
+                    backgroundColor: tycoonModeEnabled ? colors.background : colors.card,
                     transform: [{ translateX: tycoonModeEnabled ? 20 : 0 }],
                   },
                 ]}
@@ -49484,13 +49510,6 @@ function AppContent() {
     );
   }, [tycoonAutosaveHungryLastShownAtHydrated]);
   const tycoonAutosaveHungryNotifiedRef = useRef({ dayKey: null, count: 0 });
-  const [tycoonRewardModal, setTycoonRewardModal] = useState({
-    visible: false,
-    count: 0,
-    reward: 0,
-    rewards: [],
-  });
-  const [tycoonRewardFlowActive, setTycoonRewardFlowActive] = useState(false);
   const [tycoonAutosaveSweepVersion, setTycoonAutosaveSweepVersion] = useState(0);
   const tycoonAutosaveEnabled = isTycoonAutosaveEnabled({
     isPremium: premiumState.isPremium,
@@ -51042,16 +51061,6 @@ function AppContent() {
     tycoonLedgerHydrated,
     tycoonPendingEvents.length,
   ]);
-  const tycoonPendingRewardEvents = useMemo(
-    () =>
-      (Array.isArray(tycoonLedger) ? tycoonLedger : []).filter(
-        (entry) =>
-          entry?.status === "saved" &&
-          entry.rewardClaimed !== true &&
-          Math.max(0, Number(entry?.rewardAmount) || 0) > 0
-      ),
-    [tycoonLedger]
-  );
   const tycoonAutosaveSnoozedActive =
     tycoonPendingEvents.length > 0 &&
     Math.max(0, Number(tycoonAutosaveSnoozedUntil) || 0) > Date.now();
@@ -51107,37 +51116,9 @@ function AppContent() {
     }
   }, [tycoonPendingEvents.length]);
   useEffect(() => {
-    if (!tycoonPendingRewardEvents.length) return;
-    if (tycoonRewardModal.visible) return;
-    if (tycoonRewardFlowActive) return;
-    const rewards = tycoonPendingRewardEvents
-      .map((entry) => {
-        const amount = Math.max(0, Number(entry?.rewardAmount) || 0);
-        const tier = getChestRewardTierForAmount(amount);
-        return amount > 0
-          ? {
-              id: entry.id,
-              eventId: entry.id,
-              amount,
-              tierId: tier?.id || null,
-              title: entry.title || null,
-            }
-          : null;
-      })
-      .filter(Boolean);
-    if (!rewards.length) return;
-    setTycoonRewardModal({
-      visible: true,
-      count: rewards.length,
-      reward: rewards.reduce((sum, entry) => sum + entry.amount, 0),
-      rewards,
-    });
-  }, [tycoonPendingRewardEvents, tycoonRewardFlowActive, tycoonRewardModal.visible]);
-  useEffect(() => {
-    if (tycoonRewardFlowActive && tycoonPendingRewardEvents.length === 0) {
-      setTycoonRewardFlowActive(false);
-    }
-  }, [tycoonPendingRewardEvents.length, tycoonRewardFlowActive]);
+    if (!tycoonLedgerHydrated) return;
+    setTycoonLedger((prev) => retireLegacyTycoonRewards(prev));
+  }, [tycoonLedgerHydrated]);
   useEffect(() => {
     if (!tycoonSettingsHydrated || !tycoonLedgerHydrated || !temptationInteractionsHydrated) return;
     if (!tycoonAutosaveEnabled) {
@@ -52148,15 +52129,6 @@ function AppContent() {
     tycoonAutosaveSnoozedActive,
     tycoonPendingEvents.length,
   ]);
-  useEffect(() => {
-    if (!tycoonRewardModal.visible) return;
-    enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-  }, [enqueueQueuedModal, tycoonRewardModal.visible]);
-  useEffect(() => {
-    if (queuedModalType !== QUEUED_MODAL_TYPES.TYCOON_REWARD) return;
-    if (tycoonRewardModal.visible) return;
-    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-  }, [clearQueuedModal, queuedModalType, tycoonRewardModal.visible]);
   useEffect(() => {
     if (!cycleSavingsRevokedPrompt.visible) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED);
@@ -56986,10 +56958,6 @@ function AppContent() {
     !tycoonAutosaveDismissed &&
     !tycoonAutosaveSnoozedActive &&
     tycoonPendingEvents.length > 0;
-  const tycoonRewardModalVisible =
-    !levelShareFlowLocked &&
-    queuedModalType === QUEUED_MODAL_TYPES.TYCOON_REWARD &&
-    tycoonRewardModal.visible;
   const cycleSavingsRevokedPromptVisible =
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED &&
@@ -57018,8 +56986,6 @@ function AppContent() {
         return incomeEntryModalVisible;
       case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE:
         return tycoonAutosaveModalVisible;
-      case QUEUED_MODAL_TYPES.TYCOON_REWARD:
-        return tycoonRewardModalVisible;
       case QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED:
         return cycleSavingsRevokedPromptVisible;
       default:
@@ -57038,7 +57004,6 @@ function AppContent() {
     queuedModalType,
     tycoonAutosaveHungryModalVisible,
     tycoonAutosaveModalVisible,
-    tycoonRewardModalVisible,
   ]);
   const noGoalSavePromptReveal = useRef(new Animated.Value(0)).current;
   const noGoalSavePromptPulse = useRef(new Animated.Value(0)).current;
@@ -57481,7 +57446,6 @@ function AppContent() {
       stormActive ||
       tycoonAutosaveHungryModalVisible ||
       tycoonAutosaveModalVisible ||
-      tycoonRewardModalVisible ||
       moodDetailsVisible ||
       potentialDetailsVisible ||
       budgetWidgetTutorialVisible ||
@@ -57516,7 +57480,6 @@ function AppContent() {
       termsModalVisible,
       tycoonAutosaveHungryModalVisible,
       tycoonAutosaveModalVisible,
-      tycoonRewardModalVisible,
     ]
   );
   useEffect(() => {
@@ -57919,7 +57882,6 @@ function AppContent() {
       incomeEntryModalVisible ||
       tycoonAutosaveHungryModalVisible ||
       tycoonAutosaveModalVisible ||
-      tycoonRewardModalVisible ||
       dailyRewardModalVisible ||
       newPendingModal.visible ||
       newGoalModal.visible ||
@@ -57983,7 +57945,6 @@ function AppContent() {
       incomeEntryModalVisible,
       tycoonAutosaveHungryModalVisible,
       tycoonAutosaveModalVisible,
-      tycoonRewardModalVisible,
       skinPickerVisible,
       tamagotchiVisible,
       categoryPrompt.visible,
@@ -58124,8 +58085,6 @@ function AppContent() {
             !tycoonAutosaveSnoozedActive &&
             tycoonPendingEvents.length > 0
           );
-        case QUEUED_MODAL_TYPES.TYCOON_REWARD:
-          return tycoonRewardModal.visible;
         case QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED:
           return onboardingStep === "done" && cycleSavingsRevokedPrompt.visible;
         case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT: {
@@ -58177,7 +58136,6 @@ function AppContent() {
       tycoonAutosaveDismissed,
       tycoonAutosaveSnoozedActive,
       tycoonPendingEvents.length,
-      tycoonRewardModal.visible,
       tutorialBlockingVisible,
       tutorialSeen,
       visibleModalHostCount,
@@ -68443,11 +68401,10 @@ function AppContent() {
           const normalizedTycoonLedger = Array.isArray(parsedTycoonLedger)
             ? parsedTycoonLedger
             : [];
-          setTycoonLedger(
-            resetLegacyTycoonPending
-              ? resetLegacyTycoonPendingEvents(normalizedTycoonLedger)
-              : normalizedTycoonLedger
-          );
+          const pendingMigratedTycoonLedger = resetLegacyTycoonPending
+            ? resetLegacyTycoonPendingEvents(normalizedTycoonLedger)
+            : normalizedTycoonLedger;
+          setTycoonLedger(retireLegacyTycoonRewards(pendingMigratedTycoonLedger));
         } catch (err) {
           console.warn("tycoon ledger parse", err);
           setTycoonLedger([]);
@@ -79920,110 +79877,6 @@ useEffect(() => {
     tycoonPendingEvents.length,
   ]);
 
-  const buildTycoonRewardQueue = useCallback((events = tycoonPendingRewardEvents) => {
-    return (Array.isArray(events) ? events : [])
-      .map((entry) => {
-        const amount = Math.max(0, Math.floor(Number(entry?.rewardAmount ?? entry?.amount) || 0));
-        if (amount <= 0) return null;
-        const tier = getChestRewardTierForAmount(amount);
-        return {
-          id: entry.id,
-          eventId: entry.eventId || entry.id,
-          amount,
-          tierId: tier?.id || null,
-          title: entry.title || null,
-        };
-      })
-      .filter(Boolean);
-  }, [tycoonPendingRewardEvents]);
-
-  const markTycoonRewardsClaimed = useCallback((eventIds = []) => {
-    const idSet = new Set((Array.isArray(eventIds) ? eventIds : []).filter(Boolean));
-    if (!idSet.size) return;
-    setTycoonLedger((prev) =>
-      (Array.isArray(prev) ? prev : []).map((entry) =>
-        idSet.has(entry?.id)
-          ? {
-              ...entry,
-              rewardClaimed: true,
-              rewardClaimedAt: Date.now(),
-            }
-          : entry
-      )
-    );
-  }, []);
-
-  const handleTycoonRewardCollectAll = useCallback(() => {
-    const rewards = buildTycoonRewardQueue(
-      tycoonRewardModal.rewards?.length ? tycoonRewardModal.rewards : tycoonPendingRewardEvents
-    );
-    const rewardTotal = rewards.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0);
-    if (rewardTotal > 0) {
-      setHealthPoints((prev) => prev + rewardTotal);
-      markTycoonRewardsClaimed(rewards.map((entry) => entry.eventId));
-    }
-    setTycoonRewardFlowActive(false);
-    setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
-    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-    triggerCoinHaptics();
-    logEvent("tycoon_rewards_collect_all", {
-      count: rewards.length,
-      reward: rewardTotal,
-    });
-  }, [
-    buildTycoonRewardQueue,
-    clearQueuedModal,
-    logEvent,
-    markTycoonRewardsClaimed,
-    setHealthPoints,
-    triggerCoinHaptics,
-    tycoonPendingRewardEvents,
-    tycoonRewardModal.rewards,
-  ]);
-
-  const handleTycoonRewardOpenChests = useCallback(() => {
-    const rewards = buildTycoonRewardQueue(
-      tycoonRewardModal.rewards?.length ? tycoonRewardModal.rewards : tycoonPendingRewardEvents
-    );
-    if (!rewards.length) {
-      setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
-      clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-      return;
-    }
-    setTycoonRewardFlowActive(true);
-    setTycoonRewardModal((prev) => ({ ...prev, visible: false, rewards: [] }));
-    clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-    rewards.forEach((rewardEntry) => {
-      triggerOverlayState("health", {
-        amount: rewardEntry.amount,
-        tierId: rewardEntry.tierId,
-        chestCount: 1,
-        title: t("tycoonAutosaveRewardTitle"),
-        closedSubtitle: t("tycoonAutosaveChestClosed"),
-        openedSubtitle: t("tycoonAutosaveChestOpened"),
-        onRevealReward: () => {
-          setHealthPoints((prev) => prev + rewardEntry.amount);
-          markTycoonRewardsClaimed([rewardEntry.eventId]);
-        },
-      });
-    });
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    logEvent("tycoon_rewards_open_chests", {
-      count: rewards.length,
-      reward: rewards.reduce((sum, entry) => sum + Math.max(0, Number(entry.amount) || 0), 0),
-    });
-  }, [
-    buildTycoonRewardQueue,
-    clearQueuedModal,
-    logEvent,
-    markTycoonRewardsClaimed,
-    setHealthPoints,
-    t,
-    triggerOverlayState,
-    tycoonPendingRewardEvents,
-    tycoonRewardModal.rewards,
-  ]);
-
   const handleTycoonAutosaveConfirm = useCallback(async () => {
     const pending = (Array.isArray(tycoonPendingEvents) ? tycoonPendingEvents : []).filter(
       (entry) => entry?.id
@@ -80060,9 +79913,7 @@ useEffect(() => {
     let spentResolvedCount = 0;
     let savedAmountUSD = 0;
     let spentAmountUSD = 0;
-    let rewardTotal = 0;
     const resolvedStatuses = {};
-    const rewardByEventId = {};
     const resolvedAutosaveCountByCardId = {};
     const confirmedAutosaveCardDayKeys = new Set();
     (Array.isArray(tycoonLedger) ? tycoonLedger : []).forEach((entry) => {
@@ -80120,9 +79971,6 @@ useEffect(() => {
         });
         savedCount += 1;
         savedAmountUSD += amountUSD;
-        const entryReward = computeRefuseCoinReward(amountUSD, profile.currency || DEFAULT_PROFILE.currency);
-        rewardByEventId[entry.id] = entryReward;
-        rewardTotal += entryReward;
       }
       resolvedStatuses[entry.id] = markedSpent ? "spent" : "saved";
       if (autosaveCardDayKey) {
@@ -80163,7 +80011,6 @@ useEffect(() => {
     setTycoonLedger((prev) =>
       (Array.isArray(prev) ? prev : []).map((entry) => {
         const status = resolvedStatuses[entry?.id];
-        const rewardAmount = Math.max(0, Number(rewardByEventId[entry?.id]) || 0);
         if (!status) return entry;
         const resolvedPendingEntry = pendingById.get(entry?.id);
         if (status === "skipped") {
@@ -80202,8 +80049,9 @@ useEffect(() => {
           pricePrecision: resolvedPendingEntry?.pricePrecision,
           status,
           confirmedAt: now,
-          rewardAmount: status === "saved" ? rewardAmount : 0,
-          rewardClaimed: status !== "saved" || rewardAmount <= 0,
+          rewardAmount: 0,
+          rewardClaimed: true,
+          rewardRoute: "temptation_series",
         };
       })
     );
@@ -80218,41 +80066,15 @@ useEffect(() => {
     setTycoonAutosaveSnoozedUntil(0);
     setTycoonAutosaveDismissed(true);
     clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE);
-    if (savedCount > 0 && rewardTotal > 0) {
-      const rewardQueue = pending
-        .filter((entry) => resolvedStatuses[entry.id] === "saved")
-        .map((entry) => {
-          const amount = Math.max(0, Number(rewardByEventId[entry.id]) || 0);
-          const tier = getChestRewardTierForAmount(amount);
-          return amount > 0
-            ? {
-                id: entry.id,
-                eventId: entry.id,
-                amount,
-                tierId: tier?.id || null,
-                title: entry.title || null,
-              }
-            : null;
-        })
-        .filter(Boolean);
-      setTycoonRewardModal({
-        visible: true,
-        count: rewardQueue.length,
-        reward: rewardTotal,
-        rewards: rewardQueue,
-      });
-      enqueueQueuedModal(QUEUED_MODAL_TYPES.TYCOON_REWARD);
-    }
     logEvent("tycoon_autosave_confirmed", {
       saved_count: savedCount,
       spent_count: spentResolvedCount,
       saved_amount_usd: savedAmountUSD,
       spent_amount_usd: spentAmountUSD,
-      reward: rewardTotal,
+      reward_route: "temptation_series",
     });
   }, [
     clearQueuedModal,
-    enqueueQueuedModal,
     enforceMonetizationTrialActionLimit,
     handleTemptationAction,
     logEvent,
@@ -88154,16 +87976,6 @@ useEffect(() => {
           currency={profile.currency || DEFAULT_PROFILE.currency}
           showReviewWarning={tycoonReviewAcknowledged}
         />
-        <TycoonRewardModal
-          visible={!startupHardLockPendingBeforePaywall && tycoonRewardModalVisible}
-          count={tycoonRewardModal.count}
-          reward={tycoonRewardModal.reward}
-          rewards={tycoonRewardModal.rewards}
-          colors={colors}
-          t={t}
-          onCollectAll={handleTycoonRewardCollectAll}
-          onOpenChests={handleTycoonRewardOpenChests}
-        />
         <TemptationSeriesCompletionModal
           visible={!startupHardLockPendingBeforePaywall && temptationSeriesModalVisible}
           series={temptationSeries}
@@ -92936,61 +92748,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   tycoonAutosaveHungryPrimaryText: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
-  },
-  tycoonRewardBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(3,8,20,0.64)",
-    paddingHorizontal: 20,
-    justifyContent: "center",
-  },
-  tycoonRewardCard: {
-    borderRadius: 26,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: "center",
-  },
-  tycoonRewardChestRow: {
-    height: 86,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: -8,
-    marginBottom: 8,
-  },
-  tycoonRewardChest: {
-    width: 58,
-    height: 58,
-    resizeMode: "contain",
-    marginHorizontal: -5,
-  },
-  tycoonRewardTitle: {
-    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "900" }),
-    textAlign: "center",
-  },
-  tycoonRewardBody: {
-    ...createSecondaryText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
-    textAlign: "center",
-    marginTop: 6,
-  },
-  tycoonRewardButton: {
-    borderRadius: 18,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    marginTop: 16,
-    minWidth: 190,
-    alignItems: "center",
-  },
-  tycoonRewardSecondaryButton: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    marginTop: 10,
-    minWidth: 190,
-    alignItems: "center",
-  },
-  tycoonRewardButtonText: {
     ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
   },
   archiveList: {
@@ -105455,10 +105212,178 @@ const styles = StyleSheet.create({
   fridgeDoorClosedState: {
     flex: 1,
     minHeight: 0,
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    paddingTop: UI_SPACING.sm,
+    paddingRight: 64,
+    paddingLeft: 2,
+  },
+  fridgeDoorNote: {
+    width: "100%",
+    maxWidth: 380,
+    alignSelf: "flex-start",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingTop: 18,
+    paddingBottom: 12,
+    ...Platform.select({
+      android: { elevation: 5 },
+      default: {
+        shadowOpacity: 0.16,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 7 },
+      },
+    }),
+  },
+  fridgeDoorEmptyNote: {
+    minHeight: 152,
     alignItems: "center",
     justifyContent: "center",
-    paddingRight: 72,
-    paddingBottom: 32,
+  },
+  fridgeDoorMagnet: {
+    position: "absolute",
+    top: -9,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    elevation: 7,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  fridgeDoorMagnetLtr: {
+    left: 22,
+  },
+  fridgeDoorMagnetRtl: {
+    right: 22,
+  },
+  fridgeDoorMagnetHighlight: {
+    position: "absolute",
+    top: 5,
+    left: 6,
+    width: 7,
+    height: 4,
+    borderRadius: 3,
+  },
+  fridgeDoorNoteHeader: {
+    minHeight: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
+  },
+  fridgeDoorNoteHeading: {
+    ...createBodyText({ fontSize: 17, lineHeight: 22, fontWeight: "900" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  fridgeDoorNoteCount: {
+    minWidth: 30,
+    height: 30,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fridgeDoorNoteCountText: {
+    ...createBodyText({ fontSize: 13, lineHeight: 17, fontWeight: "900" }),
+    writingDirection: "ltr",
+  },
+  fridgeDoorNoteRule: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 8,
+  },
+  fridgeDoorNoteRow: {
+    minHeight: IS_SHORT_DEVICE ? 48 : 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 7,
+  },
+  fridgeDoorNoteRowRtl: {
+    flexDirection: "row-reverse",
+  },
+  fridgeDoorNoteEmoji: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  fridgeDoorNoteEmojiText: {
+    fontSize: 17,
+    lineHeight: 21,
+  },
+  fridgeDoorNoteCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fridgeDoorNoteTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+  },
+  fridgeDoorNoteTextRtl: {
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  fridgeDoorNoteMeta: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 2,
+  },
+  fridgeDoorNoteMetaText: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "600" }),
+    flexShrink: 1,
+    writingDirection: "ltr",
+  },
+  fridgeDoorNoteMetaDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  fridgeDoorNoteCountdown: {
+    ...createBodyText({ fontSize: 11, lineHeight: 14, fontWeight: "800" }),
+    flexShrink: 0,
+    writingDirection: "ltr",
+  },
+  fridgeDoorNoteSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 44,
+  },
+  fridgeDoorNoteSeparatorRtl: {
+    marginLeft: 0,
+    marginRight: 44,
+  },
+  fridgeDoorNoteFooter: {
+    minHeight: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
+    marginTop: 6,
+  },
+  fridgeDoorNoteHint: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
+    flex: 1,
+    minWidth: 0,
+  },
+  fridgeDoorNoteMore: {
+    minWidth: 30,
+    height: 24,
+    paddingHorizontal: 7,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fridgeDoorNoteMoreText: {
+    ...createBodyText({ fontSize: 11, lineHeight: 14, fontWeight: "900" }),
+    writingDirection: "ltr",
   },
   fridgeDoorTitleLarge: {
     ...createBodyText({ fontSize: 20, fontWeight: "900", lineHeight: 24 }),
@@ -107590,12 +107515,6 @@ const styles = StyleSheet.create({
   settingRow: {
     marginBottom: 18,
   },
-  settingPremiumFeatureRow: {
-    borderRadius: 18,
-    borderWidth: 1.2,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
   settingRowContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -107606,7 +107525,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 6,
+    marginBottom: 10,
   },
   settingPremiumTitle: {
     marginBottom: 0,

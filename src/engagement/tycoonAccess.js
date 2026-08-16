@@ -33,10 +33,27 @@ const resetLegacyTycoonPendingEvents = (entries = [], timestamp = Date.now()) =>
   );
 };
 
+const retireLegacyTycoonRewards = (entries = [], timestamp = Date.now()) => {
+  const retiredAt = Math.max(0, Number(timestamp) || Date.now());
+  let changed = false;
+  const nextEntries = (Array.isArray(entries) ? entries : []).map((entry) => {
+    if (entry?.status !== "saved" || entry.rewardClaimed === true) return entry;
+    changed = true;
+    return {
+      ...entry,
+      rewardClaimed: true,
+      rewardRetiredAt: retiredAt,
+      rewardRoute: "temptation_series",
+    };
+  });
+  return changed ? nextEntries : entries;
+};
+
 module.exports = {
   TYCOON_SETTINGS_VERSION,
   isTycoonAutosaveEnabled,
   normalizeTycoonSettings,
+  retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   shouldResetLegacyTycoonPendingEvents,
 };
