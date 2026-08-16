@@ -16,6 +16,9 @@ import { useMotionPreferences } from "../hooks/useMotionPreferences";
 const TAB_ROW_HORIZONTAL_PADDING = 8;
 const TAB_ROW_VERTICAL_PADDING = 6;
 const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
+const IOS_NATIVE_TAB_BAR_HORIZONTAL_PADDING = 0;
+const ANDROID_TAB_LABEL_MIN_FONT_SIZE = 12;
+const ANDROID_TAB_LABEL_MIN_LINE_HEIGHT = 14;
 
 const TAB_ICON_PATHS = {
   feed: ["M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4.8v-5.2H9.8V21H5a1 1 0 0 1-1-1v-9.5z"],
@@ -45,18 +48,6 @@ const areTabArraysEqual = (left = [], right = []) => {
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
     if (left[index] !== right[index]) return false;
-  }
-  return true;
-};
-
-const areHighlightSetsEqual = (left, right) => {
-  if (left === right) return true;
-  if (!left && !right) return true;
-  if (!left || !right) return false;
-  if (!(left instanceof Set) || !(right instanceof Set)) return false;
-  if (left.size !== right.size) return false;
-  for (const value of left) {
-    if (!right.has(value)) return false;
   }
   return true;
 };
@@ -149,8 +140,6 @@ const LiquidGlassTabBar = ({
   proThemeOnAccentColor = "#FFFFFF",
   proThemeSurfaceColor = "#DEE4FA",
   proThemeBorderColor = "#8C9CE8",
-  tutorialIsTemptation = false,
-  tutorialHighlightTabs,
   isCompactAndroid = false,
   tabLabelFontSize = 11,
   tabLabelTopMargin = 6,
@@ -335,14 +324,18 @@ const LiquidGlassTabBar = ({
     : isProTheme
     ? proThemeMutedColor
     : "rgba(32,33,41,0.64)";
-  const highlightColor = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#356A9A";
   const badgeBackground = isDarkTheme ? "#D7A84F" : isProTheme ? proThemeAccentColor : "#24262D";
   const badgeText = isDarkTheme ? "#211A0B" : isProTheme ? proThemeOnAccentColor : "#FFFFFF";
   const resolvedTabLabelTextTransform =
     useAndroidLikeVisualStyle ? "none" : isLiquidGlassStyle ? "none" : tabLabelTextTransform;
-  const resolvedTabLabelFontSize = useAndroidLikeVisualStyle
+  const resolvedTabLabelFontSize = isAndroid
+    ? Math.max(ANDROID_TAB_LABEL_MIN_FONT_SIZE, tabLabelFontSize)
+    : useAndroidLikeVisualStyle
     ? Math.max(9, tabLabelFontSize - 1)
     : tabLabelFontSize;
+  const resolvedTabLabelLineHeight = isAndroid
+    ? Math.max(ANDROID_TAB_LABEL_MIN_LINE_HEIGHT, resolvedTabLabelFontSize + 2)
+    : 12;
   const resolvedTabLabelTopMargin = useAndroidLikeVisualStyle
     ? Math.max(2, tabLabelTopMargin - 1)
     : tabLabelTopMargin;
@@ -356,15 +349,13 @@ const LiquidGlassTabBar = ({
     marginBottom: isIos && !useAndroidLikeVisualStyle ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
     paddingHorizontal: 14,
-    opacity: tutorialIsTemptation ? 0.35 : 1,
     backgroundColor: "transparent",
   };
   const nativeOnlyRootStyle = {
     paddingBottom: barBottomInset,
     marginBottom: isIos && !useAndroidLikeVisualStyle ? -(Number(safeAreaBottom) || 0) : 0,
     paddingTop: tabBarTopPadding,
-    paddingHorizontal: 8,
-    opacity: tutorialIsTemptation ? 0.35 : 1,
+    paddingHorizontal: IOS_NATIVE_TAB_BAR_HORIZONTAL_PADDING,
   };
 
   const tabPayload = useMemo(
@@ -576,7 +567,6 @@ const LiquidGlassTabBar = ({
         <View style={styles.tabRow}>
           {availableTabs.map((tab) => {
             const isActive = tab === activeTab;
-            const isHighlighted = !tutorialIsTemptation && !!tutorialHighlightTabs?.has(tab);
             const rawTabLabel = typeof getLabel === "function" ? getLabel(tab) : tab;
             const tabLabel = useAndroidLikeVisualStyle ? toTitleCaseLabel(rawTabLabel) : rawTabLabel;
             const badgeValue = resolveTabBadge({
@@ -588,7 +578,7 @@ const LiquidGlassTabBar = ({
               reportsBadgeVisible,
               reportsUnlocked,
             });
-            const tabTextColor = isActive ? activeColor : isHighlighted ? highlightColor : mutedColor;
+            const tabTextColor = isActive ? activeColor : mutedColor;
 
             return (
               <Pressable
@@ -602,27 +592,6 @@ const LiquidGlassTabBar = ({
                 accessibilityHint={isActive ? undefined : tabLabel}
                 hitSlop={4}
               >
-                {isHighlighted && !isActive && (
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.highlightHalo,
-                      {
-                        backgroundColor: isDarkTheme
-                          ? "rgba(255,255,255,0.07)"
-                          : isProTheme
-                          ? colorWithAlpha(proThemeAccentColor, 0.2)
-                          : "rgba(255,255,255,0.34)",
-                        borderColor: isDarkTheme
-                          ? "rgba(255,255,255,0.18)"
-                          : isProTheme
-                          ? colorWithAlpha(proThemeAccentColor, 0.4)
-                          : "rgba(0,0,0,0.1)",
-                      },
-                    ]}
-                  />
-                )}
-
                 <View style={styles.tabIconSlot}>
                   <TabGlyph tab={tab} color={tabTextColor} />
                   {badgeValue > 0 && (
@@ -643,18 +612,20 @@ const LiquidGlassTabBar = ({
                   numberOfLines={2}
                   allowFontScaling
                   maxFontSizeMultiplier={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
+                  adjustsFontSizeToFit={!isAndroid}
+                  minimumFontScale={isAndroid ? undefined : 0.72}
+                  includeFontPadding={isAndroid ? false : undefined}
                   ellipsizeMode="clip"
                   style={[
                     styles.tabLabel,
                     {
                       color: tabTextColor,
                       fontSize: resolvedTabLabelFontSize,
+                      lineHeight: resolvedTabLabelLineHeight,
                       letterSpacing: useAndroidLikeVisualStyle ? 0.02 : 0.2,
                       marginTop: resolvedTabLabelTopMargin,
                       textTransform: resolvedTabLabelTextTransform,
-                      fontWeight: isActive || isHighlighted ? "700" : "500",
+                      fontWeight: isActive ? "700" : "500",
                     },
                   ]}
                 >
@@ -762,15 +733,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
   },
-  highlightHalo: {
-    ...StyleSheet.absoluteFillObject,
-    top: 6,
-    bottom: 6,
-    left: 4,
-    right: 4,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
 });
 
 export default React.memo(
@@ -788,8 +750,6 @@ export default React.memo(
     prevProps.proThemeOnAccentColor === nextProps.proThemeOnAccentColor &&
     prevProps.proThemeSurfaceColor === nextProps.proThemeSurfaceColor &&
     prevProps.proThemeBorderColor === nextProps.proThemeBorderColor &&
-    prevProps.tutorialIsTemptation === nextProps.tutorialIsTemptation &&
-    areHighlightSetsEqual(prevProps.tutorialHighlightTabs, nextProps.tutorialHighlightTabs) &&
     prevProps.isCompactAndroid === nextProps.isCompactAndroid &&
     prevProps.tabLabelFontSize === nextProps.tabLabelFontSize &&
     prevProps.tabLabelTopMargin === nextProps.tabLabelTopMargin &&

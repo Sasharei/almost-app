@@ -165,6 +165,27 @@ function contrast(left, right) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+function blendParsedColors(left, right, ratio) {
+  const mix = Math.max(0, Math.min(1, Number(ratio) || 0));
+  return {
+    r: left.r * (1 - mix) + right.r * mix,
+    g: left.g * (1 - mix) + right.g * mix,
+    b: left.b * (1 - mix) + right.b * mix,
+  };
+}
+
+function colorChannelSpread(color) {
+  return Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b);
+}
+
+function colorDistance(left, right) {
+  return Math.sqrt(
+    (left.r - right.r) ** 2 +
+      (left.g - right.g) ** 2 +
+      (left.b - right.b) ** 2
+  );
+}
+
 function requireContrast(errors, label, foreground, background, minimum) {
   const ratio = contrast(foreground, background);
   if (ratio < minimum) {
@@ -177,6 +198,11 @@ function main() {
   const themeIds = readExportedConst("THEME_IDS");
   const proThemeId = readExportedConst("PRO_THEME_ID");
   const accentOptions = readExportedConst("PRO_THEME_ACCENT_OPTIONS");
+  const moodGradients = readExportedConst("MOOD_GRADIENTS");
+  const moodGradientOverlayOpacity = readExportedConst("MOOD_GRADIENT_OVERLAY_OPACITY");
+  const moodGradientThemeMix = readExportedConst("MOOD_GRADIENT_THEME_MIX");
+  const darkMoodMix = moodGradientThemeMix?.dark || {};
+  const proMoodMix = moodGradientThemeMix?.pro || {};
   const errors = [];
 
   for (const themeId of themeIds) {
@@ -334,6 +360,120 @@ function main() {
     }
   }
 
+  const requiredMoodIds = ["neutral", "focused", "impulsive", "doubter", "tired", "dreamer"];
+  const mixValuePaths = [
+    ["dark", "startAccentMix"],
+    ["dark", "endAccentMix"],
+    ["dark", "accentTextMix"],
+    ["pro", "startMoodMix"],
+    ["pro", "endMoodMix"],
+    ["pro", "accentPrimaryMix"],
+  ];
+  if (
+    typeof moodGradientOverlayOpacity !== "number" ||
+    moodGradientOverlayOpacity <= 0 ||
+    moodGradientOverlayOpacity >= 1
+  ) {
+    errors.push("MOOD_GRADIENT_OVERLAY_OPACITY must be between 0 and 1.");
+  }
+  for (const [themeId, token] of mixValuePaths) {
+    const value = moodGradientThemeMix?.[themeId]?.[token];
+    if (typeof value !== "number" || value <= 0 || value >= 1) {
+      errors.push(`MOOD_GRADIENT_THEME_MIX.${themeId}.${token} must be between 0 and 1.`);
+    }
+  }
+
+  const darkThemeColors = {
+    background: parseHexColor(themes.dark?.background),
+    surface: parseHexColor(themes.dark?.surface),
+    text: parseHexColor(themes.dark?.text),
+  };
+  for (const moodId of requiredMoodIds) {
+    const mood = moodGradients?.[moodId];
+    if (!mood) {
+      errors.push(`MOOD_GRADIENTS.${moodId} is missing.`);
+      continue;
+    }
+    const start = parseHexColor(mood.start);
+    const end = parseHexColor(mood.end);
+    const accent = parseHexColor(mood.accent);
+    if (!start || !end || !accent) {
+      errors.push(`MOOD_GRADIENTS.${moodId} must define start, end, and accent hex colors.`);
+      continue;
+    }
+
+    const lightComposite = blendParsedColors(start, end, moodGradientOverlayOpacity);
+    requireContrast(
+      errors,
+      `Light ${moodId} mood header text`,
+      parseHexColor(themes.light.text),
+      lightComposite,
+      MIN_TEXT_CONTRAST
+    );
+
+    if (darkThemeColors.background && darkThemeColors.surface && darkThemeColors.text) {
+      const darkStart = blendParsedColors(
+        darkThemeColors.surface,
+        accent,
+        darkMoodMix.startAccentMix
+      );
+      const darkEnd = blendParsedColors(
+        darkThemeColors.background,
+        accent,
+        darkMoodMix.endAccentMix
+      );
+      const darkComposite = blendParsedColors(
+        darkStart,
+        darkEnd,
+        moodGradientOverlayOpacity
+      );
+      requireContrast(
+        errors,
+        `Dark ${moodId} mood header text`,
+        darkThemeColors.text,
+        darkComposite,
+        MIN_TEXT_CONTRAST
+      );
+      if (colorChannelSpread(darkComposite) < 0.08) {
+        errors.push(`Dark ${moodId} mood header is too close to grayscale.`);
+      }
+      if (colorDistance(darkComposite, darkThemeColors.background) < 0.22) {
+        errors.push(`Dark ${moodId} mood header loses its contextual color against the canvas.`);
+      }
+    }
+
+    for (const option of accentOptions) {
+      const resolvedProTheme = {
+        ...themes[proThemeId],
+        ...(option.palette || {}),
+        primary: option.accent,
+        onPrimary: option.onAccent,
+      };
+      const proBackground = parseHexColor(resolvedProTheme.background);
+      const proSurfaceMuted = parseHexColor(resolvedProTheme.surfaceMuted);
+      const proText = parseHexColor(resolvedProTheme.text);
+      if (!proBackground || !proSurfaceMuted || !proText) continue;
+      const proStart = blendParsedColors(
+        proBackground,
+        start,
+        proMoodMix.startMoodMix
+      );
+      const proEnd = blendParsedColors(
+        proSurfaceMuted,
+        end,
+        proMoodMix.endMoodMix
+      );
+      const proComposite = blendParsedColors(proStart, proEnd, moodGradientOverlayOpacity);
+      requireContrast(
+        errors,
+        `PRO ${option.id} ${moodId} mood header text`,
+        proText,
+        proComposite,
+        MIN_TEXT_CONTRAST
+      );
+    }
+  }
+
   requireSourceFragments(errors, "App.js", "Goal jar", [
     "const glassPalette = isDarkTheme",
     "isDarkTheme={isDarkMode}",
@@ -354,6 +494,11 @@ function main() {
     "RCT_EXPORT_VIEW_PROPERTY(activeColorHex, NSString)",
     "RCT_EXPORT_VIEW_PROPERTY(surfaceColorHex, NSString)",
     "RCT_EXPORT_VIEW_PROPERTY(badgeTextColorHex, NSString)",
+  ]);
+  requireSourceFragments(errors, "App.js", "Contextual mood header", [
+    "start: blendColors(resolvedThemeColors.surface, palette.accent, mix.startAccentMix)",
+    "end: blendColors(resolvedThemeColors.background, palette.accent, mix.endAccentMix)",
+    "() => applyThemeToMoodGradient(getMoodGradient(moodPreset?.id), theme, colors)",
   ]);
 
   if (errors.length > 0) {

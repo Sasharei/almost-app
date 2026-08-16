@@ -121,20 +121,9 @@ private final class NativeBootstrapViewController: UIViewController {
   override func loadView() {
     let rootView = UIView(frame: UIScreen.main.bounds)
     rootView.backgroundColor = .white
-
-    let brandLabel = UILabel()
-    brandLabel.translatesAutoresizingMaskIntoConstraints = false
-    brandLabel.text = "Almost"
-    brandLabel.textColor = UIColor(red: 14.0 / 255.0, green: 13.0 / 255.0, blue: 25.0 / 255.0, alpha: 1)
-    brandLabel.font = .systemFont(ofSize: 38, weight: .bold)
-    brandLabel.adjustsFontForContentSizeCategory = false
-    brandLabel.isAccessibilityElement = false
-    rootView.addSubview(brandLabel)
-
-    NSLayoutConstraint.activate([
-      brandLabel.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
-      brandLabel.centerYAnchor.constraint(equalTo: rootView.centerYAnchor),
-    ])
+    rootView.isOpaque = true
+    // Keep this bridge surface blank. React owns the only wordmark animation,
+    // so iOS cannot flash a completed logo before the animation begins.
     view = rootView
   }
 }

@@ -30,15 +30,27 @@
       ]
     },
     {
+      "id": "global-fab-tutorial",
+      "description": "The quick-actions tutorial keeps both dismiss paths and derives its mask from the same right and bottom layout insets as the FAB.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={() => handleFabTutorialDismiss(\"backdrop\")}",
+        "onPress={() => handleFabTutorialDismiss(\"cta\")}",
+        "resolveFabTutorialCutout({",
+        "fabRight: fabContainerRight",
+        "fabBottom: tabBarBottomInset + fabContainerBottom"
+      ]
+    },
+    {
       "id": "feed-new-temptation-action",
       "description": "The regular Feed add button stays rendered beside the scrollable category rail and outside the optional coach-mark condition.",
       "file": "App.js",
       "requiredFragments": [
-        ": onNewTemptation",
+        "onPress={onNewTemptation}",
         "accessibilityLabel={t(\"fabNewTemptation\")}"
       ],
       "requiredPatterns": [
-        "<View\\s*style=\\{\\[\\s*styles\\.feedCategoryToolbar[\\s\\S]*?<ScrollView[\\s\\S]*?<View\\s*style=\\{\\[\\s*styles\\.feedTemptationAddWrap"
+        "<View\\s*style=\\{styles\\.feedCategoryToolbar\\}>[\\s\\S]*?<ScrollView[\\s\\S]*?<View\\s*style=\\{styles\\.feedTemptationAddWrap\\}>"
       ]
     },
     {
@@ -128,14 +140,63 @@
       ]
     },
     {
+      "id": "tycoon-autocollect-premium-flow",
+      "description": "Temptation auto-collect defaults off, is effective only for an active Premium user who opts in, opens the feature paywall from the highlighted locked switch, stops generation and notifications while inaccessible, and keeps ready, hungry, notification, review, confirmation, exclusion, snooze, and reward actions reachable after opt-in.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const tycoonAutosaveEnabled = isTycoonAutosaveEnabled({",
+        "isPremium: premiumState.isPremium,",
+        "const tycoonAutosaveMinuteTick = useMinuteTicker(tycoonAutosaveEnabled);",
+        "if (!tycoonAutosaveEnabled) {",
+        "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.temptationAutoCollect);",
+        "tycoonModeEnabled={tycoonAutosaveEnabled}",
+        "styles.settingPremiumFeatureRow",
+        "{t(\"featureLockedPremiumLabel\")}",
+        "cancelScheduledTycoonAutosaveNotifications({ dismissDelivered: true })",
+        "onToggleSpent={handleTycoonToggleSpent}",
+        "onAmountChange={handleTycoonAutosaveAmountChange}",
+        "onExclude={handleTycoonAutosaveExclude}",
+        "onSnooze={handleTycoonAutosaveSnooze}",
+        "onConfirm={handleTycoonAutosaveConfirm}",
+        "onClose={handleTycoonAutosaveClose}",
+        "onCollectAll={handleTycoonRewardCollectAll}",
+        "onOpenChests={handleTycoonRewardOpenChests}"
+      ],
+      "requiredPatterns": [
+        "case QUEUED_MODAL_TYPES\\.TYCOON_AUTOSAVE:[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0",
+        "tycoonAutosaveModalVisible =[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0"
+      ]
+    },
+    {
+      "id": "background-ui-session-restoration",
+      "description": "Backgrounding or process recreation preserves the active screen and unfinished profile, card, goal, pending-item, quick-add, and category editor drafts until the user explicitly saves or cancels.",
+      "file": "App.js",
+      "requiredFragments": [
+        "normalizeUiSessionState(uiSessionRaw)",
+        "setProfileEditMode(restoredSession.profileEditor.mode);",
+        "setPriceEditor((currentEditor) => ({",
+        "setShowCustomSpend(true);",
+        "setNewPendingModal((currentModal) => ({",
+        "setNewGoalModal((currentModal) => ({",
+        "setGoalEditorPrompt((currentPrompt) => ({",
+        "queuePersist(STORAGE_KEYS.UI_SESSION, JSON.stringify(nextSession));",
+        "const uiSessionSnapshot = uiSessionSnapshotRef.current;",
+        "explicitly blurring here loses the user's exact editing position"
+      ]
+    },
+    {
       "id": "temptation-card-actions",
       "description": "Save, spend, pause, amount confirmation, edit tap, goal/budget links, and swipe actions remain reachable while the card is restyled.",
       "file": "App.js",
       "requiredFragments": [
+        "onPress={handleCardPress}",
+        "onLongPress={handleCardLongPress}",
+        "onPress={() => onFocusBadgePress?.(item)}",
         "onPress={handleActionPress}",
         "onPress={() => handleAmountModalActionPress(\"save\")}",
         "onPress={() => handleAmountModalActionPress(\"spend\")}",
         "onPress={openPauseFreezePicker}",
+        "onPress={() => onLockedPress?.(item)}",
         "onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });",
         "onAction?.(action.type, item, action.options || null);",
         "<GestureDetector gesture={cardSwipeGesture}>",
@@ -151,16 +212,16 @@
     },
     {
       "id": "temptation-manual-frequency-timer-reset",
-      "description": "A manual save or spend advances the active frequency window and restarts its countdown, while automatic confirmation preserves the already advanced schedule.",
+      "description": "A manually configured frequency window remains anchored during every later save or spend. Only the first prompt or an explicit card-settings edit can replace the cadence, date, or reminder plan; automatic confirmations also preserve it.",
       "file": "App.js",
       "requiredFragments": [
-        "const repeatsActiveManualTimer =",
-        "now - previousTimerResetAt < frequencyIntervalMs;",
-        "const cycleAnchorNextCheckAt =",
-        "const skippedCycleNextCheckAt =",
-        "fromTimestamp: cycleAnchorNextCheckAt,",
-        "? Math.max(skippedCycleNextCheckAt, resetNextCheckAt)",
-        "lastTimerResetAt: preserveFrequencyTimer ? prevEntry.lastTimerResetAt ?? null : now,",
+        "shouldPreserveTemptationScheduleOnAction",
+        "const preserveConfiguredTimer = shouldPreserveTemptationScheduleOnAction({",
+        "const currentEntries = candidateKeys",
+        "interactionEntry.frequencyReminderManualConfigured === true &&",
+        "nextCheckAt: preserveConfiguredTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,",
+        "lastTimerResetAt: preserveConfiguredTimer ? prevEntry.lastTimerResetAt ?? null : now,",
+        "if (!preserveConfiguredTimer && existingReminderIds.length)",
         "preserveFrequencyTimer: true,"
       ]
     },
@@ -234,8 +295,154 @@
       ]
     },
     {
+      "id": "temptation-daily-series-experience",
+      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. The first due decision starts today's temptation series, same-day history restores checked badges, and Continue after the claim scrolls to the remaining feed. The series deposits unchanged save rewards into a claim-once asset-backed chest, offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation instead of at series completion, and releases the automatic soft paywall only after payout and Continue.",
+      "file": "App.js",
+      "requiredFragments": [
+        "registerTemptationSeriesAction(item,",
+        "buildTodayTemptationPlan,",
+        "getNextLocalMidnightAt,",
+        "const nextMidnightAt = getNextLocalMidnightAt(now);",
+        "setCurrentDayKey((previousDayKey) =>",
+        "resetTemptationSeriesForDay(current, {",
+        "const [selectedFeedCategoryId, setSelectedFeedCategoryId] = useState(\"all\");",
+        "partitionUnifiedTemptationFeed({",
+        "showTodaySectionHeader: index === 0,",
+        "showOtherSectionHeader: todayEntries.length > 0 && index === 0,",
+        "t(\"feedTodaySectionTitle\")",
+        "t(\"feedOtherSectionTitle\")",
+        "t(\"feedSeriesContinuationHint\")",
+        "t(\"temptationCheckedTodayBadge\")",
+        "historyResolutions: todayTemptationPlan.resolutions,",
+        "todayTemptationPlan={todayTemptationPlan}",
+        "temptationSeriesContinuationRequestTick={temptationSeriesContinuationRequestTick}",
+        "onTemptationSeriesContinuationHandled={",
+        "onTemptationSeriesContinuationHandled?.(requestTick);",
+        "setTemptationSeriesContinuationRequestTick((tick) => tick + 1);",
+        "temptationSeriesRewardMode: seriesRewardResult.rewardMode,",
+        "temptationSeriesPendingCoins:",
+        "saveOverlayPayload?.temptationSeriesRewardMode !== \"pending\"",
+        "const countdownEnabled = !!goalCopy && displayActions > 0 && !seriesRewardPending;",
+        "suppressFrequencyReminderPrompt: skipFrequencyReminderPrompt,",
+        "snapshotActionCount === 0",
+        "const firstActionPromptPayload = shouldQueuePromptPayload",
+        "setPendingFrequencyReminderPrompt((prev) => {",
+        "const handleTemptationSeriesClaim = useCallback(",
+        "const [chestRitualSeriesId, setChestRitualSeriesId] = useState(null);",
+        "onRevealReward: onClaim,",
+        "reduceMotion={reduceMotion}",
+        "registerUsageStreakAction(\"series\", claimedAt,",
+        "recordRatingPromptSeriesCompletion();",
+        "<TemptationSeriesProgressCard",
+        "styles.temptationSeriesClaimedCard",
+        "t(\"temptationSeriesViewReward\")",
+        "seriesChecked={Boolean(entry.seriesChecked)}",
+        "source={chestSource}",
+        "source={rewardCoinSource}",
+        "t(\"temptationSeriesRewardBalanceLabel\")",
+        "backgroundColor: colorWithAlpha(item.tone,",
+        "tone: saveTone,",
+        "tone: spendTone,",
+        "...todayEntries.map((entry, index) => ({",
+        "...partition.other.map((entry, index) => ({",
+        "nextCheckAt: nextCheckAt ?? prevEntry.nextCheckAt ?? null,",
+        "onSeriesSkip={handleSeriesSkip}",
+        "onSeriesNotMine={handleSeriesNotMine}",
+        "onTemptationSeriesAction?.(item, \"archive\");",
+        "resolveGroupCSoftPaywallTrigger(",
+        "\"series_complete_after_reward\""
+      ]
+    },
+    {
+      "id": "temptation-daily-series-state-machine",
+      "description": "The persisted series reducer snapshots today's target temptations, reconciles legacy all-card snapshots with today's schedule and history without changing pending coins, counts each target only once, records repeat actions and rewards, atomically resets the series, checked rows, and unopened chest at the next local midnight, pays the chest once, routes same-day post-claim rewards directly, and starts a fresh series on a later day.",
+      "file": "src/engagement/temptationSeries.js",
+      "requiredFragments": [
+        "const TEMPTATION_SERIES_STATUS = Object.freeze({",
+        "const targetIds = normalizeTemptationIds([...(availableIds || []), temptationId]);",
+        "const reconcileTemptationSeriesTargets = (",
+        "const resetTemptationSeriesForDay = (",
+        "const nextTargetIds = normalizeTemptationIds([...targetIds, ...resolvedTodayIds]);",
+        "actionCount: previousResolution.actionCount + 1,",
+        "isFirstResolution: isSeriesTarget && !previousResolution,",
+        "pendingCoins: state.pendingCoins + normalizedReward,",
+        "const TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS = 3;",
+        "const targetIds = normalizeTemptationIds([...state.targetIds, id]);",
+        "state.status !== TEMPTATION_SERIES_STATUS.READY ||",
+        "pendingCoins: 0,",
+        "rewardMode: normalizedReward > 0 ? \"direct\" : \"none\"",
+        "claimedDayKey === todayKey"
+      ]
+    },
+    {
+      "id": "new-user-next-decision-coach",
+      "description": "A user's first-ever resolved temptation queues one persisted, non-blocking next-decision coach independently of attribution and monetization install markers. The Feed may switch to All only when the target is outside the current filter, auto-scrolls to the next unresolved temptation, keeps the real card actions interactive, and permanently completes the coach after a second distinct resolution, an explicit dismissal, a filter change, or an unavailable target.",
+      "file": "App.js",
+      "requiredFragments": [
+        "STORAGE_KEYS.NEXT_DECISION_COACH",
+        "if (temptationActionCount === 0) return;",
+        "shouldQueueNextDecisionCoach({",
+        "currentCoach.status === NEXT_DECISION_COACH_STATUS.PENDING",
+        "completeNextDecisionCoach(\"next_decision_completed\")",
+        "nextDecisionCoachPresentationAllowed",
+        "nextDecisionCoachRequest={nextDecisionCoachRequest}",
+        "onNextDecisionCoachShown={handleNextDecisionCoachShown}",
+        "onNextDecisionCoachDismiss={completeNextDecisionCoach}",
+        "setSelectedFeedCategoryId(\"all\")",
+        "scrollToTemptationCard({",
+        "showNextDecisionCoach={isNextDecisionCoachTarget}",
+        "onNextDecisionCoachDismiss?.(\"filter_changed\")",
+        "onNextDecisionCoachDismiss?.(\"not_now\")",
+        "t(\"nextDecisionCoachTitle\")",
+        "t(\"nextDecisionCoachBody\")"
+      ]
+    },
+    {
+      "id": "new-user-next-decision-coach-policy",
+      "description": "The pure coach policy gates the hook to an eligible first-decision journey with no previous lifetime decision or series resolution, without consulting attribution or monetization install flags; it restores interrupted visible coaches as pending and selects the next unresolved temptation in feed order while excluding the source.",
+      "file": "src/engagement/nextDecisionCoach.js",
+      "requiredFragments": [
+        "const NEXT_DECISION_COACH_STATUS = Object.freeze({",
+        "lifetimeDecisionCount",
+        "previousResolutionCount",
+        "result?.isFirstResolution === true",
+        "availableTemptationCount",
+        "parsed.status === NEXT_DECISION_COACH_STATUS.VISIBLE",
+        "id !== sourceId && !resolvedIds.has(id)",
+        "return candidates[0] || null;"
+      ]
+    },
+    {
+      "id": "frequency-reminder-prompt-actions",
+      "description": "The first-decision reminder prompt keeps backdrop and request-close dismissal, Daily/Weekly/Monthly/Custom cadence editing, custom cadence save/cancel, reminder time, weekly and monthly multi-day selection, live savings forecast, Later, Save, notification permission handling, and localized accessibility state reachable through a compact layout.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRequestClose={() => closeFrequencyReminderPrompt(\"request_close\")}",
+        "onPress={() => closeFrequencyReminderPrompt(\"backdrop\")}",
+        "onValueChange={handleFrequencyReminderPromptFrequencyChange}",
+        "onCustomChange={handleFrequencyReminderPromptCustomFrequencyChange}",
+        "variant=\"cards\"",
+        "optionMetaById={frequencyReminderCadenceOptionMeta}",
+        "label={t(\"frequencyReminderCadenceLabel\")}",
+        "accessibilityRole=\"radio\"",
+        "accessibilityState={{ selected: isActive }}",
+        "accessibilityLiveRegion=\"polite\"",
+        "ref={frequencyReminderPromptScrollRef}",
+        "onReminderTimeChange={handleFrequencyReminderPromptTimeChange}",
+        "onTimePickerExpandedChange={",
+        "onWeeklyDayChange={handleFrequencyReminderPromptWeeklyDayChange}",
+        "onMonthlyDayChange={handleFrequencyReminderPromptMonthlyDayChange}",
+        "compact",
+        "onPress={() => closeFrequencyReminderPrompt(\"skip\")}",
+        "onPress={handleFrequencyReminderPromptSave}",
+        "ensureNotificationPermission({ request: true })",
+        "trackModalShown(\"frequency_reminder_prompt\"",
+        "trackModalAction(\n          \"frequency_reminder_prompt\""
+      ]
+    },
+    {
       "id": "temptation-card-editor-actions",
-      "description": "The temptation editor keeps every editable field, schedule control, save, cancel, delete, and goal-selection action wired through the existing handlers.",
+      "description": "The temptation editor keeps every editable field, schedule control, save, cancel, delete, duplicate, and goal-selection action wired through the existing handlers.",
       "file": "App.js",
       "requiredFragments": [
         "<TemptationEditSheet",
@@ -252,7 +459,10 @@
         "onPress={onEditGoalSelect}",
         "onPress={onEditSave}",
         "onPress={onEditCancel}",
-        "onPress={onEditDelete}"
+        "onPress={onEditDelete}",
+        "onPress={onEditDuplicate}",
+        "onEditDuplicate={duplicateTemptationCard}",
+        "isDuplicateCopy={priceEditor.isDuplicateCopy}"
       ]
     },
     {
@@ -332,6 +542,28 @@
       ]
     },
     {
+      "id": "daily-summary-explicit-open-and-dismiss",
+      "description": "The Tamagotchi report action queues the requested daily summary before closing the current modal, keeps non-confirming dismissals reopenable, persists the confirmed report day, and consumes notification taps once so a stale response cannot reopen the report on every launch.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const queued = openDailySummaryFromBadge(\"tamagotchi_modal\");",
+        "!USER_INITIATED_QUEUED_MODAL_TYPES.has(type)",
+        "!USER_INITIATED_QUEUED_MODAL_TYPES.has(nextType)",
+        "const handleDailySummaryDismiss = useCallback(() => {",
+        "closeDailySummary({ markSeen: true });",
+        "AsyncStorage.setItem(STORAGE_KEYS.DAILY_SUMMARY, summaryDayKey)",
+        "if (!dailySummarySeenKey || dailySummarySeenKey === todayKey) return;",
+        "if (dailySummarySeenKey === summaryPayload.todayKey) return false;",
+        "const consumeNotificationResponse = (response) => {",
+        "safeNotifications.clearLastNotificationResponseAsync().catch(() => {});",
+        "onRequestClose={handleDailySummaryDismiss}",
+        "onPress={handleDailySummaryDismiss}"
+      ],
+      "requiredPatterns": [
+        "const handleTamagotchiDailySummaryPress = useCallback\\(\\(\\) => \\{[\\s\\S]*?openDailySummaryFromBadge\\(\\\"tamagotchi_modal\\\"\\);[\\s\\S]*?closeTamagotchiOverlay\\(\\);"
+      ]
+    },
+    {
       "id": "tamagotchi-menu-actions",
       "description": "The Tamagotchi redesign preserves every care, reward, customization, navigation, gesture, and celebration action.",
       "file": "App.js",
@@ -381,6 +613,45 @@
         "accessibilityState={{ disabled: tamagotchiIsFull }}",
         "accessible={isTamagotchiCleanToolSelected}",
         "onAccessibilityTap={"
+      ]
+    },
+    {
+      "id": "tamagotchi-menu-adaptive-care-layout",
+      "description": "The Tamagotchi care area adapts its density for tall screens, keeps every care tab visibly selectable, and names the stat affected by each positive or negative option effect.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const IS_TALL_TAMAGOTCHI_DEVICE = SCREEN_HEIGHT >= 820;",
+        "IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiPreviewTall",
+        "IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionGridTall",
+        "IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiOptionCardTall",
+        "const accent = tab.accent;",
+        "const activeTabForeground = resolveForegroundForColor(activeTabBackground);",
+        "styles.tamagotchiTabSelectionMark",
+        "t(\"tamagotchiFoodBoostLabel\", { percent: food.hungerBoost })",
+        "t(\"tamagotchiPlayBoostLabel\", { percent: toy.moodBoost })",
+        "−{toy.cleanPenalty}% {t(\"tamagotchiCleanlinessLabel\")}",
+        "+{tool.cleanBoost}% {t(\"tamagotchiCleanlinessLabel\")}",
+        "t(\"tamagotchiToolUsesLeftLabel\", {"
+      ]
+    },
+    {
+      "id": "tamagotchi-menu-dialogue-and-dirt-visuals",
+      "description": "The Tamagotchi menu continuously presents localized Almi dialogue, preserves immediate care reactions, and scales the contained dirt treatment to the actual cleanliness state.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const [tamagotchiMenuSpeech, setTamagotchiMenuSpeech] = useState(\"\");",
+        "const buildTamagotchiMenuSpeech = useCallback(() => {",
+        "const timer = setInterval(showNextSpeech, TAMAGOTCHI_SPEECH_DURATION_MS);",
+        ": tamagotchiMenuSpeech || tamagotchiMood.label",
+        "tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech",
+        "const tamagotchiDirtVisualIntensity = Math.pow(",
+        "styles.tamagotchiMascotDirtVeil",
+        "desaturation={tamagotchiDirtVisualIntensity * 0.78}"
+      ],
+      "requiredPatterns": [
+        "if \\(tamagotchiCleanlinessPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD\\) \\{[\\s\\S]*?tamagotchiSpeechNeedClean",
+        "if \\(tamagotchiHungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD\\) \\{[\\s\\S]*?tamagotchiSpeechHungry",
+        "if \\(tamagotchiMoodPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD\\) \\{[\\s\\S]*?tamagotchiSpeechNeedPlay"
       ]
     },
     {
@@ -701,6 +972,19 @@
       ]
     },
     {
+      "id": "home-savings-potential-actions",
+      "description": "The Home savings forecast keeps period selection, compact and expanded disclosure, accessible button semantics, and all modal dismissal paths.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handlePotentialDetailsOpen}",
+        "onChange={handlePotentialForecastPeriodChange}",
+        "accessibilityLabel={potentialAccessibilityLabel}",
+        "onRequestClose={closePotentialDetails}",
+        "<TouchableWithoutFeedback onPress={closePotentialDetails}>",
+        "onPress={closePotentialDetails}"
+      ]
+    },
+    {
       "id": "weekly-breakdown-modal-actions",
       "description": "The weekly savings and spending breakdown redesign preserves dismissal, range switching, period navigation, mode switching, and horizontally scrollable long ranges.",
       "file": "App.js",
@@ -913,15 +1197,81 @@
       ]
     },
     {
-      "id": "rating-prompt-actions",
-      "description": "The localized, app-owned rating prompt is queued after the second successful save/spend across app sessions, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "id": "post-action-prompt-orchestration",
+      "description": "Engagement prompts stay out of the active temptation series, receive an attention slot only from an independent post-series save or spend, use a stable priority order, and do not reopen automatically when the app resumes.",
       "file": "App.js",
       "requiredFragments": [
-        "ratingPromptActionCount >= RATING_PROMPT_ACTION_THRESHOLD",
-        "queueRatingPrompt(\"actions\")",
-        "actionCount: currentCount + 1,",
-        "recordRatingPromptAction(\"spend\");",
-        "recordRatingPromptAction(\"save\");",
+        "const postActionPromptSlotRef = useRef(0);",
+        "const grantPostActionPromptSlot = useCallback(",
+        "postActionPromptSlotRef.current = 1;",
+        "POST_ACTION_PROMPT_MODAL_TYPES.has(type)",
+        "consumePostActionPromptSlot(nextType);",
+        "grantPostActionPromptSlot(action);",
+        "postActionPromptSlotRef.current = 0;",
+        "setPendingImpulseAlert({",
+        "enqueueQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);"
+      ],
+      "requiredPatterns": [
+        "POST_ACTION_PROMPT_MODAL_TYPES\\.has\\(nextType\\)[\\s\\S]*?consumePostActionPromptSlot\\(nextType\\);",
+        "if \\(postActionPromptSlotRef\\.current <= 0\\) return false;"
+      ]
+    },
+    {
+      "id": "weekly-focus-and-daily-challenge-separation",
+      "description": "Focus is a persisted seven-day category commitment with independent save/spend progress and an action-gated weekly review, while the daily challenge remains a one-day condition and avoids the active focus target.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const [focusStartedAt, setFocusStartedAt] = useState(null);",
+        "const [focusExpiresAt, setFocusExpiresAt] = useState(null);",
+        "const [focusSpendCount, setFocusSpendCount] = useState(0);",
+        "setFocusExpiresAt(startedAt + FOCUS_DURATION_MS);",
+        "setFocusSaveCount((prev) => Math.max(0, Number(prev) || 0) + 1);",
+        "setFocusSpendCount((prev) => Math.max(0, Number(prev) || 0) + 1);",
+        "const positive = focusSaveCount >= FOCUS_VICTORY_THRESHOLD;",
+        "review: true,",
+        "enqueueQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);",
+        "focusTemplateId && dailyChallenge.templateId === focusTemplateId"
+      ]
+    },
+    {
+      "id": "post-action-prompt-policy",
+      "description": "The centralized prompt policy gates only attention prompts after an action; transactional auto-collect, hunger, and earned-reward modals remain outside that slot while retaining deterministic queue priorities.",
+      "file": "src/constants/tutorialUiConstants.js",
+      "requiredFragments": [
+        "IMPULSE_ALERT: \"impulse_alert\"",
+        "export const POST_ACTION_PROMPT_MODAL_TYPES = new Set([",
+        "QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE",
+        "QUEUED_MODAL_TYPES.IMPULSE_ALERT",
+        "QUEUED_MODAL_TYPES.FOCUS_DIGEST",
+        "QUEUED_MODAL_TYPES.INCOME_PROMPT",
+        "export const POST_ACTION_PROMPT_MODAL_PRIORITY = Object.freeze({"
+      ],
+      "requiredPatterns": [
+        "POST_ACTION_PROMPT_MODAL_TYPES = new Set\\(\\[(?:(?!TYCOON_AUTOSAVE|TYCOON_REWARD).)*?\\]\\);"
+      ]
+    },
+    {
+      "id": "tycoon-autocollect-paywall-usp",
+      "description": "The paywall recognizes auto-collect as a Premium feature, personalizes its feature gate, and promotes it in the existing benefit count instead of a cosmetic USP.",
+      "file": "src/monetization/constants.js",
+      "requiredFragments": [
+        "temptationAutoCollect: \"temptationAutoCollect\"",
+        "const TEMPTATION_AUTO_COLLECT_FEATURE_BY_LANGUAGE = {",
+        "id: \"temptationAutoCollect\"",
+        "featureKeys: [PREMIUM_FEATURE_KEYS.temptationAutoCollect]",
+        "isCosmetic: true,"
+      ]
+    },
+    {
+      "id": "rating-prompt-actions",
+      "description": "The localized, app-owned rating prompt becomes eligible only after three completed temptation series, never in the claim session, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "file": "App.js",
+      "requiredFragments": [
+        "ratingPromptSeriesCompletionCount >= RATING_PROMPT_SERIES_THRESHOLD",
+        "queueRatingPrompt(\"series\")",
+        "seriesCompletionCount: currentSeriesCount + 1,",
+        "recordRatingPromptSeriesCompletion();",
+        "!temptationSeriesClaimedThisSessionRef.current",
         "if (canShowRatingPromptNowRef.current()) {",
         "ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);",
         "const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);",
@@ -949,11 +1299,10 @@
     },
     {
       "id": "rating-prompt-second-action-threshold",
-      "description": "The rating trigger remains the second successful save or spend decision across sessions, with four stars as the store threshold and five visible characters as the feedback minimum.",
+      "description": "The rating trigger is delayed until three completed temptation series, with four stars as the store threshold and five visible characters as the feedback minimum.",
       "file": "src/constants/economyConfig.js",
       "requiredFragments": [
-        "export const RATING_PROMPT_ACTION_THRESHOLD = 2;",
-        "export const RATING_PROMPT_ACTION_TYPES = new Set([\"save\", \"spend\"]);",
+        "export const RATING_PROMPT_SERIES_THRESHOLD = 3;",
         "export const RATING_PROMPT_STORE_THRESHOLD = 4;",
         "export const RATING_PROMPT_FEEDBACK_MIN_LENGTH = 5;"
       ]
@@ -990,9 +1339,10 @@
       "description": "The app-scoped install identity is set before the React root and AppsFlyer starts immediately without waiting for ATT.",
       "file": "index.js",
       "requiredFragments": [
-        "const premiumInstallId = await ensurePremiumInstallId();",
-        "await setAppScopedInstallIdentity(premiumInstallId);",
-        "void initAttribution().catch((error) => {"
+        "bootstrapAppsFlyerAttribution({",
+        "ensureInstallId: ensurePremiumInstallId",
+        "setInstallIdentity: setAppScopedInstallIdentity",
+        "initAttribution"
       ],
       "requiredPatterns": [
         "bootstrapAttribution\\(\\)[\\s\\S]*registerRootComponent\\(App\\)"
@@ -1027,18 +1377,27 @@
     },
     {
       "id": "revenuecat-write-once-attribution",
-      "description": "RevenueCat attribution preserves immutable identifiers for existing customers, writes final identifiers once for new customers, and serializes concurrent sync requests without blocking AppsFlyer partner postbacks.",
-      "file": "src/monetization/purchasesClient.js",
+      "description": "RevenueCat attribution persists a versioned first-touch record, serializes concurrent merges, and distinguishes local writes awaiting upload from fully synchronized fields.",
+      "file": "src/analytics/attributionStateMachine.js",
       "requiredFragments": [
-        "customerInfo?.firstSeen",
-        "REVENUECAT_IMMUTABLE_ATTRIBUTION_NEW_CUSTOMER_WINDOW_MS",
-        "existing_customer_identifiers_preserved",
-        "existing_customer_attribution_preserved",
-        "REVENUECAT_IMMUTABLE_ATTRIBUTION_FIELD_PREFIX",
-        "revenueCatDeviceIdentifiersSyncPromise",
-        "revenueCatImmutableAttributionSyncQueue",
-        "automaticDeviceIdentifierCollectionEnabled: false",
-        "fieldsSet.includes(\"appsFlyerId\") || skippedFields.includes(\"appsFlyerId\")"
+        "ATTRIBUTION_STATE_SCHEMA_VERSION = 2",
+        "writtenPendingUpload: \"written_pending_upload\"",
+        "syncedFull: \"synced_full\"",
+        "let operationQueue = Promise.resolve();",
+        "legacyDeliveryKeyForField",
+        "unsafeLegacyConfirmationKeys"
+      ]
+    },
+    {
+      "id": "revenuecat-existing-customer-no-false-confirmation",
+      "description": "Existing RevenueCat customers are preserved without claiming an AppsFlyer ID write unless a successful local setter marker already exists.",
+      "file": "src/analytics/revenueCatAttributionSync.js",
+      "requiredFragments": [
+        "result.preservedExistingCustomer = true;",
+        "result.confirmed = result.previouslyWrittenAppsFlyerId;",
+        "didWriteAppsFlyerId: false",
+        "previouslyWrittenAppsFlyerId",
+        "ATTRIBUTION_SYNC_RESULTS.preservedExisting"
       ]
     },
     {
@@ -1106,7 +1465,7 @@
     },
     {
       "id": "first-save-recap-and-reward",
-      "description": "The first save still records the transaction, presents one save recap, grants its earned reward exactly once, and keeps later monetization eligibility without stacking a reward modal in the tutorial flow.",
+      "description": "The first save still records the transaction and presents one recap, while its unchanged reward is deposited exactly once into the active series chest and monetization stays deferred until the series payout flow finishes.",
       "file": "App.js",
       "requiredFragments": [
         "triggerOverlayState(\"save\", saveOverlayPayloadWithReward);",
@@ -1115,8 +1474,10 @@
         "markFirstSaveGoalJarPending();",
         "const handleSaveOverlayPress = useCallback(",
         "const firstSaveFlowActive = saveOverlayPayload?.isFirstSaveAction === true;",
-        "if (tutorialFlowActive || firstSaveFlowActive) {",
+        "if (firstSaveFlowActive) {",
         "first-save/onboarding reinforcement stays inside one blocker.",
+        "temptationSeriesRewardMode: seriesRewardResult.rewardMode,",
+        "const seriesRewardPending = payload?.temptationSeriesRewardMode === \"pending\";",
         "pendingUsageStreakRef.current = null;",
         "saveOverlayRewardDeliveredKeyRef.current === saveOverlayKey",
         "revealSaveOverlayRewardOnce();",
@@ -1126,11 +1487,15 @@
     },
     {
       "id": "qa-compact-safe-edge-layout",
-      "description": "Scrollable screens continue behind the floating bottom navigation, reserve its measured height in transparent scroll tails, keep the status safe area opaque, and leave compact paywall disclosures in scroll flow.",
+      "description": "Scrollable screens continue behind the floating bottom navigation, reserve its measured height in transparent scroll tails, keep the iOS 26 native bar slightly above the Home Indicator safe edge, keep the status safe area opaque, and leave compact paywall disclosures in scroll flow.",
       "file": "App.js",
       "requiredFragments": [
         "<View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>",
         "const screenContentBottomPadding = resolvedTabBarHeight + screenContentEndGap;",
+        "const IOS_NATIVE_TAB_BAR_BOTTOM_LIFT = 6;",
+        "const iosNativeTabBarBottomLift =",
+        "? IOS_NATIVE_TAB_BAR_BOTTOM_LIFT",
+        "iosNativeTabBarBottomLift",
         "solid: true,",
         "const overlayTopOpacity = solid ? 1",
         "const overlaySafeOpacity = solid ? 1"
@@ -1138,11 +1503,16 @@
     },
     {
       "id": "bottom-tab-label-readability",
-      "description": "Fallback and native iOS tab labels shrink within their item instead of collapsing to an ellipsis, while the full localized label remains exposed to accessibility.",
+      "description": "Android fallback tab labels keep a readable 12sp minimum without native auto-shrinking, while legacy iOS can still fit long labels and every fallback exposes the full localized label to accessibility.",
       "file": "src/components/LiquidGlassTabBar.js",
       "requiredFragments": [
-        "adjustsFontSizeToFit",
-        "minimumFontScale={0.72}",
+        "const ANDROID_TAB_LABEL_MIN_FONT_SIZE = 12;",
+        "const ANDROID_TAB_LABEL_MIN_LINE_HEIGHT = 14;",
+        "? Math.max(ANDROID_TAB_LABEL_MIN_FONT_SIZE, tabLabelFontSize)",
+        "adjustsFontSizeToFit={!isAndroid}",
+        "minimumFontScale={isAndroid ? undefined : 0.72}",
+        "includeFontPadding={isAndroid ? false : undefined}",
+        "lineHeight: resolvedTabLabelLineHeight",
         "ellipsizeMode=\"clip\"",
         "accessibilityLabel={tabLabel}"
       ]
@@ -1152,6 +1522,8 @@
       "description": "The iOS 26 bar passes localized items, selection, theme colors and taps directly to one interactive native UITabBar without a cross-platform overlay.",
       "file": "src/components/LiquidGlassTabBar.js",
       "requiredFragments": [
+        "const IOS_NATIVE_TAB_BAR_HORIZONTAL_PADDING = 0;",
+        "paddingHorizontal: IOS_NATIVE_TAB_BAR_HORIZONTAL_PADDING,",
         "<NativeLiquidTabBar",
         "items={tabPayload}",
         "selectedKey={activeTab}",
@@ -1184,6 +1556,12 @@
         ".foregroundColor: inactiveColor,",
         ".foregroundColor: activeColor,",
         "appearance.backgroundEffect = nil",
+        "updateLiquidGlassClipMask()",
+        "private static let liquidGlassHorizontalClipInset: CGFloat = 24",
+        "private static let liquidGlassBottomClipInset: CGFloat = 21",
+        "roundedRect: clipRect,",
+        "tabBar.shadowImage = Self.transparentImage",
+        "appearance.shadowImage = Self.transparentImage",
         "tabBar.setItems(nativeItems, animated: false)"
       ]
     },
@@ -1433,24 +1811,28 @@
     },
     {
       "id": "cold-start-bootstrap-continuity",
-      "description": "Cold launch restores the animated Almost wordmark for both onboarding and returning users while storage hydration selects the correct destination behind it.",
+      "description": "Cold launch uses one uninterrupted Almost animation for onboarding and returning users, starts on the first visible letter, and keeps the native surface opaque until that frame is laid out.",
       "file": "App.js",
       "requiredFragments": [
+        "SplashScreen.setOptions({ duration: 0, fade: false });",
         "function LogoSplash({ onDone })",
+        "const [text, setText] = useState(\"A\");",
         "const word = \"Almost\";",
         "setText(word.slice(0, index));",
         "SplashScreen.hideAsync().catch(() => {});",
-        "const startupLogoVisible =",
+        "const startupLogoVisible = !startupLogoDismissed;",
         "const startupLogoAnimationVisible = startupLogoVisible && startupLogoReady;",
+        "styles.logoSplashStartupSurface",
         "{startupLogoAnimationVisible ? <LogoSplash onDone={handleStartupLogoComplete} /> : null}",
-        "if (onboardingDisplayStep === \"logo\") {",
-        "onboardContent = <LogoSplash onDone={handleOnboardingLogoComplete} />;",
+        "if (onboardingStep === \"logo\") {",
+        "goToOnboardingStep(\"language\", { recordHistory: false });",
+        "setStartupLogoDismissed(false);",
         "goToOnboardingStep(\"done\", { recordHistory: false, resetHistory: true });"
       ]
     },
     {
       "id": "cold-start-native-window-continuity",
-      "description": "The iOS host owns a white scene-aware key window and yields long enough for its first Core Animation commit before React initialization blocks the Release main thread.",
+      "description": "The iOS host owns a blank white scene-aware key window, never draws a completed native wordmark, and yields long enough for its first Core Animation commit before React initialization blocks the Release main thread.",
       "file": "ios/Almost/AppDelegate.swift",
       "requiredFragments": [
         "let bootstrapWindow = Self.makeBootstrapWindow(for: application)",
@@ -1459,7 +1841,32 @@
         "bootstrapWindow.makeKeyAndVisible()",
         "let didFinishLaunching = super.application(",
         "DispatchQueue.main.asyncAfter(deadline: .now() + 0.05)",
+        "Keep this bridge surface blank.",
+        "rootView.isOpaque = true",
         "factory.startReactNative("
+      ]
+    },
+    {
+      "id": "cold-start-android-splash-handoff",
+      "description": "Android registers the Expo splash manager before React activity creation so the opaque native surface remains until the animated logo's first frame is ready.",
+      "file": "android/app/src/main/java/com/almost/MainActivity.kt",
+      "requiredFragments": [
+        "import expo.modules.splashscreen.SplashScreenManager",
+        "SplashScreenManager.registerOnActivity(this)",
+        "super.onCreate(null)"
+      ]
+    },
+    {
+      "id": "cold-start-android-system-bar-continuity",
+      "description": "Android launch and post-splash themes share an opaque white surface, dark system icons, no contrast scrim, and a transparent splash icon so no stale logo or colored status band can flash.",
+      "file": "android/app/src/main/res/values/styles.xml",
+      "requiredFragments": [
+        "<style name=\"Theme.App.SplashScreen\" parent=\"Theme.SplashScreen\">",
+        "<item name=\"windowSplashScreenAnimatedIcon\">@drawable/splashscreen_blank</item>",
+        "<item name=\"postSplashScreenTheme\">@style/AppTheme</item>",
+        "<item name=\"android:statusBarColor\">@color/splashscreen_background</item>",
+        "<item name=\"android:windowLightStatusBar\">true</item>",
+        "<item name=\"android:enforceStatusBarContrast\">false</item>"
       ]
     },
     {

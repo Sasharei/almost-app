@@ -3,59 +3,70 @@
 ## 7.1.0 (from 7.0.4)
 
 ### EN
-- A new rating and feedback flow makes it easier to tell us what works and what needs improvement; support messages can now include helpful app and device diagnostics.
-- Light, Dark, and PRO themes, navigation, dialogs, and the Premium screen have been polished for clearer contrast, spacing, keyboard behavior, and readability.
-- Fixed Android cold-start crashes and improved notification scheduling, image selection and cropping, cross-platform stability, and the clarity of privacy and Terms of Use choices.
+- Turn the temptations due today into a clear daily series: log your decisions, skip or edit cards that do not fit, complete the series, and open a reward chest. Daily completions now build your Rhythm.
+- Temptation cards and the Feed have been redesigned with clearer Save, Spend, Pause, and status controls. Reminders now show cadence and a 30-day savings estimate, while the savings forecast explains exactly how it is calculated.
+- Start a focused 7-day saving goal for a category. Premium users can also enable auto-collect for ready cards, and unfinished forms and the screen you were using are restored after interruptions.
+- We also polished Light, Dark, and PRO themes, navigation, Premium, feedback, notifications, image handling, privacy choices, purchases, and startup stability on iOS and Android.
 
 ### RU
-- Новый сценарий оценки и обратной связи помогает быстрее рассказать, что нравится и что стоит улучшить; обращения в поддержку теперь могут содержать полезную диагностику приложения и устройства.
-- Светлая, тёмная и PRO-темы, навигация, диалоги и экран Premium стали аккуратнее: улучшены контраст, отступы, работа клавиатуры и читаемость.
-- Исправлены сбои при холодном запуске на Android, улучшены уведомления, выбор и обрезка изображений, стабильность на обеих платформах, а также понятность настроек приватности и Условий использования.
+- Собирайте запланированные на сегодня искушения в понятную ежедневную серию: отмечайте решения, пропускайте или редактируйте неподходящие карточки, завершайте серию и открывайте сундук с наградой. Ежедневные серии поддерживают ваш Ритм.
+- Мы переработали карточки искушений и ленту: действия «Сэкономить», «Потратить» и «Пауза», а также статусы стали понятнее. Напоминания теперь показывают частоту и прогноз экономии на 30 дней, а у общего прогноза появилось подробное объяснение расчёта.
+- Добавлен 7-дневный фокус на отдельной категории. Пользователи Premium также могут включить автосбор готовых карточек, а незавершённые формы и открытый экран теперь восстанавливаются после перерыва.
+- Также улучшены светлая, тёмная и PRO-темы, навигация, Premium, обратная связь, уведомления, работа с изображениями, настройки приватности, покупки и стабильность запуска на iOS и Android.
 
 ### ES
-- Un nuevo flujo de valoración y comentarios facilita contarnos qué funciona y qué debemos mejorar; los mensajes al soporte ahora pueden incluir diagnósticos útiles de la app y el dispositivo.
-- Hemos pulido los temas Claro, Oscuro y PRO, la navegación, los diálogos y la pantalla Premium para mejorar el contraste, los espacios, el comportamiento del teclado y la legibilidad.
-- Corregimos cierres al iniciar Android en frío y mejoramos las notificaciones, la selección y el recorte de imágenes, la estabilidad en ambas plataformas y la claridad de las opciones de privacidad y los Términos de uso.
+- Convierte las tentaciones previstas para hoy en una serie diaria clara: registra tus decisiones, omite o edita las tarjetas que no encajen, completa la serie y abre un cofre de recompensa. Completar series cada día ahora mantiene tu Ritmo.
+- Rediseñamos las tarjetas de tentación y el Feed para que las acciones Ahorrar, Gastar y Pausar, y sus estados, sean más claros. Los recordatorios muestran la frecuencia y una estimación de ahorro a 30 días, y la previsión explica cómo se calcula.
+- Inicia un objetivo de ahorro de 7 días para una categoría. Los usuarios Premium también pueden activar la recolección automática de tarjetas listas; los formularios sin terminar y la pantalla abierta se restauran tras una interrupción.
+- También mejoramos los temas Claro, Oscuro y PRO, la navegación, Premium, los comentarios, las notificaciones, las imágenes, la privacidad, las compras y la estabilidad de inicio en iOS y Android.
 
 ### FR
-- Un nouveau parcours de notation et de retour facilite le partage de ce qui fonctionne et de ce qui doit être amélioré ; les messages au support peuvent désormais inclure des diagnostics utiles sur l’app et l’appareil.
-- Les thèmes Clair, Sombre et PRO, la navigation, les fenêtres et l’écran Premium ont été affinés pour améliorer le contraste, les espacements, le clavier et la lisibilité.
-- Correction de plantages au démarrage à froid sur Android, avec des améliorations pour les notifications, la sélection et le recadrage d’images, la stabilité sur les deux plateformes et la clarté des choix de confidentialité et des Conditions d’utilisation.
+- Transforme les tentations prévues aujourd’hui en une série quotidienne claire : note tes décisions, passe ou modifie les cartes qui ne te correspondent pas, termine la série et ouvre un coffre de récompense. Les séries quotidiennes entretiennent désormais ton Rythme.
+- Les cartes de tentation et le Feed ont été repensés pour clarifier les actions Épargner, Dépenser et Pause, ainsi que leurs états. Les rappels affichent la fréquence et une estimation d’épargne sur 30 jours, tandis que la prévision explique son calcul.
+- Lance un objectif d’épargne ciblé de 7 jours pour une catégorie. Les utilisateurs Premium peuvent aussi activer la collecte automatique des cartes prêtes ; les formulaires inachevés et l’écran ouvert sont restaurés après une interruption.
+- Nous avons aussi amélioré les thèmes Clair, Sombre et PRO, la navigation, Premium, les retours, les notifications, les images, la confidentialité, les achats et la stabilité du démarrage sur iOS et Android.
 
 ### DE
-- Mit dem neuen Bewertungs- und Feedback-Ablauf kannst du leichter mitteilen, was gut funktioniert und was verbessert werden sollte; Support-Nachrichten können jetzt hilfreiche App- und Gerätediagnosen enthalten.
-- Helles, dunkles und PRO-Design, Navigation, Dialoge und der Premium-Bildschirm wurden für besseren Kontrast, stimmigere Abstände, zuverlässigeres Tastaturverhalten und bessere Lesbarkeit verfeinert.
-- Abstürze beim Kaltstart unter Android wurden behoben. Außerdem wurden Benachrichtigungen, Bildauswahl und -zuschnitt, die Stabilität auf beiden Plattformen sowie die Verständlichkeit der Datenschutzoptionen und Nutzungsbedingungen verbessert.
+- Mach aus den heute fälligen Versuchungen eine übersichtliche tägliche Serie: Protokolliere Entscheidungen, überspringe oder bearbeite unpassende Karten, schließe die Serie ab und öffne eine Belohnungstruhe. Tägliche Abschlüsse stärken jetzt deinen Rhythmus.
+- Versuchungskarten und Feed wurden neu gestaltet, damit Sparen, Ausgeben, Pause und Status klarer sind. Erinnerungen zeigen nun Häufigkeit und eine 30-Tage-Sparschätzung; die Sparprognose erklärt außerdem genau ihre Berechnung.
+- Starte ein gezieltes 7-Tage-Sparziel für eine Kategorie. Premium-Nutzer können auch die automatische Sammlung fertiger Karten aktivieren; unfertige Formulare und der zuletzt geöffnete Bildschirm werden nach Unterbrechungen wiederhergestellt.
+- Außerdem haben wir helle, dunkle und PRO-Designs, Navigation, Premium, Feedback, Benachrichtigungen, Bilder, Datenschutzoptionen, Käufe und die Startstabilität unter iOS und Android verbessert.
 
 ### PT
-- Um novo fluxo de avaliação e feedback facilita contar o que funciona e o que precisa melhorar; as mensagens ao suporte agora podem incluir diagnósticos úteis do app e do dispositivo.
-- Os temas Claro, Escuro e PRO, a navegação, os diálogos e a tela Premium foram refinados para melhorar contraste, espaçamento, comportamento do teclado e legibilidade.
-- Corrigimos falhas na inicialização a frio no Android e melhoramos notificações, seleção e recorte de imagens, estabilidade nas duas plataformas e a clareza das opções de privacidade e dos Termos de Uso.
+- Transforme as tentações previstas para hoje em uma série diária clara: registre suas decisões, pule ou edite cartões que não combinam com você, conclua a série e abra um baú de recompensa. Concluir séries diariamente agora mantém seu Ritmo.
+- Redesenhamos os cartões de tentação e o Feed para deixar mais claros os comandos Economizar, Gastar e Pausar e seus estados. Os lembretes mostram a frequência e uma estimativa de economia para 30 dias, e a previsão explica como é calculada.
+- Comece uma meta de economia de 7 dias para uma categoria. Usuários Premium também podem ativar a coleta automática de cartões prontos; formulários inacabados e a tela aberta são restaurados após uma interrupção.
+- Também refinamos os temas Claro, Escuro e PRO, navegação, Premium, feedback, notificações, imagens, privacidade, compras e estabilidade de inicialização no iOS e Android.
 
 ### IT
-- Un nuovo flusso per valutazioni e feedback rende più semplice dirci cosa funziona e cosa va migliorato; i messaggi all’assistenza possono ora includere utili dati diagnostici sull’app e sul dispositivo.
-- I temi Chiaro, Scuro e PRO, la navigazione, le finestre e la schermata Premium sono stati rifiniti per migliorare contrasto, spaziatura, comportamento della tastiera e leggibilità.
-- Risolti gli arresti anomali all’avvio a freddo su Android e migliorati notifiche, selezione e ritaglio delle immagini, stabilità su entrambe le piattaforme e chiarezza delle opzioni sulla privacy e dei Termini di utilizzo.
+- Trasforma le tentazioni previste per oggi in una serie quotidiana chiara: registra le decisioni, salta o modifica le schede non adatte, completa la serie e apri un forziere premio. Completare una serie ogni giorno ora mantiene il tuo Ritmo.
+- Abbiamo riprogettato le schede tentazione e il Feed per rendere più chiari Risparmia, Spendi, Pausa e i relativi stati. I promemoria mostrano frequenza e una stima del risparmio a 30 giorni, mentre la previsione spiega come viene calcolata.
+- Avvia un obiettivo di risparmio di 7 giorni per una categoria. Gli utenti Premium possono anche attivare la raccolta automatica delle schede pronte; i moduli incompleti e la schermata aperta vengono ripristinati dopo un’interruzione.
+- Abbiamo inoltre migliorato i temi Chiaro, Scuro e PRO, la navigazione, Premium, il feedback, le notifiche, le immagini, la privacy, gli acquisti e la stabilità di avvio su iOS e Android.
 
 ### AR (SA)
-- يسهّل مسار التقييم والملاحظات الجديد إخبارنا بما يعمل جيدًا وما يحتاج إلى تحسين، ويمكن لرسائل الدعم الآن تضمين معلومات تشخيصية مفيدة عن التطبيق والجهاز.
-- حسّنا السمات الفاتحة والداكنة وPRO والتنقّل والنوافذ وشاشة Premium لزيادة وضوح التباين والمسافات وسلوك لوحة المفاتيح وسهولة القراءة.
-- أصلحنا أعطال التشغيل البارد على Android، وحسّنا الإشعارات واختيار الصور واقتصاصها والاستقرار على المنصتين، كما جعلنا خيارات الخصوصية وشروط الاستخدام أوضح.
+- حوّل إغراءات اليوم إلى سلسلة يومية واضحة: سجّل قراراتك، وتخطَّ البطاقات غير المناسبة أو عدّلها، وأكمل السلسلة ثم افتح صندوق المكافأة. إكمال سلسلة كل يوم يحافظ الآن على إيقاعك.
+- أعدنا تصميم بطاقات الإغراء وFeed لتصبح إجراءات التوفير والإنفاق والإيقاف المؤقت والحالات أوضح. تعرض التذكيرات الآن الوتيرة وتقدير التوفير خلال 30 يومًا، كما تشرح توقعات التوفير طريقة احتسابها.
+- ابدأ هدف توفير مركّزًا لمدة 7 أيام لفئة واحدة. ويمكن لمستخدمي Premium أيضًا تفعيل الجمع التلقائي للبطاقات الجاهزة، مع استعادة النماذج غير المكتملة والشاشة المفتوحة بعد الانقطاع.
+- حسّنا أيضًا السمات الفاتحة والداكنة وPRO والتنقّل وPremium والملاحظات والإشعارات والصور والخصوصية والمشتريات واستقرار بدء التشغيل على iOS وAndroid.
 
 ### AR (AE)
-- يسهّل مسار التقييم والملاحظات الجديد إخبارنا بما يعمل جيدًا وما يحتاج إلى تحسين، ويمكن لرسائل الدعم الآن تضمين معلومات تشخيصية مفيدة عن التطبيق والجهاز.
-- حسّنا السمات الفاتحة والداكنة وPRO والتنقّل والنوافذ وشاشة Premium لزيادة وضوح التباين والمسافات وسلوك لوحة المفاتيح وسهولة القراءة.
-- أصلحنا أعطال التشغيل البارد على Android، وحسّنا الإشعارات واختيار الصور واقتصاصها والاستقرار على المنصتين، كما جعلنا خيارات الخصوصية وشروط الاستخدام أوضح.
+- حوّل إغراءات اليوم إلى سلسلة يومية واضحة: سجّل قراراتك، وتخطَّ البطاقات غير المناسبة أو عدّلها، وأكمل السلسلة ثم افتح صندوق المكافأة. إكمال سلسلة كل يوم يحافظ الآن على إيقاعك.
+- أعدنا تصميم بطاقات الإغراء وFeed لتصبح إجراءات التوفير والإنفاق والإيقاف المؤقت والحالات أوضح. تعرض التذكيرات الآن الوتيرة وتقدير التوفير خلال 30 يومًا، كما تشرح توقعات التوفير طريقة احتسابها.
+- ابدأ هدف توفير مركّزًا لمدة 7 أيام لفئة واحدة. ويمكن لمستخدمي Premium أيضًا تفعيل الجمع التلقائي للبطاقات الجاهزة، مع استعادة النماذج غير المكتملة والشاشة المفتوحة بعد الانقطاع.
+- حسّنا أيضًا السمات الفاتحة والداكنة وPRO والتنقّل وPremium والملاحظات والإشعارات والصور والخصوصية والمشتريات واستقرار بدء التشغيل على iOS وAndroid.
 
 ### ZH
-- 全新的评分与反馈流程让你更方便地告诉我们哪些体验良好、哪些需要改进；联系支持时还可附上有助于排查问题的应用和设备诊断信息。
-- 优化了浅色、深色和 PRO 主题，以及导航、弹窗和 Premium 页面，改善对比度、间距、键盘交互和可读性。
-- 修复了 Android 冷启动崩溃，并改进通知调度、图片选择与裁剪、双平台稳定性，以及隐私选项和使用条款的清晰度。
+- 将今天到期的诱惑整理成清晰的每日系列：记录决定，跳过或编辑不合适的卡片，完成系列并开启奖励宝箱。每天完成系列还能延续你的节奏。
+- 重新设计了诱惑卡片和 Feed，让“省下”“花掉”“暂停”和各类状态更清晰。提醒现在会显示频率和 30 天预计节省金额，节省预测也会详细说明计算方式。
+- 可针对一个类别开启 7 天专注节省目标。Premium 用户还可启用就绪卡片的自动收集；应用中断后，未完成的表单和之前打开的页面也会自动恢复。
+- 我们还优化了浅色、深色和 PRO 主题、导航、Premium、反馈、通知、图片处理、隐私选项、购买流程，以及 iOS 和 Android 的启动稳定性。
 
 ### KO
-- 새로운 평가 및 피드백 흐름으로 잘 작동하는 부분과 개선이 필요한 부분을 더 쉽게 알려 줄 수 있으며, 지원 메시지에 문제 해결에 도움이 되는 앱 및 기기 진단 정보도 포함할 수 있습니다.
-- 라이트, 다크, PRO 테마와 탐색, 대화상자, Premium 화면을 다듬어 대비, 간격, 키보드 동작 및 가독성을 개선했습니다.
-- Android 콜드 스타트 충돌을 해결하고 알림 예약, 이미지 선택 및 자르기, 양쪽 플랫폼의 안정성, 개인정보 보호 옵션과 이용 약관의 명확성을 개선했습니다.
+- 오늘 확인할 유혹을 명확한 일일 시리즈로 관리할 수 있습니다. 결정을 기록하고, 맞지 않는 카드는 건너뛰거나 수정한 뒤 시리즈를 완료해 보상 상자를 여세요. 매일 완료한 시리즈는 리듬으로 이어집니다.
+- 유혹 카드와 Feed를 새롭게 디자인해 절약, 지출, 일시 정지와 각 상태를 더 명확하게 표시합니다. 알림에는 주기와 30일 예상 절약액이 나타나며, 절약 예측에서 계산 방식도 자세히 확인할 수 있습니다.
+- 특정 카테고리에 7일 집중 절약 목표를 시작할 수 있습니다. Premium 사용자는 준비된 카드의 자동 수집도 켤 수 있으며, 앱 사용이 중단되어도 작성 중인 양식과 열어 둔 화면이 복원됩니다.
+- 라이트, 다크, PRO 테마와 탐색, Premium, 피드백, 알림, 이미지 처리, 개인정보 보호, 구매 흐름, iOS 및 Android 시작 안정성도 개선했습니다.
 
 ## 7.0.4 (from 7.0.3)
 

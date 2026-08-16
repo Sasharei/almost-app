@@ -77,6 +77,54 @@ export const DEFAULT_THEME = "light";
 export const PRO_THEME_ID = "pro";
 export const THEME_IDS = ["light", "dark", PRO_THEME_ID];
 
+export const MOOD_GRADIENTS = {
+  neutral: {
+    start: "#CDE6FF",
+    end: "#F3F7FF",
+    accent: "#A2C9FF",
+  },
+  focused: {
+    start: "#FFE8C7",
+    end: "#FFD6E7",
+    accent: "#FFB973",
+  },
+  impulsive: {
+    start: "#FFD1CC",
+    end: "#FFF0DA",
+    accent: "#FF8A7F",
+  },
+  doubter: {
+    start: "#E3D8FF",
+    end: "#F7E9FF",
+    accent: "#C7B1FF",
+  },
+  tired: {
+    start: "#D5E0FF",
+    end: "#ECEFF5",
+    accent: "#9AB0FF",
+  },
+  dreamer: {
+    start: "#CFF7F1",
+    end: "#E9E2FF",
+    accent: "#94D8C7",
+  },
+};
+
+export const MOOD_GRADIENT_OVERLAY_OPACITY = 0.55;
+
+export const MOOD_GRADIENT_THEME_MIX = {
+  dark: {
+    startAccentMix: 0.46,
+    endAccentMix: 0.24,
+    accentTextMix: 0.1,
+  },
+  pro: {
+    startMoodMix: 0.58,
+    endMoodMix: 0.42,
+    accentPrimaryMix: 0.16,
+  },
+};
+
 export const PRO_THEME_ACCENT_OPTIONS = [
   {
     id: "indigo",

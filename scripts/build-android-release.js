@@ -49,7 +49,9 @@ const buildEnvironment = {
   SOURCE_DATE_EPOCH: commitTimestamp,
 };
 
-run("npm", ["run", "verify"], { env: buildEnvironment });
+// The publishable bundle is never built unless AppsFlyer/AppLovin scope, both tracking
+// URLs, and the Reporting API key pass the strict release-only measurement gate.
+run("npm", ["run", "release:gate"], { env: buildEnvironment });
 run("./gradlew", ["app:bundleRelease", "--no-daemon"], {
   env: buildEnvironment,
   cwd: androidRoot,

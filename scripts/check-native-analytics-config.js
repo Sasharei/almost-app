@@ -37,6 +37,13 @@ const readPlistBoolean = (source, key) => {
   );
   return source.match(expression)?.[1] || null;
 };
+const readPlistString = (source, key) => {
+  const expression = new RegExp(
+    `<key>${key}</key>\\s*<string>([^<]+)</string>`,
+    "m"
+  );
+  return source.match(expression)?.[1] || null;
+};
 
 const iosSourcePlist = read("ios/Almost/Info.plist");
 assert(
@@ -46,6 +53,35 @@ assert(
 assert(
   readPlistBoolean(iosSourcePlist, "FacebookAutoInitEnabled") === "true",
   "iOS Info.plist must keep native FacebookAutoInitEnabled."
+);
+[
+  "NSAdvertisingAttributionReportEndpoint",
+  "AttributionCopyEndpoint",
+].forEach((key) => {
+  assert(
+    readPlistString(iosSourcePlist, key) === "https://appsflyer-skadnetwork.com/",
+    `iOS Info.plist must route ${key} to AppsFlyer.`
+  );
+});
+assert(
+  iosSourcePlist.includes("ludvb6z3bs.skadnetwork"),
+  "iOS Info.plist must contain the AppLovin SKAdNetwork identifier."
+);
+
+const iosProjectSource = read("ios/Almost.xcodeproj/project.pbxproj");
+assert(
+  iosProjectSource.includes("AdSupport.framework in Frameworks"),
+  "The iOS app target must link AdSupport so ATT-authorized IDFA can reach RevenueCat."
+);
+assert(
+  iosProjectSource.includes("PrivacyInfo.xcprivacy in Resources"),
+  "The iOS app target must embed its privacy manifest."
+);
+const iosPrivacyManifest = read("ios/Almost/PrivacyInfo.xcprivacy");
+assert(
+  iosPrivacyManifest.includes("NSPrivacyAccessedAPITypes") &&
+    iosPrivacyManifest.includes("NSPrivacyCollectedDataTypes"),
+  "The iOS privacy manifest is incomplete."
 );
 
 const androidSourceManifest = read("android/app/src/main/AndroidManifest.xml");
@@ -83,6 +119,27 @@ const validateFinalPlist = (plistPath) => {
   assert(
     result.status === 0 && String(result.stdout).trim() === "false",
     "Final iOS archive Info.plist enables Meta auto event logging."
+  );
+  const readFinalString = (key) =>
+    spawnSync("plutil", ["-extract", key, "raw", plistPath], {
+      encoding: "utf8",
+    });
+  [
+    "NSAdvertisingAttributionReportEndpoint",
+    "AttributionCopyEndpoint",
+  ].forEach((key) => {
+    const endpoint = readFinalString(key);
+    assert(
+      endpoint.status === 0 &&
+        String(endpoint.stdout).trim() === "https://appsflyer-skadnetwork.com/",
+      `Final iOS archive has the wrong ${key}.`
+    );
+  });
+  const bundleIdentifier = readFinalString("CFBundleIdentifier");
+  assert(
+    bundleIdentifier.status === 0 &&
+      String(bundleIdentifier.stdout).trim() === ALMOST_RELEASE_SCOPE.iosBundleId,
+    "Final iOS archive has the wrong bundle identifier."
   );
 };
 
@@ -139,5 +196,5 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(
-  "[OK] Native analytics config matches app.json (Meta auto-log off, native auto-init on, Almost release scope asserted)."
+  "[OK] Native analytics config matches app.json (AppsFlyer endpoints, AppLovin SKAN, AdSupport/privacy manifest, Meta settings, and Almost release scope asserted)."
 );

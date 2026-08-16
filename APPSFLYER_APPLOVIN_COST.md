@@ -35,17 +35,30 @@ key or the authenticated request URL.
 read -s APPLOVIN_REPORTING_API_KEY
 export APPLOVIN_REPORTING_API_KEY
 npm run check:applovin-cost -- \
-  --tracking-url 'https://app.appsflyer.com/com.sasarei.almostclean?pid=applovin_int&c={CAMPAIGN_NAME}&af_c_id={CAMPAIGN_ID}'
+  --tracking-url 'https://app.appsflyer.com/com.sasarei.almostclean?pid=applovin_int&c={CAMPAIGN_NAME}&af_c_id={CAMPAIGN_ID}' \
+  --tracking-url 'https://app.appsflyer.com/id6756276744?pid=applovin_int&c={CAMPAIGN_NAME}&af_c_id={CAMPAIGN_ID}'
 unset APPLOVIN_REPORTING_API_KEY
 ```
 
-Pass each real click and impression tracking URL with a separate `--tracking-url`
-argument. The check requests up to 45 days of advertiser data and verifies that:
+Pass the exact production Android and iOS tracking URLs with separate
+`--tracking-url` arguments. The check fails unless both app scopes are present.
+`--skip-api` is an explicit `NO-GO`, never a green release result. The check requests
+up to 45 days of advertiser data and verifies that:
 
 - the Reporting API key is accepted;
-- positive-cost rows use `com.sasarei.almostclean`;
+- report rows stay scoped to `com.sasarei.almostclean`, and any positive-cost rows
+  report their last nonzero delivery dates;
+- every URL uses HTTPS, `pid=applovin_int`, and `af_c_id={CAMPAIGN_ID}`;
+- Reporting API is queried separately with exact Android package and iOS App Store ID
+  filters; any row that escapes either app-scoped response makes the release gate fail;
 - matching cost rows contain AppLovin `campaign_id_external` values;
 - the tracking URLs send the same IDs with `af_c_id={CAMPAIGN_ID}`.
+
+The publishable Android workflow runs this automatically through
+`npm run release:gate`. iOS archives must run the same command before Xcode archive
+creation. Keep `APPLOVIN_REPORTING_API_KEY` and `APPLOVIN_TRACKING_URLS` in the
+release/CI secret store only; `APPLOVIN_TRACKING_URLS` is a newline-separated iOS and
+Android pair.
 
 Do not commit the Reporting API key or paste it into source files.
 

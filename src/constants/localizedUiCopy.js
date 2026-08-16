@@ -147,3 +147,55 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   zh: { day: "天", hour: "小时", minute: "分" },
   ko: { day: "일", hour: "시간", minute: "분" },
 };
+
+export const TEMPTATION_SAVINGS_SCORE_LABELS = {
+  ru: "Рейтинг экономии",
+  en: "Savings score",
+  es: "Puntuación de ahorro",
+  fr: "Score d’épargne",
+  de: "Spar-Score",
+  pt: "Pontuação de poupança",
+  it: "Punteggio risparmio",
+  ar: "درجة الادخار",
+  zh: "储蓄评分",
+  ko: "저축 점수",
+};
+
+export const TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES = {
+  ru: "Пропущено {{count}}× · +{{amount}}",
+  en: "Skipped {{count}}× · +{{amount}}",
+  es: "Omitido {{count}}× · +{{amount}}",
+  fr: "Évité {{count}}× · +{{amount}}",
+  de: "Übersprungen {{count}}× · +{{amount}}",
+  pt: "Evitado {{count}}× · +{{amount}}",
+  it: "Saltato {{count}}× · +{{amount}}",
+  ar: "تم التخطي {{count}}× · +{{amount}}",
+  zh: "已跳过 {{count}}× · +{{amount}}",
+  ko: "{{count}}× 건너뜀 · +{{amount}}",
+};
+
+export const TEMPTATION_DUPLICATE_ACTION_LABELS = {
+  ru: "Дублировать карточку",
+  en: "Duplicate card",
+  es: "Duplicar tarjeta",
+  fr: "Dupliquer la carte",
+  de: "Karte duplizieren",
+  pt: "Duplicar cartão",
+  it: "Duplica scheda",
+  ar: "تكرار البطاقة",
+  zh: "复制卡片",
+  ko: "카드 복제",
+};
+
+export const TEMPTATION_DUPLICATE_HINTS = {
+  ru: "Копия уже создана. Обновите её название и детали.",
+  en: "The copy is already created. Update its name and details.",
+  es: "La copia ya está creada. Actualiza su nombre y sus detalles.",
+  fr: "La copie est déjà créée. Modifiez son nom et ses détails.",
+  de: "Die Kopie ist bereits erstellt. Passe ihren Namen und ihre Details an.",
+  pt: "A cópia já foi criada. Atualize o nome e os detalhes.",
+  it: "La copia è già stata creata. Aggiorna il nome e i dettagli.",
+  ar: "تم إنشاء النسخة بالفعل. حدّث اسمها وتفاصيلها.",
+  zh: "副本已创建。请更新名称和详细信息。",
+  ko: "복사본이 이미 생성되었습니다. 이름과 세부 정보를 수정하세요.",
+};

@@ -75,3 +75,6 @@ metro-cache/
 babel-cache/
 jest-cache/
 tmp/
+
+# Local QA evidence (screenshots, logs, bundles, and accessibility dumps)
+/artifacts/

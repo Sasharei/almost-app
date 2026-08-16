@@ -1,4 +1,4 @@
-export const TYCOON_MODE_DEFAULT_ENABLED = true;
+export const TYCOON_MODE_DEFAULT_ENABLED = false;
 
 export const TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD = 8;
 export const TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL = 40;

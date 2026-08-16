@@ -8,6 +8,7 @@ const APP_CONFIG_PATH = path.join(PROJECT_ROOT, "app.json");
 const REPORT_URL = "https://r.applovin.com/report";
 const CAMPAIGN_ID_MACRO = "{CAMPAIGN_ID}";
 const DEFAULT_LOOKBACK_DAYS = 45;
+const IOS_APP_STORE_ID = "6756276744";
 
 const parseArgs = (argv) => {
   const options = {
@@ -49,7 +50,7 @@ const parseArgs = (argv) => {
   return options;
 };
 
-const loadExpectedPackage = () => {
+const loadExpectedScope = () => {
   const appConfig = JSON.parse(fs.readFileSync(APP_CONFIG_PATH, "utf8"));
   const androidPackage = String(appConfig?.expo?.android?.package || "").trim();
   const iosBundle = String(appConfig?.expo?.ios?.bundleIdentifier || "").trim();
@@ -64,15 +65,25 @@ const loadExpectedPackage = () => {
     );
   }
 
-  return androidPackage;
+  return {
+    androidPackage,
+    iosBundle,
+    iosAppStoreId: IOS_APP_STORE_ID,
+  };
 };
 
-const validateTrackingUrl = (trackingUrl) => {
+const validateTrackingUrl = (trackingUrl, expectedScope) => {
   let parsed;
   try {
     parsed = new URL(trackingUrl);
   } catch {
     return "is not a valid absolute URL";
+  }
+  if (parsed.protocol !== "https:") return "must use HTTPS";
+
+  const partnerId = String(parsed.searchParams.get("pid") || "").trim();
+  if (partnerId !== "applovin_int") {
+    return `uses pid=${partnerId || "missing"}; expected pid=applovin_int`;
   }
 
   const campaignId = parsed.searchParams.get("af_c_id");
@@ -80,12 +91,38 @@ const validateTrackingUrl = (trackingUrl) => {
   if (campaignId !== CAMPAIGN_ID_MACRO) {
     return `uses af_c_id=${campaignId}; expected af_c_id=${CAMPAIGN_ID_MACRO}`;
   }
-  return null;
+  const decodedUrl = decodeURIComponent(parsed.toString()).toLowerCase();
+  if (decodedUrl.includes(expectedScope.androidPackage.toLowerCase())) {
+    return { platform: "android" };
+  }
+  if (
+    decodedUrl.includes(`id${expectedScope.iosAppStoreId}`) ||
+    decodedUrl.includes(expectedScope.iosAppStoreId)
+  ) {
+    return { platform: "ios" };
+  }
+  return "does not contain the Almost Savings Android package or iOS App Store ID";
 };
 
 const isoDay = (date) => date.toISOString().slice(0, 10);
 
-const buildReportRequest = ({ apiKey, lookbackDays }) => {
+const buildReportScopes = (expectedScope) => [
+  {
+    platform: "android",
+    filterColumn: "campaign_package_name",
+    filterValue: expectedScope.androidPackage,
+  },
+  {
+    platform: "ios",
+    filterColumn: "campaign_store_id",
+    filterValue: expectedScope.iosAppStoreId,
+  },
+];
+
+const buildReportRequest = ({ apiKey, lookbackDays, reportScope }) => {
+  if (!reportScope?.platform || !reportScope?.filterColumn || !reportScope?.filterValue) {
+    throw new Error("AppLovin Reporting API request requires an app-scoped filter");
+  }
   const endDate = new Date();
   const startDate = new Date(endDate);
   startDate.setUTCDate(startDate.getUTCDate() - (lookbackDays - 1));
@@ -100,6 +137,7 @@ const buildReportRequest = ({ apiKey, lookbackDays }) => {
       "campaign_id_external",
       "campaign_package_name",
       "campaign_store_id",
+      "platform",
       "cost",
       "clicks",
       "impressions",
@@ -109,6 +147,8 @@ const buildReportRequest = ({ apiKey, lookbackDays }) => {
     limit: "500",
     not_zero: "1",
   });
+  query.set("filter_platform", reportScope.platform);
+  query.set(`filter_${reportScope.filterColumn}`, reportScope.filterValue);
 
   return `${REPORT_URL}?${query.toString()}`;
 };
@@ -129,8 +169,27 @@ const parseCost = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const checkReportingApi = async ({ apiKey, expectedPackage, lookbackDays }) => {
-  const requestUrl = buildReportRequest({ apiKey, lookbackDays });
+const classifyReportRow = (row, expectedScope) => {
+  const packageName = String(row?.campaign_package_name || "").trim().toLowerCase();
+  const storeId = String(row?.campaign_store_id || "").trim().toLowerCase();
+  const androidPackage = expectedScope.androidPackage.toLowerCase();
+  const iosBundle = expectedScope.iosBundle.toLowerCase();
+  const iosAppStoreId = expectedScope.iosAppStoreId.toLowerCase();
+
+  if (
+    storeId === iosAppStoreId ||
+    storeId.includes(`id${iosAppStoreId}`) ||
+    storeId.includes(iosAppStoreId)
+  ) {
+    return "ios";
+  }
+  if (packageName === androidPackage || storeId.includes(androidPackage)) return "android";
+  if (packageName === iosBundle) return "ios";
+  return null;
+};
+
+const fetchReportingScope = async ({ apiKey, lookbackDays, reportScope }) => {
+  const requestUrl = buildReportRequest({ apiKey, lookbackDays, reportScope });
   let response;
   try {
     response = await fetch(requestUrl, {
@@ -138,13 +197,16 @@ const checkReportingApi = async ({ apiKey, expectedPackage, lookbackDays }) => {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (error) {
-    throw new Error(`AppLovin Reporting API request failed: ${redactSecret(error?.message, apiKey)}`);
+    throw new Error(
+      `AppLovin Reporting API ${reportScope.platform} request failed: ` +
+        redactSecret(error?.message, apiKey)
+    );
   }
 
   const responseText = await response.text();
   if (!response.ok) {
     throw new Error(
-      `AppLovin Reporting API returned HTTP ${response.status}: ` +
+      `AppLovin Reporting API ${reportScope.platform} request returned HTTP ${response.status}: ` +
         redactSecret(responseText.slice(0, 300), apiKey)
     );
   }
@@ -153,25 +215,68 @@ const checkReportingApi = async ({ apiKey, expectedPackage, lookbackDays }) => {
   try {
     payload = JSON.parse(responseText);
   } catch {
-    throw new Error("AppLovin Reporting API returned a non-JSON response");
+    throw new Error(
+      `AppLovin Reporting API ${reportScope.platform} request returned a non-JSON response`
+    );
   }
 
-  const rows = extractRows(payload);
+  return extractRows(payload);
+};
+
+const checkReportingApi = async ({ apiKey, expectedScope, lookbackDays }) => {
+  const reportScopes = buildReportScopes(expectedScope);
+  const scopeResponses = await Promise.all(
+    reportScopes.map(async (reportScope) => ({
+      reportScope,
+      rows: await fetchReportingScope({ apiKey, lookbackDays, reportScope }),
+    }))
+  );
+  const classifiedRows = scopeResponses.flatMap(({ reportScope, rows }) =>
+    rows.map((row) => ({
+      row,
+      requestedPlatform: reportScope.platform,
+      platform: classifyReportRow(row, expectedScope),
+    }))
+  );
+  const rows = classifiedRows.map(({ row }) => row);
   const packageNames = new Set(
     rows.map((row) => String(row?.campaign_package_name || "").trim()).filter(Boolean)
   );
-  const costRows = rows.filter((row) => parseCost(row?.cost) > 0);
+  const costRows = classifiedRows.filter(({ row }) => parseCost(row?.cost) > 0);
+  const matchingRows = classifiedRows.filter(
+    ({ platform, requestedPlatform }) => platform === requestedPlatform
+  );
   const matchingCostRows = costRows.filter(
-    (row) => String(row?.campaign_package_name || "").trim() === expectedPackage
+    ({ platform, requestedPlatform }) => platform === requestedPlatform
+  );
+  const foreignRows = classifiedRows.filter(
+    ({ platform, requestedPlatform }) => platform !== requestedPlatform
   );
   const rowsMissingCampaignId = matchingCostRows.filter(
-    (row) => !String(row?.campaign_id_external || "").trim()
+    ({ row }) => !String(row?.campaign_id_external || "").trim()
+  );
+
+  const matchingDeliveryDays = matchingCostRows
+    .map(({ row }) => String(row?.day || "").trim())
+    .filter(Boolean)
+    .sort();
+  const platformRows = matchingRows.reduce(
+    (counts, { requestedPlatform }) => ({
+      ...counts,
+      [requestedPlatform]: counts[requestedPlatform] + 1,
+    }),
+    { android: 0, ios: 0 }
   );
 
   return {
     costRows: costRows.length,
+    foreignRows: foreignRows.length,
     matchingCostRows: matchingCostRows.length,
+    matchingRows: matchingRows.length,
+    matchingDeliveryStart: matchingDeliveryDays[0] || null,
+    matchingDeliveryEnd: matchingDeliveryDays.at(-1) || null,
     packageNames: [...packageNames].sort(),
+    platformRows,
     rows: rows.length,
     rowsMissingCampaignId: rowsMissingCampaignId.length,
   };
@@ -179,27 +284,42 @@ const checkReportingApi = async ({ apiKey, expectedPackage, lookbackDays }) => {
 
 const main = async () => {
   const options = parseArgs(process.argv.slice(2));
-  const expectedPackage = loadExpectedPackage();
+  const expectedScope = loadExpectedScope();
+  const expectedPackage = expectedScope.androidPackage;
   let hasFailure = false;
 
   console.info(`[OK] App package / iOS bundle ID: ${expectedPackage}`);
 
-  if (options.trackingUrls.length === 0) {
-    console.info("[SKIP] No tracking URL supplied; af_c_id was not checked.");
+  if (options.trackingUrls.length < 2) {
+    hasFailure = true;
+    console.error(
+      `[FAIL] Two Almost Savings tracking URLs are required; received ${options.trackingUrls.length}.`
+    );
   } else {
+    const coveredPlatforms = new Set();
     options.trackingUrls.forEach((trackingUrl, index) => {
-      const error = validateTrackingUrl(trackingUrl);
-      if (error) {
+      const validation = validateTrackingUrl(trackingUrl, expectedScope);
+      if (typeof validation === "string") {
         hasFailure = true;
-        console.error(`[FAIL] Tracking URL ${index + 1} ${error}.`);
+        console.error(`[FAIL] Tracking URL ${index + 1} ${validation}.`);
       } else {
-        console.info(`[OK] Tracking URL ${index + 1}: af_c_id=${CAMPAIGN_ID_MACRO}`);
+        coveredPlatforms.add(validation.platform);
+        console.info(
+          `[OK] Tracking URL ${index + 1}: platform=${validation.platform}, af_c_id=${CAMPAIGN_ID_MACRO}`
+        );
       }
     });
+    if (!coveredPlatforms.has("ios") || !coveredPlatforms.has("android")) {
+      hasFailure = true;
+      console.error("[FAIL] Tracking URLs must cover both iOS and Android Almost Savings apps.");
+    }
   }
 
   if (options.skipApi) {
-    console.info("[SKIP] AppLovin Reporting API check disabled by --skip-api.");
+    hasFailure = true;
+    console.error(
+      "[NO-GO] AppLovin Reporting API check disabled by --skip-api; release evidence is incomplete."
+    );
   } else {
     const apiKey = String(process.env.APPLOVIN_REPORTING_API_KEY || "").trim();
     if (!apiKey) {
@@ -210,22 +330,50 @@ const main = async () => {
     } else {
       const report = await checkReportingApi({
         apiKey,
-        expectedPackage,
+        expectedScope,
         lookbackDays: options.lookbackDays,
       });
-      console.info(`[OK] Reporting API key accepted; ${report.rows} report row(s) returned.`);
+      console.info(
+        `[OK] Reporting API key accepted; ${report.rows} app-scoped report row(s) returned.`
+      );
 
-      if (report.matchingCostRows === 0) {
+      if (report.foreignRows > 0) {
+        hasFailure = true;
+        console.error(
+          `[FAIL] ${report.foreignRows} report row(s) escaped the requested Almost Savings app scope.`
+        );
+      }
+
+      if (report.matchingRows === 0) {
         hasFailure = true;
         const packages = report.packageNames.length > 0 ? report.packageNames.join(", ") : "none";
         console.error(
-          `[FAIL] No positive-cost rows matched ${expectedPackage}. ` +
+          `[FAIL] No report rows matched ${expectedPackage}. ` +
             `Packages returned by AppLovin: ${packages}.`
+        );
+      } else if (report.matchingCostRows === 0) {
+        console.info(
+          `[WARN] ${report.matchingRows} row(s) matched ${expectedPackage}, but no positive cost ` +
+            `was observed in the ${options.lookbackDays}-day window; app scope is valid and delivery is idle.`
         );
       } else {
         console.info(
-          `[OK] ${report.matchingCostRows}/${report.costRows} positive-cost row(s) match ${expectedPackage}.`
+          `[OK] ${report.matchingCostRows}/${report.costRows} positive-cost row(s) match ${expectedPackage}; ` +
+            `last nonzero delivery ${report.matchingDeliveryStart}..${report.matchingDeliveryEnd}.`
         );
+      }
+
+      for (const platform of ["android", "ios"]) {
+        const count = report.platformRows[platform];
+        const label = platform === "ios" ? "iOS" : "Android";
+        if (count > 0) {
+          console.info(`[OK] ${label} Almost scope: ${count} report row(s).`);
+        } else {
+          console.info(
+            `[WARN] ${label} Almost scope has no rows in the ${options.lookbackDays}-day window; ` +
+              "the app-scoped tracking URL is valid, but delivery is idle."
+          );
+        }
       }
 
       if (report.rowsMissingCampaignId > 0) {
@@ -243,8 +391,17 @@ const main = async () => {
   if (hasFailure) process.exitCode = 1;
 };
 
-main().catch((error) => {
-  const apiKey = String(process.env.APPLOVIN_REPORTING_API_KEY || "").trim();
-  console.error(`[FAIL] ${redactSecret(error?.message || error, apiKey)}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    const apiKey = String(process.env.APPLOVIN_REPORTING_API_KEY || "").trim();
+    console.error(`[FAIL] ${redactSecret(error?.message || error, apiKey)}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  buildReportRequest,
+  buildReportScopes,
+  classifyReportRow,
+  validateTrackingUrl,
+};

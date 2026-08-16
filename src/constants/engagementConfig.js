@@ -81,9 +81,7 @@ export const DAILY_CHALLENGE_STATUS = {
 export const FOCUS_VICTORY_THRESHOLD = 3;
 export const FOCUS_VICTORY_REWARD = 2;
 export const FOCUS_LOSS_THRESHOLD = 3;
-export const FOCUS_RECENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
-export const FOCUS_RECENT_MIN_SPEND_COUNT = 2;
-export const FOCUS_MIN_UNIQUE_SPEND_TEMPLATES = 2;
+export const FOCUS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 export const CHALLENGE_REWARD_SCALE = 0.2;
 
 export const PUSH_NOTIFICATION_COOLDOWN_MS = 30 * 60 * 1000;

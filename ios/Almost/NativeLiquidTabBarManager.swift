@@ -23,6 +23,10 @@ private struct NativeTabItemModel {
 @objc(NativeLiquidTabBarContainer)
 class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
   private let tabBar = UITabBar(frame: .zero)
+  private let liquidGlassClipMask = CAShapeLayer()
+  private static let liquidGlassHorizontalClipInset: CGFloat = 24
+  private static let liquidGlassTopClipInset: CGFloat = 2
+  private static let liquidGlassBottomClipInset: CGFloat = 21
   private static let transparentImage: UIImage = {
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1))
     return renderer.image { context in
@@ -123,6 +127,7 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     super.layoutSubviews()
 
     guard #available(iOS 26.0, *) else { return }
+    updateLiquidGlassClipMask()
     let resolvedWidth = tabBar.bounds.width
     guard resolvedWidth > 0 else { return }
 
@@ -130,6 +135,30 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       needsResolvedWidthItemInstallation = true
     }
     installItemsAtResolvedWidthIfNeeded()
+  }
+
+  private func updateLiquidGlassClipMask() {
+    let clipRect = tabBar.bounds.inset(by: UIEdgeInsets(
+      top: Self.liquidGlassTopClipInset,
+      left: Self.liquidGlassHorizontalClipInset,
+      bottom: Self.liquidGlassBottomClipInset,
+      right: Self.liquidGlassHorizontalClipInset
+    ))
+    guard clipRect.width > 0, clipRect.height > 0 else {
+      tabBar.layer.mask = nil
+      return
+    }
+
+    // iOS 26 renders its native glass capsule inside the UITabBar bounds, but
+    // also composites a much larger low-opacity material shadow around it. Clip
+    // only that outer compositing area; UIKit still owns the glass, selection,
+    // icons, labels, accessibility and hit targets inside the capsule.
+    liquidGlassClipMask.frame = tabBar.bounds
+    liquidGlassClipMask.path = UIBezierPath(
+      roundedRect: clipRect,
+      cornerRadius: clipRect.height / 2
+    ).cgPath
+    tabBar.layer.mask = liquidGlassClipMask
   }
 
   private func applyItems() {
@@ -266,7 +295,7 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     tabBar.backgroundColor = .clear
     tabBar.barTintColor = .clear
     tabBar.backgroundImage = UIImage()
-    tabBar.shadowImage = UIImage()
+    tabBar.shadowImage = Self.transparentImage
     tabBar.selectionIndicatorImage = Self.transparentImage
     tabBar.isTranslucent = true
     tabBar.itemPositioning = .fill
@@ -286,6 +315,7 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       appearance.backgroundEffect = nil
       appearance.backgroundColor = .clear
       appearance.shadowColor = .clear
+      appearance.shadowImage = Self.transparentImage
       appearance.stackedItemPositioning = .fill
       appearance.stackedItemWidth = 0
       appearance.stackedItemSpacing = 0
@@ -341,6 +371,7 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       appearance.backgroundEffect = nil
       appearance.backgroundColor = .clear
       appearance.shadowColor = .clear
+      appearance.shadowImage = Self.transparentImage
     } else {
       let hasCustomSurface = Self.isValidHexColor(surfaceColorHex)
       let hasCustomBorder = Self.isValidHexColor(borderColorHex)
