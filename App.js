@@ -529,11 +529,23 @@ const {
   createInitialTemptationSeriesState,
   getTemptationSeriesProgress,
   getTemptationSeriesSummary,
+  getUncreditedTemptationSeriesCoins,
   reconcileTemptationSeriesTargets,
   normalizeTemptationSeriesState,
   normalizeTemptationId,
   resetTemptationSeriesForDay,
 } = require("./src/engagement/temptationSeries");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  getIncidentHistoryRewardFloor,
+  isCoinBalanceIncidentRepairApplied,
+  parseLegacyTamagotchiCoinBalance,
+  parseStoredCoinBalance,
+  resolveCoinBalance,
+  resolveCoinBalanceIncidentRepair,
+  serializeCoinBalanceBackup,
+  serializeCoinBalanceIncidentRepair,
+} = require("./src/engagement/coinBalance");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   buildTodayTemptationPlan,
@@ -542,7 +554,9 @@ const {
 } = require("./src/engagement/todayTemptations");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
-  shouldPreserveTemptationScheduleOnAction,
+  advanceAnchoredTemptationSchedule,
+  isManualTemptationCycleAlreadyConsumed,
+  resolveTemptationActionSchedulePolicy,
 } = require("./src/engagement/temptationSchedule");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
@@ -556,10 +570,18 @@ const {
 } = require("./src/engagement/nextDecisionCoach");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  ACTION_REWARD_OVERLAY_GATE_STATUS,
+  getActionRewardOverlayGateStatus,
+  shouldDeferActionRewardOverlayPresentation,
+  shouldScheduleActionRewardOverlayRetry,
+} = require("./src/engagement/actionRewardOverlayQueue");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
   isTycoonAutosaveEnabled,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
+  skipPendingTycoonAutosaveForCards,
   shouldResetLegacyTycoonPendingEvents,
 } = require("./src/engagement/tycoonAccess");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -13759,6 +13781,7 @@ const INITIAL_STREAK_PLEDGE = {
   rewardBlueCoins: 0,
   rewardValue: 0,
   rewardPending: false,
+  rewardCredited: false,
   rewardDeliveredAt: 0,
   lastPromptDayKey: null,
   introSeen: false,
@@ -13799,6 +13822,7 @@ const normalizeStreakPledgeState = (value) => {
   const rewardBlueCoins = Math.max(0, Number(value.rewardBlueCoins) || 0);
   const rewardValue = Math.max(0, Number(value.rewardValue) || 0);
   const rewardPending = Boolean(value.rewardPending);
+  const rewardCredited = Boolean(value.rewardCredited);
   const rewardDeliveredAt = Math.max(0, Number(value.rewardDeliveredAt) || 0);
   const lastPromptDayKey = typeof value.lastPromptDayKey === "string" ? value.lastPromptDayKey : null;
   const introSeen = Boolean(value.introSeen);
@@ -13811,6 +13835,7 @@ const normalizeStreakPledgeState = (value) => {
     rewardBlueCoins,
     rewardValue,
     rewardPending,
+    rewardCredited,
     rewardDeliveredAt,
     lastPromptDayKey,
     introSeen,
@@ -49020,17 +49045,39 @@ function AppContent() {
   const [pendingFeedNotificationFocus, setPendingFeedNotificationFocus] = useState(null);
   const persistQueueRef = useRef(new Map());
   const persistTimerRef = useRef(null);
+  const persistWriteInFlightRef = useRef(false);
+  const flushPersistQueueRef = useRef(null);
   const flushPersistQueue = useCallback(
     (immediate = false) => {
       if (persistTimerRef.current) {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
+      if (persistWriteInFlightRef.current) return;
       const entries = Array.from(persistQueueRef.current.entries());
       if (!entries.length) return;
-      persistQueueRef.current.clear();
       const write = () => {
-        AsyncStorage.multiSet(entries).catch(() => {});
+        if (persistWriteInFlightRef.current) return;
+        persistWriteInFlightRef.current = true;
+        AsyncStorage.multiSet(entries)
+          .then(() => {
+            entries.forEach(([key, value]) => {
+              if (persistQueueRef.current.get(key) === value) {
+                persistQueueRef.current.delete(key);
+              }
+            });
+          })
+          .catch((error) => {
+            console.warn("persist queue", error);
+          })
+          .finally(() => {
+            persistWriteInFlightRef.current = false;
+            if (!persistQueueRef.current.size || persistTimerRef.current) return;
+            persistTimerRef.current = setTimeout(() => {
+              persistTimerRef.current = null;
+              flushPersistQueueRef.current?.(false);
+            }, PERSIST_DEBOUNCE_MS);
+          });
       };
       if (immediate) {
         write();
@@ -49040,6 +49087,7 @@ function AppContent() {
     },
     []
   );
+  flushPersistQueueRef.current = flushPersistQueue;
   const queuePersist = useCallback(
     (key, value) => {
       if (!key || typeof value === "undefined") return;
@@ -49789,6 +49837,7 @@ function AppContent() {
         ...prev,
         status: STREAK_PLEDGE_STATUS.FAILED,
         rewardPending: false,
+        rewardCredited: false,
       }));
       logEvent("streak_goal_failed", {
         target_days: targetDays,
@@ -49811,6 +49860,7 @@ function AppContent() {
         ...prev,
         status: STREAK_PLEDGE_STATUS.COMPLETED,
         rewardPending: true,
+        rewardCredited: false,
         rewardBlueCoins,
         rewardValue,
       }));
@@ -49824,11 +49874,29 @@ function AppContent() {
     }
   }, [
     logEvent,
-    setHealthPoints,
     streakPledge,
     streakPledgeHydrated,
     usageStreak,
     usageStreakHydrated,
+  ]);
+  useEffect(() => {
+    if (!streakPledgeHydrated || !streakPledge.rewardPending) return;
+    if (streakPledge.rewardCredited) return;
+    const rewardValue = Math.max(0, Number(streakPledge.rewardValue) || 0);
+    if (rewardValue <= 0) return;
+    const creditedAt = Date.now();
+    setHealthPoints((prev) => prev + rewardValue);
+    setStreakPledge((prev) => ({
+      ...prev,
+      rewardCredited: true,
+      rewardDeliveredAt: creditedAt,
+    }));
+  }, [
+    setHealthPoints,
+    streakPledge.rewardCredited,
+    streakPledge.rewardPending,
+    streakPledge.rewardValue,
+    streakPledgeHydrated,
   ]);
   const [challengesState, setChallengesState] = useState(() => createInitialChallengesState());
   const [challengesHydrated, setChallengesHydrated] = useState(false);
@@ -50411,12 +50479,22 @@ function AppContent() {
       lastClaimAt: claimTimestamp,
       streak: nextStreak,
     };
+    const dailyRewardStateRaw = JSON.stringify(nextDailyRewardState);
+    setHealthPoints((prev) => {
+      const nextHealthPoints = Math.max(0, Number(prev) || 0) + dailyRewardAmount;
+      const claimEntries = [
+        [STORAGE_KEYS.HEALTH, String(nextHealthPoints)],
+        [STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(nextHealthPoints)],
+        [STORAGE_KEYS.DAILY_REWARD, dailyRewardStateRaw],
+        [STORAGE_KEYS.DAILY_REWARD_DAY_KEY, claimKey],
+      ];
+      AsyncStorage.multiSet(claimEntries).catch((error) => {
+        console.warn("daily reward persistence", error);
+        claimEntries.forEach(([key, value]) => queuePersist(key, value));
+      });
+      return nextHealthPoints;
+    });
     setDailyRewardState(nextDailyRewardState);
-    AsyncStorage.setItem(
-      STORAGE_KEYS.DAILY_REWARD,
-      JSON.stringify(nextDailyRewardState)
-    ).catch(() => {});
-    AsyncStorage.setItem(STORAGE_KEYS.DAILY_REWARD_DAY_KEY, claimKey).catch(() => {});
     ensureOverlayEnvironmentReady();
     triggerOverlayState(
       "daily_reward",
@@ -50424,9 +50502,7 @@ function AppContent() {
         amountValue: dailyRewardAmount,
         tierId: dailyRewardCurrentEntry?.tierId || null,
         chestCount: dailyRewardCurrentEntry?.chestCount || null,
-        onRevealReward: () => {
-          setHealthPoints((prev) => prev + dailyRewardAmount);
-        },
+        onRevealReward: null,
       },
       { force: true }
     );
@@ -50445,6 +50521,7 @@ function AppContent() {
     ensureOverlayEnvironmentReady,
     logEvent,
     playerLevel,
+    queuePersist,
     setDailyRewardState,
     setHealthPoints,
     triggerOverlayState,
@@ -51532,6 +51609,14 @@ function AppContent() {
   );
 
   const overlayQueueRef = useRef([]);
+  const overlayQueueRuntimeRef = useRef({
+    activeTab: "feed",
+    overlayEnvironmentReady: false,
+    blockingModalVisible: false,
+    frequencyReminderPromptVisible: false,
+    pendingFrequencyReminderPrompt: null,
+    startupHardLockPendingBeforePaywall: false,
+  });
   const overlayActiveRef = useRef(false);
   const dismissOverlayRef = useRef(null);
   const processOverlayQueueRef = useRef(() => {});
@@ -53312,13 +53397,25 @@ function AppContent() {
       const levelKey = String(normalizedLevel);
       if (!rewardedLevels[levelKey]) {
         rewardedLevels[levelKey] = Date.now();
-        AsyncStorage.setItem(STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, JSON.stringify(rewardedLevels)).catch(
-          () => {}
-        );
+        const rewardedLevelsRaw = JSON.stringify(rewardedLevels);
         logEvent("level_share_reward_granted", {
           level: normalizedLevel,
           blue_coins: LEVEL_SHARE_REWARD_BLUE_COINS,
           health_points: LEVEL_SHARE_REWARD_HEALTH_POINTS,
+        });
+        setHealthPoints((prev) => {
+          const nextHealthPoints =
+            Math.max(0, Number(prev) || 0) + LEVEL_SHARE_REWARD_HEALTH_POINTS;
+          const rewardEntries = [
+            [STORAGE_KEYS.HEALTH, String(nextHealthPoints)],
+            [STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(nextHealthPoints)],
+            [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, rewardedLevelsRaw],
+          ];
+          AsyncStorage.multiSet(rewardEntries).catch((error) => {
+            console.warn("level share reward persistence", error);
+            rewardEntries.forEach(([key, value]) => queuePersist(key, value));
+          });
+          return nextHealthPoints;
         });
         await waitForAppActive();
         ensureOverlayEnvironmentReady();
@@ -53333,9 +53430,7 @@ function AppContent() {
           title: t("levelShareRewardGrantedTitle"),
           closedSubtitle: t("levelShareRewardChestClosed"),
           openedSubtitle: t("levelShareRewardGrantedBody", { coins: LEVEL_SHARE_REWARD_BLUE_COINS }),
-          onRevealReward: () => {
-            setHealthPoints((prev) => prev + LEVEL_SHARE_REWARD_HEALTH_POINTS);
-          },
+          onRevealReward: null,
         });
       } else {
         await waitForAppActive();
@@ -53370,6 +53465,7 @@ function AppContent() {
     levelShareSharing,
     logEvent,
     language,
+    queuePersist,
     setHealthPoints,
     t,
     triggerOverlayState,
@@ -57955,6 +58051,14 @@ function AppContent() {
       stormActive,
     ]
   );
+  overlayQueueRuntimeRef.current = {
+    activeTab,
+    overlayEnvironmentReady,
+    blockingModalVisible: Boolean(blockingModalVisible),
+    frequencyReminderPromptVisible: Boolean(frequencyReminderPrompt.visible),
+    pendingFrequencyReminderPrompt,
+    startupHardLockPendingBeforePaywall: Boolean(startupHardLockPendingBeforePaywall),
+  };
   useEffect(() => {
     const wasVisible = blockingModalVisiblePrevRef.current;
     if (wasVisible && !blockingModalVisible) {
@@ -64781,11 +64885,10 @@ function AppContent() {
           tierId: chestReward.tierId,
           chestCount: chestReward.chestCount,
           onRevealReward: () => {
-            setHealthPoints((prev) => prev + rewardValue);
             setStreakPledge((prev) => ({
               ...prev,
               rewardPending: false,
-              rewardDeliveredAt: Date.now(),
+              rewardCredited: true,
             }));
           },
         });
@@ -66287,9 +66390,7 @@ function AppContent() {
         title: t("dailyChallengeRewardChestTitle"),
         closedSubtitle: t("dailyChallengeRewardChestClosed"),
         openedSubtitle: t("dailyChallengeRewardChestOpened"),
-        onRevealReward: () => {
-          setHealthPoints((coins) => coins + rewardAmount);
-        },
+        onRevealReward: null,
       });
     }
   }, [clearQueuedModal, dailyChallengeRewardBonus, ensureOverlayEnvironmentReady, language, setHealthPoints, triggerOverlayState]);
@@ -66298,6 +66399,9 @@ function AppContent() {
     if (!dailyChallenge.templateId) return;
     if (dailyChallenge.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return;
     const rewardBonus = dailyChallengeRewardBonus || 0;
+    if (rewardBonus > 0) {
+      setHealthPoints((coins) => coins + rewardBonus);
+    }
     setDailyChallenge((prev) => {
       if (!prev || prev.status !== DAILY_CHALLENGE_STATUS.ACTIVE) return prev;
       return {
@@ -66894,6 +66998,29 @@ function AppContent() {
     const resetCounterAtStart = resetCounterRef.current;
     let resolvedHealthPoints = null;
     let resolvedInstallDateMs = 0;
+    let healthRaw = null;
+    let healthBackupRaw = null;
+    let healthTamagotchiRaw = null;
+    let healthStorageReadSucceeded = false;
+    let healthBalanceNeedsRepair = false;
+    let recoveredTemptationSeriesCoins = 0;
+    let incidentRestoredCoins = 0;
+    let temptationSeriesStateToPersist = null;
+    let coinBalanceIncidentRepairStateToPersist = null;
+    try {
+      const healthPairs = await AsyncStorage.multiGet([
+        STORAGE_KEYS.HEALTH,
+        STORAGE_KEYS.HEALTH_BACKUP,
+        STORAGE_KEYS.TAMAGOTCHI,
+      ]);
+      const healthMap = Object.fromEntries(healthPairs || []);
+      healthRaw = healthMap[STORAGE_KEYS.HEALTH] ?? null;
+      healthBackupRaw = healthMap[STORAGE_KEYS.HEALTH_BACKUP] ?? null;
+      healthTamagotchiRaw = healthMap[STORAGE_KEYS.TAMAGOTCHI] ?? null;
+      healthStorageReadSucceeded = true;
+    } catch (error) {
+      console.warn("health balance read", error);
+    }
     try {
       const hydrationKeys = [
         STORAGE_KEYS.TUTORIAL,
@@ -66939,6 +67066,8 @@ function AppContent() {
         STORAGE_KEYS.NEXT_DECISION_COACH,
         STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL,
         STORAGE_KEYS.HEALTH,
+        STORAGE_KEYS.HEALTH_BACKUP,
+        STORAGE_KEYS.COIN_BALANCE_INCIDENT_REPAIR,
         STORAGE_KEYS.CLAIMED_REWARDS,
         STORAGE_KEYS.REWARD_TOTAL,
         STORAGE_KEYS.INCOME_ENTRIES,
@@ -67014,6 +67143,7 @@ function AppContent() {
 	      ];
       const storedPairs = await AsyncStorage.multiGet(hydrationKeys);
       const storedMap = Object.fromEntries(storedPairs || []);
+      healthStorageReadSucceeded = true;
       const tutorialRaw = storedMap[STORAGE_KEYS.TUTORIAL] ?? null;
       setTutorialSeen(true);
       if (tutorialRaw !== "done") {
@@ -67070,7 +67200,16 @@ function AppContent() {
       const nextDecisionCoachRaw = storedMap[STORAGE_KEYS.NEXT_DECISION_COACH] ?? null;
       const defaultTemptationGrowthLockLevelRaw =
         storedMap[STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL] ?? null;
-      const healthRaw = storedMap[STORAGE_KEYS.HEALTH] ?? null;
+      const batchedHealthRaw = storedMap[STORAGE_KEYS.HEALTH] ?? null;
+      if (batchedHealthRaw !== null || healthRaw === null) {
+        healthRaw = batchedHealthRaw;
+      }
+      const batchedHealthBackupRaw = storedMap[STORAGE_KEYS.HEALTH_BACKUP] ?? null;
+      if (batchedHealthBackupRaw !== null || healthBackupRaw === null) {
+        healthBackupRaw = batchedHealthBackupRaw;
+      }
+      const coinBalanceIncidentRepairRaw =
+        storedMap[STORAGE_KEYS.COIN_BALANCE_INCIDENT_REPAIR] ?? null;
       const claimedRewardsRaw = storedMap[STORAGE_KEYS.CLAIMED_REWARDS] ?? null;
       const rewardTotalRaw = storedMap[STORAGE_KEYS.REWARD_TOTAL] ?? null;
       const incomeEntriesRaw = storedMap[STORAGE_KEYS.INCOME_ENTRIES] ?? null;
@@ -67087,6 +67226,9 @@ function AppContent() {
       const dailyNudgesRaw = storedMap[STORAGE_KEYS.DAILY_NUDGES] ?? null;
       const smartRemindersRaw = storedMap[STORAGE_KEYS.SMART_REMINDERS] ?? null;
       const tamagotchiRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI] ?? null;
+      if (tamagotchiRaw !== null || healthTamagotchiRaw === null) {
+        healthTamagotchiRaw = tamagotchiRaw;
+      }
       const tamagotchiGreetingDayRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_GREETING_DAY] ?? null;
       const tamagotchiHungerNotificationsRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_NOTIFICATIONS] ?? null;
       const tamagotchiHungerDailyCountRaw = storedMap[STORAGE_KEYS.TAMAGOTCHI_HUNGER_DAILY_COUNT] ?? null;
@@ -67443,7 +67585,7 @@ function AppContent() {
           setTamagotchiState(hydratedState);
           tamagotchiHungerPrevRef.current = hydratedState.hunger;
           tamagotchiHydratedRef.current = true;
-          if (!healthRaw && resolvedHealthPoints === null) {
+          if (parseStoredCoinBalance(healthRaw) === null && resolvedHealthPoints === null) {
             resolvedHealthPoints = hydratedState.coins;
           }
         } catch (err) {
@@ -68484,25 +68626,33 @@ function AppContent() {
         hydrateArchivedTemptations();
       }
       try {
-        const storedTemptationSeries = normalizeTemptationSeriesState(
-          temptationSeriesRaw ? JSON.parse(temptationSeriesRaw) : null
+        const parsedTemptationSeries = temptationSeriesRaw
+          ? JSON.parse(temptationSeriesRaw)
+          : null;
+        const storedTemptationSeries = normalizeTemptationSeriesState(parsedTemptationSeries);
+        recoveredTemptationSeriesCoins = getUncreditedTemptationSeriesCoins(
+          parsedTemptationSeries
         );
+        const creditedTemptationSeries =
+          recoveredTemptationSeriesCoins > 0
+            ? {
+                ...storedTemptationSeries,
+                creditedCoins: storedTemptationSeries.pendingCoins,
+              }
+            : storedTemptationSeries;
         const hydrationDayKey = getDayKey(Date.now());
         const hydratedTemptationSeries = resetTemptationSeriesForDay(
-          storedTemptationSeries,
+          creditedTemptationSeries,
           {
             dayKey: hydrationDayKey,
             timestamp: Date.now(),
           }
         );
         if (
-          storedTemptationSeries.status !== TEMPTATION_SERIES_STATUS.IDLE &&
-          storedTemptationSeries.dayKey !== hydrationDayKey
+          recoveredTemptationSeriesCoins > 0 ||
+          JSON.stringify(storedTemptationSeries) !== JSON.stringify(hydratedTemptationSeries)
         ) {
-          AsyncStorage.setItem(
-            STORAGE_KEYS.TEMPTATION_SERIES,
-            JSON.stringify(hydratedTemptationSeries)
-          ).catch(() => {});
+          temptationSeriesStateToPersist = hydratedTemptationSeries;
         }
         temptationSeriesRef.current = hydratedTemptationSeries;
         setTemptationSeriesState(hydratedTemptationSeries);
@@ -68528,11 +68678,79 @@ function AppContent() {
         setDefaultTemptationGrowthLockLevel(null);
       }
       setDefaultTemptationGrowthLockLevelHydrated(true);
-      if (healthRaw) {
-        const parsedHealth = Number(healthRaw) || 0;
-        resolvedHealthPoints = Math.max(0, parsedHealth);
-      } else if (resolvedHealthPoints === null) {
-        resolvedHealthPoints = 0;
+      const resolvedCoinBalance = resolveCoinBalance({
+        primaryRaw: healthRaw,
+        backupRaw: healthBackupRaw,
+        fallbackBalance:
+          resolvedHealthPoints ?? parseLegacyTamagotchiCoinBalance(healthTamagotchiRaw),
+        recoveredCoins: recoveredTemptationSeriesCoins,
+      });
+      resolvedHealthPoints = resolvedCoinBalance.balance;
+      healthBalanceNeedsRepair = resolvedCoinBalance.needsPrimaryRepair;
+      const incidentRepairAlreadyApplied = isCoinBalanceIncidentRepairApplied(
+        coinBalanceIncidentRepairRaw
+      );
+      let incidentHistoryEntries = [];
+      if (!incidentRepairAlreadyApplied && historyRaw) {
+        try {
+          const parsedIncidentHistory = JSON.parse(historyRaw);
+          incidentHistoryEntries = Array.isArray(parsedIncidentHistory)
+            ? parsedIncidentHistory
+            : [];
+        } catch (error) {
+          console.warn("coin balance incident history", error);
+        }
+      }
+      const incidentHistoryRewardFloor = getIncidentHistoryRewardFloor(
+        incidentHistoryEntries
+      );
+      const incidentRepair = resolveCoinBalanceIncidentRepair({
+        balance: resolvedHealthPoints,
+        historyRewardFloor: incidentHistoryRewardFloor,
+        alreadyApplied: incidentRepairAlreadyApplied,
+      });
+      resolvedHealthPoints = incidentRepair.balance;
+      incidentRestoredCoins = incidentRepair.restoredCoins;
+      if (!incidentRepairAlreadyApplied) {
+        coinBalanceIncidentRepairStateToPersist = serializeCoinBalanceIncidentRepair(
+          incidentRepair
+        );
+      }
+      if (
+        temptationSeriesStateToPersist ||
+        healthBalanceNeedsRepair ||
+        coinBalanceIncidentRepairStateToPersist
+      ) {
+        const migrationEntries = [];
+        if (temptationSeriesStateToPersist) {
+          migrationEntries.push([
+            STORAGE_KEYS.TEMPTATION_SERIES,
+            JSON.stringify(temptationSeriesStateToPersist),
+          ]);
+        }
+        if (
+          healthBalanceNeedsRepair ||
+          recoveredTemptationSeriesCoins > 0 ||
+          incidentRestoredCoins > 0
+        ) {
+          migrationEntries.push(
+            [STORAGE_KEYS.HEALTH, String(resolvedHealthPoints)],
+            [
+              STORAGE_KEYS.HEALTH_BACKUP,
+              serializeCoinBalanceBackup(resolvedHealthPoints),
+            ]
+          );
+        }
+        if (coinBalanceIncidentRepairStateToPersist) {
+          migrationEntries.push([
+            STORAGE_KEYS.COIN_BALANCE_INCIDENT_REPAIR,
+            coinBalanceIncidentRepairStateToPersist,
+          ]);
+        }
+        AsyncStorage.multiSet(migrationEntries).catch((error) => {
+          console.warn("coin balance migration", error);
+          migrationEntries.forEach(([key, value]) => queuePersist(key, value));
+        });
       }
       let initialClaimedCount = 0;
       if (claimedRewardsRaw) {
@@ -68834,14 +69052,53 @@ function AppContent() {
       );
       setInstallDateHydrated(true);
       setFirstSessionDurationBucketHydrated(true);
+      const fallbackStoredHealthPoints =
+        healthStorageReadSucceeded
+          ? resolveCoinBalance({
+              primaryRaw: healthRaw,
+              backupRaw: healthBackupRaw,
+              fallbackBalance: parseLegacyTamagotchiCoinBalance(healthTamagotchiRaw),
+            }).balance
+          : null;
       const safeHealthPoints =
         typeof resolvedHealthPoints === "number" && !Number.isNaN(resolvedHealthPoints)
           ? resolvedHealthPoints
-          : 0;
-      if (resetCounterRef.current === resetCounterAtStart) {
+          : fallbackStoredHealthPoints;
+      if (
+        healthStorageReadSucceeded &&
+        safeHealthPoints !== null &&
+        resetCounterRef.current === resetCounterAtStart
+      ) {
         setHealthPoints((prev) => (prev === safeHealthPoints ? prev : safeHealthPoints));
       }
-      setHealthHydrated(true);
+      setHealthHydrated(healthStorageReadSucceeded);
+      if (!healthStorageReadSucceeded) {
+        setTimeout(() => {
+          AsyncStorage.multiGet([
+            STORAGE_KEYS.HEALTH,
+            STORAGE_KEYS.HEALTH_BACKUP,
+            STORAGE_KEYS.TAMAGOTCHI,
+          ])
+            .then((retryHealthPairs) => {
+              if (resetCounterRef.current !== resetCounterAtStart) return;
+              const retryHealthMap = Object.fromEntries(retryHealthPairs || []);
+              const retryHealthPoints = resolveCoinBalance({
+                primaryRaw: retryHealthMap[STORAGE_KEYS.HEALTH] ?? null,
+                backupRaw: retryHealthMap[STORAGE_KEYS.HEALTH_BACKUP] ?? null,
+                fallbackBalance: parseLegacyTamagotchiCoinBalance(
+                  retryHealthMap[STORAGE_KEYS.TAMAGOTCHI] ?? null
+                ),
+              }).balance;
+              setHealthPoints((prev) =>
+                prev === retryHealthPoints ? prev : retryHealthPoints
+              );
+              setHealthHydrated(true);
+            })
+            .catch((error) => {
+              console.warn("health balance retry", error);
+            });
+        }, PERSIST_DEBOUNCE_MS);
+      }
       setNorthStarHydrated(true);
       setWishesHydrated(true);
       setSavedTotalHydrated(true);
@@ -69868,6 +70125,7 @@ function AppContent() {
       const targetLabel = formatCurrency(convertToCurrency(targetUSD, currencyCode), currencyCode);
       const rewardCoins = GOAL_COMPLETION_REWARD_COINS;
       const rewardAmount = GOAL_COMPLETION_REWARD_VALUE;
+      setHealthPoints((prev) => prev + rewardAmount);
       const payload = {
         title: t("goalCelebrationTitle"),
         subtitle: t("goalCelebrationSubtitle"),
@@ -70183,6 +70441,10 @@ function AppContent() {
   useEffect(() => {
     if (!healthHydrated) return;
     queuePersist(STORAGE_KEYS.HEALTH, String(healthPoints));
+    queuePersist(
+      STORAGE_KEYS.HEALTH_BACKUP,
+      serializeCoinBalanceBackup(healthPoints)
+    );
   }, [queuePersist, healthHydrated, healthPoints]);
   useEffect(() => {
     if (!dailyRewardHydrated) return;
@@ -72494,8 +72756,9 @@ useEffect(() => {
   );
 
   const closeCategoryPrompt = useCallback(() => {
+    queueModalCloseSettle();
     setCategoryPrompt({ visible: false, item: null, action: null, options: null });
-  }, []);
+  }, [queueModalCloseSettle]);
 
   const showTemptationSoftLimit = useCallback(() => {
     Alert.alert(
@@ -74363,21 +74626,17 @@ useEffect(() => {
     const weeklyReward = computedWeeklyReward
       ? {
           ...computedWeeklyReward,
-          onRevealReward: () => {
-            setHealthPoints((prevPoints) => prevPoints + computedWeeklyReward.rewardValue);
-          },
+          onRevealReward: null,
         }
       : null;
     if (weeklyReward) {
+      setHealthPoints((prevPoints) => prevPoints + weeklyReward.rewardValue);
       logEvent("usage_streak_weekly_reward", {
         current_streak: nextSnapshot.current,
         reward_blue: weeklyReward.rewardBlueCoins,
         reward_value: weeklyReward.rewardValue,
         week_index: weeklyReward.weekIndex,
       });
-      if (suppressOverlay) {
-        setHealthPoints((prevPoints) => prevPoints + weeklyReward.rewardValue);
-      }
     }
     usageStreakRef.current = nextSnapshot;
     setUsageStreak(nextSnapshot);
@@ -74799,14 +75058,6 @@ useEffect(() => {
         return templateId ? resolveTemptationGoalId(templateId) : null;
       };
       if (entry.kind === "refuse_spend") {
-        const metaCoinReward = Math.max(0, Number(entry.meta?.coinReward) || 0);
-        const resolvedCurrency = entry.meta?.currency || profile.currency || DEFAULT_PROFILE.currency;
-        const coinRefund = metaCoinReward > 0
-          ? metaCoinReward
-          : computeRefuseCoinReward(amountUSD, resolvedCurrency);
-        if (coinRefund > 0) {
-          setHealthPoints((prev) => Math.max(0, prev - coinRefund));
-        }
         const targetGoalId = resolveHistoryGoalId();
         if (targetGoalId) {
           applyHistoryGoalDelta(targetGoalId, -amountUSD);
@@ -74836,11 +75087,9 @@ useEffect(() => {
     },
     [
       applyHistoryGoalDelta,
-      profile.currency,
       resolveTemptationGoalId,
       setPendingList,
       setWishes,
-      setHealthPoints,
       setProgressSavedTotalUSD,
       setSavedTotalUSD,
       setChallengesState,
@@ -75164,8 +75413,9 @@ useEffect(() => {
     markDidYouKnowFeatureUsed("spend_forecast_preview");
   }, [markDidYouKnowFeatureUsed, spendBudgetPreview, spendPrompt.visible]);
   const closeSaveSpamPrompt = useCallback(() => {
+    queueModalCloseSettle();
     setSaveSpamPrompt({ visible: false, item: null, options: null, recentCount: 0 });
-  }, []);
+  }, [queueModalCloseSettle]);
 
   const processMascotQueue = useCallback(() => {
     if (overlay || mascotBusyRef.current) return;
@@ -76289,7 +76539,12 @@ useEffect(() => {
       const snapshotManualConfigured = snapshotEntries.some(
         (entry) => entry.frequencyReminderManualConfigured === true
       );
-      const preserveConfiguredTimer = shouldPreserveTemptationScheduleOnAction({
+      const {
+        preserveConfiguredTimer,
+        shouldAdvanceAnchoredSchedule,
+        shouldInvalidatePendingAutosave,
+        shouldResetReminderRegistration,
+      } = resolveTemptationActionSchedulePolicy({
         explicitlyPreserve: preserveFrequencyTimer,
         entries: snapshotEntries,
       });
@@ -76353,8 +76608,10 @@ useEffect(() => {
           .map((key) => prev?.[key])
           .filter((entry) => entry && typeof entry === "object");
         const prevEntry =
-          currentEntries.find((entry) =>
-            shouldPreserveTemptationScheduleOnAction({ entries: [entry] })
+          currentEntries.find(
+            (entry) =>
+              resolveTemptationActionSchedulePolicy({ entries: [entry] })
+                .preserveConfiguredTimer
           ) ||
           currentEntries[0] ||
           {};
@@ -76438,21 +76695,36 @@ useEffect(() => {
         const scheduledNextCheckAt = Number(prevEntry.nextCheckAt) || 0;
         const previousManualSkipTargetAt =
           Math.max(0, Number(prevEntry.manualAutosaveSkipTargetAt) || 0);
+        const previousManualSkipCreatedAt =
+          Math.max(0, Number(prevEntry.manualAutosaveSkipCreatedAt) || 0);
         const previousTimerResetAt = Math.max(0, Number(prevEntry.lastTimerResetAt) || 0);
+        const currentMissedCycles = Math.max(0, Number(prevEntry.missedCycles) || 0);
         const frequencyIntervalMs = frequency
           ? resolveFrequencyIntervalMs(frequency, frequencyCustom)
           : null;
         const repeatsActiveManualTimer =
-          !preserveConfiguredTimer &&
-          previousManualSkipTargetAt > 0 &&
-          previousTimerResetAt > 0 &&
-          Number.isFinite(frequencyIntervalMs) &&
-          frequencyIntervalMs > 0 &&
-          now - previousTimerResetAt < frequencyIntervalMs;
+          shouldInvalidatePendingAutosave &&
+          isManualTemptationCycleAlreadyConsumed({
+            skipTargetAt: previousManualSkipTargetAt,
+            skipCreatedAt: previousManualSkipCreatedAt,
+            timerResetAt: previousTimerResetAt,
+            now,
+            intervalMs: frequencyIntervalMs,
+          });
+        const missedCycleAnchorAt =
+          currentMissedCycles > 0
+            ? Math.max(
+                0,
+                Number(prevEntry.lastMissedCheckAt) ||
+                  (scheduledNextCheckAt > now && frequencyIntervalMs > 0
+                    ? scheduledNextCheckAt - currentMissedCycles * frequencyIntervalMs
+                    : 0)
+              )
+            : 0;
         const cycleAnchorNextCheckAt =
           repeatsActiveManualTimer && previousManualSkipTargetAt > 0
             ? previousManualSkipTargetAt
-            : scheduledNextCheckAt;
+            : missedCycleAnchorAt || scheduledNextCheckAt;
         const skippedCycleNextCheckAt =
           !preserveConfiguredTimer && frequency && cycleAnchorNextCheckAt > now
             ? buildResetNextCheckAtForFrequency({
@@ -76473,8 +76745,28 @@ useEffect(() => {
             : Number.isFinite(skippedCycleNextCheckAt)
             ? skippedCycleNextCheckAt
             : resetNextCheckAt;
+        const anchoredNextCheckAt = shouldAdvanceAnchoredSchedule
+          ? advanceAnchoredTemptationSchedule({
+              scheduledNextCheckAt,
+              missedCycles: currentMissedCycles,
+              alreadyConsumedCurrentCycle: repeatsActiveManualTimer,
+              now,
+              resolveNextCheckAt: (fromTimestamp) =>
+                buildResetNextCheckAtForFrequency({
+                  fromTimestamp,
+                  frequencyId: frequency,
+                  customFrequency: frequencyCustom,
+                  reminderHour: reminderTime.hour,
+                  reminderMinute: reminderTime.minute,
+                  weeklyDay,
+                  monthlyDay,
+                  weeklyDays,
+                  monthlyDays,
+                }),
+            })
+          : null;
         const manualAutosaveSkipTargetAt =
-          !preserveConfiguredTimer && frequency && cycleAnchorNextCheckAt > 0
+          shouldInvalidatePendingAutosave && frequency && cycleAnchorNextCheckAt > 0
             ? cycleAnchorNextCheckAt
             : null;
         const normalizedAmount = Number(amountUSD);
@@ -76499,15 +76791,34 @@ useEffect(() => {
             ? frequencyCustom || null
             : null,
           intervalMs: preserveConfiguredTimer ? prevEntry.intervalMs ?? null : intervalMs || null,
-          nextCheckAt: preserveConfiguredTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,
-          lastTimerResetAt: preserveConfiguredTimer ? prevEntry.lastTimerResetAt ?? null : now,
-          missedCycles: preserveConfiguredTimer ? Math.max(0, Number(prevEntry.missedCycles) || 0) : 0,
-          lastMissedCheckAt: preserveConfiguredTimer ? prevEntry.lastMissedCheckAt ?? null : null,
+          nextCheckAt: preserveConfiguredTimer
+            ? Number.isFinite(anchoredNextCheckAt)
+              ? anchoredNextCheckAt
+              : prevEntry.nextCheckAt ?? null
+            : nextCheckAt || null,
+          lastTimerResetAt:
+            preserveConfiguredTimer && !shouldAdvanceAnchoredSchedule
+              ? prevEntry.lastTimerResetAt ?? null
+              : now,
+          missedCycles:
+            preserveConfiguredTimer && !shouldAdvanceAnchoredSchedule
+              ? currentMissedCycles
+              : 0,
+          lastMissedCheckAt:
+            preserveConfiguredTimer && !shouldAdvanceAnchoredSchedule
+              ? prevEntry.lastMissedCheckAt ?? null
+              : null,
           manualAutosaveSkipTargetAt: preserveConfiguredTimer
-            ? prevEntry.manualAutosaveSkipTargetAt ?? null
+            ? shouldAdvanceAnchoredSchedule
+              ? manualAutosaveSkipTargetAt
+              : prevEntry.manualAutosaveSkipTargetAt ?? null
             : manualAutosaveSkipTargetAt,
           manualAutosaveSkipCreatedAt: preserveConfiguredTimer
-            ? prevEntry.manualAutosaveSkipCreatedAt ?? null
+            ? shouldAdvanceAnchoredSchedule
+              ? manualAutosaveSkipTargetAt
+                ? now
+                : null
+              : prevEntry.manualAutosaveSkipCreatedAt ?? null
             : manualAutosaveSkipTargetAt
             ? now
             : null,
@@ -76551,7 +76862,7 @@ useEffect(() => {
           frequencyReminderManualConfigured:
             prevEntry.frequencyReminderManualConfigured === true || manualConfiguredFromItem,
         };
-        if (preserveConfiguredTimer) {
+        if (preserveConfiguredTimer && !shouldResetReminderRegistration) {
           nextEntry.frequencyReminderScheduledAt = prevEntry.frequencyReminderScheduledAt ?? null;
           nextEntry.frequencyReminderLocale = prevEntry.frequencyReminderLocale ?? null;
           nextEntry.frequencyReminderId = prevEntry.frequencyReminderId ?? null;
@@ -76586,35 +76897,12 @@ useEffect(() => {
         });
         return nextMap;
       });
-      if (!preserveConfiguredTimer) {
-        const candidateKeySet = new Set(candidateKeys);
-        setTycoonLedger((prev) => {
-          const list = Array.isArray(prev) ? prev : [];
-          let changed = false;
-          const skippedAt = Date.now();
-          const next = list.map((entry) => {
-            const cardKey = normalizeTemplateKey(entry?.cardId);
-            if (
-              entry?.status !== "pending" ||
-              entry?.source !== "autosave" ||
-              !cardKey ||
-              !candidateKeySet.has(cardKey)
-            ) {
-              return entry;
-            }
-            changed = true;
-            return {
-              ...entry,
-              status: "skipped",
-              skippedAt,
-              skipReason: "manual_interaction",
-              rewardClaimed: true,
-            };
-          });
-          return changed ? next : prev;
-        });
+      if (shouldInvalidatePendingAutosave) {
+        setTycoonLedger((prev) =>
+          skipPendingTycoonAutosaveForCards(prev, candidateKeys)
+        );
       }
-      if (!preserveConfiguredTimer && existingReminderIds.length) {
+      if (shouldResetReminderRegistration && existingReminderIds.length) {
         Promise.all(
           existingReminderIds.map((reminderId) =>
             safeNotifications.cancelScheduledNotificationAsync(reminderId)
@@ -76622,7 +76910,7 @@ useEffect(() => {
         ).catch(() => {});
       }
       const templateKeysToCancel = Array.from(new Set(candidateKeys));
-      if (!preserveConfiguredTimer && templateKeysToCancel.length) {
+      if (shouldResetReminderRegistration && templateKeysToCancel.length) {
         cancelScheduledDecisionNotificationsForTemplates(templateKeysToCancel, {
           todayOnly: false,
         }).catch(() => {});
@@ -77666,14 +77954,10 @@ useEffect(() => {
       const removedEntries = new Set(savingsToRemove);
       const removedIds = new Set(savingsToRemove.map((entry) => entry.id).filter(Boolean));
       let removedAmountUSD = 0;
-      let coinRefund = 0;
       const goalDeltas = new Map();
       savingsToRemove.forEach((entry) => {
         const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
         removedAmountUSD += amountUSD;
-        const resolvedCurrency = entry.meta?.currency || profile.currency || DEFAULT_PROFILE.currency;
-        const entryCoinReward = Math.max(0, Number(entry.meta?.coinReward) || 0);
-        coinRefund += entryCoinReward > 0 ? entryCoinReward : computeRefuseCoinReward(amountUSD, resolvedCurrency);
         const goalId =
           entry.meta?.goalId ||
           entry.meta?.goal_id ||
@@ -77692,9 +77976,6 @@ useEffect(() => {
           cancelSameDaySmartReminders(entryTemplateId, entryDayKey).catch(() => {});
         }
       });
-      if (coinRefund > 0) {
-        setHealthPoints((prev) => Math.max(0, prev - coinRefund));
-      }
       goalDeltas.forEach((amountUSD, goalId) => {
         applyHistoryGoalDelta(goalId, -amountUSD);
       });
@@ -77720,13 +78001,11 @@ useEffect(() => {
       buildLegacyTemplateKeys,
       cancelSameDaySmartReminders,
       logEvent,
-      profile.currency,
       rebuildSavingsFromHistory,
       recomputeHistoryAggregates,
       resolveTemptationGoalId,
       resolvedHistoryEvents,
       setChallengesState,
-      setHealthPoints,
       setHistoryEvents,
       temptationInteractions,
     ]
@@ -77844,6 +78123,7 @@ useEffect(() => {
         return {
           state: normalizeTemptationSeriesState(temptationSeriesRef.current),
           rewardMode: Number(rewardCoins) > 0 ? "direct" : "none",
+          creditCoins: Math.max(0, Number(rewardCoins) || 0),
           becameReady: false,
           isFirstResolution: false,
         };
@@ -79384,6 +79664,13 @@ useEffect(() => {
           coinReward,
           saveTimestamp
         );
+        const creditedCoinReward = Math.max(
+          0,
+          Number(seriesRewardResult.creditCoins) || 0
+        );
+        if (creditedCoinReward > 0) {
+          setHealthPoints((prev) => prev + creditedCoinReward);
+        }
         const coinTier = coinReward > 0 ? getHealthCoinTierForAmount(coinReward) : null;
         const depositCoinColor = coinTier ? getGoalJarCoinColor(coinTier.id) : SAVE_ACTION_COLOR;
         const existingGoalCoinColors =
@@ -79410,12 +79697,7 @@ useEffect(() => {
             0,
             Number(seriesRewardResult.state?.pendingCoins) || 0
           ),
-          onRevealReward:
-            coinReward > 0 && seriesRewardResult.rewardMode === "direct"
-              ? () => {
-                  setHealthPoints((prev) => prev + coinReward);
-                }
-              : null,
+          onRevealReward: null,
         };
         const resolvedCategory = resolveTemptationCategory(item);
         const isEssentialSaveCategory = isEssentialImpulseCategory(resolvedCategory);
@@ -79446,6 +79728,7 @@ useEffect(() => {
           templateId: templateId || item.id,
           goalId: normalizedTargetGoalId || null,
           coinReward,
+          coinCredited: creditedCoinReward === coinReward,
           currency: profile.currency || DEFAULT_PROFILE.currency,
           category: resolvedCategory,
           quickEntryCategoryId: item?.quickEntryCategoryId || null,
@@ -80491,13 +80774,14 @@ useEffect(() => {
   );
 
   const closeGoalLinkPrompt = useCallback(() => {
+    queueModalCloseSettle();
     setGoalLinkPrompt({
       visible: false,
       item: null,
       intent: null,
       amountUSD: null,
     });
-  }, []);
+  }, [queueModalCloseSettle]);
 
   const handleGoalLinkSelect = useCallback(
     (wishId) => {
@@ -81005,14 +81289,13 @@ useEffect(() => {
             current > 1
               ? t("freeDayCoinRewardStreak", { coins: rewardBlueCoins, days: current })
               : t("freeDayCoinReward", { coins: rewardBlueCoins });
+          setHealthPoints((prev) => prev + rewardHealthPoints);
           triggerOverlayState("health", {
             amount: rewardHealthPoints,
             displayCoins: rewardBlueCoins,
             coinValue: BLUE_HEALTH_COIN_VALUE,
             reason: rewardReason,
-            onRevealReward: () => {
-              setHealthPoints((prev) => prev + rewardHealthPoints);
-            },
+            onRevealReward: null,
           });
           logEvent("free_day_coin_reward", {
             blue_coins: rewardBlueCoins,
@@ -82629,10 +82912,11 @@ useEffect(() => {
 
   const processOverlayQueue = useCallback(() => {
     if (overlayActiveRef.current) return;
-    if (startupHardLockPendingBeforePaywall) return;
+    const runtimeSnapshot = overlayQueueRuntimeRef.current || {};
+    if (runtimeSnapshot.startupHardLockPendingBeforePaywall) return;
     while (
       overlayQueueRef.current.length &&
-      activeTab !== "feed" &&
+      runtimeSnapshot.activeTab !== "feed" &&
       FEED_ONLY_OVERLAY_TYPES.has(overlayQueueRef.current[0]?.type)
     ) {
       overlayQueueRef.current.shift();
@@ -82640,8 +82924,8 @@ useEffect(() => {
     const next = overlayQueueRef.current[0];
     if (frequencyReminderPriorityLockRef.current) {
       const reminderFlowBlocking =
-        frequencyReminderPrompt.visible ||
-        !!pendingFrequencyReminderPrompt;
+        runtimeSnapshot.frequencyReminderPromptVisible ||
+        !!runtimeSnapshot.pendingFrequencyReminderPrompt;
       const allowSaveOverlayBypass =
         next?.type === "save";
       if (reminderFlowBlocking && !allowSaveOverlayBypass) return;
@@ -82654,7 +82938,11 @@ useEffect(() => {
       return;
     }
     if (!next) return;
-    if ((!overlayEnvironmentReady || blockingModalVisible) && !next.force) return;
+    const gateStatus = getActionRewardOverlayGateStatus({
+      ...runtimeSnapshot,
+      force: next.force,
+    });
+    if (gateStatus !== ACTION_REWARD_OVERLAY_GATE_STATUS.READY) return;
     overlayQueueRef.current.shift();
     overlayActiveRef.current = true;
     if (overlayTimer.current) {
@@ -82719,41 +83007,52 @@ useEffect(() => {
       overlayTimer.current = null;
     }
   }, [
-    activeTab,
-    blockingModalVisible,
-    frequencyReminderPrompt.visible,
-    overlayEnvironmentReady,
     getModalCloseSettleRemainingMs,
-    pendingFrequencyReminderPrompt,
     scheduleOverlayQueueResumeAfterHandoff,
-    startupHardLockPendingBeforePaywall,
   ]);
   processOverlayQueueRef.current = processOverlayQueue;
 
   const scheduleOverlayRetry = useCallback(() => {
     if (overlayRetryTimerRef.current) return;
-    if (startupHardLockPendingBeforePaywall) return;
-    if (!overlayQueueRef.current.length) return;
+    const runtimeSnapshot = overlayQueueRuntimeRef.current || {};
+    if (
+      !shouldScheduleActionRewardOverlayRetry({
+        queueLength: overlayQueueRef.current.length,
+        startupHardLockPendingBeforePaywall:
+          runtimeSnapshot.startupHardLockPendingBeforePaywall,
+      })
+    ) {
+      return;
+    }
     overlayRetryTimerRef.current = setTimeout(() => {
       overlayRetryTimerRef.current = null;
-      if (startupHardLockPendingBeforePaywall) return;
-      if ((!overlayEnvironmentReady || blockingModalVisible) && overlayQueueRef.current.length) {
+      const latestRuntimeSnapshot = overlayQueueRuntimeRef.current || {};
+      if (
+        !shouldScheduleActionRewardOverlayRetry({
+          queueLength: overlayQueueRef.current.length,
+          startupHardLockPendingBeforePaywall:
+            latestRuntimeSnapshot.startupHardLockPendingBeforePaywall,
+        })
+      ) {
+        return;
+      }
+      const gateStatus = getActionRewardOverlayGateStatus(latestRuntimeSnapshot);
+      if (gateStatus !== ACTION_REWARD_OVERLAY_GATE_STATUS.READY) {
         scheduleOverlayRetry();
         return;
       }
-      processOverlayQueue();
+      processOverlayQueueRef.current?.();
+      if (overlayQueueRef.current.length) {
+        scheduleOverlayRetry();
+      }
     }, 80);
-  }, [
-    blockingModalVisible,
-    overlayEnvironmentReady,
-    processOverlayQueue,
-    startupHardLockPendingBeforePaywall,
-  ]);
+  }, []);
 
   const triggerOverlayState = useCallback(
     (type, message, config) => {
-      if (startupHardLockPendingBeforePaywall) return;
-      if (FEED_ONLY_OVERLAY_TYPES.has(type) && activeTab !== "feed") return;
+      const runtimeSnapshot = overlayQueueRuntimeRef.current || {};
+      if (runtimeSnapshot.startupHardLockPendingBeforePaywall) return;
+      if (FEED_ONLY_OVERLAY_TYPES.has(type) && runtimeSnapshot.activeTab !== "feed") return;
       let duration = null;
       let clearQueueOnDismiss = false;
       let force = false;
@@ -82776,19 +83075,20 @@ useEffect(() => {
         force,
         instanceId: `${type || "overlay"}:${Date.now()}:${overlayInstanceCounterRef.current}`,
       });
-      processOverlayQueue();
-      if (!overlayEnvironmentReady || blockingModalVisible) {
-        scheduleOverlayRetry();
+      if (shouldDeferActionRewardOverlayPresentation(type)) {
+        // The card's amount panel collapses with LayoutAnimation. Mounting a native
+        // Modal in that same commit is intermittent on iOS, so hand it off after
+        // the current layout transition while keeping it first in the queue.
+        queueModalCloseSettle();
+      } else {
+        processOverlayQueueRef.current?.();
       }
+      // Keep a watchdog alive even when a memoized card invoked an older callback.
+      // The retry reads overlayQueueRuntimeRef, so a reward queued during a modal
+      // close cannot remain dormant until the user's next interaction.
+      scheduleOverlayRetry();
     },
-    [
-      activeTab,
-      blockingModalVisible,
-      overlayEnvironmentReady,
-      processOverlayQueue,
-      scheduleOverlayRetry,
-      startupHardLockPendingBeforePaywall,
-    ]
+    [queueModalCloseSettle, scheduleOverlayRetry]
   );
   triggerOverlayStateRef.current = triggerOverlayState;
 
@@ -83506,6 +83806,7 @@ useEffect(() => {
         rewardBlueCoins,
         rewardValue,
         rewardPending: false,
+        rewardCredited: false,
         rewardDeliveredAt: 0,
         introSeen: true,
         lastPromptDayKey: getDayKey(Date.now()),
@@ -83648,6 +83949,7 @@ useEffect(() => {
           Number(BLUE_HEALTH_COIN_VALUE) || Number(HEALTH_COIN_TIERS[1]?.value) || 1
         );
         const rewardAmount = rewardCoins * blueCoinValue;
+        setHealthPoints((prev) => prev + rewardAmount);
         triggerOverlayState(
           "health",
           {
@@ -83655,9 +83957,7 @@ useEffect(() => {
             displayCoins: rewardCoins,
             coinValue: rewardAmount,
             reason: t("healthCelebrateLevel"),
-            onRevealReward: () => {
-              setHealthPoints((prev) => prev + rewardAmount);
-            },
+            onRevealReward: null,
           },
           3200
         );
@@ -83944,14 +84244,13 @@ useEffect(() => {
         return { ...prev, [reward.id]: claimedEntry };
       });
       setRewardClaimTotal((prev) => Math.max(0, prev) + 1);
+      setHealthPoints((prev) => prev + rewardAmount);
       triggerOverlayState(
         "health",
         {
           amount: rewardAmount,
           reason: t("healthCelebrateReward"),
-          onRevealReward: () => {
-            setHealthPoints((prev) => prev + rewardAmount);
-          },
+          onRevealReward: null,
         },
         3200
       );
@@ -84076,14 +84375,13 @@ useEffect(() => {
       const rewardLabel = formatHealthRewardText(rewardAmount);
       const copy = getChallengeCopy(def, language);
       const title = copy.title || challengeId;
+      setHealthPoints((prev) => prev + rewardAmount);
       triggerOverlayState(
         "health",
         {
           amount: rewardAmount,
           reason: t("challengeClaimedOverlay", { title, amount: rewardLabel }),
-          onRevealReward: () => {
-            setHealthPoints((prev) => prev + rewardAmount);
-          },
+          onRevealReward: null,
         },
         3200
       );
@@ -84397,6 +84695,11 @@ useEffect(() => {
             try {
               await AsyncStorage.multiSet([
                 [STORAGE_KEYS.HEALTH, "0"],
+                [STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(0)],
+                [
+                  STORAGE_KEYS.COIN_BALANCE_INCIDENT_REPAIR,
+                  serializeCoinBalanceIncidentRepair(),
+                ],
                 [STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(resetTamagotchiState)],
                 [STORAGE_KEYS.COIN_SLIDER_MAX, String(DEFAULT_COIN_SLIDER_MAX_USD)],
                 [STORAGE_KEYS.LEVEL_SHARE_REWARDED_LEVELS, "{}"],
@@ -90584,16 +90887,14 @@ useEffect(() => {
                   const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
                   dismissOverlay();
                   if (rewardAmount > 0) {
-	                    triggerOverlayState("health", {
-	                      amount: rewardAmount,
-	                      tierId: overlay.message?.rewardTierId || null,
-	                      chestCount: 1,
-	                      title: t("goalRewardChestTitle"),
-	                      closedSubtitle: t("goalRewardChestClosed"),
-	                      openedSubtitle: t("goalRewardChestOpened"),
-                      onRevealReward: () => {
-                        setHealthPoints((prev) => prev + rewardAmount);
-                      },
+                    triggerOverlayState("health", {
+                      amount: rewardAmount,
+                      tierId: overlay.message?.rewardTierId || null,
+                      chestCount: 1,
+                      title: t("goalRewardChestTitle"),
+                      closedSubtitle: t("goalRewardChestClosed"),
+                      openedSubtitle: t("goalRewardChestOpened"),
+                      onRevealReward: null,
                     });
                   }
                 }}
@@ -90608,16 +90909,14 @@ useEffect(() => {
                     const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
                     dismissOverlay();
                     if (rewardAmount > 0) {
-	                      triggerOverlayState("health", {
-	                        amount: rewardAmount,
-	                        tierId: overlay.message?.rewardTierId || null,
-	                        chestCount: 1,
-	                        title: t("goalRewardChestTitle"),
-	                        closedSubtitle: t("goalRewardChestClosed"),
-	                        openedSubtitle: t("goalRewardChestOpened"),
-                        onRevealReward: () => {
-                          setHealthPoints((prev) => prev + rewardAmount);
-                        },
+                      triggerOverlayState("health", {
+                        amount: rewardAmount,
+                        tierId: overlay.message?.rewardTierId || null,
+                        chestCount: 1,
+                        title: t("goalRewardChestTitle"),
+                        closedSubtitle: t("goalRewardChestClosed"),
+                        openedSubtitle: t("goalRewardChestOpened"),
+                        onRevealReward: null,
                       });
                     }
                   }}

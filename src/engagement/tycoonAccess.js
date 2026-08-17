@@ -49,11 +49,53 @@ const retireLegacyTycoonRewards = (entries = [], timestamp = Date.now()) => {
   return changed ? nextEntries : entries;
 };
 
+const skipPendingTycoonAutosaveForCards = (
+  entries = [],
+  cardIds = [],
+  timestamp = Date.now()
+) => {
+  const normalizeCardId = (value) => {
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value !== "string") return "";
+    return value.trim();
+  };
+  const targetCardIds = new Set(
+    (Array.isArray(cardIds) ? cardIds : [cardIds])
+      .map(normalizeCardId)
+      .filter(Boolean)
+  );
+  if (!targetCardIds.size) return entries;
+
+  const skippedAt = Math.max(0, Number(timestamp) || Date.now());
+  let changed = false;
+  const nextEntries = (Array.isArray(entries) ? entries : []).map((entry) => {
+    const cardId = normalizeCardId(entry?.cardId);
+    if (
+      entry?.status !== "pending" ||
+      entry?.source !== "autosave" ||
+      !cardId ||
+      !targetCardIds.has(cardId)
+    ) {
+      return entry;
+    }
+    changed = true;
+    return {
+      ...entry,
+      status: "skipped",
+      skippedAt,
+      skipReason: "manual_interaction",
+      rewardClaimed: true,
+    };
+  });
+  return changed ? nextEntries : entries;
+};
+
 module.exports = {
   TYCOON_SETTINGS_VERSION,
   isTycoonAutosaveEnabled,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
+  skipPendingTycoonAutosaveForCards,
   shouldResetLegacyTycoonPendingEvents,
 };

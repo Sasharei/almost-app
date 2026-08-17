@@ -214,16 +214,19 @@
     },
     {
       "id": "temptation-manual-frequency-timer-reset",
-      "description": "A manually configured frequency window remains anchored during every later save or spend. Only the first prompt or an explicit card-settings edit can replace the cadence, date, or reminder plan; automatic confirmations also preserve it.",
+      "description": "A manually configured cadence remains anchored during later actions, while a manual save or spend consumes the current check, invalidates matching pending auto-collect entries, and schedules the next anchored occurrence. Automatic confirmations preserve their current timer and ledger entry.",
       "file": "App.js",
       "requiredFragments": [
-        "shouldPreserveTemptationScheduleOnAction",
-        "const preserveConfiguredTimer = shouldPreserveTemptationScheduleOnAction({",
+        "resolveTemptationActionSchedulePolicy",
+        "advanceAnchoredTemptationSchedule",
+        "isManualTemptationCycleAlreadyConsumed",
+        "shouldAdvanceAnchoredSchedule",
+        "shouldInvalidatePendingAutosave",
+        "skipPendingTycoonAutosaveForCards",
         "const currentEntries = candidateKeys",
         "interactionEntry.frequencyReminderManualConfigured === true &&",
-        "nextCheckAt: preserveConfiguredTimer ? prevEntry.nextCheckAt ?? null : nextCheckAt || null,",
-        "lastTimerResetAt: preserveConfiguredTimer ? prevEntry.lastTimerResetAt ?? null : now,",
-        "if (!preserveConfiguredTimer && existingReminderIds.length)",
+        "skipPendingTycoonAutosaveForCards(prev, candidateKeys)",
+        "if (shouldResetReminderRegistration && existingReminderIds.length)",
         "preserveFrequencyTimer: true,"
       ]
     },
@@ -298,7 +301,7 @@
     },
     {
       "id": "temptation-daily-series-experience",
-      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. The first due decision starts today's temptation series, same-day history restores checked badges, and Continue after the claim scrolls to the remaining feed. The series deposits unchanged save rewards into a claim-once asset-backed chest, offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation instead of at series completion, and releases the automatic soft paywall only after payout and Continue.",
+      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. The first due decision starts today's temptation series, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation, and releases the automatic soft paywall only after completion and Continue.",
       "file": "App.js",
       "requiredFragments": [
         "registerTemptationSeriesAction(item,",
@@ -323,6 +326,9 @@
         "setTemptationSeriesContinuationRequestTick((tick) => tick + 1);",
         "temptationSeriesRewardMode: seriesRewardResult.rewardMode,",
         "temptationSeriesPendingCoins:",
+        "const creditedCoinReward = Math.max(",
+        "setHealthPoints((prev) => prev + creditedCoinReward);",
+        "coinCredited: creditedCoinReward === coinReward,",
         "saveOverlayPayload?.temptationSeriesRewardMode !== \"pending\"",
         "const countdownEnabled = !!goalCopy && displayActions > 0 && !seriesRewardPending;",
         "suppressFrequencyReminderPrompt: skipFrequencyReminderPrompt,",
@@ -357,7 +363,7 @@
     },
     {
       "id": "temptation-daily-series-state-machine",
-      "description": "The persisted series reducer snapshots today's target temptations, reconciles legacy all-card snapshots with today's schedule and history without changing pending coins, counts each target only once, records repeat actions and rewards, atomically resets the series, checked rows, and unopened chest at the next local midnight, pays the chest once, routes same-day post-claim rewards directly, and starts a fresh series on a later day.",
+      "description": "The persisted series reducer snapshots today's target temptations, reconciles legacy all-card snapshots with today's schedule and history without changing its economy, counts each target only once, and records repeat actions. Every new reward is marked credited immediately; midnight resets only the visual series. Legacy pending rewards are recoverable exactly once, the chest never double-pays already credited rewards, and a later day starts a fresh visual series.",
       "file": "src/engagement/temptationSeries.js",
       "requiredFragments": [
         "const TEMPTATION_SERIES_STATUS = Object.freeze({",
@@ -368,12 +374,57 @@
         "actionCount: previousResolution.actionCount + 1,",
         "isFirstResolution: isSeriesTarget && !previousResolution,",
         "pendingCoins: state.pendingCoins + normalizedReward,",
+        "creditedCoins: state.creditedCoins + normalizedReward,",
+        "creditCoins: normalizedReward,",
+        "const getUncreditedTemptationSeriesCoins = (value) => {",
         "const TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS = 3;",
         "const targetIds = normalizeTemptationIds([...state.targetIds, id]);",
         "state.status !== TEMPTATION_SERIES_STATUS.READY ||",
         "pendingCoins: 0,",
+        "const payoutCoins = getUncreditedTemptationSeriesCoins(state);",
         "rewardMode: normalizedReward > 0 ? \"direct\" : \"none\"",
         "claimedDayKey === todayKey"
+      ]
+    },
+    {
+      "id": "coin-balance-durable-storage",
+      "description": "Coin hydration distinguishes a failed or corrupt read from a real zero, restores from the versioned backup or legacy pet snapshot, migrates old uncredited series rewards, and applies a one-time balance floor from save history in the confirmed deferred-reward incident window. It only enables balance persistence after a successful read. Primary, backup, and repair marker values are written together, failed queued writes remain queued for retry, and an explicit account reset clears both balance copies while completing the repair marker.",
+      "file": "App.js",
+      "requiredFragments": [
+        "STORAGE_KEYS.HEALTH_BACKUP,",
+        "let healthStorageReadSucceeded = false;",
+        "const healthPairs = await AsyncStorage.multiGet([",
+        "const resolvedCoinBalance = resolveCoinBalance({",
+        "recoveredCoins: recoveredTemptationSeriesCoins,",
+        "const incidentHistoryRewardFloor = getIncidentHistoryRewardFloor(",
+        "const incidentRepair = resolveCoinBalanceIncidentRepair({",
+        "coinBalanceIncidentRepairStateToPersist = serializeCoinBalanceIncidentRepair(",
+        "healthBalanceNeedsRepair = resolvedCoinBalance.needsPrimaryRepair;",
+        "setHealthHydrated(healthStorageReadSucceeded);",
+        "if (!healthStorageReadSucceeded) {",
+        "AsyncStorage.multiGet([\n            STORAGE_KEYS.HEALTH,\n            STORAGE_KEYS.HEALTH_BACKUP,\n            STORAGE_KEYS.TAMAGOTCHI,",
+        "if (persistQueueRef.current.get(key) === value) {",
+        "flushPersistQueueRef.current?.(false);",
+        "serializeCoinBalanceBackup(healthPoints)",
+        "[STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(0)]",
+        "STORAGE_KEYS.COIN_BALANCE_INCIDENT_REPAIR,"
+      ]
+    },
+    {
+      "id": "coin-balance-resolution-policy",
+      "description": "The pure balance resolver accepts only finite non-negative values, gives a valid primary zero precedence over an older backup, validates versioned backups, and uses legacy pet coins only when the primary and backup are unavailable or corrupt. Its incident repair counts unique vulnerable save rewards, ignores pre-incident and explicitly credited saves, raises the balance only to the resulting floor, and records a one-time marker.",
+      "file": "src/engagement/coinBalance.js",
+      "requiredFragments": [
+        "const COIN_BALANCE_BACKUP_VERSION = 1;",
+        "if (!Number.isFinite(parsed) || parsed < 0) return null;",
+        "if (Number(parsed.version) !== COIN_BALANCE_BACKUP_VERSION) return null;",
+        "const parseLegacyTamagotchiCoinBalance = (value) => {",
+        "primaryBalance ?? backupBalance ?? normalizedFallback ?? 0;",
+        "needsPrimaryRepair: primaryBalance === null && source !== \"empty\"",
+        "const getIncidentHistoryRewardFloor = (",
+        "if (entry.meta?.coinCredited === true) return total;",
+        "const restoredCoins = alreadyApplied",
+        "const serializeCoinBalanceIncidentRepair = ("
       ]
     },
     {
@@ -1057,7 +1108,7 @@
     },
     {
       "id": "progress-challenge-reward-persistence",
-      "description": "Challenge and reward claims remain idempotent and persist challenge state, earned badges, claimed rewards, claim totals, and health coin balance.",
+      "description": "Challenge and reward claims remain idempotent, credit their coin value before opening a cosmetic celebration, and persist challenge state, earned badges, claimed rewards, claim totals, and both primary and backup coin balances.",
       "file": "App.js",
       "requiredFragments": [
         "if (!reward?.id || !reward.unlocked || reward.claimed) return;",
@@ -1065,7 +1116,10 @@
         "status: CHALLENGE_STATUS.CLAIMED",
         "claimedAt: Date.now()",
         "reminderNotificationIds: []",
+        "setHealthPoints((prev) => prev + rewardAmount);",
+        "onRevealReward: null,",
         "queuePersist(STORAGE_KEYS.HEALTH, String(healthPoints));",
+        "queuePersist(\n      STORAGE_KEYS.HEALTH_BACKUP,",
         "queuePersist(STORAGE_KEYS.CLAIMED_REWARDS, JSON.stringify(claimedRewards));",
         "queuePersist(STORAGE_KEYS.REWARD_TOTAL, String(Math.max(0, rewardClaimTotal)));",
         "queuePersist(STORAGE_KEYS.CHALLENGES, JSON.stringify(challengesState));",
@@ -1471,10 +1525,16 @@
     },
     {
       "id": "first-save-recap-and-reward",
-      "description": "The first save still records the transaction and presents one recap, while its unchanged reward is deposited exactly once into the active series chest and monetization stays deferred until the series payout flow finishes.",
+      "description": "The first save still records the transaction and presents one recap. Its unchanged reward is credited to the durable balance exactly once before any visual recap or series chest can be dismissed, while monetization remains deferred until the series completion flow finishes.",
       "file": "App.js",
       "requiredFragments": [
         "triggerOverlayState(\"save\", saveOverlayPayloadWithReward);",
+        "overlayQueueRuntimeRef.current = {",
+        "const latestRuntimeSnapshot = overlayQueueRuntimeRef.current || {};",
+        "processOverlayQueueRef.current?.();",
+        "shouldDeferActionRewardOverlayPresentation(type)",
+        "queueModalCloseSettle();",
+        "shouldScheduleActionRewardOverlayRetry({",
         "const isFirstSaveAction =",
         "isFirstSaveAction,",
         "markFirstSaveGoalJarPending();",
@@ -1483,6 +1543,9 @@
         "if (firstSaveFlowActive) {",
         "first-save/onboarding reinforcement stays inside one blocker.",
         "temptationSeriesRewardMode: seriesRewardResult.rewardMode,",
+        "const creditedCoinReward = Math.max(",
+        "setHealthPoints((prev) => prev + creditedCoinReward);",
+        "onRevealReward: null,",
         "const seriesRewardPending = payload?.temptationSeriesRewardMode === \"pending\";",
         "pendingUsageStreakRef.current = null;",
         "saveOverlayRewardDeliveredKeyRef.current === saveOverlayKey",
