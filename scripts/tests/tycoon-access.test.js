@@ -7,6 +7,7 @@ const {
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
+  skipPendingTycoonAutosaveForCards,
   shouldResetLegacyTycoonPendingEvents,
 } = require("../../src/engagement/tycoonAccess");
 
@@ -71,4 +72,28 @@ test("legacy auto-collect rewards are retired because the daily series owns payo
   assert.equal(migrated[1], entries[1]);
   assert.equal(migrated[2], entries[2]);
   assert.equal(retireLegacyTycoonRewards(migrated, 9999), migrated);
+});
+
+test("a manual card action durably skips only its matching pending auto-collect entries", () => {
+  const entries = [
+    { id: "target", cardId: "coffee", source: "autosave", status: "pending" },
+    { id: "other", cardId: "snacks", source: "autosave", status: "pending" },
+    { id: "history", cardId: "coffee", source: "autosave", status: "saved" },
+    { id: "manual", cardId: "coffee", source: "manual", status: "pending" },
+  ];
+  const reconciled = skipPendingTycoonAutosaveForCards(entries, [" coffee "], 6789);
+
+  assert.deepEqual(reconciled[0], {
+    id: "target",
+    cardId: "coffee",
+    source: "autosave",
+    status: "skipped",
+    skippedAt: 6789,
+    skipReason: "manual_interaction",
+    rewardClaimed: true,
+  });
+  assert.equal(reconciled[1], entries[1]);
+  assert.equal(reconciled[2], entries[2]);
+  assert.equal(reconciled[3], entries[3]);
+  assert.equal(skipPendingTycoonAutosaveForCards(entries, ["missing"], 9999), entries);
 });

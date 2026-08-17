@@ -7,6 +7,7 @@ const {
   claimTemptationSeries,
   createInitialTemptationSeriesState,
   getTemptationSeriesProgress,
+  getUncreditedTemptationSeriesCoins,
   normalizeTemptationSeriesState,
   reconcileTemptationSeriesTargets,
 } = require("../../src/engagement/temptationSeries");
@@ -14,7 +15,7 @@ const {
 const DAY_ONE = new Date(2026, 7, 14, 9, 0, 0).getTime();
 const DAY_TWO = new Date(2026, 7, 15, 9, 0, 0).getTime();
 
-test("first action starts a stable series snapshot and deposits its reward", () => {
+test("first action starts a stable series snapshot and credits its reward immediately", () => {
   const result = applyTemptationSeriesAction(createInitialTemptationSeriesState(), {
     availableIds: ["coffee", "delivery", "games"],
     temptationId: "coffee",
@@ -26,7 +27,10 @@ test("first action starts a stable series snapshot and deposits its reward", () 
   assert.equal(result.state.status, TEMPTATION_SERIES_STATUS.ACTIVE);
   assert.deepEqual(result.state.targetIds, ["coffee", "delivery", "games"]);
   assert.equal(result.state.pendingCoins, 7);
-  assert.equal(result.rewardMode, "pending");
+  assert.equal(result.state.creditedCoins, 7);
+  assert.equal(result.rewardMode, "direct");
+  assert.equal(result.creditCoins, 7);
+  assert.equal(getUncreditedTemptationSeriesCoins(result.state), 0);
   assert.deepEqual(getTemptationSeriesProgress(result.state), {
     completed: 1,
     total: 3,
@@ -51,6 +55,7 @@ test("repeated actions reward again without advancing unique progress", () => {
   });
 
   assert.equal(repeated.state.pendingCoins, 8);
+  assert.equal(repeated.state.creditedCoins, 8);
   assert.equal(repeated.state.resolutions.coffee.actionCount, 2);
   assert.equal(repeated.isFirstResolution, false);
   assert.equal(getTemptationSeriesProgress(repeated.state).completed, 1);
@@ -101,6 +106,7 @@ test("an unfinished series resets at local midnight before the next decision", (
   assert.deepEqual(nextDay.state.targetIds, ["coffee", "delivery", "games"]);
   assert.equal(nextDay.state.status, TEMPTATION_SERIES_STATUS.ACTIVE);
   assert.equal(nextDay.state.pendingCoins, 3);
+  assert.equal(nextDay.state.creditedCoins, 3);
   assert.deepEqual(Object.keys(nextDay.state.resolutions), ["delivery"]);
   assert.deepEqual(getTemptationSeriesProgress(nextDay.state), {
     completed: 1,
@@ -109,7 +115,7 @@ test("an unfinished series resets at local midnight before the next decision", (
   });
 });
 
-test("midnight reconciliation clears yesterday's checked rows and unopened chest", () => {
+test("midnight reconciliation clears yesterday's visuals without losing credited coins", () => {
   const yesterday = applyTemptationSeriesAction(null, {
     availableIds: ["coffee", "delivery", "games"],
     temptationId: "coffee",
@@ -117,6 +123,7 @@ test("midnight reconciliation clears yesterday's checked rows and unopened chest
     rewardCoins: 5,
     timestamp: DAY_ONE,
   }).state;
+  assert.equal(getUncreditedTemptationSeriesCoins(yesterday), 0);
   const reset = reconcileTemptationSeriesTargets(yesterday, {
     dayKey: "2026-08-15",
     targetIds: ["delivery"],
@@ -153,7 +160,7 @@ test("a ready chest from yesterday cannot be claimed after midnight", () => {
   assert.deepEqual(expiredClaim.state, createInitialTemptationSeriesState());
 });
 
-test("claim pays once and later same-day rewards go directly to balance", () => {
+test("claim never pays already credited rewards twice", () => {
   const first = applyTemptationSeriesAction(null, {
     availableIds: ["coffee", "delivery", "games"],
     temptationId: "coffee",
@@ -183,10 +190,12 @@ test("claim pays once and later same-day rewards go directly to balance", () => 
     timestamp: DAY_ONE + 5_000,
   });
 
-  assert.equal(claimed.payoutCoins, 9);
+  assert.equal(claimed.payoutCoins, 0);
+  assert.equal(claimed.state.claimedCoins, 9);
   assert.equal(duplicateClaim.payoutCoins, 0);
   assert.equal(laterAction.rewardMode, "direct");
-  assert.equal(laterAction.state.claimedCoins, 9);
+  assert.equal(laterAction.creditCoins, 9);
+  assert.equal(laterAction.state.claimedCoins, 18);
   assert.equal(laterAction.state.postClaimActionCount, 1);
 });
 
@@ -219,8 +228,10 @@ test("a save after the series is ready joins that chest instead of opening a sep
   });
 
   assert.equal(autosaveLikeAction.state.status, TEMPTATION_SERIES_STATUS.READY);
-  assert.equal(autosaveLikeAction.rewardMode, "pending");
+  assert.equal(autosaveLikeAction.rewardMode, "direct");
   assert.equal(autosaveLikeAction.state.pendingCoins, 12);
+  assert.equal(autosaveLikeAction.state.creditedCoins, 12);
+  assert.equal(autosaveLikeAction.creditCoins, 7);
   assert.equal(autosaveLikeAction.becameReady, false);
 });
 
@@ -278,7 +289,45 @@ test("normalization rejects corrupt pending values without losing a valid checkl
 
   assert.deepEqual(state.targetIds, ["coffee"]);
   assert.equal(state.pendingCoins, 0);
+  assert.equal(state.creditedCoins, 0);
   assert.equal(state.resolutions.coffee.firstAction, "save");
+});
+
+test("legacy pending rewards remain recoverable exactly once", () => {
+  const legacyReady = {
+    version: 1,
+    status: TEMPTATION_SERIES_STATUS.READY,
+    dayKey: "2026-08-14",
+    seriesId: "legacy-series",
+    targetIds: ["coffee", "delivery", "games"],
+    resolutions: {
+      coffee: {
+        firstAction: "save",
+        lastAction: "save",
+        firstAt: DAY_ONE,
+        lastAt: DAY_ONE,
+      },
+      delivery: {
+        firstAction: "skip",
+        lastAction: "skip",
+        firstAt: DAY_ONE,
+        lastAt: DAY_ONE,
+      },
+      games: {
+        firstAction: "skip",
+        lastAction: "skip",
+        firstAt: DAY_ONE,
+        lastAt: DAY_ONE,
+      },
+    },
+    pendingCoins: 9,
+  };
+
+  assert.equal(getUncreditedTemptationSeriesCoins(legacyReady), 9);
+  const claimed = claimTemptationSeries(legacyReady, DAY_ONE + 5_000);
+  assert.equal(claimed.payoutCoins, 9);
+  assert.equal(claimed.state.claimedCoins, 9);
+  assert.equal(getUncreditedTemptationSeriesCoins(claimed.state), 0);
 });
 
 test("a legacy all-cards series is narrowed to today's targets without changing its economy", () => {

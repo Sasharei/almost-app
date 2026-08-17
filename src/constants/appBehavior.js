@@ -85,6 +85,8 @@ export const STORAGE_KEYS = {
   REFUSE_STATS: "@almost_refuse_stats",
   REWARDS_CELEBRATED: "@almost_rewards_celebrated",
   HEALTH: "@almost_health_points",
+  HEALTH_BACKUP: "@almost_health_points_backup_v1",
+  COIN_BALANCE_INCIDENT_REPAIR: "@almost_coin_balance_incident_repair_v1",
   CLAIMED_REWARDS: "@almost_claimed_rewards",
   REWARD_TOTAL: "@almost_reward_total",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",

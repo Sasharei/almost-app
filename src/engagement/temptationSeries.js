@@ -14,6 +14,7 @@ const TEMPTATION_SERIES_ACTIONS = new Set([
 ]);
 
 const TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS = 3;
+const TEMPTATION_SERIES_VERSION = 2;
 
 const normalizeTimestamp = (value, fallback = Date.now()) => {
   const parsed = Number(value);
@@ -47,13 +48,14 @@ const getLocalDayKey = (timestamp = Date.now()) => {
 };
 
 const createInitialTemptationSeriesState = () => ({
-  version: 1,
+  version: TEMPTATION_SERIES_VERSION,
   seriesId: null,
   status: TEMPTATION_SERIES_STATUS.IDLE,
   dayKey: null,
   targetIds: [],
   resolutions: {},
   pendingCoins: 0,
+  creditedCoins: 0,
   claimedCoins: 0,
   startedAt: null,
   completedAt: null,
@@ -112,8 +114,14 @@ const normalizeTemptationSeriesState = (value) => {
         targetIds.length < TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS
       ? TEMPTATION_SERIES_STATUS.ACTIVE
       : status;
+  const pendingCoins = Math.max(0, Number(value.pendingCoins) || 0);
+  const storedVersion = Math.max(0, Math.floor(Number(value.version) || 0));
+  const creditedCoins =
+    storedVersion >= TEMPTATION_SERIES_VERSION
+      ? Math.min(pendingCoins, Math.max(0, Number(value.creditedCoins) || 0))
+      : 0;
   return {
-    version: 1,
+    version: TEMPTATION_SERIES_VERSION,
     seriesId:
       typeof value.seriesId === "string" && value.seriesId.trim()
         ? value.seriesId.trim()
@@ -124,7 +132,8 @@ const normalizeTemptationSeriesState = (value) => {
     dayKey,
     targetIds,
     resolutions,
-    pendingCoins: Math.max(0, Number(value.pendingCoins) || 0),
+    pendingCoins,
+    creditedCoins,
     claimedCoins: Math.max(0, Number(value.claimedCoins) || 0),
     startedAt,
     completedAt:
@@ -166,6 +175,11 @@ const resetTemptationSeriesForDay = (
     return state;
   }
   return createInitialTemptationSeriesState();
+};
+
+const getUncreditedTemptationSeriesCoins = (value) => {
+  const state = normalizeTemptationSeriesState(value);
+  return Math.max(0, state.pendingCoins - state.creditedCoins);
 };
 
 const getTemptationSeriesProgress = (value) => {
@@ -288,8 +302,10 @@ const applyTemptationSeriesAction = (
         state: {
           ...state,
           postClaimActionCount: state.postClaimActionCount + 1,
+          claimedCoins: state.claimedCoins + normalizedReward,
         },
         rewardMode: normalizedReward > 0 ? "direct" : "none",
+        creditCoins: normalizedReward,
         becameReady: false,
         isFirstResolution: false,
         progress: getTemptationSeriesProgress(state),
@@ -312,7 +328,8 @@ const applyTemptationSeriesAction = (
   if (!id) {
     return {
       state,
-      rewardMode: normalizedReward > 0 ? "pending" : "none",
+      rewardMode: normalizedReward > 0 ? "direct" : "none",
+      creditCoins: normalizedReward,
       becameReady: false,
       isFirstResolution: false,
       progress: getTemptationSeriesProgress(state),
@@ -353,12 +370,14 @@ const applyTemptationSeriesAction = (
     status: becameReady ? TEMPTATION_SERIES_STATUS.READY : state.status,
     resolutions,
     pendingCoins: state.pendingCoins + normalizedReward,
+    creditedCoins: state.creditedCoins + normalizedReward,
     completedAt: becameReady ? occurredAt : state.completedAt,
   };
 
   return {
     state: nextState,
-    rewardMode: normalizedReward > 0 ? "pending" : "none",
+    rewardMode: normalizedReward > 0 ? "direct" : "none",
+    creditCoins: normalizedReward,
     becameReady,
     isFirstResolution: isSeriesTarget && !previousResolution,
     progress: getTemptationSeriesProgress(nextState),
@@ -376,13 +395,15 @@ const claimTemptationSeries = (value, timestamp = Date.now()) => {
   ) {
     return { state, payoutCoins: 0, claimed: false };
   }
-  const payoutCoins = Math.max(0, Number(state.pendingCoins) || 0);
+  const totalCoins = Math.max(0, Number(state.pendingCoins) || 0);
+  const payoutCoins = getUncreditedTemptationSeriesCoins(state);
   return {
     state: {
       ...state,
       status: TEMPTATION_SERIES_STATUS.CLAIMED,
       pendingCoins: 0,
-      claimedCoins: payoutCoins,
+      creditedCoins: 0,
+      claimedCoins: totalCoins,
       claimedAt,
     },
     payoutCoins,
@@ -416,6 +437,7 @@ module.exports = {
   createInitialTemptationSeriesState,
   getLocalDayKey,
   getTemptationSeriesProgress,
+  getUncreditedTemptationSeriesCoins,
   getTemptationSeriesSummary,
   reconcileTemptationSeriesTargets,
   normalizeTemptationSeriesState,
