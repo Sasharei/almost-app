@@ -6,6 +6,7 @@ const {
   applyTemptationSeriesAction,
   claimTemptationSeries,
   createInitialTemptationSeriesState,
+  getTemptationSeriesDisplayProgress,
   getTemptationSeriesProgress,
   getUncreditedTemptationSeriesCoins,
   normalizeTemptationSeriesState,
@@ -14,6 +15,35 @@ const {
 
 const DAY_ONE = new Date(2026, 7, 14, 9, 0, 0).getTime();
 const DAY_TWO = new Date(2026, 7, 15, 9, 0, 0).getTime();
+
+test("idle series exposes its pre-action progress without starting persisted state", () => {
+  const idleState = createInitialTemptationSeriesState();
+  const progress = getTemptationSeriesDisplayProgress(idleState, {
+    targetIds: ["coffee", "delivery"],
+    resolutions: {},
+  });
+
+  assert.deepEqual(progress, {
+    completed: 0,
+    total: 3,
+    remaining: 3,
+  });
+  assert.equal(idleState.status, TEMPTATION_SERIES_STATUS.IDLE);
+  assert.equal(idleState.seriesId, null);
+});
+
+test("pre-action progress uses all temptations already due today", () => {
+  const progress = getTemptationSeriesDisplayProgress(null, {
+    targetIds: ["coffee", "delivery", "games", "shopping"],
+    resolutions: {},
+  });
+
+  assert.deepEqual(progress, {
+    completed: 0,
+    total: 4,
+    remaining: 4,
+  });
+});
 
 test("first action starts a stable series snapshot and credits its reward immediately", () => {
   const result = applyTemptationSeriesAction(createInitialTemptationSeriesState(), {

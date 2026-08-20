@@ -1,0 +1,6 @@
+Use case: ui-mockup
+Asset: portrait native Budget screen for Almost.
+Direction: impeccable category-standard personal-finance dashboard.
+Structure: available balance card, Savings/Debt segmented control, one progress bar, compact summary metrics, one transfer action, and explicit external-bank screenshot explanation.
+Palette/material: cool gray ground, white system cards, navy type, blue interaction, restrained green success.
+Constraints: production-grade and familiar; no fake charts, cash pile, coins, piggy bank, mascot, glass, gradients, or bank integration claim.

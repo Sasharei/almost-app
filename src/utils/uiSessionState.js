@@ -1,4 +1,5 @@
 const UI_SESSION_VERSION = 1;
+const UI_SESSION_HOME_RESET_MS = 5 * 60 * 1000;
 
 const RESTORABLE_TABS = new Set(["feed", "cart", "pending", "purchases", "profile"]);
 const RESTORABLE_PROFILE_EDIT_MODES = new Set(["profile"]);
@@ -37,6 +38,22 @@ const cloneSerializableRecord = (value) => {
   } catch (_error) {
     return null;
   }
+};
+
+const shouldResetUiSessionNavigation = ({
+  isColdStart = false,
+  backgroundedAt = 0,
+  resumedAt = Date.now(),
+  resetAfterMs = UI_SESSION_HOME_RESET_MS,
+} = {}) => {
+  if (isColdStart) return true;
+  const normalizedBackgroundedAt = Number(backgroundedAt) || 0;
+  const normalizedResumedAt = Number(resumedAt) || 0;
+  const normalizedResetAfterMs = Math.max(0, Number(resetAfterMs) || 0);
+  if (normalizedBackgroundedAt <= 0 || normalizedResumedAt < normalizedBackgroundedAt) {
+    return false;
+  }
+  return normalizedResumedAt - normalizedBackgroundedAt >= normalizedResetAfterMs;
 };
 
 const normalizeProfileEditor = (value) => {
@@ -224,7 +241,9 @@ const createUiSessionState = ({
   });
 
 module.exports = {
+  UI_SESSION_HOME_RESET_MS,
   UI_SESSION_VERSION,
   createUiSessionState,
   normalizeUiSessionState,
+  shouldResetUiSessionNavigation,
 };

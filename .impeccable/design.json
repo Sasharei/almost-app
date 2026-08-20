@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-20T00:00:00+03:00",
+  "title": "Design System: Almost",
+  "extensions": {
+    "colorMeta": {
+      "light-background": {
+        "role": "neutral",
+        "displayName": "Cool Ground",
+        "canonical": "#F5F6F8",
+        "tonalRamp": ["#191A1C", "#34363A", "#55585E", "#787C84", "#A0A4AC", "#C4C7CD", "#E1E3E7", "#F5F6F8"]
+      },
+      "light-surface": {
+        "role": "neutral",
+        "displayName": "Bright Surface",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#1A1A1A", "#383838", "#5C5C5C", "#858585", "#ADADAD", "#D0D0D0", "#ECECEC", "#FFFFFF"]
+      },
+      "light-text": {
+        "role": "primary",
+        "displayName": "Almost Ink",
+        "canonical": "#202129",
+        "tonalRamp": ["#121318", "#202129", "#393B49", "#56596B", "#777A8C", "#A1A4B2", "#CDD0D8", "#F1F2F5"]
+      },
+      "pro-primary": {
+        "role": "primary",
+        "displayName": "PRO Indigo",
+        "canonical": "#3E4FD7",
+        "tonalRamp": ["#12183E", "#1E2868", "#2D3A9D", "#3E4FD7", "#6E7AE4", "#9CA5EE", "#C8CDF7", "#EEF0FD"]
+      },
+      "savings": {
+        "role": "secondary",
+        "displayName": "Verified Savings",
+        "canonical": "#28D985",
+        "tonalRamp": ["#08281A", "#0E482D", "#156A43", "#1E985F", "#28D985", "#62E6A7", "#A3F1CD", "#E6FBF2"]
+      },
+      "debt": {
+        "role": "secondary",
+        "displayName": "Responsible Debt",
+        "canonical": "#FF657B",
+        "tonalRamp": ["#3B0B13", "#68121F", "#981D30", "#D5334B", "#FF657B", "#FF91A1", "#FFBDC6", "#FFECEF"]
+      },
+      "information": {
+        "role": "tertiary",
+        "displayName": "Guidance Blue",
+        "canonical": "#356A9A",
+        "tonalRamp": ["#102334", "#193A54", "#275174", "#356A9A", "#6089AE", "#8CAAC5", "#BACDDD", "#E8F0F6"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Primary screen headings and major statements." },
+      "headline": { "displayName": "Headline", "purpose": "Section-level titles." },
+      "title": { "displayName": "Title", "purpose": "High-emphasis card and destination titles." },
+      "body": { "displayName": "Body", "purpose": "Explanations, forms, and ordinary content." },
+      "secondary": { "displayName": "Secondary", "purpose": "Metadata, helper copy, and amount qualifiers." },
+      "label": { "displayName": "Label", "purpose": "Actions and compact controls." }
+    },
+    "shadows": [
+      { "name": "card-ambient", "value": "0 7px 14px rgba(25,27,34,0.06)", "purpose": "Structural priority on summary and focus cards." },
+      { "name": "action-lift", "value": "0 6px 10px rgba(0,0,0,0.08)", "purpose": "A single primary destination action." }
+    ],
+    "motion": [
+      { "name": "press", "value": "120ms", "purpose": "Immediate native press feedback." },
+      { "name": "micro", "value": "180ms", "purpose": "Small state changes and focus-art pulse." },
+      { "name": "transition", "value": "220ms", "purpose": "Default state transition." },
+      { "name": "reduced", "value": "140ms", "purpose": "Reduced-motion fallback without continuous movement." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "380px" },
+      { "name": "short", "value": "740px height" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "High-contrast native action used once per focused state.",
+      "html": "<button class=\"ds-btn-primary\">Continue</button>",
+      "css": ".ds-btn-primary { min-height: 52px; padding: 14px 16px; border: 0; border-radius: 10px; background: #202129; color: #FFFFFF; font: 600 14px/20px Inter, sans-serif; letter-spacing: 0.4px; transition: opacity 120ms ease, transform 120ms ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 2px; }"
+    },
+    {
+      "name": "Savings Action",
+      "kind": "button",
+      "refersTo": "button-savings",
+      "description": "Confirms an external transfer to savings.",
+      "html": "<button class=\"ds-btn-savings\">Confirm savings transfer</button>",
+      "css": ".ds-btn-savings { min-height: 52px; padding: 14px 16px; border: 0; border-radius: 16px; background: #28D985; color: #042B1B; font: 900 16px/20px Inter, sans-serif; box-shadow: 0 6px 10px rgba(40,217,133,0.24); transition: opacity 120ms ease, transform 120ms ease; } .ds-btn-savings:hover { opacity: 0.92; } .ds-btn-savings:active { transform: scale(0.97); } .ds-btn-savings:focus-visible { outline: 3px solid rgba(40,217,133,0.32); outline-offset: 2px; }"
+    },
+    {
+      "name": "Debt Action",
+      "kind": "button",
+      "refersTo": "button-debt",
+      "description": "Confirms an external debt payment.",
+      "html": "<button class=\"ds-btn-debt\">Confirm debt payment</button>",
+      "css": ".ds-btn-debt { min-height: 52px; padding: 14px 16px; border: 0; border-radius: 16px; background: #FF657B; color: #30030A; font: 900 16px/20px Inter, sans-serif; box-shadow: 0 6px 10px rgba(255,101,123,0.22); transition: opacity 120ms ease, transform 120ms ease; } .ds-btn-debt:hover { opacity: 0.92; } .ds-btn-debt:active { transform: scale(0.97); } .ds-btn-debt:focus-visible { outline: 3px solid rgba(255,101,123,0.32); outline-offset: 2px; }"
+    },
+    {
+      "name": "Segmented Destination",
+      "kind": "chip",
+      "description": "Two-state destination selector with one filled active pill.",
+      "html": "<nav class=\"ds-segment\" aria-label=\"Budget destination\"><button class=\"ds-segment-active\">Savings</button><button class=\"ds-segment-idle\">Debt</button></nav>",
+      "css": ".ds-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: #ECEEF2; } .ds-segment button { min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: 999px; font: 600 14px/18px Inter, sans-serif; transition: background 180ms ease, color 180ms ease; } .ds-segment-active { background: #202129; color: #F5F6F8; } .ds-segment-idle { background: transparent; color: #202129; } .ds-segment button:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 1px; }"
+    },
+    {
+      "name": "Focus Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Single-destination card containing progress art, amount, and supporting metrics.",
+      "html": "<section class=\"ds-focus-card\"><h3>Savings</h3><div class=\"ds-focus-art\" aria-hidden=\"true\"></div><strong>36,800 ₽</strong><span>transferred</span></section>",
+      "css": ".ds-focus-card { padding: 14px; border: 1px solid #D8DCE3; border-radius: 16px; background: #FFFFFF; color: #202129; box-shadow: 0 6px 12px rgba(25,27,34,0.05); font-family: Inter, sans-serif; } .ds-focus-card h3 { margin: 0 0 12px; font-size: 21px; font-weight: 900; } .ds-focus-card strong { font-size: 27px; font-variant-numeric: tabular-nums; } .ds-focus-card span { margin-left: 7px; color: #626774; font-size: 15px; font-weight: 600; } .ds-focus-art { height: 182px; margin-bottom: 12px; border-radius: 16px; background: #F5F6F8; }"
+    },
+    {
+      "name": "Money Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Bordered numeric field used in transfer and debt setup sheets.",
+      "html": "<label class=\"ds-field\"><span>Amount</span><input inputmode=\"decimal\" value=\"7,200\" aria-label=\"Amount\"></label>",
+      "css": ".ds-field { display: grid; gap: 7px; color: #202129; font: 700 13px/17px Inter, sans-serif; } .ds-field input { min-height: 48px; padding: 0 14px; border: 1px solid #D8DCE3; border-radius: 10px; background: #FFFFFF; color: #202129; font: 700 17px/22px Inter, sans-serif; font-variant-numeric: tabular-nums; } .ds-field input:focus-visible { border-color: #356A9A; outline: 3px solid rgba(53,106,154,0.18); outline-offset: 1px; }"
+    },
+    {
+      "name": "Bottom Proof Sheet",
+      "kind": "custom",
+      "description": "Scrollable native sheet for the bank handoff, amount, and screenshot verification.",
+      "html": "<section class=\"ds-sheet\"><div class=\"ds-sheet-handle\"></div><h2>Confirm transfer</h2><p>Transfer in your bank, then add proof.</p></section>",
+      "css": ".ds-sheet { padding: 10px 16px 16px; border: 1px solid #D8DCE3; border-radius: 20px 20px 0 0; background: #FFFFFF; color: #202129; font-family: Inter, sans-serif; box-shadow: 0 -10px 30px rgba(17,19,24,0.14); } .ds-sheet-handle { width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 999px; background: #D8DCE3; } .ds-sheet h2 { margin: 0 0 8px; font-size: 21px; line-height: 26px; font-weight: 900; } .ds-sheet p { margin: 0; color: #626774; font-size: 13px; line-height: 19px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Verified Step",
+    "overview": "Almost should feel like a calm, credible companion at the moment a user turns an intention into action. The interface uses cool neutral grounds, bright semantic surfaces, decisive type hierarchy, and a small number of recognizable product assets. It is supportive without posing as a bank, and expressive without letting illustration compete with the task. The visual system is native, compact, and behavior-first. Each screen presents one dominant state or action, then uses secondary cards and lightweight line icons to explain what happens next. Light, dark, and PRO are equal product modes rather than recolored afterthoughts.",
+    "keyCharacteristics": [
+      "Cool neutral backgrounds with clear, bright content surfaces.",
+      "Heavy Inter numerals and titles paired with quieter explanatory text.",
+      "Semantic savings, debt, and information colors used only where meaning is stable.",
+      "Soft cards, restrained ambient depth, and platform-sized touch targets.",
+      "Existing Almost assets used as progress objects or helpers, never as unrelated decoration."
+    ],
+    "rules": [
+      { "name": "The Semantic Destination Rule", "body": "Green means savings and verified accumulation; red means debt payment or debt burden. Do not swap them for novelty.", "section": "colors" },
+      { "name": "The Theme Role Rule", "body": "Components consume semantic theme roles rather than hardcoding a light-only palette.", "section": "colors" },
+      { "name": "The Number Leads Rule", "body": "On money surfaces, the amount is the strongest text; its qualifier stays adjacent and subordinate.", "section": "typography" },
+      { "name": "The Sentence Case Rule", "body": "Use sentence case for actions and labels. Uppercase is reserved for existing compact status patterns, not page hierarchy.", "section": "typography" },
+      { "name": "The Tonal-First Rule", "body": "Establish hierarchy with semantic surfaces and borders before adding shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use one clear focal action per state and show the real-world handoff before asking for proof.",
+      "Do reuse the semantic theme roles in light, dark, and PRO, including every configured PRO accent.",
+      "Do keep money values tabular, prominent, localized, and paired with an explicit meaning.",
+      "Do use existing Almost art when it explains progress or provides contextual help.",
+      "Do preserve reduced motion, RTL, Dynamic Type, screen-reader labels, and native dismissal behavior."
+    ],
+    "donts": [
+      "Don't introduce a Budget action to spend; Budget has savings and debt destinations only.",
+      "Don't imply Almost holds or transfers money. The user's external bank or deposit service performs the transaction.",
+      "Don't replace product assets and semantic surfaces with random glossy fintech art, generic charts, or unrelated gradients.",
+      "Don't use illustration as filler when task state, amount, or the next action needs the space.",
+      "Don't remove, hide, or visually demote an existing flow to simplify a redesign."
+    ]
+  }
+}
