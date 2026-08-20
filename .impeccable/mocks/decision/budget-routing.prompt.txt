@@ -1,0 +1,6 @@
+Use case: ui-mockup
+Asset: portrait native Budget screen for Almost.
+Direction: modern clearing desk and secure bank-transfer slip.
+Structure: a dominant available amount flows through a functional cobalt route into equal Savings and Debt tap targets, rejoins at one continuation action, and ends in an explicit external-bank screenshot handoff plus verified history.
+Palette/material: off-white protected paper, navy type, cobalt route, coral verification stamp.
+Constraints: no charts, cash pile, coins, piggy bank, mascot, glass, gradients, bank integration claim, or stacked-card dashboard.

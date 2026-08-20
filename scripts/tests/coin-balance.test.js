@@ -143,7 +143,7 @@ test("history deletion and same-cycle spend cleanup never claw back earned coins
   );
   const sameCycleCleanup = getSourceSection(
     "const revokeCycleSavingsForSpend = useCallback(",
-    "const queueCoinValueModal = useCallback("
+    "const priceEditorTemplateId ="
   );
 
   assert.doesNotMatch(historyDelete, /setHealthPoints|coinRefund/);

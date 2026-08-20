@@ -1,0 +1,6 @@
+Use case: ui-mockup
+Asset: portrait native Budget screen for Almost.
+Direction: precision reference-setting page drawn by a ruling engine.
+Structure: large available amount on a central rail, equal Savings and Debt columns, printed selected states, one vermilion action, compact external-bank proof instructions, and a confirmed last transfer.
+Palette/material: opaque unbleached bone paper, iron-black text and rules, rubric vermilion, printed detents and brackets.
+Constraints: high contrast, no transparency, no tiny type, no charts, cash pile, coins, piggy bank, mascot, glass, gradients, or bank integration claim.

@@ -42,6 +42,22 @@
       ]
     },
     {
+      "id": "coin-value-tutorial-queue-and-dismiss",
+      "description": "The coin-value tutorial is owned by the shared modal queue, remains dismissible through the CTA and platform Back, and releases its queue slot after dismissal.",
+      "file": "App.js",
+      "requiredFragments": [
+        "enqueueQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);",
+        "case QUEUED_MODAL_TYPES.COIN_VALUE:",
+        "return coinValueModalQueueReady();",
+        "onRequestClose={dismissCoinValueModal}",
+        "onPress={dismissCoinValueModal}",
+        "clearQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);"
+      ],
+      "requiredPatterns": [
+        "queuedModalType === QUEUED_MODAL_TYPES\\.COIN_VALUE &&\\s*coinValueModalVisible && \\("
+      ]
+    },
+    {
       "id": "feed-new-temptation-action",
       "description": "The regular Feed add button stays rendered beside the scrollable category rail and outside the optional coach-mark condition.",
       "file": "App.js",
@@ -141,7 +157,7 @@
     },
     {
       "id": "tycoon-autocollect-premium-flow",
-      "description": "Temptation auto-collect defaults off, is effective only for an active Premium user who opts in, opens the feature paywall from a normally styled locked switch, stops generation and notifications while inaccessible, keeps review actions reachable, and routes save rewards through the shared daily series instead of a duplicate auto-collect chest.",
+      "description": "Temptation auto-collect defaults off, is effective only for an active Premium user who opts in, opens the feature paywall from a normally styled locked switch, stops generation and notifications while inaccessible, keeps review actions reachable, routes save rewards through the shared daily series instead of a duplicate auto-collect chest, and presents one aggregate save or goal-deposit recap after confirmation.",
       "file": "App.js",
       "requiredFragments": [
         "const tycoonAutosaveEnabled = isTycoonAutosaveEnabled({",
@@ -160,27 +176,39 @@
         "onSnooze={handleTycoonAutosaveSnooze}",
         "onConfirm={handleTycoonAutosaveConfirm}",
         "onClose={handleTycoonAutosaveClose}",
+        "onRequestClose={onClose}",
+        "if (spent) onToggleSpent?.(entry.id);",
+        "if (!spent) onToggleSpent?.(entry.id);",
+        "onPress={() => onExclude?.(entry.id)}",
+        "{t(\"tycoonAutosaveConfirm\")}",
+        "{t(\"tycoonAutosaveLater\")}",
+        "{t(\"tycoonAutosaveClose\")}",
+        "expireStalePendingTycoonAutosaves(prev, currentDayKey, Date.now())",
+        "getTycoonAutosaveEventDayKey(entry) === currentDayKey",
+        "getTycoonAutosaveEventDayKey(entry) !== currentDayKey",
+        "if (!windowDayKey || windowDayKey !== currentDayKey) continue;",
+        "if (!isTycoonAutosaveTimestampInDay(triggerAt, currentDayKey)) return;",
+        "summarizeTycoonAutosaveSaveResults(autosaveSaveResults)",
+        "aggregateAutosaveSummary: true",
+        "triggerOverlayState(\"save\", autosaveSummaryPayload);",
         "rewardRoute: \"temptation_series\""
       ],
       "requiredPatterns": [
         "case QUEUED_MODAL_TYPES\\.TYCOON_AUTOSAVE:[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0",
         "tycoonAutosaveModalVisible =[\\s\\S]*?tycoonAutosaveEnabled[\\s\\S]*?tycoonPendingEvents\\.length > 0",
         "handleTemptationAction\\(\"save\", card,[\\s\\S]*?suppressSaveOverlay: true",
-        "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{(?:(?!setTycoonRewardModal|QUEUED_MODAL_TYPES\\.TYCOON_REWARD|rewardByEventId).)*?rewardRoute: \"temptation_series\""
+        "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{(?:(?!setTycoonRewardModal|QUEUED_MODAL_TYPES\\.TYCOON_REWARD|rewardByEventId).)*?rewardRoute: \"temptation_series\"",
+        "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{[\\s\\S]*?summarizeTycoonAutosaveSaveResults\\(autosaveSaveResults\\)[\\s\\S]*?triggerOverlayState\\(\"save\", autosaveSummaryPayload\\);"
       ]
     },
     {
       "id": "background-ui-session-restoration",
-      "description": "Backgrounding or process recreation preserves the active screen and unfinished profile, card, goal, pending-item, quick-add, and category editor drafts until the user explicitly saves or cancels.",
+      "description": "A cold process launch or a return after five minutes opens the feed home, while a shorter background pause preserves the active screen and unfinished editors.",
       "file": "App.js",
       "requiredFragments": [
-        "normalizeUiSessionState(uiSessionRaw)",
-        "setProfileEditMode(restoredSession.profileEditor.mode);",
-        "setPriceEditor((currentEditor) => ({",
-        "setShowCustomSpend(true);",
-        "setNewPendingModal((currentModal) => ({",
-        "setNewGoalModal((currentModal) => ({",
-        "setGoalEditorPrompt((currentPrompt) => ({",
+        "shouldResetUiSessionNavigation({ isColdStart: true })",
+        "previousState === \"background\" || previousState === \"inactive\";",
+        "goToTab(\"feed\", { recordHistory: false, resetHistory: true });",
         "queuePersist(STORAGE_KEYS.UI_SESSION, JSON.stringify(nextSession));",
         "const uiSessionSnapshot = uiSessionSnapshotRef.current;",
         "explicitly blurring here loses the user's exact editing position"
@@ -301,7 +329,7 @@
     },
     {
       "id": "temptation-daily-series-experience",
-      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. The first due decision starts today's temptation series, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation, and releases the automatic soft paywall only after completion and Continue.",
+      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. Today's series progress is visible before the first card decision without starting persisted series state; the first due decision still starts that state, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation, and releases the automatic soft paywall only after completion and Continue.",
       "file": "App.js",
       "requiredFragments": [
         "registerTemptationSeriesAction(item,",
@@ -342,6 +370,8 @@
         "registerUsageStreakAction(\"series\", claimedAt,",
         "recordRatingPromptSeriesCompletion();",
         "<TemptationSeriesProgressCard",
+        "previewPlan={normalizedTodayTemptationPlan}",
+        "getTemptationSeriesDisplayProgress(",
         "styles.temptationSeriesClaimedCard",
         "t(\"temptationSeriesViewReward\")",
         "seriesChecked={Boolean(entry.seriesChecked)}",
@@ -1377,6 +1407,19 @@
         "Link(destination: URL(string: \"com.sasarei.almostclean://quick-entry?type=spend\")!)",
         "Link(destination: URL(string: \"com.sasarei.almostclean://daily-summary\")!)",
         ".supportedFamilies([.systemSmall, .systemMedium, .systemLarge])"
+      ]
+    },
+    {
+      "id": "home-widget-quick-entry-modal-handoff",
+      "description": "Quick save and spend widget launches pause automatic modal presentation until the quick-entry close or submit animation has completed, then resume the existing queues.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const automaticModalPresentationPaused =",
+        "beginWidgetActionFlow();",
+        "handleCoinEntryClose({ keepWidgetFlowActive: isWidgetEntry });",
+        "finishWidgetActionFlow();",
+        "if (runtimeSnapshot.automaticModalPresentationPaused) return;",
+        "requestQueuedModalProcessAfterHandoff(resumeAt);"
       ]
     },
     {

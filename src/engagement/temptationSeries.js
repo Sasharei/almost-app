@@ -203,6 +203,30 @@ const getTemptationSeriesProgress = (value) => {
   };
 };
 
+const getTemptationSeriesDisplayProgress = (
+  value,
+  { targetIds = [], resolutions = {} } = {}
+) => {
+  const state = normalizeTemptationSeriesState(value);
+  if (state.status !== TEMPTATION_SERIES_STATUS.IDLE) {
+    return getTemptationSeriesProgress(state);
+  }
+  const previewTargetIds = normalizeTemptationIds(targetIds);
+  const completed = previewTargetIds.reduce(
+    (count, id) => count + Number(Boolean(normalizeResolution(resolutions?.[id]))),
+    0
+  );
+  const total = Math.max(
+    TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS,
+    previewTargetIds.length
+  );
+  return {
+    completed,
+    total,
+    remaining: Math.max(0, total - completed),
+  };
+};
+
 const reconcileTemptationSeriesTargets = (
   value,
   {
@@ -435,6 +459,7 @@ module.exports = {
   applyTemptationSeriesAction,
   claimTemptationSeries,
   createInitialTemptationSeriesState,
+  getTemptationSeriesDisplayProgress,
   getLocalDayKey,
   getTemptationSeriesProgress,
   getUncreditedTemptationSeriesCoins,

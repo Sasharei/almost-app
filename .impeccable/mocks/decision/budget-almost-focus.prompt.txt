@@ -1,0 +1,4 @@
+Use case: ui-mockup
+References: current Almost App Store screens for Feed, Goal Jar and Progress; current Almi mascot asset.
+Structure: available amount, familiar Savings/Debt segmented control, one destination in focus, Almost-style savings jar, one confirmation action and a three-step external-bank proof explanation.
+Identity constraints: preserve Almost background, typography, card radii, border weight, green/blue progress palette, bottom navigation and 3D-soft illustration material.

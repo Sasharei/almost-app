@@ -527,6 +527,7 @@ const {
   applyTemptationSeriesAction,
   claimTemptationSeries,
   createInitialTemptationSeriesState,
+  getTemptationSeriesDisplayProgress,
   getTemptationSeriesProgress,
   getTemptationSeriesSummary,
   getUncreditedTemptationSeriesCoins,
@@ -555,9 +556,15 @@ const {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   advanceAnchoredTemptationSchedule,
+  buildAnchoredTemptationDueWindows,
   isManualTemptationCycleAlreadyConsumed,
   resolveTemptationActionSchedulePolicy,
 } = require("./src/engagement/temptationSchedule");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  parseTemptationPriceOverrideSnapshot,
+  readTemptationPriceOverridesWithRetry,
+} = require("./src/utils/temptationPriceOverrideStorage");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   NEXT_DECISION_COACH_STATUS,
@@ -577,22 +584,30 @@ const {
 } = require("./src/engagement/actionRewardOverlayQueue");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  expireStalePendingTycoonAutosaves,
+  getTycoonAutosaveEventDayKey,
   isTycoonAutosaveEnabled,
+  isTycoonAutosaveTimestampInDay,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   skipPendingTycoonAutosaveForCards,
+  summarizeTycoonAutosaveSaveResults,
   shouldResetLegacyTycoonPendingEvents,
 } = require("./src/engagement/tycoonAccess");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   createUiSessionState,
-  normalizeUiSessionState,
+  shouldResetUiSessionNavigation,
 } = require("./src/utils/uiSessionState");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   resolveFabTutorialCutout,
 } = require("./src/utils/fabTutorialGeometry");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  resolveGoalProgressPercentLabel,
+} = require("./src/utils/goalProgress");
 
 const applyTextScalingDefaults = (Component, componentLabel) => {
   if (!Component) return;
@@ -3707,19 +3722,6 @@ const parseDayKey = (key) => {
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
   return date;
-};
-
-const getTycoonAutosaveEventDayKey = (entry) => {
-  if (!entry || Object(entry) !== entry) return "";
-  const storedDayKey = resolveNonEmptyString(entry.dayKey);
-  if (storedDayKey && parseDayKey(storedDayKey)) return storedDayKey;
-  const timestamp =
-    Number(entry.timerWindowEnd) ||
-    Number(entry.confirmedAt) ||
-    Number(entry.skippedAt) ||
-    Number(entry.createdAt) ||
-    0;
-  return timestamp > 0 ? getDayKey(timestamp) : "";
 };
 
 const createDailySaveLimitState = (dayKey = getDayKey(Date.now()), count = 0) => {
@@ -17864,6 +17866,7 @@ const FeedTemptationSectionHeader = React.memo(function FeedTemptationSectionHea
 
 const TemptationSeriesProgressCard = React.memo(function TemptationSeriesProgressCard({
   series,
+  previewPlan = null,
   colors,
   isDarkMode = false,
   t,
@@ -17871,8 +17874,7 @@ const TemptationSeriesProgressCard = React.memo(function TemptationSeriesProgres
   onOpenChest,
 }) {
   const normalized = normalizeTemptationSeriesState(series);
-  if (normalized.status === TEMPTATION_SERIES_STATUS.IDLE) return null;
-  const progress = getTemptationSeriesProgress(normalized);
+  const progress = getTemptationSeriesDisplayProgress(normalized, previewPlan);
   const progressRatio = progress.total > 0 ? Math.min(1, progress.completed / progress.total) : 0;
   const ready = normalized.status === TEMPTATION_SERIES_STATUS.READY;
   const claimed = normalized.status === TEMPTATION_SERIES_STATUS.CLAIMED;
@@ -22193,7 +22195,10 @@ const SavingsHeroCard = forwardRef(function SavingsHeroCard({
               secondaryAccent="#66B8F7"
               coinColors={goalCoinColors}
               showProgressMarker
-              progressLabel={`${Math.round(displayGoalProgress * 100)}%`}
+              progressLabel={`${resolveGoalProgressPercentLabel(
+                displayGoalProgress,
+                isGoalComplete
+              )}%`}
               isDarkTheme={isDarkMode}
               style={!expanded ? styles.goalJarHeroGraphicCollapsed : null}
             />
@@ -28203,6 +28208,8 @@ function TycoonAutosaveModal({
   const amountSliderTrackPageXRef = useRef(0);
   const amountSliderTrackRef = useRef(null);
   const isDarkTheme = colors?.background === THEMES.dark.background;
+  const savedTextColor = colors?.success || SAVE_ACTION_COLOR;
+  const spentTextColor = colors?.error || SPEND_ACTION_COLOR;
   const activeEvent = useMemo(
     () => (Array.isArray(events) ? events.find((entry) => entry?.id === expandedEventId) : null),
     [events, expandedEventId]
@@ -28336,17 +28343,12 @@ function TycoonAutosaveModal({
           ]}
         >
           <View style={styles.tycoonAutosaveHeader}>
-            <View style={styles.tycoonAutosaveHeaderText}>
-              <Text style={[styles.tycoonAutosaveTitle, { color: colors.text }]}>
-                {t("tycoonAutosaveTitle")}
-              </Text>
-              <Text style={[styles.tycoonAutosaveSubtitle, { color: colors.muted }]}>
-                {t("tycoonAutosaveSubtitle")}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.tycoonAutosaveClose} onPress={onClose}>
-              <Text style={[styles.tycoonAutosaveCloseText, { color: colors.muted }]}>×</Text>
-            </TouchableOpacity>
+            <Text style={[styles.tycoonAutosaveTitle, { color: colors.text }]}>
+              {t("tycoonAutosaveTitle")}
+            </Text>
+            <Text style={[styles.tycoonAutosaveSubtitle, { color: colors.muted }]}>
+              {t("tycoonAutosaveSubtitle")}
+            </Text>
           </View>
           {showReviewWarning ? (
             <View
@@ -28367,16 +28369,40 @@ function TycoonAutosaveModal({
             </View>
           ) : null}
           <View style={styles.tycoonAutosaveTotals}>
-            <View style={[styles.tycoonAutosaveTotalPill, { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.14) }]}>
-              <Text style={[styles.tycoonAutosaveTotalText, { color: SAVE_ACTION_COLOR }]}>
+            <View
+              style={[
+                styles.tycoonAutosaveTotalPill,
+                {
+                  borderColor: colorWithAlpha(savedTextColor, 0.34),
+                  backgroundColor: colorWithAlpha(savedTextColor, isDarkTheme ? 0.18 : 0.1),
+                },
+              ]}
+            >
+              <Text style={[styles.tycoonAutosaveTotalText, { color: savedTextColor }]}>
                 {t("tycoonAutosaveSavedTotal", { amount: savedLabel })}
               </Text>
             </View>
-            <View style={[styles.tycoonAutosaveTotalPill, { backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.12) }]}>
-              <Text style={[styles.tycoonAutosaveTotalText, { color: SPEND_ACTION_COLOR }]}>
+            <View
+              style={[
+                styles.tycoonAutosaveTotalPill,
+                {
+                  borderColor: colorWithAlpha(spentTextColor, 0.34),
+                  backgroundColor: colorWithAlpha(spentTextColor, isDarkTheme ? 0.18 : 0.09),
+                },
+              ]}
+            >
+              <Text style={[styles.tycoonAutosaveTotalText, { color: spentTextColor }]}>
                 {t("tycoonAutosaveSpentTotal", { amount: spentLabel })}
               </Text>
             </View>
+          </View>
+          <View style={styles.tycoonAutosaveListHeader}>
+            <Text style={[styles.tycoonAutosaveListTitle, { color: colors.text }]}>
+              {t("tycoonAutosaveCardsTitle", { count: events.length })}
+            </Text>
+            <Text style={[styles.tycoonAutosaveListHint, { color: colors.muted }]}>
+              {t("tycoonAutosaveCardsHint")}
+            </Text>
           </View>
           <ScrollView style={styles.tycoonAutosaveList} contentContainerStyle={styles.tycoonAutosaveListContent}>
             {events.map((entry) => {
@@ -28389,23 +28415,33 @@ function TycoonAutosaveModal({
               const sliderFillWidth = Math.max(0, Math.min(amountSliderTrackWidth, amountSliderTrackWidth * sliderValue));
               const sliderThumbTranslate = Math.max(0, Math.min(amountSliderTrackWidth - 22, amountSliderTrackWidth * sliderValue - 11));
               const sliderMaxLabel = formatCurrency(convertToCurrency(sliderMaxUSD, currency), currency);
-              const itemAccent = spent ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR;
+              const itemAccent = spent ? spentTextColor : savedTextColor;
               return (
-                <Pressable
+                <View
                   key={entry.id}
-                  onPress={() => setExpandedEventId((current) => (current === entry.id ? null : entry.id))}
                   style={[
                     styles.tycoonAutosaveItem,
                     expanded && styles.tycoonAutosaveItemExpanded,
                     {
-                      borderColor: spent ? colorWithAlpha(SPEND_ACTION_COLOR, 0.5) : colorWithAlpha(SAVE_ACTION_COLOR, 0.46),
+                      borderColor: spent
+                        ? colorWithAlpha(spentTextColor, 0.5)
+                        : colorWithAlpha(savedTextColor, 0.46),
                       backgroundColor: spent
-                        ? colorWithAlpha(SPEND_ACTION_COLOR, isDarkTheme ? 0.22 : 0.11)
-                        : colorWithAlpha(SAVE_ACTION_COLOR, isDarkTheme ? 0.22 : 0.11),
+                        ? colorWithAlpha(spentTextColor, isDarkTheme ? 0.22 : 0.11)
+                        : colorWithAlpha(savedTextColor, isDarkTheme ? 0.22 : 0.11),
                     },
                   ]}
                 >
-                  <View style={styles.tycoonAutosaveItemMain}>
+                  <Pressable
+                    style={styles.tycoonAutosaveItemMain}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("tycoonAutosaveAdjustAmountA11y", {
+                      title: entry.title,
+                      amount: amountLabel,
+                    })}
+                    accessibilityState={{ expanded }}
+                    onPress={() => setExpandedEventId((current) => (current === entry.id ? null : entry.id))}
+                  >
                     <View style={[styles.tycoonAutosaveItemIcon, { backgroundColor: colorWithAlpha(itemAccent, 0.16) }]}>
                       <Text style={styles.tycoonAutosaveItemEmoji}>{entry.emoji || DEFAULT_TEMPTATION_EMOJI}</Text>
                     </View>
@@ -28417,58 +28453,100 @@ function TycoonAutosaveModal({
                         {amountLabel}
                       </Text>
                     </View>
+                    <View
+                      style={[
+                        styles.tycoonAutosaveAmountDisclosure,
+                        {
+                          borderColor: colorWithAlpha(itemAccent, 0.32),
+                          backgroundColor: colorWithAlpha(itemAccent, isDarkTheme ? 0.16 : 0.08),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.tycoonAutosaveAmountDisclosureText, { color: itemAccent }]}>
+                        {t(expanded ? "tycoonAutosaveHideAmount" : "tycoonAutosaveAdjustAmount")}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <View style={styles.tycoonAutosaveDecisionBlock}>
+                    <Text style={[styles.tycoonAutosaveDecisionLabel, { color: colors.muted }]}>
+                      {t("tycoonAutosaveDecisionLabel")}
+                    </Text>
+                    <View
+                      style={[
+                        styles.tycoonAutosaveDecisionControl,
+                        { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.1 : 0.05) },
+                      ]}
+                      accessibilityRole="radiogroup"
+                    >
+                      <TouchableOpacity
+                        style={[
+                          styles.tycoonAutosaveDecisionOption,
+                          !spent && {
+                            borderColor: colorWithAlpha(savedTextColor, 0.48),
+                            backgroundColor: colorWithAlpha(savedTextColor, isDarkTheme ? 0.2 : 0.12),
+                          },
+                        ]}
+                        activeOpacity={0.82}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: !spent }}
+                        accessibilityLabel={t("tycoonAutosaveSwitchSaved")}
+                        onPress={() => {
+                          if (spent) onToggleSpent?.(entry.id);
+                        }}
+                      >
+                        <View
+                          style={[
+                            styles.tycoonAutosaveDecisionDot,
+                            {
+                              borderColor: !spent ? savedTextColor : colors.muted,
+                              backgroundColor: !spent ? savedTextColor : "transparent",
+                            },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.tycoonAutosaveDecisionText,
+                            { color: !spent ? savedTextColor : colors.muted },
+                          ]}
+                        >
+                          {t("tycoonAutosaveSwitchSaved")}
+                        </Text>
+                      </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.tycoonAutosaveSwitch,
-                        { backgroundColor: spent ? SPEND_ACTION_COLOR : SAVE_ACTION_COLOR },
+                        styles.tycoonAutosaveDecisionOption,
+                        spent && {
+                          borderColor: colorWithAlpha(spentTextColor, 0.48),
+                          backgroundColor: colorWithAlpha(spentTextColor, isDarkTheme ? 0.2 : 0.11),
+                        },
                       ]}
-                      activeOpacity={0.85}
-                      accessibilityRole="switch"
+                      activeOpacity={0.82}
+                      accessibilityRole="radio"
                       accessibilityState={{ checked: spent }}
-                      accessibilityLabel={
-                        spent ? t("tycoonAutosaveSwitchSpent") : t("tycoonAutosaveSwitchSaved")
-                      }
-                      onPress={(event) => {
-                        event?.stopPropagation?.();
-                        onToggleSpent?.(entry.id);
+                      accessibilityLabel={t("tycoonAutosaveSwitchSpent")}
+                      onPress={() => {
+                        if (!spent) onToggleSpent?.(entry.id);
                       }}
                     >
-                      <Animated.View
+                      <View
                         style={[
-                          styles.tycoonAutosaveSwitchThumb,
-                          { transform: [{ translateX: spent ? 40 : 0 }] },
+                          styles.tycoonAutosaveDecisionDot,
+                          {
+                            borderColor: spent ? spentTextColor : colors.muted,
+                            backgroundColor: spent ? spentTextColor : "transparent",
+                          },
                         ]}
                       />
                       <Text
                         style={[
-                          styles.tycoonAutosaveSwitchText,
-                          spent ? styles.tycoonAutosaveSwitchTextSaveSide : styles.tycoonAutosaveSwitchTextSpendSide,
+                          styles.tycoonAutosaveDecisionText,
+                          { color: spent ? spentTextColor : colors.muted },
                         ]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.72}
-                        allowFontScaling={false}
                       >
-                        {spent ? t("tycoonAutosaveSwitchSpent") : t("tycoonAutosaveSwitchSaved")}
+                        {t("tycoonAutosaveSwitchSpent")}
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.tycoonAutosaveExclude,
-                        {
-                          backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.16 : 0.08),
-                          borderColor: colorWithAlpha(colors.text, isDarkTheme ? 0.16 : 0.1),
-                        },
-                      ]}
-                      activeOpacity={0.82}
-                      accessibilityLabel={t("tycoonAutosaveExclude")}
-                      onPress={(event) => {
-                        event?.stopPropagation?.();
-                        onExclude?.(entry.id);
-                      }}
-                    >
-                      <Text style={[styles.tycoonAutosaveExcludeText, { color: colors.muted }]}>×</Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                   {expanded ? (
                     <Pressable
@@ -28476,11 +28554,16 @@ function TycoonAutosaveModal({
                       onPress={(event) => event?.stopPropagation?.()}
                     >
                       <View style={styles.tycoonAutosaveAmountHeader}>
-                        <Text style={[styles.tycoonAutosaveAmountValue, { color: colors.text }]}>
-                          {amountLabel}
-                        </Text>
+                        <View>
+                          <Text style={[styles.tycoonAutosaveAmountLabel, { color: colors.muted }]}>
+                            {t("tycoonAutosaveAmountLabel")}
+                          </Text>
+                          <Text style={[styles.tycoonAutosaveAmountValue, { color: colors.text }]}>
+                            {amountLabel}
+                          </Text>
+                        </View>
                         <Text style={[styles.tycoonAutosaveAmountLimit, { color: colors.muted }]}>
-                          {sliderMaxLabel}
+                          {t("tycoonAutosaveAmountLimit", { amount: sliderMaxLabel })}
                         </Text>
                       </View>
                       <View style={styles.tycoonAutosaveAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
@@ -28521,10 +28604,29 @@ function TycoonAutosaveModal({
                       </View>
                     </Pressable>
                   ) : null}
-                </Pressable>
+                  <TouchableOpacity
+                    style={styles.tycoonAutosaveExclude}
+                    activeOpacity={0.76}
+                    accessibilityLabel={t("tycoonAutosaveExclude")}
+                    onPress={() => onExclude?.(entry.id)}
+                  >
+                    <Text style={[styles.tycoonAutosaveExcludeText, { color: colors.muted }]}>
+                      {t("tycoonAutosaveExclude")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </ScrollView>
+          <TouchableOpacity
+            style={[styles.tycoonAutosaveConfirm, { backgroundColor: colors.text }]}
+            activeOpacity={0.84}
+            onPress={onConfirm}
+          >
+            <Text style={[styles.tycoonAutosaveConfirmText, { color: colors.background }]}>
+              {t("tycoonAutosaveConfirm")}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.tycoonAutosaveLater,
@@ -28532,13 +28634,20 @@ function TycoonAutosaveModal({
             ]}
             onPress={onSnooze}
           >
-            <Text style={[styles.tycoonAutosaveLaterText, { color: colors.muted }]}>
+            <Text style={[styles.tycoonAutosaveLaterText, { color: colors.text }]}>
               {t("tycoonAutosaveLater")}
             </Text>
+            <Text style={[styles.tycoonAutosaveLaterHint, { color: colors.muted }]}>
+              {t("tycoonAutosaveLaterHint")}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tycoonAutosaveConfirm, { backgroundColor: colors.text }]} onPress={onConfirm}>
-            <Text style={[styles.tycoonAutosaveConfirmText, { color: colors.background }]}>
-              {t("tycoonAutosaveConfirm")}
+          <TouchableOpacity
+            style={styles.tycoonAutosaveCloseAction}
+            activeOpacity={0.72}
+            onPress={onClose}
+          >
+            <Text style={[styles.tycoonAutosaveCloseActionText, { color: colors.muted }]}>
+              {t("tycoonAutosaveClose")}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -28858,8 +28967,12 @@ const FeedScreen = React.memo(
     };
   }, [todayTemptationPlan]);
   const temptationSeriesProgress = useMemo(
-    () => getTemptationSeriesProgress(normalizedTemptationSeries),
-    [normalizedTemptationSeries]
+    () =>
+      getTemptationSeriesDisplayProgress(
+        normalizedTemptationSeries,
+        normalizedTodayTemptationPlan
+      ),
+    [normalizedTemptationSeries, normalizedTodayTemptationPlan]
   );
   const [seriesNotMineItem, setSeriesNotMineItem] = useState(null);
   const dailyRewardModalRef = useRef(null);
@@ -31413,7 +31526,7 @@ const FeedScreen = React.memo(
     previousSavedTotal.current = savedTotalUSD;
   }, [savedTotalUSD, tierInfo.level, tierInfo.nextTargetCount, profile.goal, profile.primaryGoals]);
   const progressPercent = Math.min(Math.max(goalProgress, 0), 1);
-  const progressPercentLabel = Math.round(progressPercent * 100);
+  const progressPercentLabel = resolveGoalProgressPercentLabel(progressPercent, isGoalComplete);
   const levelLabel = t("progressHeroLevel", { level: tierInfo.level });
   const compactLevelLabel = t("progressHeroLevelCompact", { level: tierInfo.level });
   const usageStreakCount = Math.max(0, Number(usageStreak?.current) || 0);
@@ -33728,6 +33841,7 @@ const FeedScreen = React.memo(
           </View>
           <TemptationSeriesProgressCard
             series={normalizedTemptationSeries}
+            previewPlan={normalizedTodayTemptationPlan}
             colors={colors}
             isDarkMode={isDarkMode}
             t={t}
@@ -46107,292 +46221,303 @@ const RewardsScreen = React.memo(function RewardsScreen({
   );
 });
 
-const BudgetMoneyPile = React.memo(function BudgetMoneyPile({
+const BudgetLineIcon = React.memo(function BudgetLineIcon({
+  name = "wallet",
+  color = "#202129",
+  size = 24,
+}) {
+  const strokeWidth = 1.9;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {name === "bank" ? (
+        <>
+          <SvgPath d="M3.5 9h17L12 3.7 3.5 9Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgPath d="M5.5 10.5v6.2M9.8 10.5v6.2M14.2 10.5v6.2M18.5 10.5v6.2M3.5 19.2h17" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+        </>
+      ) : name === "camera" ? (
+        <>
+          <SvgPath d="M4.2 7.8h3l1.4-2h6.8l1.4 2h3v10.4H4.2V7.8Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgCircle cx="12" cy="13" r="3.1" stroke={color} strokeWidth={strokeWidth} />
+        </>
+      ) : name === "check" ? (
+        <>
+          <SvgPath d="M12 3.8 19 6.4v5.2c0 4.2-2.7 7.3-7 8.6-4.3-1.3-7-4.4-7-8.6V6.4L12 3.8Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgPath d="m8.7 12 2.1 2.1 4.5-4.6" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : name === "debt" ? (
+        <>
+          <SvgPath d="M6 3.8h9.3l2.7 2.7v13.7H6V3.8Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgPath d="M15.2 3.9v3h2.7M8.8 10.1h6.4M8.8 13.4h4.7M14.8 15.8v4.4m0 0-2-2m2 2 2-2" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : (
+        <>
+          <SvgPath d="M4 7.2h13.3c1.5 0 2.7 1.2 2.7 2.7v7.4H4V7.2Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgPath d="M4.2 7.1 15 4.3c1-.3 1.9.5 1.9 1.5v1.3M15.4 11.1H20v3.2h-4.6a1.6 1.6 0 1 1 0-3.2Z" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+          <SvgCircle cx="16.2" cy="12.7" r=".65" fill={color} />
+        </>
+      )}
+    </Svg>
+  );
+});
+
+const BudgetFocusArt = React.memo(function BudgetFocusArt({
+  variant = "savings",
   amountUSD = 0,
   baselineAmountUSD = 0,
-  variant = "savings",
+  accent = SAVE_ACTION_COLOR,
+  colors,
   eventKey = "",
+  debtInitialLabel = "",
+  debtGoalLabel = "",
+  debtPaidLabel = "",
+  emptyTitle = "",
+  emptyBody = "",
+  onEmptyPress = null,
 }) {
   const isDebt = variant === "debt";
   const { reduceMotion } = useMotionPreferences();
-  const pulse = useRef(new Animated.Value(0)).current;
-  const fallAnim = useRef(new Animated.Value(1)).current;
-  const removeAnim = useRef(new Animated.Value(1)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
+  const firstCoinDrop = useRef(new Animated.Value(0)).current;
+  const secondCoinDrop = useRef(new Animated.Value(0)).current;
+  const thirdCoinDrop = useRef(new Animated.Value(0)).current;
+  const fourthCoinDrop = useRef(new Animated.Value(0)).current;
   const normalizedAmount = Math.max(0, Number(amountUSD) || 0);
-  const normalizedBaseline = Math.max(0, Number(baselineAmountUSD) || 0);
-  const previousAmountRef = useRef(normalizedAmount);
-  const previousEventKeyRef = useRef(String(eventKey || ""));
-  const [visualAmount, setVisualAmount] = useState(normalizedAmount);
-  const [pileMotion, setPileMotion] = useState(null);
-  const resolvePileCount = useCallback(
-    (valueUSD) => {
-      const value = Math.max(0, Number(valueUSD) || 0);
-      if (value <= 0.01) return 0;
-      if (isDebt) {
-        const baseline = Math.max(normalizedBaseline, value);
-        if (baseline <= 0.01) return 0;
-        const baselineIntensity = Math.min(1, Math.log10(baseline + 1) / 5);
-        const maxDebtBills = Math.round(18 + baselineIntensity * 30);
-        const debtRatio = Math.max(0, Math.min(1, value / baseline));
-        return Math.max(5, Math.min(maxDebtBills, Math.round(maxDebtBills * Math.max(0.1, debtRatio))));
-      }
-      const intensity = Math.min(1, Math.log10(value + 1) / 5);
-      return Math.max(6, Math.min(44, Math.round(6 + intensity * 38)));
-    },
-    [isDebt, normalizedBaseline]
-  );
-  const pileCount = resolvePileCount(visualAmount);
-  const targetPileCount = resolvePileCount(normalizedAmount);
-  const billSpecs = useMemo(
-    () =>
-      Array.from({ length: pileCount }).map((_, index) => {
-        const row = Math.floor(index / 7);
-        const col = index % 7;
-        const centerBias = Math.abs(col - 3);
-        const width = 54 + ((index * 11) % 22);
-        const height = 24 + ((index * 7) % 10);
-        return {
-          id: `budget_bill_${variant}_${index}`,
-          left: `${Math.max(2, Math.min(78, col * 13 + ((index * 17) % 9) - centerBias * 1.8))}%`,
-          bottom: 14 + row * 14 + Math.max(0, 4 - centerBias) * 3 + ((index * 5) % 8),
-          width,
-          height,
-          rotate: `${((index * 37) % 42) - 21}deg`,
-          opacity: 0.72 + ((index * 13) % 24) / 100,
-          zIndex: row * 2 + col,
-        };
-      }),
-    [pileCount, variant]
-  );
-  const targetBillSpecs = useMemo(
-    () =>
-      Array.from({ length: targetPileCount }).map((_, index) => {
-        const row = Math.floor(index / 7);
-        const col = index % 7;
-        const centerBias = Math.abs(col - 3);
-        const width = 54 + ((index * 11) % 22);
-        const height = 24 + ((index * 7) % 10);
-        return {
-          id: `budget_target_bill_${variant}_${index}`,
-          left: `${Math.max(2, Math.min(78, col * 13 + ((index * 17) % 9) - centerBias * 1.8))}%`,
-          bottom: 14 + row * 14 + Math.max(0, 4 - centerBias) * 3 + ((index * 5) % 8),
-          width,
-          height,
-          rotate: `${((index * 37) % 42) - 21}deg`,
-          opacity: 0.72 + ((index * 13) % 24) / 100,
-          zIndex: row * 2 + col + 70,
-        };
-      }),
-    [targetPileCount, variant]
-  );
+  const normalizedBaseline = Math.max(normalizedAmount, Number(baselineAmountUSD) || 0);
+  const savingsProgress =
+    normalizedBaseline > 0
+      ? Math.max(0, Math.min(1, normalizedAmount / normalizedBaseline))
+      : 0;
+  const debtRemainingRatio =
+    normalizedBaseline > 0
+      ? Math.max(0, Math.min(1, normalizedAmount / normalizedBaseline))
+      : 0;
+  const debtPaidRatio = 1 - debtRemainingRatio;
+  const debtPaidPercent = Math.round(debtPaidRatio * 100);
+  const isDebtEmpty = isDebt && normalizedBaseline <= 0;
 
   useEffect(() => {
-    const previousAmount = previousAmountRef.current;
-    const nextEventKey = String(eventKey || "");
-    const eventChanged = previousEventKeyRef.current !== nextEventKey;
-    const amountDelta = normalizedAmount - previousAmount;
-    previousAmountRef.current = normalizedAmount;
-    previousEventKeyRef.current = nextEventKey;
-    let active = true;
     if (reduceMotion) {
       pulse.setValue(1);
-      fallAnim.setValue(1);
-      removeAnim.setValue(1);
-      setVisualAmount(normalizedAmount);
-      setPileMotion(null);
-      return () => {
-        active = false;
-      };
+      return undefined;
     }
-    pulse.setValue(0);
-    const pulseAnimation = Animated.spring(pulse, {
+    pulse.setValue(0.96);
+    const animation = Animated.spring(pulse, {
       toValue: 1,
-      friction: 5,
+      friction: 6,
       tension: 72,
       useNativeDriver: true,
     });
-    pulseAnimation.start();
-    if (!isDebt && amountDelta > 0.01) {
-      setVisualAmount(previousAmount);
-      setPileMotion({ type: "fall", token: nextEventKey || `${Date.now()}` });
-      fallAnim.setValue(0);
-      Animated.timing(fallAnim, {
-        toValue: 1,
-        duration: 760,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (!finished || !active) return;
-        setVisualAmount(normalizedAmount);
-        setPileMotion(null);
-      });
-      return () => {
-        active = false;
-        fallAnim.stopAnimation();
-      };
-    }
-    if (isDebt && amountDelta < -0.01) {
-      setVisualAmount(previousAmount);
-      setPileMotion({ type: "remove", token: nextEventKey || `${Date.now()}` });
-      removeAnim.setValue(0);
-      Animated.timing(removeAnim, {
-        toValue: 1,
-        duration: 620,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (!finished || !active) return;
-        setVisualAmount(normalizedAmount);
-        setPileMotion(null);
-      });
-      return () => {
-        active = false;
-        removeAnim.stopAnimation();
-      };
-    }
-    if (!eventChanged || Math.abs(amountDelta) <= 0.01) {
-      setPileMotion(null);
-    }
-    setVisualAmount(normalizedAmount);
-    return () => {
-      active = false;
-    };
-  }, [eventKey, fallAnim, isDebt, normalizedAmount, pulse, reduceMotion, removeAnim]);
+    animation.start();
+    return () => animation.stop();
+  }, [eventKey, pulse, reduceMotion]);
 
-  const pileScale = pulse.interpolate({
-    inputRange: [0, 0.7, 1],
-    outputRange: [0.96, 1.035, 1],
-  });
-  const fallingBillCount = Math.max(6, Math.min(16, Math.max(targetPileCount - pileCount, Math.ceil(targetPileCount * 0.36))));
-  const removingBillCount = Math.max(4, Math.min(14, Math.max(pileCount - targetPileCount, Math.ceil(pileCount * 0.3))));
-  const fallingBills = targetBillSpecs.slice(-fallingBillCount);
-  const removingBills = billSpecs.slice(-removingBillCount);
-  const fallOpacity = fallAnim.interpolate({
-    inputRange: [0, 0.12, 0.9, 1],
-    outputRange: [0, 1, 1, 0],
-  });
-  const removeOpacity = removeAnim.interpolate({
-    inputRange: [0, 0.36, 1],
-    outputRange: [0.92, 0.78, 0],
-  });
-  const accent = isDebt ? "#D73343" : SAVE_ACTION_COLOR;
-  const softAccent = isDebt ? "#FF7A86" : "#62DFA5";
-  const billFill = isDebt ? "#FFE3E6" : "#DFF9E9";
-  const billStroke = isDebt ? "#C72737" : "#1B8E5D";
-  const shadowColor = isDebt ? "rgba(150,0,20,0.32)" : "rgba(14,104,60,0.28)";
+  useEffect(() => {
+    const drops = [firstCoinDrop, secondCoinDrop, thirdCoinDrop, fourthCoinDrop];
+    drops.forEach((drop) => {
+      drop.stopAnimation();
+      drop.setValue(0);
+    });
+    if (isDebt || reduceMotion) return undefined;
+
+    const buildDrop = (value, delay, duration, rest) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(value, {
+            toValue: 1,
+            duration,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration: 1,
+            useNativeDriver: true,
+          }),
+          Animated.delay(rest),
+        ]),
+        { iterations: -1, resetBeforeIteration: false }
+      );
+    const loops = [
+      buildDrop(firstCoinDrop, 80, 1420, 520),
+      buildDrop(secondCoinDrop, 560, 1580, 280),
+      buildDrop(thirdCoinDrop, 1080, 1480, 360),
+      buildDrop(fourthCoinDrop, 1560, 1660, 220),
+    ];
+    loops.forEach((loop) => loop.start());
+    return () => {
+      loops.forEach((loop) => loop.stop());
+    };
+  }, [firstCoinDrop, fourthCoinDrop, isDebt, reduceMotion, secondCoinDrop, thirdCoinDrop]);
+
+  const renderFallingCoin = (animation, color, horizontalOffset = 0, size = 20) => (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.budgetJarDropCoin,
+        {
+          backgroundColor: color,
+          width: size,
+          height: size,
+          marginLeft: horizontalOffset - size / 2,
+          borderRadius: size / 2,
+          opacity: animation.interpolate({
+            inputRange: [0, 0.08, 0.78, 1],
+            outputRange: [0, 1, 1, 0],
+          }),
+          transform: [
+            {
+              translateY: animation.interpolate({
+                inputRange: [0, 0.78, 1],
+                outputRange: [-54, 34, 46],
+              }),
+            },
+            {
+              translateX: animation.interpolate({
+                inputRange: [0, 0.45, 1],
+                outputRange: [-8, 6, 0],
+              }),
+            },
+            {
+              rotate: animation.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["-18deg", "22deg"],
+              }),
+            },
+            {
+              scale: animation.interpolate({
+                inputRange: [0, 0.72, 1],
+                outputRange: [0.76, 1, 0.82],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.budgetJarDropCoinShine} />
+    </Animated.View>
+  );
 
   return (
-    <View style={styles.budgetPileFrame}>
-      <View
-        style={[
-          styles.budgetPileHalo,
-          {
-            backgroundColor: colorWithAlpha(accent, isDebt ? 0.14 : 0.12),
-            borderColor: colorWithAlpha(softAccent, 0.22),
-          },
-        ]}
-      />
-      <Animated.View style={[styles.budgetPileStage, { transform: [{ scale: pileScale }] }]}>
-        <View style={[styles.budgetPileGround, { backgroundColor: shadowColor }]} />
-        {billSpecs.map((bill) => (
-          <View
-            key={bill.id}
-            style={[
-              styles.budgetBill,
-              {
-                left: bill.left,
-                bottom: bill.bottom,
-                width: bill.width,
-                height: bill.height,
-                opacity: bill.opacity,
-                zIndex: bill.zIndex,
-                backgroundColor: billFill,
-                borderColor: colorWithAlpha(billStroke, 0.42),
-                transform: [{ rotate: bill.rotate }],
-              },
-            ]}
+    <View
+      style={[
+        styles.budgetFocusArtFrame,
+        { backgroundColor: colorWithAlpha(accent, colors?.appearance === "dark" ? 0.1 : 0.045) },
+      ]}
+      accessibilityElementsHidden={!isDebtEmpty}
+      importantForAccessibility={isDebtEmpty ? "auto" : "no-hide-descendants"}
+    >
+      <Animated.View style={[styles.budgetFocusArtStage, { transform: [{ scale: pulse }] }]}>
+        {isDebtEmpty ? (
+          <TouchableOpacity
+            activeOpacity={0.84}
+            onPress={onEmptyPress || undefined}
+            style={styles.budgetDebtEmptyVisual}
+            accessibilityRole="button"
+            accessibilityLabel={emptyTitle}
           >
-            <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
-            <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
+            <View
+              style={[
+                styles.budgetDebtEmptyDocument,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colorWithAlpha(accent, 0.32),
+                },
+              ]}
+            >
+              <BudgetLineIcon name="debt" color={accent} size={34} />
+              <View style={[styles.budgetDebtEmptyPlus, { backgroundColor: accent }]}>
+                <Svg width={14} height={14} viewBox="0 0 14 14">
+                  <SvgPath d="M7 3v8M3 7h8" stroke={resolveForegroundForColor(accent)} strokeWidth="2" strokeLinecap="round" />
+                </Svg>
+              </View>
+            </View>
+            <View style={styles.budgetDebtEmptyCopy}>
+              <Text style={[styles.budgetDebtEmptyTitle, { color: colors.text }]}>{emptyTitle}</Text>
+              <Text style={[styles.budgetDebtEmptyBody, { color: colors.muted }]} numberOfLines={2}>
+                {emptyBody}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : isDebt ? (
+          <View style={styles.budgetDebtMeter}>
+            <View style={styles.budgetDebtMeterSummary}>
+              <View
+                style={[
+                  styles.budgetDebtMeterIcon,
+                  {
+                    backgroundColor: colorWithAlpha(accent, colors?.appearance === "dark" ? 0.18 : 0.1),
+                    borderColor: colorWithAlpha(accent, 0.26),
+                  },
+                ]}
+              >
+                <BudgetLineIcon name="debt" color={accent} size={25} />
+              </View>
+              <View style={styles.budgetDebtMeterCopy}>
+                <Text style={[styles.budgetDebtMeterLabel, { color: colors.muted }]}>{debtPaidLabel}</Text>
+                <Text style={[styles.budgetDebtMeterPercent, { color: colors.text }]}>{debtPaidPercent}%</Text>
+              </View>
+            </View>
+            <View style={[styles.budgetDebtTrack, { backgroundColor: colorWithAlpha(accent, 0.14) }]}>
+              <View
+                style={[
+                  styles.budgetDebtTrackRemaining,
+                  {
+                    width: `${Math.max(0, Math.min(100, debtPaidRatio * 100))}%`,
+                    backgroundColor: accent,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.budgetDebtTrackMarker,
+                  {
+                    left: `${Math.max(0, Math.min(100, debtPaidRatio * 100))}%`,
+                    backgroundColor: colors.card,
+                    borderColor: accent,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.budgetDebtMeterEndpoints}>
+              <Text style={[styles.budgetDebtMeterEndpoint, { color: colors.muted }]} numberOfLines={1}>
+                {debtInitialLabel}
+              </Text>
+              <Text style={[styles.budgetDebtMeterEndpoint, styles.budgetDebtMeterEndpointGoal, { color: colors.muted }]} numberOfLines={1}>
+                {debtGoalLabel}
+              </Text>
+            </View>
           </View>
-        ))}
-        {pileMotion?.type === "fall"
-          ? fallingBills.map((bill, index) => (
-              <Animated.View
-                key={`${pileMotion.token}_${bill.id}_fall_${index}`}
-                pointerEvents="none"
-                style={[
-                  styles.budgetBill,
-                  {
-                    left: bill.left,
-                    bottom: bill.bottom,
-                    width: bill.width,
-                    height: bill.height,
-                    opacity: fallOpacity,
-                    zIndex: bill.zIndex + 90,
-                    backgroundColor: billFill,
-                    borderColor: colorWithAlpha(billStroke, 0.42),
-                    transform: [
-                      {
-                        translateY: fallAnim.interpolate({
-                          inputRange: [0, 0.78, 1],
-                          outputRange: [-190 - (index % 3 === 0 ? 24 : 0), -12, 0],
-                        }),
-                      },
-                      { rotate: bill.rotate },
-                    ],
-                  },
-                ]}
-              >
-                <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
-                <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
-              </Animated.View>
-            ))
-          : null}
-        {pileMotion?.type === "remove"
-          ? removingBills.map((bill, index) => (
-              <Animated.View
-                key={`${pileMotion.token}_${bill.id}_remove_${index}`}
-                pointerEvents="none"
-                style={[
-                  styles.budgetBill,
-                  {
-                    left: bill.left,
-                    bottom: bill.bottom,
-                    width: bill.width,
-                    height: bill.height,
-                    opacity: removeOpacity,
-                    zIndex: bill.zIndex + 110,
-                    backgroundColor: billFill,
-                    borderColor: colorWithAlpha(billStroke, 0.42),
-                    transform: [
-                      {
-                        translateY: removeAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [index % 2 === 0 ? -8 : -22, -92],
-                        }),
-                      },
-                      { rotate: bill.rotate },
-                      { scale: removeAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.82] }) },
-                    ],
-                  },
-                ]}
-              >
-                <View style={[styles.budgetBillStripe, { backgroundColor: colorWithAlpha(billStroke, 0.16) }]} />
-                <View style={[styles.budgetBillSeal, { borderColor: colorWithAlpha(billStroke, 0.36) }]} />
-              </Animated.View>
-            ))
-          : null}
-        <View
-          style={[
-            styles.budgetPileFrontGlow,
-            { backgroundColor: colorWithAlpha(softAccent, isDebt ? 0.18 : 0.16) },
-          ]}
-        />
+        ) : (
+          <View style={styles.budgetJarStage}>
+            <GoalJarGraphic
+              progress={savingsProgress}
+              width={IS_SHORT_DEVICE ? 104 : 112}
+              height={IS_SHORT_DEVICE ? 118 : 128}
+              accent={accent}
+              secondaryAccent="#66B8F7"
+              showProgressMarker={false}
+              isDarkTheme={colors?.appearance === "dark"}
+            />
+            {renderFallingCoin(firstCoinDrop, accent, -12)}
+            {renderFallingCoin(secondCoinDrop, "#66B8F7", 15, 18)}
+            {renderFallingCoin(thirdCoinDrop, lightenColor(accent, 0.18), 3, 16)}
+            {renderFallingCoin(fourthCoinDrop, "#8EC9F8", -24, 19)}
+          </View>
+        )}
       </Animated.View>
     </View>
   );
 });
+
+/*
+THESIS: Budget turns a logged save into one verified real-world action and refuses the old abstract bill pile.
+OWN-WORLD: Almost's cool light ground, white soft surfaces, bold Inter hierarchy, restrained borders, the exact Save/Spend action palette, the Hero Widget jar, and Almi helper.
+STORY: See what is ready, focus Savings or Debt, transfer outside Almost, attach proof, and read the verified result.
+FIRST VIEWPORT: A compact available amount leads to a compact destination segment, one explanatory progress visual, its essential metrics, and the confirmation action without initial scrolling.
+FORM: Single destination in focus, grounded structure 7, seed aaf0e7f1.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+*/
 
 const BudgetScreen = React.memo(function BudgetScreen({
   ledger = INITIAL_BUDGET_LEDGER,
@@ -46409,6 +46534,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
   contentBottomPadding = 0,
   topInset = 0,
 }) {
+  const budgetSafeInsets = safeUseSafeAreaInsets();
   const normalizedLedger = useMemo(() => normalizeBudgetLedger(ledger), [ledger]);
   const [pane, setPane] = useState("savings");
   const [transferDraft, setTransferDraft] = useState({
@@ -46438,13 +46564,20 @@ const BudgetScreen = React.memo(function BudgetScreen({
   const debtRemainingUSD = Math.max(0, initialDebtUSD - debtPaidUSD);
   const availableUSD = Math.max(0, Number(availableToAllocateUSD) || 0);
   const isDarkTheme = colors.background === THEMES.dark.background;
-  const savingsAccent = colors.success || SAVE_ACTION_COLOR;
-  const debtAccent = colors.error || SPEND_ACTION_COLOR;
+  const budgetActionPalette = resolveTemptationActionButtonPalette(isDarkTheme);
+  const savingsAccent = budgetActionPalette.saveBackground;
+  const debtAccent = budgetActionPalette.spendBackground;
   const paneAccent = pane === "debt" ? debtAccent : savingsAccent;
-  const paneActionForeground = resolveForegroundForColor(paneAccent);
+  const paneActionForeground =
+    pane === "debt"
+      ? budgetActionPalette.spendForeground
+      : budgetActionPalette.saveForeground;
   const paneSoftSurface = colorWithAlpha(paneAccent, isDarkTheme ? 0.16 : 0.08);
   const transferAccent = transferDraft.type === "debt" ? debtAccent : savingsAccent;
-  const transferActionForeground = resolveForegroundForColor(transferAccent);
+  const transferActionForeground =
+    transferDraft.type === "debt"
+      ? budgetActionPalette.spendForeground
+      : budgetActionPalette.saveForeground;
   const settingsAccent = colors.primary || colors.text;
   const settingsActionForeground =
     colors.onPrimary || resolveForegroundForColor(settingsAccent);
@@ -46700,18 +46833,12 @@ const BudgetScreen = React.memo(function BudgetScreen({
     { id: "debt", label: copy("budgetDebtTab", "Debt") },
   ];
   const currentTotalUSD = pane === "debt" ? debtRemainingUSD : savingsTotalUSD;
-  const statusRows =
+  const focusStats =
     pane === "debt"
       ? [
           {
             label: copy("budgetDebtPaidLabel", "Paid"),
             value: formatLocalAmount(debtPaidUSD),
-          },
-          {
-            label: copy("budgetDebtMonthlyLabel", "Monthly from refusals"),
-            value: recommendedMonthlyUSD
-              ? formatLocalAmount(recommendedMonthlyUSD)
-              : copy("reportsEmptyShort", "No data"),
           },
           {
             label: copy("budgetDebtPayoffLabel", "Payoff"),
@@ -46729,16 +46856,27 @@ const BudgetScreen = React.memo(function BudgetScreen({
             value: formatLocalAmount(savedTotalUSD),
           },
           {
-            label: copy("budgetAvailableLabel", "Available"),
-            value: formatLocalAmount(availableUSD),
-          },
-          {
             label: copy("budgetLastTransferLabel", "Last transfer"),
             value: latestTransfer
               ? formatLocalAmount(latestTransfer.amountUSD)
               : copy("reportsEmptyShort", "No data"),
           },
         ];
+  const focusAmountLabel =
+    pane === "debt"
+      ? copy("budgetDebtRemainingLabel", "remaining")
+      : copy("budgetSavingsTransferredLabel", "transferred");
+  const primaryActionLabel =
+    pane === "debt"
+      ? initialDebtUSD > 0
+        ? copy("budgetDebtTransferTitle", "Confirm debt payment")
+        : copy("budgetDebtSetupTitle", "Set your debt amount")
+      : copy("budgetSavingsTransferTitle", "Confirm savings transfer");
+  const guideSteps = [
+    { id: "bank", icon: "bank", label: copy("budgetGuideBankStep", "Transfer in your bank") },
+    { id: "proof", icon: "camera", label: copy("budgetGuideProofStep", "Add a screenshot") },
+    { id: "verify", icon: "check", label: copy("budgetGuideVerifyStep", "Almost checks the amount") },
+  ];
 
   return (
     <>
@@ -46748,22 +46886,59 @@ const BudgetScreen = React.memo(function BudgetScreen({
           styles.container,
           {
             backgroundColor: colors.background,
-            paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+            paddingTop: Math.max(0, Number(topInset) || 0) + UI_TOUCH_TARGET.current,
           },
         ]}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         contentContainerStyle={{
           paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
-          gap: IS_SHORT_DEVICE ? 10 : 12,
+          gap: UI_SPACING.xs,
         }}
         showsVerticalScrollIndicator
       >
-        <View>
-          <Text style={[styles.header, { color: colors.text }]}>{t("purchasesTitle")}</Text>
-          <Text style={[styles.purchasesSubtitle, { color: colors.muted }]}>
+        <View style={styles.budgetHeaderBlock}>
+          <Text style={[styles.header, styles.budgetHeaderTitle, { color: colors.text }]}>
+            {t("purchasesTitle")}
+          </Text>
+          <Text style={[styles.purchasesSubtitle, styles.budgetHeaderSubtitle, { color: colors.muted }]}>
             {t("purchasesSubtitle")}
           </Text>
+        </View>
+        <View
+          style={[
+            styles.budgetAvailableCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: colors.shadow || "#000000",
+            },
+          ]}
+        >
+          <View style={styles.budgetAvailableCopy}>
+            <Text style={[styles.budgetAvailableLabel, { color: colors.muted }]}>
+              {copy("budgetAvailableToAllocateLabel", "Available to allocate")}
+            </Text>
+            <Text
+              style={[styles.budgetAvailableAmount, { color: colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {formatLocalAmount(availableUSD)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.budgetAvailableIcon,
+              {
+                backgroundColor: colors.surfaceMuted || colors.background,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <BudgetLineIcon name="wallet" color={colors.text} size={26} />
+          </View>
         </View>
         <View
           style={[styles.budgetPaneTabs, { backgroundColor: colors.surfaceMuted || colors.card }]}
@@ -46779,8 +46954,8 @@ const BudgetScreen = React.memo(function BudgetScreen({
                 style={[
                   styles.budgetPaneTabButton,
                   {
-                    backgroundColor: active ? paneAccent : "transparent",
-                    borderColor: active ? paneAccent : "transparent",
+                    backgroundColor: active ? colors.text : "transparent",
+                    borderColor: active ? colors.text : "transparent",
                   },
                 ]}
                 accessibilityRole="tab"
@@ -46790,7 +46965,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                 <Text
                   style={[
                     styles.budgetPaneTabText,
-                    { color: active ? paneActionForeground : colors.text },
+                    { color: active ? colors.background : colors.text },
                   ]}
                 >
                   {item.label}
@@ -46801,98 +46976,103 @@ const BudgetScreen = React.memo(function BudgetScreen({
         </View>
         <View
           style={[
-            styles.budgetVaultCard,
+            styles.budgetFocusCard,
             {
-              backgroundColor: pane === "debt" ? paneSoftSurface : colors.card,
-              borderColor: colorWithAlpha(paneAccent, isDarkTheme ? 0.4 : 0.24),
+              backgroundColor: colors.card,
+              borderColor: colorWithAlpha(paneAccent, isDarkTheme ? 0.38 : 0.2),
+              shadowColor: colors.shadow || "#000000",
             },
           ]}
         >
-          <Text style={[styles.budgetVaultKicker, { color: paneAccent }]}>
-            {pane === "debt"
-              ? copy("budgetDebtKicker", "Debt pressure")
-              : copy("budgetSavingsKicker", "Real savings pile")}
-          </Text>
-          <Text
-            style={[
-              styles.budgetVaultAmount,
-              { color: colors.text },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.72}
-          >
-            {formatLocalAmount(currentTotalUSD)}
-          </Text>
-          <BudgetMoneyPile
-            key={`budget-pile-${pane}`}
-            amountUSD={currentTotalUSD}
-            baselineAmountUSD={pane === "debt" ? initialDebtUSD : savingsTotalUSD}
-            variant={pane}
-            eventKey={`${pane}_${latestTransfer?.id || ""}_${latestTransfer?.createdAt || 0}_${currentTotalUSD}`}
-          />
-          <Text style={[styles.budgetVaultCaption, { color: colors.muted }]}>
-            {pane === "debt"
-              ? copy(
-                  "budgetDebtCaption",
-                  "Each confirmed payment shrinks the red pile. The recommendation uses your last 30 days of resisted temptations."
-                )
-              : copy(
-                  "budgetSavingsCaption",
-                  "Confirmed transfers turn logged savings into money parked on your real savings account."
-                )}
-          </Text>
-        </View>
-        <View
-          style={[
-            styles.budgetSummaryPanel,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          {statusRows.map((row, index) => (
-            <View
-              key={row.label}
-              style={[
-                styles.budgetSummaryRow,
-                index < statusRows.length - 1
-                  ? { borderBottomColor: colors.separator || colors.border }
-                  : { borderBottomWidth: 0 },
-              ]}
-            >
-              <Text style={[styles.budgetSummaryLabel, { color: colors.muted }]}>{row.label}</Text>
-              <Text
-                style={[styles.budgetSummaryValue, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.78}
+          <View style={styles.budgetFocusHeader}>
+            <View style={styles.budgetFocusTitleRow}>
+              <View
+                style={[
+                  styles.budgetFocusTitleIcon,
+                  { backgroundColor: paneSoftSurface, borderColor: colorWithAlpha(paneAccent, 0.18) },
+                ]}
               >
-                {row.value}
+                <BudgetLineIcon
+                  name={pane === "debt" ? "debt" : "wallet"}
+                  color={paneAccent}
+                  size={22}
+                />
+              </View>
+              <Text style={[styles.budgetFocusTitle, { color: colors.text }]}>
+                {paneItems.find((item) => item.id === pane)?.label}
               </Text>
             </View>
-          ))}
+            {pane === "debt" && initialDebtUSD > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.82}
+                onPress={openDebtSettings}
+                style={[styles.budgetFocusEditButton, { borderColor: colors.border }]}
+                accessibilityRole="button"
+                accessibilityLabel={copy("budgetDebtEditButton", "Edit debt plan")}
+              >
+                <Text style={[styles.budgetFocusEditText, { color: colors.text }]}>
+                  {copy("budgetDebtEditButton", "Edit debt plan")}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <BudgetFocusArt
+            key={`budget-focus-art-${pane}`}
+            variant={pane}
+            amountUSD={currentTotalUSD}
+            baselineAmountUSD={pane === "debt" ? initialDebtUSD : savedTotalUSD}
+            accent={paneAccent}
+            colors={colors}
+            eventKey={`${pane}_${latestTransfer?.id || ""}_${latestTransfer?.createdAt || 0}_${currentTotalUSD}`}
+            debtInitialLabel={`${copy("budgetDebtStartLabel", "Start")} ${formatLocalAmount(initialDebtUSD)}`}
+            debtGoalLabel={`${copy("budgetDebtGoalLabel", "Goal")} ${formatLocalAmount(0)}`}
+            debtPaidLabel={copy("budgetDebtPaidLabel", "Paid")}
+            emptyTitle={copy("budgetDebtSetupTitle", "Set your debt amount")}
+            emptyBody={copy("budgetDebtSetupHint", "Add the balance to see a clear payoff path.")}
+            onEmptyPress={openDebtSettings}
+          />
+          {pane !== "debt" || initialDebtUSD > 0 ? (
+            <>
+              <View style={styles.budgetFocusAmountRow}>
+                <Text
+                  style={[styles.budgetFocusAmount, { color: colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {formatLocalAmount(currentTotalUSD)}
+                </Text>
+                <Text style={[styles.budgetFocusAmountLabel, { color: colors.muted }]}>
+                  {focusAmountLabel}
+                </Text>
+              </View>
+              <View style={[styles.budgetFocusStats, { borderTopColor: colors.separator || colors.border }]}>
+                {focusStats.map((item) => (
+                  <View key={item.label} style={styles.budgetFocusStat}>
+                    <Text style={[styles.budgetFocusStatLabel, { color: colors.muted }]} numberOfLines={2}>
+                      {item.label}
+                    </Text>
+                    <Text
+                      style={[styles.budgetFocusStatValue, { color: colors.text }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                    >
+                      {item.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              {pane === "debt" ? (
+                <Text style={[styles.budgetFocusRecommendation, { color: colors.muted }]}>
+                  {copy("budgetDebtMonthlyLabel", "Monthly from refusals")}: {recommendedMonthlyUSD
+                    ? formatLocalAmount(recommendedMonthlyUSD)
+                    : copy("reportsEmptyShort", "No data")}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
         </View>
-        {pane === "debt" && initialDebtUSD <= 0 ? (
-          <TouchableOpacity
-            activeOpacity={0.88}
-            onPress={openDebtSettings}
-            style={[styles.budgetSetupCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-            accessibilityRole="button"
-            accessibilityLabel={copy("budgetDebtSetupTitle", "Set your debt amount")}
-          >
-            <View style={styles.budgetSetupBody}>
-              <Text style={[styles.budgetSetupTitle, { color: colors.text }]}>
-                {copy("budgetDebtSetupTitle", "Set your debt amount")}
-              </Text>
-              <Text style={[styles.budgetSetupText, { color: colors.muted }]}>
-                {copy(
-                  "budgetDebtSetupBody",
-                  "Add the current balance and optional APR. Almost will estimate a monthly payoff target from your resisted temptations."
-                )}
-              </Text>
-            </View>
-            <Text style={[styles.budgetSetupChevron, { color: debtAccent }]}>›</Text>
-          </TouchableOpacity>
-        ) : null}
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => {
@@ -46909,24 +47089,41 @@ const BudgetScreen = React.memo(function BudgetScreen({
           accessibilityRole="button"
         >
           <Text style={[styles.budgetPrimaryButtonText, { color: paneActionForeground }]}>
-            {pane === "debt"
-              ? copy("budgetDebtPayButton", "Pay down")
-              : copy("budgetSavingsTopUpButton", "Top up")}
+            {primaryActionLabel}
           </Text>
         </TouchableOpacity>
-        {pane === "debt" && initialDebtUSD > 0 ? (
-          <TouchableOpacity
-            activeOpacity={0.84}
-            onPress={openDebtSettings}
-            style={[styles.budgetSecondaryButton, { borderColor: colors.border }]}
-            accessibilityRole="button"
-            accessibilityLabel={copy("budgetDebtEditButton", "Edit debt plan")}
-          >
-            <Text style={[styles.budgetSecondaryButtonText, { color: colors.text }]}>
-              {copy("budgetDebtEditButton", "Edit debt plan")}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
+        <View
+          style={[
+            styles.budgetGuideCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: colors.shadow || "#000000",
+            },
+          ]}
+        >
+          <View style={styles.budgetGuideSteps}>
+            {guideSteps.map((step, index) => (
+              <View key={step.id} style={styles.budgetGuideStep}>
+                <View
+                  style={[
+                    styles.budgetGuideStepIcon,
+                    { backgroundColor: colors.surfaceMuted || colors.background },
+                  ]}
+                >
+                  <BudgetLineIcon name={step.icon} color={colors.text} size={20} />
+                </View>
+                <Text style={[styles.budgetGuideStepNumber, { color: colors.text }]}>
+                  {index + 1}
+                </Text>
+                <Text style={[styles.budgetGuideStepText, { color: colors.text }]}>
+                  {step.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <Image source={LEVEL_SHARE_CAT} style={styles.budgetGuideMascot} resizeMode="contain" />
+        </View>
       </ScrollView>
 
       <Modal visible={transferDraft.visible} transparent animationType="fade" onRequestClose={closeTransfer}>
@@ -46948,6 +47145,10 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     {
                       backgroundColor: colors.surfaceElevated || colors.card,
                       borderColor: colors.border,
+                      paddingBottom: Math.max(
+                        UI_SPACING.sm,
+                        (Number(budgetSafeInsets.bottom) || 0) + UI_SPACING.xs
+                      ),
                     },
                   ]}
                 >
@@ -46968,12 +47169,59 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       ? copy("budgetDebtTransferTitle", "Confirm debt payment")
                       : copy("budgetSavingsTransferTitle", "Confirm savings transfer")}
                   </Text>
-                  <Text style={[styles.budgetModalText, { color: colors.muted }]}>
-                    {copy(
-                      "budgetTransferProofNote",
-                      "Upload a bank transfer confirmation photo. You can hide sensitive details as long as the transfer details remain visible."
-                    )}
-                  </Text>
+                  <View
+                    style={[
+                      styles.budgetTransferDestination,
+                      {
+                        backgroundColor: colorWithAlpha(transferAccent, isDarkTheme ? 0.14 : 0.07),
+                        borderColor: colorWithAlpha(transferAccent, 0.18),
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.budgetTransferDestinationIcon,
+                        { backgroundColor: colors.card, borderColor: colors.border },
+                      ]}
+                    >
+                      <BudgetLineIcon
+                        name={transferDraft.type === "debt" ? "debt" : "wallet"}
+                        color={transferAccent}
+                        size={22}
+                      />
+                    </View>
+                    <View style={styles.budgetTransferDestinationCopy}>
+                      <Text style={[styles.budgetTransferDestinationLabel, { color: colors.text }]}>
+                        {transferDraft.type === "debt"
+                          ? copy("budgetDebtTab", "Debt")
+                          : copy("budgetSavingsTab", "Savings")}
+                      </Text>
+                      <Text style={[styles.budgetTransferDestinationMeta, { color: colors.muted }]}>
+                        {copy("budgetAvailableToAllocateLabel", "Available to allocate")}: {formatLocalAmount(availableUSD)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View
+                    style={[
+                      styles.budgetTransferGuideRow,
+                      { backgroundColor: colors.surfaceMuted || colors.background },
+                    ]}
+                  >
+                    <View style={[styles.budgetTransferGuideIcon, { backgroundColor: colors.card }]}>
+                      <BudgetLineIcon name="bank" color={colors.text} size={20} />
+                    </View>
+                    <View style={styles.budgetTransferGuideCopy}>
+                      <Text style={[styles.budgetTransferGuideTitle, { color: colors.text }]}>
+                        {copy("budgetGuideBankStep", "Transfer in your bank")}
+                      </Text>
+                      <Text style={[styles.budgetModalText, { color: colors.muted }]}>
+                        {copy(
+                          "budgetTransferProofNote",
+                          "Upload a bank transfer confirmation photo. You can hide sensitive details as long as the transfer details remain visible."
+                        )}
+                      </Text>
+                    </View>
+                  </View>
                   <View style={styles.budgetFieldGroup}>
                     <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
                       {t("totalLabel")}
@@ -47002,6 +47250,9 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       ]}
                     />
                   </View>
+                  <Text style={[styles.budgetFieldLabel, { color: colors.text }]}>
+                    {copy("budgetGuideProofStep", "Add a screenshot")}
+                  </Text>
                   <View style={styles.budgetProofButtons}>
                     <TouchableOpacity
                       activeOpacity={0.86}
@@ -47050,7 +47301,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
                       </Text>
                     </View>
                   ) : transferDraft.proofImageUri ? (
-                    <Text style={[styles.budgetProofStatusText, { color: savingsAccent }]}>
+                    <Text style={[styles.budgetProofStatusText, { color: transferAccent }]}>
                       {copy("budgetProofMatched", "Confirmation accepted.")}
                     </Text>
                   ) : null}
@@ -47120,6 +47371,10 @@ const BudgetScreen = React.memo(function BudgetScreen({
                     {
                       backgroundColor: colors.surfaceElevated || colors.card,
                       borderColor: colors.border,
+                      paddingBottom: Math.max(
+                        UI_SPACING.sm,
+                        (Number(budgetSafeInsets.bottom) || 0) + UI_SPACING.xs
+                      ),
                     },
                   ]}
                 >
@@ -49016,7 +49271,6 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
-  const uiSessionRestorePendingRef = useRef(null);
   const uiSessionSnapshotRef = useRef(null);
   const [uiSessionHydrated, setUiSessionHydrated] = useState(false);
   const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);
@@ -50542,6 +50796,14 @@ function AppContent() {
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
   const [coinEntryPresetAction, setCoinEntryPresetAction] = useState(null);
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
+  const widgetActionFlowActiveRef = useRef(false);
+  const initialLinkResolutionPendingRef = useRef(true);
+  const automaticModalPresentationPausedRef = useRef(true);
+  const [widgetActionFlowActive, setWidgetActionFlowActive] = useState(false);
+  const [initialLinkResolutionPending, setInitialLinkResolutionPending] = useState(true);
+  const automaticModalPresentationPaused =
+    widgetActionFlowActive || initialLinkResolutionPending;
+  automaticModalPresentationPausedRef.current = automaticModalPresentationPaused;
   const [coinSliderMaxUSD, setCoinSliderMaxUSD] = useState(DEFAULT_COIN_SLIDER_MAX_USD);
   const [coinSliderHydrated, setCoinSliderHydrated] = useState(false);
   const coinSliderMaxOverrideRef = useRef(null);
@@ -51089,15 +51351,25 @@ function AppContent() {
       titleOverrides,
     ]
   );
+  useEffect(() => {
+    if (!tycoonLedgerHydrated) return;
+    setTycoonLedger((prev) =>
+      expireStalePendingTycoonAutosaves(prev, currentDayKey, Date.now())
+    );
+  }, [currentDayKey, tycoonLedger, tycoonLedgerHydrated]);
   const tycoonPendingEvents = useMemo(
     () =>
       (Array.isArray(tycoonLedger) ? tycoonLedger : [])
-        .filter((entry) => entry?.status === "pending")
+        .filter(
+          (entry) =>
+            entry?.status === "pending" &&
+            getTycoonAutosaveEventDayKey(entry) === currentDayKey
+        )
         .map((entry) => {
           const snapshot = resolveTycoonAutosaveEventSnapshot(entry);
           return snapshot ? { ...entry, ...snapshot } : entry;
         }),
-    [resolveTycoonAutosaveEventSnapshot, tycoonLedger]
+    [currentDayKey, resolveTycoonAutosaveEventSnapshot, tycoonLedger]
   );
   useEffect(() => {
     if (!tycoonLedgerHydrated) return;
@@ -51147,7 +51419,13 @@ function AppContent() {
     let changed = false;
     const now = Date.now();
     const nextLedger = (Array.isArray(tycoonLedger) ? tycoonLedger : []).map((entry) => {
-      if (!entry || entry.status !== "pending") return entry;
+      if (
+        !entry ||
+        entry.status !== "pending" ||
+        getTycoonAutosaveEventDayKey(entry) !== currentDayKey
+      ) {
+        return entry;
+      }
       const cardKey = entry.cardId || entry.id;
       if (!cardKey) return entry;
       if (!seenCardIds.has(cardKey)) {
@@ -51166,7 +51444,7 @@ function AppContent() {
     if (changed) {
       setTycoonLedger(nextLedger);
     }
-  }, [tycoonLedger, tycoonLedgerHydrated]);
+  }, [currentDayKey, tycoonLedger, tycoonLedgerHydrated]);
   useEffect(() => {
     setTycoonSpentSelection((prev) => {
       const pendingIds = new Set(tycoonPendingEvents.map((entry) => entry.id));
@@ -51238,7 +51516,12 @@ function AppContent() {
     const existingIds = new Set(ledgerEntries.map((entry) => entry?.id).filter(Boolean));
     const pendingCardIds = new Set(
       ledgerEntries
-        .filter((entry) => entry?.status === "pending" && entry?.cardId)
+        .filter(
+          (entry) =>
+            entry?.status === "pending" &&
+            entry?.cardId &&
+            getTycoonAutosaveEventDayKey(entry) === currentDayKey
+        )
         .map((entry) => entry.cardId)
     );
     const autosaveCardDayKeys = new Set();
@@ -51287,25 +51570,33 @@ function AppContent() {
         firstDueAt = derivedDueAt;
       }
       if (!firstDueAt || firstDueAt > now) continue;
-      const maxLookbackStart =
-        now - intervalMs * Math.max(0, TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD - 1);
-      if (firstDueAt < maxLookbackStart) {
-        const skippedWindows = Math.floor((maxLookbackStart - firstDueAt) / intervalMs);
-        firstDueAt += skippedWindows * intervalMs;
-        if (firstDueAt < maxLookbackStart) {
-          firstDueAt += intervalMs;
-        }
-      }
       const amountBase = Math.max(0, Number(interaction.lastAmountUSD) || getTemptationPrice(card));
-      let producedForCard = 0;
-      for (
-        let windowEnd = firstDueAt;
-        windowEnd <= now && producedForCard < TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD;
-        windowEnd += intervalMs
-      ) {
+      const reminderTime = resolveEntryReminderTime(interaction);
+      const weeklyDays = resolveEntryWeeklyDays(interaction);
+      const monthlyDays = resolveEntryMonthlyDays(interaction);
+      const dueWindows = buildAnchoredTemptationDueWindows({
+        firstDueAt,
+        now,
+        maxWindows: TYCOON_MAX_AUTOSAVE_EVENTS_PER_CARD,
+        fallbackIntervalMs: intervalMs,
+        resolveNextCheckAt: (fromTimestamp) =>
+          buildResetNextCheckAtForFrequency({
+            fromTimestamp,
+            frequencyId: frequency,
+            customFrequency: interaction.frequencyCustom || card.frequencyCustom,
+            reminderHour: reminderTime.hour,
+            reminderMinute: reminderTime.minute,
+            weeklyDay: weeklyDays[0] ?? DEFAULT_FREQUENCY_WEEKLY_DAY,
+            monthlyDay: monthlyDays[0] ?? DEFAULT_FREQUENCY_MONTHLY_DAY,
+            weeklyDays,
+            monthlyDays,
+          }),
+      });
+      for (let windowIndex = 0; windowIndex < dueWindows.length; windowIndex += 1) {
+        const windowEnd = dueWindows[windowIndex];
         if ((autosavePausedByHungryAlmi ? blockedEventCount : nextEvents.length) >= TYCOON_MAX_AUTOSAVE_EVENTS_TOTAL) break;
         const windowDayKey = getDayKey(windowEnd);
-        if (!windowDayKey) continue;
+        if (!windowDayKey || windowDayKey !== currentDayKey) continue;
         const autosaveCardDayKey = `${templateId}:${windowDayKey}`;
         if (autosaveCardDayKeys.has(autosaveCardDayKey)) continue;
         const manualSkipToleranceMs = Math.max(
@@ -51329,7 +51620,6 @@ function AppContent() {
           blockedEventCount += 1;
           blockedAmountUSD += amountUSD;
           remainingCapUSD -= amountUSD;
-          producedForCard += 1;
           if (remainingCapUSD <= 0.01) break;
           continue;
         }
@@ -51343,7 +51633,8 @@ function AppContent() {
           cardId: templateId,
           dayKey: windowDayKey,
           timerWindowId: `${templateId}:${windowEnd}`,
-          timerWindowStart: windowEnd - intervalMs,
+          timerWindowStart:
+            windowIndex > 0 ? dueWindows[windowIndex - 1] : windowEnd - intervalMs,
           timerWindowEnd: windowEnd,
           amountUSD,
           currency: profile.currency || DEFAULT_PROFILE.currency,
@@ -51356,7 +51647,6 @@ function AppContent() {
         });
         autosaveCardDayKeys.add(autosaveCardDayKey);
         remainingCapUSD -= amountUSD;
-        producedForCard += 1;
         if (remainingCapUSD <= 0.01) break;
       }
     }
@@ -51426,6 +51716,7 @@ function AppContent() {
       amount_usd: nextEvents.reduce((sum, entry) => sum + entry.amountUSD, 0),
     });
   }, [
+    currentDayKey,
     currentMonthKey,
     currentMonthRecurringIncomeUSD,
     language,
@@ -51613,6 +51904,7 @@ function AppContent() {
     activeTab: "feed",
     overlayEnvironmentReady: false,
     blockingModalVisible: false,
+    automaticModalPresentationPaused: true,
     frequencyReminderPromptVisible: false,
     pendingFrequencyReminderPrompt: null,
     startupHardLockPendingBeforePaywall: false,
@@ -52225,6 +52517,7 @@ function AppContent() {
   }, [clearQueuedModal, cycleSavingsRevokedPrompt.visible, queuedModalType]);
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.INCOME_PROMPT) return;
+    if (automaticModalPresentationPausedRef.current) return;
     if (!incomePromptPending || !shouldPromptIncome) {
       clearQueuedModal(QUEUED_MODAL_TYPES.INCOME_PROMPT);
       return;
@@ -52232,7 +52525,13 @@ function AppContent() {
     incomeEntrySourceRef.current = "monthly_prompt";
     incomeEntryModeRef.current = INCOME_ENTRY_TYPES.MONTHLY;
     setIncomeEntryModalVisible(true);
-  }, [clearQueuedModal, incomePromptPending, queuedModalType, shouldPromptIncome]);
+  }, [
+    automaticModalPresentationPaused,
+    clearQueuedModal,
+    incomePromptPending,
+    queuedModalType,
+    shouldPromptIncome,
+  ]);
   const closeDailySummary = useCallback(
     ({ markSeen = false } = {}) => {
       if (markSeen) {
@@ -54243,6 +54542,12 @@ function AppContent() {
       }
       return;
     }
+    if (automaticModalPresentationPausedRef.current) {
+      if (fabTutorialVisible) {
+        setFabTutorialVisible(false);
+      }
+      return;
+    }
     const shouldShow = activeTab === "feed";
     if (fabTutorialVisible !== shouldShow) {
       setFabTutorialVisible(shouldShow);
@@ -54253,6 +54558,7 @@ function AppContent() {
     }
   }, [
     activeTab,
+    automaticModalPresentationPaused,
     fabTutorialVisible,
     fabTutorialReady,
     logEvent,
@@ -54290,7 +54596,8 @@ function AppContent() {
   useEffect(() => {
     const handleAppStateChange = (nextState) => {
       const previousState = appStateRef.current;
-      const wasBackground = previousState === "background";
+      const wasAwayFromActive =
+        previousState === "background" || previousState === "inactive";
       appStateRef.current = nextState;
       if (
         nextState === "background" &&
@@ -54321,15 +54628,24 @@ function AppContent() {
         // is backgrounded; explicitly blurring here loses the user's exact editing position.
         setKeyboardInset(0);
         setKeyboardVisible(false);
-        appResumeAtRef.current = Date.now();
+        if (!appResumeAtRef.current) {
+          appResumeAtRef.current = Date.now();
+        }
         setFabTutorialVisible(false);
         return;
       }
       setCurrentDayKey(getDayKey(Date.now()));
-      if (wasBackground && nextState === "active") {
+      if (wasAwayFromActive && nextState === "active") {
         soundModeReadyRef.current = false;
         const resumedAt = appResumeAtRef.current || 0;
         appResumeAtRef.current = null;
+        const shouldReturnHome = shouldResetUiSessionNavigation({
+          backgroundedAt: resumedAt,
+          resumedAt: Date.now(),
+        });
+        if (shouldReturnHome) {
+          goToTab("feed", { recordHistory: false, resetHistory: true });
+        }
         const suppressResumeOnce = suppressResumeOnceRef.current;
         if (suppressResumeOnce) {
           suppressResumeOnceRef.current = false;
@@ -54341,7 +54657,7 @@ function AppContent() {
           processTamagotchiDecay();
           beginHomeSession();
           tryLogHomeOpened();
-          if (activeTab === "feed") {
+          if (shouldReturnHome || activeTab === "feed") {
             triggerHomeSpeech("resume");
           }
           if (pendingFocusDigest) {
@@ -54368,6 +54684,7 @@ function AppContent() {
     refreshQueuedModalsOnResume,
     firstSessionDurationBucketHydrated,
     flushPersistQueue,
+    goToTab,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentHydrated,
     setDailyChallengePromptGate,
@@ -55910,7 +56227,6 @@ function AppContent() {
   const coinValueModalStatusRef = useRef("none");
   const coinBalancePrevRef = useRef(0);
   const tutorialSeenPrevRef = useRef(false);
-  const coinValueModalCheckTimerRef = useRef(null);
   const resetCounterRef = useRef(0);
   const spendPromptLockRef = useRef(false);
   const spendExecutionLockRef = useRef(false);
@@ -56552,6 +56868,19 @@ function AppContent() {
   useEffect(() => {
     coinValueModalStatusRef.current = coinValueModalStatus;
   }, [coinValueModalStatus]);
+  const queueCoinValueModal = useCallback(() => {
+    const currentStatus = coinValueModalStatusRef.current;
+    if (currentStatus === COIN_VALUE_MODAL_STATUS.SHOWN) return;
+    if (currentStatus !== COIN_VALUE_MODAL_STATUS.PENDING) {
+      coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.PENDING;
+      setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.PENDING);
+      AsyncStorage.setItem(
+        STORAGE_KEYS.COIN_VALUE_MODAL,
+        COIN_VALUE_MODAL_STATUS.PENDING
+      ).catch(() => {});
+    }
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);
+  }, [enqueueQueuedModal]);
   const canQueueCoinValueModal = useCallback(() => {
     if (!coinValueModalHydrated) return false;
     if (!tutorialSeen) return false;
@@ -56585,6 +56914,17 @@ function AppContent() {
     if (!canQueueCoinValueModal()) return;
     queueCoinValueModal();
   }, [canQueueCoinValueModal, queueCoinValueModal, overlay]);
+  useEffect(() => {
+    if (!coinValueModalHydrated) return;
+    if (coinValueModalStatus !== COIN_VALUE_MODAL_STATUS.PENDING) return;
+    if (startupHardLockPendingBeforePaywall) return;
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);
+  }, [
+    coinValueModalHydrated,
+    coinValueModalStatus,
+    enqueueQueuedModal,
+    startupHardLockPendingBeforePaywall,
+  ]);
   const overlayEnvironmentReady = interfaceReady && !dailySummaryVisible;
   const ensureOverlayEnvironmentReady = useCallback(() => {
     if (
@@ -57013,19 +57353,26 @@ function AppContent() {
     ]
   );
   const dailyChallengePromptVisible =
-    !levelShareFlowLocked && queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE;
+    !automaticModalPresentationPaused &&
+    !levelShareFlowLocked &&
+    queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE;
   const dailyChallengeCompleteVisible =
-    !levelShareFlowLocked && queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE;
+    !automaticModalPresentationPaused &&
+    !levelShareFlowLocked &&
+    queuedModalType === QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE;
   const didYouKnowVisible =
+    !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
     activeTab === "feed" &&
     queuedModalType === QUEUED_MODAL_TYPES.DID_YOU_KNOW &&
     !!didYouKnowActiveTip;
   const noGoalSavePromptVisible =
+    !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT &&
     noGoalSavePromptPending;
   const tycoonAutosaveHungryModalVisible =
+    !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY &&
     onboardingStep === "done" &&
@@ -57046,6 +57393,7 @@ function AppContent() {
     tycoonAutosaveHungryModalVisible,
   ]);
   const tycoonAutosaveModalVisible =
+    !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE &&
     onboardingStep === "done" &&
@@ -57055,6 +57403,7 @@ function AppContent() {
     !tycoonAutosaveSnoozedActive &&
     tycoonPendingEvents.length > 0;
   const cycleSavingsRevokedPromptVisible =
+    !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED &&
     cycleSavingsRevokedPrompt.visible;
@@ -57064,6 +57413,8 @@ function AppContent() {
         return dailySummaryVisible;
       case QUEUED_MODAL_TYPES.DID_YOU_KNOW:
         return didYouKnowVisible;
+      case QUEUED_MODAL_TYPES.COIN_VALUE:
+        return coinValueModalVisible;
       case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT:
         return noGoalSavePromptVisible;
       case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY:
@@ -57089,6 +57440,7 @@ function AppContent() {
     }
   }, [
     cycleSavingsRevokedPromptVisible,
+    coinValueModalVisible,
     dailyChallengeCompleteVisible,
     dailyChallengePromptVisible,
     dailySummaryVisible,
@@ -57421,85 +57773,55 @@ function AppContent() {
       tutorialSeen,
     ]
   );
-  const canShowCoinValueModalNow = useCallback(() => {
-    if (startupHardLockPendingBeforePaywall) return false;
-    if (
-      nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
-      nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE
-    ) {
-      return false;
-    }
+  const coinValueModalQueueReady = useCallback(() => {
+    if (coinValueModalStatusRef.current !== COIN_VALUE_MODAL_STATUS.PENDING) return false;
     if (!coinValueModalAllowed || coinValueModalVisible) return false;
-    if (isStoreReviewHandoffPending()) return false;
     if (premiumSoftPaywallPending || premiumPaywallState.visible) return false;
-    if (queuedModalType || queuedModalActiveRef.current) return false;
-    const hasQueuedModalReady = queuedModalQueueRef.current.some((candidate) =>
-      canShowQueuedModalRef.current(candidate)
-    );
-    if (hasQueuedModalReady) return false;
-    if (overlay || overlayActiveRef.current) return false;
     if (pendingUsageStreakRef.current) return false;
     if (overlayQueueRef.current.length) return false;
     if (celebrationQueueRef.current.length) return false;
     if (celebrationGapTimerRef.current) return false;
-    if (blockingModalVisible) return false;
-    if (tutorialBlockingVisibleRef.current) return false;
-    const lastSaveAt = Number(lastSaveActionAtRef.current) || 0;
-    const lastSaveDismissedAt = Number(lastSaveOverlayDismissedAtRef.current) || 0;
-    if (lastSaveAt > lastSaveDismissedAt && Date.now() - lastSaveAt < 15000) {
-      return false;
-    }
-    const lastDismissedAt = lastOverlayDismissedAtRef.current || 0;
-    if (Date.now() - lastDismissedAt < 600) return false;
-    if (Date.now() - lastSaveDismissedAt < 900) return false;
     return true;
   }, [
-    blockingModalVisible,
     coinValueModalAllowed,
     coinValueModalVisible,
-    isStoreReviewHandoffPending,
-    overlay,
     premiumPaywallState.visible,
     premiumSoftPaywallPending,
-    queuedModalType,
-    nextDecisionCoach.status,
-    startupHardLockPendingBeforePaywall,
   ]);
   useEffect(() => {
-    if (!coinValueModalHydrated) return undefined;
-    if (coinValueModalStatus !== COIN_VALUE_MODAL_STATUS.PENDING) {
-      if (coinValueModalCheckTimerRef.current) {
-        clearTimeout(coinValueModalCheckTimerRef.current);
-        coinValueModalCheckTimerRef.current = null;
-      }
-      return undefined;
+    if (queuedModalType !== QUEUED_MODAL_TYPES.COIN_VALUE) {
+      if (coinValueModalVisible) setCoinValueModalVisible(false);
+      return;
     }
-    const checkAndShow = () => {
-      if (canShowCoinValueModalNow()) {
-        setCoinValueModalVisible(true);
-        coinValueModalCheckTimerRef.current = null;
-        return;
-      }
-      coinValueModalCheckTimerRef.current = setTimeout(checkAndShow, 250);
-    };
-    checkAndShow();
-    return () => {
-      if (coinValueModalCheckTimerRef.current) {
-        clearTimeout(coinValueModalCheckTimerRef.current);
-        coinValueModalCheckTimerRef.current = null;
-      }
-    };
-  }, [canShowCoinValueModalNow, coinValueModalHydrated, coinValueModalStatus]);
+    if (automaticModalPresentationPausedRef.current) {
+      if (coinValueModalVisible) setCoinValueModalVisible(false);
+      return;
+    }
+    if (coinValueModalStatusRef.current !== COIN_VALUE_MODAL_STATUS.PENDING) {
+      clearQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);
+      return;
+    }
+    if (!coinValueModalVisible) setCoinValueModalVisible(true);
+  }, [
+    automaticModalPresentationPaused,
+    clearQueuedModal,
+    coinValueModalVisible,
+    queuedModalType,
+  ]);
   const dismissCoinValueModal = useCallback(() => {
     setCoinValueModalVisible(false);
-    if (coinValueModalStatusRef.current === COIN_VALUE_MODAL_STATUS.SHOWN) return;
-    coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.SHOWN;
-    setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.SHOWN);
-    AsyncStorage.setItem(
-      STORAGE_KEYS.COIN_VALUE_MODAL,
-      COIN_VALUE_MODAL_STATUS.SHOWN
-    ).catch(() => {});
-  }, []);
+    if (coinValueModalStatusRef.current !== COIN_VALUE_MODAL_STATUS.SHOWN) {
+      coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.SHOWN;
+      setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.SHOWN);
+      AsyncStorage.setItem(
+        STORAGE_KEYS.COIN_VALUE_MODAL,
+        COIN_VALUE_MODAL_STATUS.SHOWN
+      ).catch(() => {});
+    }
+    const resumeAt = queueModalCloseSettle();
+    clearQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);
+    requestQueuedModalProcessAfterHandoff(resumeAt);
+  }, [clearQueuedModal, queueModalCloseSettle, requestQueuedModalProcessAfterHandoff]);
   useEffect(() => {
     if (!coinValueModalVisible) return undefined;
     if (activeTab !== "feed") return undefined;
@@ -57956,6 +58278,7 @@ function AppContent() {
   );
   const blockingModalVisible = useMemo(
     () =>
+      automaticModalPresentationPaused ||
       overlay ||
       breakdownVisible ||
       reportsModalVisible ||
@@ -58004,6 +58327,7 @@ function AppContent() {
       stormActive,
     [
       addCategoryModalVisible,
+      automaticModalPresentationPaused,
       coinEntryVisible,
       coinValueModalVisible,
       cycleSavingsRevokedPromptVisible,
@@ -58055,6 +58379,7 @@ function AppContent() {
     activeTab,
     overlayEnvironmentReady,
     blockingModalVisible: Boolean(blockingModalVisible),
+    automaticModalPresentationPaused: Boolean(automaticModalPresentationPaused),
     frequencyReminderPromptVisible: Boolean(frequencyReminderPrompt.visible),
     pendingFrequencyReminderPrompt,
     startupHardLockPendingBeforePaywall: Boolean(startupHardLockPendingBeforePaywall),
@@ -58089,6 +58414,7 @@ function AppContent() {
   }, [queueModalCloseSettle, requestQueuedModalProcessAfterHandoff, tutorialBlockingVisible]);
   canShowRatingPromptNowRef.current = () => {
     if (appStateRef.current !== "active") return false;
+    if (automaticModalPresentationPausedRef.current) return false;
     if (onboardingStep !== "done") return false;
     if (!interfaceReady) return false;
     if (startupHardLockPendingBeforePaywall) return false;
@@ -58117,6 +58443,7 @@ function AppContent() {
   const canShowQueuedModal = useCallback(
     (type) => {
       if (appStateRef.current !== "active") return false;
+      if (automaticModalPresentationPausedRef.current) return false;
       if (!interfaceReady) return false;
       if (startupHardLockPendingBeforePaywall) return false;
       if (
@@ -58144,6 +58471,8 @@ function AppContent() {
           return dailySummaryUnlocked && !!pendingDailySummaryData;
         case QUEUED_MODAL_TYPES.DID_YOU_KNOW:
           return activeTab === "feed" && didYouKnowPromptPending;
+        case QUEUED_MODAL_TYPES.COIN_VALUE:
+          return coinValueModalQueueReady();
         case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
           return (
             dailyChallengePromptAllowed &&
@@ -58206,8 +58535,10 @@ function AppContent() {
     },
     [
       activeTab,
+      automaticModalPresentationPaused,
       blockingModalVisible,
       coinValueModalVisible,
+      coinValueModalQueueReady,
       cycleSavingsRevokedPrompt.visible,
       dailyChallengePromptAllowed,
       dailyChallengePromptGate,
@@ -58278,6 +58609,7 @@ function AppContent() {
       clearTimeout(queuedModalStallTimerRef.current);
       queuedModalStallTimerRef.current = null;
     }
+    if (automaticModalPresentationPausedRef.current) return;
     if (!queuedModalType) {
       queuedModalActivatedAtRef.current = 0;
       return;
@@ -58305,6 +58637,7 @@ function AppContent() {
       }
     };
   }, [
+    automaticModalPresentationPaused,
     clearQueuedModal,
     queuedModalProcessTick,
     queuedModalRendered,
@@ -61811,6 +62144,7 @@ function AppContent() {
     [logMonetizationEvent, openPremiumPaywall, premiumState.isPremium]
   );
   const canShowSoftPaywallNow = useCallback(() => {
+    if (automaticModalPresentationPausedRef.current) return false;
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
     if (temptationSeriesModalVisible) return false;
     const firstSaveJarStatus = firstSaveGoalJarStatusRef.current;
@@ -61886,6 +62220,7 @@ function AppContent() {
   ]);
   const canShowFirstSaveGoalJarNow = useCallback(() => {
     if (appStateRef.current !== "active") return false;
+    if (automaticModalPresentationPausedRef.current) return false;
     if (!firstSaveGoalJarHydrated) return false;
     if (firstSaveGoalJarStatusRef.current !== "pending") return false;
     if (firstSaveGoalJarVisible) return false;
@@ -62983,6 +63318,7 @@ function AppContent() {
 	        const triggerAt = snoozedUntil > now ? snoozedUntil : now + 2 * MINUTE_MS;
         await cancelScheduledTycoonAutosaveNotifications();
         if (cancelled) return;
+	        if (!isTycoonAutosaveTimestampInDay(triggerAt, currentDayKey)) return;
 	        await scheduleNotificationWithCooldown({
           content: {
             title: t("tycoonPushReadyTitle"),
@@ -63007,6 +63343,7 @@ function AppContent() {
   }, [
 	    ensureNotificationPermission,
     cancelScheduledTycoonAutosaveNotifications,
+    currentDayKey,
     onboardingStep,
     scheduleNotificationWithCooldown,
     startupHardLockPendingBeforePaywall,
@@ -64787,7 +65124,8 @@ function AppContent() {
   const saveOverlayUsesGoalDeposit = Boolean(
     saveOverlayGoalTitle &&
       !saveOverlayPayload?.isFirstSaveAction &&
-      saveOverlayPayload?.temptationSeriesRewardMode !== "pending"
+      (saveOverlayPayload?.aggregateAutosaveSummary === true ||
+        saveOverlayPayload?.temptationSeriesRewardMode !== "pending")
   );
   const saveOverlayPhase =
     saveOverlayPhaseState.key === saveOverlayKey
@@ -64967,7 +65305,11 @@ function AppContent() {
       if (overlay?.type === "save" && Date.now() - saveOverlayShownAtRef.current < 350) {
         return;
       }
-      if (overlay?.type === "save" && saveOverlayPhase === "jar") {
+      if (
+        overlay?.type === "save" &&
+        saveOverlayPhase === "jar" &&
+        saveOverlayPayload?.aggregateAutosaveSummary !== true
+      ) {
         setSaveOverlayPhaseState({ key: saveOverlayKey, phase: "classic" });
         return;
       }
@@ -66116,6 +66458,7 @@ function AppContent() {
   ]);
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.FOCUS_DIGEST) return;
+    if (automaticModalPresentationPausedRef.current) return;
     if (!pendingFocusDigest || !focusModeUnlocked) {
       clearQueuedModal(QUEUED_MODAL_TYPES.FOCUS_DIGEST);
       return;
@@ -66123,6 +66466,7 @@ function AppContent() {
     triggerOverlayState("focus_digest", pendingFocusDigest.payload);
     setFocusDigestPromptShown(true);
   }, [
+    automaticModalPresentationPaused,
     clearQueuedModal,
     focusModeUnlocked,
     pendingFocusDigest,
@@ -66996,6 +67340,7 @@ function AppContent() {
 
   const loadStoredData = async () => {
     const resetCounterAtStart = resetCounterRef.current;
+    let priceOverridesHydratedFromStorage = false;
     let resolvedHealthPoints = null;
     let resolvedInstallDateMs = 0;
     let healthRaw = null;
@@ -67028,7 +67373,6 @@ function AppContent() {
         STORAGE_KEYS.PENDING,
         STORAGE_KEYS.PURCHASES,
         STORAGE_KEYS.PROFILE,
-        STORAGE_KEYS.UI_SESSION,
         STORAGE_KEYS.THEME,
         STORAGE_KEYS.PRO_THEME_ACCENT,
         STORAGE_KEYS.LANGUAGE,
@@ -67153,8 +67497,6 @@ function AppContent() {
       const pendingRaw = storedMap[STORAGE_KEYS.PENDING] ?? null;
       const purchasesRaw = storedMap[STORAGE_KEYS.PURCHASES] ?? null;
       const profileRaw = storedMap[STORAGE_KEYS.PROFILE] ?? null;
-      const uiSessionRaw = storedMap[STORAGE_KEYS.UI_SESSION] ?? null;
-      uiSessionRestorePendingRef.current = normalizeUiSessionState(uiSessionRaw);
       const themeRaw = storedMap[STORAGE_KEYS.THEME] ?? null;
       const proThemeAccentRaw = storedMap[STORAGE_KEYS.PRO_THEME_ACCENT] ?? null;
       const languageRaw = storedMap[STORAGE_KEYS.LANGUAGE] ?? null;
@@ -67162,6 +67504,15 @@ function AppContent() {
       const onboardingRaw = storedMap[STORAGE_KEYS.ONBOARDING] ?? null;
       const catalogRaw = storedMap[STORAGE_KEYS.CATALOG] ?? null;
       const pricePrecisionRaw = storedMap[STORAGE_KEYS.PRICE_PRECISION_OVERRIDES] ?? null;
+      const priceOverrideSnapshot = parseTemptationPriceOverrideSnapshot({
+        catalogRaw,
+        pricePrecisionRaw,
+      });
+      setCatalogOverrides(priceOverrideSnapshot.catalogOverrides);
+      setPricePrecisionOverrides(priceOverrideSnapshot.pricePrecisionOverrides);
+      setCatalogHydrated(true);
+      setPricePrecisionOverridesHydrated(true);
+      priceOverridesHydratedFromStorage = true;
       const titleRaw = storedMap[STORAGE_KEYS.TITLE_OVERRIDES] ?? null;
       const emojiOverridesRaw = storedMap[STORAGE_KEYS.EMOJI_OVERRIDES] ?? null;
       const categoryOverridesRaw = storedMap[STORAGE_KEYS.CATEGORY_OVERRIDES] ?? null;
@@ -68126,28 +68477,6 @@ function AppContent() {
       setTamagotchiSkinHydrated(true);
       setActiveGoalId(hydratedGoalId);
       setActiveGoalHydrated(true);
-      if (catalogRaw) {
-        try {
-          setCatalogOverrides(JSON.parse(catalogRaw));
-        } catch (error) {
-          console.warn("catalog overrides parse", error);
-          setCatalogOverrides({});
-        }
-      } else {
-        setCatalogOverrides({});
-      }
-      setCatalogHydrated(true);
-      if (pricePrecisionRaw) {
-        try {
-          setPricePrecisionOverrides(JSON.parse(pricePrecisionRaw));
-        } catch (error) {
-          console.warn("price precision overrides parse", error);
-          setPricePrecisionOverrides({});
-        }
-      } else {
-        setPricePrecisionOverrides({});
-      }
-      setPricePrecisionOverridesHydrated(true);
       if (titleRaw) {
         try {
           setTitleOverrides(JSON.parse(titleRaw));
@@ -69113,7 +69442,25 @@ function AppContent() {
       setIncomePromptHydrated(true);
       setBudgetOverspendHydrated(true);
       setBudgetLedgerHydrated(true);
-      setCatalogHydrated(true);
+      if (!priceOverridesHydratedFromStorage) {
+        readTemptationPriceOverridesWithRetry({
+          storage: AsyncStorage,
+          catalogKey: STORAGE_KEYS.CATALOG,
+          pricePrecisionKey: STORAGE_KEYS.PRICE_PRECISION_OVERRIDES,
+          retryDelayMs: PERSIST_DEBOUNCE_MS,
+        }).then((result) => {
+          if (!result.ok || resetCounterRef.current !== resetCounterAtStart) {
+            if (!result.ok) {
+              console.warn("price overrides retry", result.error);
+            }
+            return;
+          }
+          setCatalogOverrides(result.catalogOverrides);
+          setPricePrecisionOverrides(result.pricePrecisionOverrides);
+          setCatalogHydrated(true);
+          setPricePrecisionOverridesHydrated(true);
+        });
+      }
       setTitleOverridesHydrated(true);
       setEmojiOverridesHydrated(true);
       setCategoryOverridesHydrated(true);
@@ -69153,77 +69500,10 @@ function AppContent() {
   }, []);
   useEffect(() => {
     if (!startupHydrated || !profileHydrated || uiSessionHydrated) return;
-    const restoredSession = uiSessionRestorePendingRef.current;
-    uiSessionRestorePendingRef.current = null;
-    if (onboardingStep === "done" && restoredSession) {
-      setActiveTabState(restoredSession.activeTab);
-      updateTabHistory(restoredSession.tabHistory);
-      setProgressHubPane(restoredSession.navigation.progressHubPane);
-      setProgressSection(restoredSession.navigation.progressSection);
-      setRewardsPane(restoredSession.navigation.rewardsPane);
-      setHeroCarouselIndex(restoredSession.navigation.heroCarouselIndex);
-
-      if (restoredSession.profileEditor) {
-        setProfileDraft((currentDraft) => ({
-          ...currentDraft,
-          ...restoredSession.profileEditor.draft,
-        }));
-        setProfileEditMode(restoredSession.profileEditor.mode);
-      }
-      if (restoredSession.priceEditor) {
-        setPriceEditor((currentEditor) => ({
-          ...currentEditor,
-          ...restoredSession.priceEditor,
-          frequencyCustom:
-            restoredSession.priceEditor.frequencyCustom || currentEditor.frequencyCustom,
-          frequencyWeeklyDays: restoredSession.priceEditor.frequencyWeeklyDays.length
-            ? restoredSession.priceEditor.frequencyWeeklyDays
-            : currentEditor.frequencyWeeklyDays,
-          frequencyMonthlyDays: restoredSession.priceEditor.frequencyMonthlyDays.length
-            ? restoredSession.priceEditor.frequencyMonthlyDays
-            : currentEditor.frequencyMonthlyDays,
-        }));
-      }
-      if (restoredSession.quickTemptationEditor) {
-        setQuickSpendDraft(restoredSession.quickTemptationEditor.draft);
-        setQuickCustomLockedCategoryId(
-          restoredSession.quickTemptationEditor.lockedCategoryId
-        );
-        setShowCustomSpend(true);
-      }
-      if (restoredSession.pendingEditor) {
-        setNewPendingModal((currentModal) => ({
-          ...currentModal,
-          ...restoredSession.pendingEditor,
-          visible: true,
-        }));
-      }
-      if (restoredSession.goalEditor) {
-        setNewGoalModal((currentModal) => ({
-          ...currentModal,
-          ...restoredSession.goalEditor,
-          visible: true,
-        }));
-      }
-      if (restoredSession.linkedGoalEditor) {
-        setGoalEditorPrompt((currentPrompt) => ({
-          ...currentPrompt,
-          ...restoredSession.linkedGoalEditor,
-          visible: true,
-        }));
-      }
-      if (restoredSession.categoryEditor) {
-        setAddCategoryName(restoredSession.categoryEditor.addName);
-        setAddCategoryEmoji(restoredSession.categoryEditor.addEmoji);
-        setCategoryEditId(restoredSession.categoryEditor.editId);
-        setCategoryEditName(restoredSession.categoryEditor.editName);
-        setCategoryEditEmoji(restoredSession.categoryEditor.editEmoji);
-        setResumeManageCategoriesAfterAdd(
-          restoredSession.categoryEditor.resumeManageAfterAdd
-        );
-        setManageCategoriesVisible(restoredSession.categoryEditor.manageVisible);
-        setAddCategoryModalVisible(restoredSession.categoryEditor.addVisible);
-      }
+    const shouldReturnHome = shouldResetUiSessionNavigation({ isColdStart: true });
+    if (onboardingStep === "done" && shouldReturnHome) {
+      setActiveTabState("feed");
+      updateTabHistory([]);
     }
     setUiSessionHydrated(true);
   }, [
@@ -69901,6 +70181,7 @@ function AppContent() {
 
   const budgetWidgetTutorialEligible =
     !startupHardLockPendingBeforePaywall &&
+    !automaticModalPresentationPaused &&
     !premiumPaywallState.visible &&
     interfaceReady &&
     activeTab === "cart" &&
@@ -69948,6 +70229,7 @@ function AppContent() {
   }, [dailySummaryUnlocked, enqueueQueuedModal, interfaceReady, pendingDailySummaryData]);
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.DAILY_SUMMARY) return;
+    if (automaticModalPresentationPausedRef.current) return;
     if (!pendingDailySummaryData) {
       clearQueuedModal(QUEUED_MODAL_TYPES.DAILY_SUMMARY);
       return;
@@ -69962,7 +70244,12 @@ function AppContent() {
     setDailySummaryData(pendingDailySummaryData);
     setDailySummaryVisible(true);
     setPendingDailySummaryData(null);
-  }, [clearQueuedModal, pendingDailySummaryData, queuedModalType]);
+  }, [
+    automaticModalPresentationPaused,
+    clearQueuedModal,
+    pendingDailySummaryData,
+    queuedModalType,
+  ]);
   useEffect(() => {
     if (!spendLoggingReminderHydrated) return;
     if (onboardingStep !== "done") return;
@@ -72477,6 +72764,30 @@ useEffect(() => {
       return Math.max(1, Math.min(MAX_TRANSACTION_AMOUNT_USD, nextMax));
     });
   }, []);
+  const widgetLaunchGuardUntilRef = useRef(0);
+  const beginWidgetActionFlow = useCallback(() => {
+    widgetActionFlowActiveRef.current = true;
+    automaticModalPresentationPausedRef.current = true;
+    widgetLaunchGuardUntilRef.current = Date.now() + 2 * 60 * 1000;
+    overlayQueueRuntimeRef.current = {
+      ...(overlayQueueRuntimeRef.current || {}),
+      automaticModalPresentationPaused: true,
+    };
+    setWidgetActionFlowActive(true);
+  }, []);
+  const finishWidgetActionFlow = useCallback(() => {
+    if (!widgetActionFlowActiveRef.current) return;
+    widgetActionFlowActiveRef.current = false;
+    widgetLaunchGuardUntilRef.current = 0;
+    automaticModalPresentationPausedRef.current = initialLinkResolutionPendingRef.current;
+    overlayQueueRuntimeRef.current = {
+      ...(overlayQueueRuntimeRef.current || {}),
+      automaticModalPresentationPaused: initialLinkResolutionPendingRef.current,
+    };
+    setWidgetActionFlowActive(false);
+    const resumeAt = queueModalCloseSettle();
+    requestQueuedModalProcessAfterHandoff(resumeAt);
+  }, [queueModalCloseSettle, requestQueuedModalProcessAfterHandoff]);
   const openCoinEntry = useCallback(
     (source = "unknown", presetAction = null) => {
       coinEntryContextRef.current = {
@@ -72490,7 +72801,7 @@ useEffect(() => {
     },
     [logEvent]
   );
-  const handleCoinEntryClose = useCallback(() => {
+  const handleCoinEntryClose = useCallback((options = {}) => {
     const context = coinEntryContextRef.current;
     if (context?.source) {
       logEvent("coin_entry_closed", {
@@ -72502,7 +72813,11 @@ useEffect(() => {
     coinEntryContextRef.current = { source: null, openedAt: 0, submitted: false };
     setCoinEntryPresetAction(null);
     setCoinEntryVisible(false);
-  }, [logEvent]);
+    const keepWidgetFlowActive = options?.keepWidgetFlowActive === true;
+    if (!keepWidgetFlowActive && context?.source?.startsWith("widget_")) {
+      finishWidgetActionFlow();
+    }
+  }, [finishWidgetActionFlow, logEvent]);
 
   const handleQuickCustomChange = (field, value) => {
     if (field === "category" && quickCustomLockedCategoryId) {
@@ -72986,7 +73301,6 @@ useEffect(() => {
   const pendingWidgetActionRef = useRef(null);
   const initialWidgetUrlHandledRef = useRef(false);
   const handleWidgetDeepLinkRef = useRef(() => {});
-  const widgetLaunchGuardUntilRef = useRef(0);
   const queueWidgetAction = useCallback((action) => {
     if (!action) return;
     pendingWidgetActionRef.current = action;
@@ -73025,8 +73339,9 @@ useEffect(() => {
       };
       const entryContext = coinEntryContextRef.current || {};
       const entrySource = entryContext.source || "unknown";
+      const isWidgetEntry = entrySource.startsWith("widget_");
       const isWidgetSession =
-        entrySource.startsWith("widget_") || Date.now() <= (widgetLaunchGuardUntilRef.current || 0);
+        isWidgetEntry || Date.now() <= (widgetLaunchGuardUntilRef.current || 0);
       logEvent("coin_entry_submit", {
         source: entrySource,
         direction: action,
@@ -73038,31 +73353,38 @@ useEffect(() => {
         openedAt: entryContext.openedAt || Date.now(),
         submitted: true,
       };
-      handleCoinEntryClose();
-      if (action === "save") {
-        const fallbackGoal =
-          activeGoalId ||
-          profile.goal ||
-          mainGoalWish?.id ||
-          (Array.isArray(profile.primaryGoals) ? profile.primaryGoals[0]?.id : null) ||
-          getFallbackGoalId();
-        await handleTemptationAction("save", virtualItem, {
-          skipPrompt: true,
-          goalId: fallbackGoal,
-          shouldAssign: false,
-          forcePrimaryGoal: true,
-          suppressSaveOverlay: isWidgetSession,
-        });
-      } else {
-        await handleTemptationAction("spend", virtualItem, {
-          bypassSpendPrompt: true,
-          suppressStormOverlay: isWidgetSession,
-        });
+      handleCoinEntryClose({ keepWidgetFlowActive: isWidgetEntry });
+      try {
+        if (action === "save") {
+          const fallbackGoal =
+            activeGoalId ||
+            profile.goal ||
+            mainGoalWish?.id ||
+            (Array.isArray(profile.primaryGoals) ? profile.primaryGoals[0]?.id : null) ||
+            getFallbackGoalId();
+          await handleTemptationAction("save", virtualItem, {
+            skipPrompt: true,
+            goalId: fallbackGoal,
+            shouldAssign: false,
+            forcePrimaryGoal: true,
+            suppressSaveOverlay: isWidgetSession,
+          });
+        } else {
+          await handleTemptationAction("spend", virtualItem, {
+            bypassSpendPrompt: true,
+            suppressStormOverlay: isWidgetSession,
+          });
+        }
+      } finally {
+        if (isWidgetEntry) {
+          finishWidgetActionFlow();
+        }
       }
     },
     [
       activeGoalId,
       adjustCoinSliderMaxFromEntry,
+      finishWidgetActionFlow,
       getFallbackGoalId,
       handleCoinEntryClose,
       handleTemptationAction,
@@ -73329,6 +73651,7 @@ useEffect(() => {
       if (parsed.route === "quick-entry" || parsed.route === "quick") {
         const type = typeof parsed.params?.type === "string" ? parsed.params.type.toLowerCase() : "";
         const presetAction = type === "spend" ? "spend" : "save";
+        beginWidgetActionFlow();
         goToTab("feed", { recordHistory: false });
         if (!premiumAccessResolved) {
           queueWidgetAction({ type: "quick-entry", presetAction });
@@ -73363,6 +73686,7 @@ useEffect(() => {
       }
     },
     [
+      beginWidgetActionFlow,
       goToTab,
       handleFabNewTemptation,
       historyHydrated,
@@ -73392,7 +73716,12 @@ useEffect(() => {
             handleWidgetDeepLinkRef.current?.(url);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          initialLinkResolutionPendingRef.current = false;
+          automaticModalPresentationPausedRef.current = widgetActionFlowActiveRef.current;
+          setInitialLinkResolutionPending(false);
+        });
     }
     return () => subscription?.remove?.();
   }, []);
@@ -77594,6 +77923,7 @@ useEffect(() => {
     return true;
   }, []);
   const canPresentPendingFrequencyReminderPrompt = useCallback(() => {
+    if (automaticModalPresentationPausedRef.current) return false;
     if (startupHardLockPendingBeforePaywall) return false;
     if (onboardingStep !== "done") return false;
     if (isStoreReviewHandoffPending()) return false;
@@ -77617,6 +77947,7 @@ useEffect(() => {
     if (!priorityReminderLocked && celebrationGapTimerRef.current) return false;
     return true;
   }, [
+    automaticModalPresentationPaused,
     blockingModalVisible,
     frequencyReminderPrompt.visible,
     onboardingStep,
@@ -78010,21 +78341,6 @@ useEffect(() => {
       temptationInteractions,
     ]
   );
-  const queueCoinValueModal = useCallback(() => {
-    const currentStatus = coinValueModalStatusRef.current;
-    if (
-      currentStatus === COIN_VALUE_MODAL_STATUS.SHOWN ||
-      currentStatus === COIN_VALUE_MODAL_STATUS.PENDING
-    ) {
-      return;
-    }
-    coinValueModalStatusRef.current = COIN_VALUE_MODAL_STATUS.PENDING;
-    setCoinValueModalStatus(COIN_VALUE_MODAL_STATUS.PENDING);
-    AsyncStorage.setItem(
-      STORAGE_KEYS.COIN_VALUE_MODAL,
-      COIN_VALUE_MODAL_STATUS.PENDING
-    ).catch(() => {});
-  }, []);
   const priceEditorTemplateId = priceEditor.item ? resolveTemptationTemplateId(priceEditor.item) : null;
   const priceEditorAssignedGoalId = priceEditorTemplateId
     ? resolveTemptationGoalId(priceEditorTemplateId)
@@ -79779,7 +80095,24 @@ useEffect(() => {
         if (!isEssentialSaveCategory) {
           queueHomeSpeech("save");
         }
-        return;
+        return {
+          committed: true,
+          type: "save",
+          targetGoalId: normalizedTargetGoalId || null,
+          appliedAmountUSD: Math.max(0, Number(appliedAmount) || 0),
+          savedAmountUSD: priceUSD,
+          coinReward,
+          creditedCoinReward,
+          goalSnapshot: targetWishSnapshot
+            ? {
+                id: targetWishSnapshot.id || normalizedTargetGoalId || null,
+                title: targetWishSnapshot.title || "",
+                savedUSD: Math.max(0, Number(targetWishSnapshot.savedUSD) || 0),
+                targetUSD: Math.max(0, Number(targetWishSnapshot.targetUSD) || 0),
+              }
+            : null,
+          saveOverlayPayload: saveOverlayPayloadWithReward,
+        };
       }
       if (type === "maybe" || type === "pause") {
         const activePendingCount = Array.isArray(pendingListRef.current)
@@ -80124,7 +80457,8 @@ useEffect(() => {
 
   const handleTycoonAutosaveSnooze = useCallback(() => {
     const now = Date.now();
-    const snoozedUntil = now + 2 * HOUR_MS;
+    const requestedSnoozedUntil = now + 2 * HOUR_MS;
+    const snoozedUntil = Math.min(requestedSnoozedUntil, getNextLocalMidnightAt(now));
     setTycoonAutosaveSnoozedUntil(snoozedUntil);
     setTycoonAutosaveDismissed(false);
     setTycoonReviewAcknowledged(false);
@@ -80132,6 +80466,7 @@ useEffect(() => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     void (async () => {
       await cancelScheduledTycoonAutosaveNotifications();
+      if (!isTycoonAutosaveTimestampInDay(snoozedUntil, currentDayKey)) return;
       const allowed = await ensureNotificationPermission({ request: false });
       if (!allowed) return;
       await scheduleNotificationWithCooldown({
@@ -80153,6 +80488,7 @@ useEffect(() => {
   }, [
     cancelScheduledTycoonAutosaveNotifications,
     clearQueuedModal,
+    currentDayKey,
     ensureNotificationPermission,
     scheduleNotificationWithCooldown,
     t,
@@ -80196,6 +80532,7 @@ useEffect(() => {
     let spentResolvedCount = 0;
     let savedAmountUSD = 0;
     let spentAmountUSD = 0;
+    const autosaveSaveResults = [];
     const resolvedStatuses = {};
     const resolvedAutosaveCountByCardId = {};
     const confirmedAutosaveCardDayKeys = new Set();
@@ -80242,7 +80579,7 @@ useEffect(() => {
         spentResolvedCount += 1;
         spentAmountUSD += amountUSD;
       } else {
-        await handleTemptationAction("save", card, {
+        const saveResult = await handleTemptationAction("save", card, {
           amountUSD,
           skipPrompt: true,
           suppressSaveOverlay: true,
@@ -80252,6 +80589,9 @@ useEffect(() => {
           skipFrequencyReminderPrompt: true,
           preserveFrequencyTimer: true,
         });
+        if (saveResult?.committed === true) {
+          autosaveSaveResults.push(saveResult);
+        }
         savedCount += 1;
         savedAmountUSD += amountUSD;
       }
@@ -80349,6 +80689,78 @@ useEffect(() => {
     setTycoonAutosaveSnoozedUntil(0);
     setTycoonAutosaveDismissed(true);
     clearQueuedModal(QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE);
+    const autosaveSaveSummary = summarizeTycoonAutosaveSaveResults(autosaveSaveResults);
+    if (autosaveSaveSummary.savedCount > 0 && autosaveSaveSummary.savedAmountUSD > 0) {
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      const totalSavedLabel = formatCurrency(
+        convertToCurrency(autosaveSaveSummary.savedAmountUSD, currencyCode),
+        currencyCode,
+        { precisionOverride: getCurrencyPrecision(currencyCode) }
+      );
+      const latestPayload = autosaveSaveSummary.latestPayload || {};
+      const aggregateCoinTier =
+        autosaveSaveSummary.coinReward > 0
+          ? getHealthCoinTierForAmount(autosaveSaveSummary.coinReward)
+          : null;
+      const aggregateCoinColor = aggregateCoinTier
+        ? getGoalJarCoinColor(aggregateCoinTier.id)
+        : SAVE_ACTION_COLOR;
+      const previousGoalCoinColors = Array.isArray(latestPayload.goalCoinColors)
+        ? latestPayload.goalCoinColors.slice(0, -1)
+        : [];
+      const autosaveSummaryPayload = {
+        overlayKey: `tycoon_autosave_summary_${now}`,
+        title: t("tycoonAutosaveSummaryTitle"),
+        savedAmountUSD: autosaveSaveSummary.savedAmountUSD,
+        depositAmountLabel: totalSavedLabel,
+        savedAmountLabel: totalSavedLabel,
+        saveCount: autosaveSaveSummary.savedCount,
+        isFirstSaveAction: false,
+        aggregateAutosaveSummary: true,
+        coinReward: autosaveSaveSummary.coinReward,
+        coinTierId: aggregateCoinTier?.id || null,
+        coinColor: aggregateCoinColor,
+        goalCoinColors:
+          autosaveSaveSummary.coinReward > 0
+            ? [...previousGoalCoinColors, aggregateCoinColor].slice(
+                -GOAL_JAR_MAX_DISPLAY_COINS
+              )
+            : previousGoalCoinColors,
+        rewardChestCount:
+          autosaveSaveSummary.coinReward > 0 ? autosaveSaveSummary.savedCount : 0,
+        temptationSeriesRewardMode: latestPayload.temptationSeriesRewardMode || "none",
+        temptationSeriesPendingCoins: Math.max(
+          0,
+          Number(latestPayload.temptationSeriesPendingCoins) || 0
+        ),
+        onRevealReward: null,
+      };
+      const singleGoal = autosaveSaveSummary.singleGoal;
+      const goalSnapshot = singleGoal?.goalSnapshot;
+      const goalTargetUSD = Math.max(0, Number(goalSnapshot?.targetUSD) || 0);
+      const goalStartSavedUSD = Math.max(0, Number(goalSnapshot?.savedUSD) || 0);
+      const goalAppliedUSD = Math.max(0, Number(singleGoal?.appliedAmountUSD) || 0);
+      if (goalSnapshot?.title && goalTargetUSD > 0 && goalAppliedUSD > 0) {
+        const goalEndSavedUSD = Math.min(goalTargetUSD, goalStartSavedUSD + goalAppliedUSD);
+        const remainingUSD = Math.max(0, goalTargetUSD - goalEndSavedUSD);
+        Object.assign(autosaveSummaryPayload, {
+          goalTitle: goalSnapshot.title,
+          goalProgressLabel: `${formatCurrency(
+            convertToCurrency(goalEndSavedUSD, currencyCode),
+            currencyCode,
+            { precisionOverride: getCurrencyPrecision(currencyCode) }
+          )} / ${formatCurrency(convertToCurrency(goalTargetUSD, currencyCode), currencyCode, {
+            precisionOverride: getCurrencyPrecision(currencyCode),
+          })}`,
+          remainingTemptations: Math.max(Math.ceil(remainingUSD / goalAppliedUSD), 0),
+          goalComplete: remainingUSD <= 0,
+          progressStart: Math.min(1, goalStartSavedUSD / goalTargetUSD),
+          progressEnd: Math.min(1, goalEndSavedUSD / goalTargetUSD),
+        });
+      }
+      ensureOverlayEnvironmentReady();
+      triggerOverlayState("save", autosaveSummaryPayload);
+    }
     logEvent("tycoon_autosave_confirmed", {
       saved_count: savedCount,
       spent_count: spentResolvedCount,
@@ -80358,12 +80770,15 @@ useEffect(() => {
     });
   }, [
     clearQueuedModal,
+    ensureOverlayEnvironmentReady,
     enforceMonetizationTrialActionLimit,
     handleTemptationAction,
     logEvent,
     profile.currency,
     resolveTemplateCard,
     savedTotalUSD,
+    t,
+    triggerOverlayState,
     tycoonAutosaveAmountOverrides,
     tycoonConfirmStats,
     tycoonLedger,
@@ -82914,6 +83329,7 @@ useEffect(() => {
     if (overlayActiveRef.current) return;
     const runtimeSnapshot = overlayQueueRuntimeRef.current || {};
     if (runtimeSnapshot.startupHardLockPendingBeforePaywall) return;
+    if (runtimeSnapshot.automaticModalPresentationPaused) return;
     while (
       overlayQueueRef.current.length &&
       runtimeSnapshot.activeTab !== "feed" &&
@@ -83015,6 +83431,7 @@ useEffect(() => {
   const scheduleOverlayRetry = useCallback(() => {
     if (overlayRetryTimerRef.current) return;
     const runtimeSnapshot = overlayQueueRuntimeRef.current || {};
+    if (runtimeSnapshot.automaticModalPresentationPaused) return;
     if (
       !shouldScheduleActionRewardOverlayRetry({
         queueLength: overlayQueueRef.current.length,
@@ -83027,6 +83444,7 @@ useEffect(() => {
     overlayRetryTimerRef.current = setTimeout(() => {
       overlayRetryTimerRef.current = null;
       const latestRuntimeSnapshot = overlayQueueRuntimeRef.current || {};
+      if (latestRuntimeSnapshot.automaticModalPresentationPaused) return;
       if (
         !shouldScheduleActionRewardOverlayRetry({
           queueLength: overlayQueueRef.current.length,
@@ -83749,6 +84167,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.IMPULSE_ALERT) return;
+    if (automaticModalPresentationPausedRef.current) return;
     if (!pendingImpulseAlert?.payload) {
       clearQueuedModal(QUEUED_MODAL_TYPES.IMPULSE_ALERT);
       return;
@@ -83763,6 +84182,7 @@ useEffect(() => {
       );
     }
   }, [
+    automaticModalPresentationPaused,
     clearQueuedModal,
     overlay?.type,
     pendingImpulseAlert,
@@ -87147,35 +87567,198 @@ useEffect(() => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-        {!startupHardLockPendingBeforePaywall && coinValueModalVisible && (
-          <Modal visible transparent animationType="fade" statusBarTranslucent>
-            <View style={styles.quickModalBackdrop}>
-              <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
-                <View style={styles.coinValueHero}>
-                  <View style={styles.coinValueHeroGlow} />
-                  <Image source={LEVEL_SHARE_CAT} style={styles.coinValueHeroCat} />
-                  <View style={styles.coinValueHeroFooter}>
-                    <Image source={LEVEL_SHARE_LOGO} style={styles.coinValueHeroLogo} />
-                    <Text style={styles.coinValueHeroBrand}>Almost</Text>
+        {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
+          queuedModalType === QUEUED_MODAL_TYPES.COIN_VALUE &&
+          coinValueModalVisible && (
+          <Modal
+            visible
+            transparent
+            animationType={reduceMotion ? "none" : "fade"}
+            statusBarTranslucent
+            onRequestClose={dismissCoinValueModal}
+          >
+            <View
+              style={[
+                styles.coinValueBackdrop,
+                {
+                  backgroundColor: colorWithAlpha(colors.overlay || "#111318", 0.72),
+                  paddingBottom: Math.max(
+                    UI_SPACING.sm,
+                    (safeAreaInsets.bottom || 0) + UI_SPACING.xs
+                  ),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.coinValueCard,
+                  {
+                    backgroundColor: colors.surfaceElevated || colors.card,
+                    borderColor: colors.border,
+                    direction: isRtlLanguage(language) ? "rtl" : "ltr",
+                    maxHeight: Math.round(viewportHeight * 0.88),
+                    shadowColor: colors.shadow || colors.overlay,
+                  },
+                ]}
+                accessibilityViewIsModal
+              >
+                <ScrollView
+                  style={styles.coinValueScroll}
+                  contentContainerStyle={styles.coinValueContent}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  overScrollMode="never"
+                >
+                  <View
+                    style={[
+                      styles.coinValueHero,
+                      {
+                        backgroundColor:
+                          colors.primarySurface || colorWithAlpha(colors.primary, 0.12),
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.coinValueHeroCoinWrap,
+                        { backgroundColor: colors.surfaceElevated || colors.card },
+                      ]}
+                    >
+                      <Image
+                        source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                        style={styles.coinValueHeroCoin}
+                        resizeMode="contain"
+                        accessible={false}
+                      />
+                    </View>
+                    <View style={styles.coinValueHeroCopy}>
+                      <Text style={[styles.coinValueTitle, { color: colors.text }]}>
+                        {t("coinValueTitle")}
+                      </Text>
+                      <Text style={[styles.coinValueBody, { color: colors.muted }]}>
+                        {t("coinValueBody")}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={[styles.quickModalTitle, { color: colors.text }]}>
-                  {t("coinValueTitle")}
-                </Text>
-                <Text style={[styles.quickModalSubtitle, { color: colors.muted }]}>
-                  {t("coinValueBody")}
-                </Text>
-                <View style={styles.quickModalActions}>
+
+                  <View
+                    style={[
+                      styles.coinValueEarnBlock,
+                      {
+                        backgroundColor: colors.surfaceMuted || colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Image
+                      source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                      style={styles.coinValueEarnCoin}
+                      resizeMode="contain"
+                      accessible={false}
+                    />
+                    <View style={styles.coinValueEarnCopy}>
+                      <Text style={[styles.coinValueEarnTitle, { color: colors.text }]}>
+                        {t("coinValueEarnTitle")}
+                      </Text>
+                      <Text style={[styles.coinValueEarnBody, { color: colors.muted }]}>
+                        {t("coinValueEarnBody")}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.coinValueUseTitle, { color: colors.text }]}>
+                    {t("coinValueUseTitle")}
+                  </Text>
+                  <View style={[styles.coinValueUseList, { borderColor: colors.border }]}>
+                    <View style={styles.coinValueUseRow}>
+                      <View
+                        style={[
+                          styles.coinValueUseVisual,
+                          { backgroundColor: colors.primarySurface || colors.surfaceMuted },
+                        ]}
+                      >
+                        <Image
+                          source={LEVEL_SHARE_CAT}
+                          style={styles.coinValueUseMascot}
+                          resizeMode="contain"
+                          accessible={false}
+                        />
+                      </View>
+                      <View style={styles.coinValueUseCopy}>
+                        <Text style={[styles.coinValueUseRowTitle, { color: colors.text }]}>
+                          {t("coinValueCustomizeTitle")}
+                        </Text>
+                        <Text style={[styles.coinValueUseRowBody, { color: colors.muted }]}>
+                          {t("coinValueCustomizeBody")}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[styles.coinValueUseSeparator, { backgroundColor: colors.border }]} />
+                    <View style={styles.coinValueUseRow}>
+                      <View
+                        style={[
+                          styles.coinValueUseVisual,
+                          { backgroundColor: colors.primarySurface || colors.surfaceMuted },
+                        ]}
+                      >
+                        <Image
+                          source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                          style={styles.coinValueUseCoin}
+                          resizeMode="contain"
+                          accessible={false}
+                        />
+                      </View>
+                      <View style={styles.coinValueUseCopy}>
+                        <Text style={[styles.coinValueUseRowTitle, { color: colors.text }]}>
+                          {t("coinValueRestoreTitle")}
+                        </Text>
+                        <Text style={[styles.coinValueUseRowBody, { color: colors.muted }]}>
+                          {t("coinValueRestoreBody")}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.coinValueBalanceHint}>
+                    <Image
+                      source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                      style={styles.coinValueBalanceHintCoin}
+                      resizeMode="contain"
+                      accessible={false}
+                    />
+                    <Text style={[styles.coinValueBalanceHintText, { color: colors.muted }]}>
+                      {t("coinValueBalanceHint")}
+                    </Text>
+                  </View>
+                </ScrollView>
+                <View
+                  style={[
+                    styles.coinValueFooter,
+                    {
+                      backgroundColor: colors.surfaceElevated || colors.card,
+                      borderTopColor: colors.border,
+                    },
+                  ]}
+                >
                   <TouchableOpacity
-                    style={[styles.quickModalPrimary, { backgroundColor: colors.text }]}
+                    style={[styles.coinValuePrimary, { backgroundColor: colors.primary }]}
                     onPress={dismissCoinValueModal}
                     activeOpacity={0.9}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("coinValueCta")}
                   >
                     <Text
-                      style={[styles.quickModalPrimaryText, { color: colors.background }]}
+                      style={[
+                        styles.coinValuePrimaryText,
+                        {
+                          color:
+                            colors.onPrimary || resolveForegroundForColor(colors.primary),
+                        },
+                      ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
-                      minimumFontScale={0.82}
+                      minimumFontScale={0.78}
                     >
                       {t("coinValueCta")}
                     </Text>
@@ -87185,7 +87768,10 @@ useEffect(() => {
             </View>
           </Modal>
         )}
-        {!startupHardLockPendingBeforePaywall && dailySummaryVisible && dailySummaryData && (
+        {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
+          dailySummaryVisible &&
+          dailySummaryData && (
           <Modal
             visible
             transparent
@@ -87612,7 +88198,9 @@ useEffect(() => {
             </View>
           </Modal>
         )}
-        {!startupHardLockPendingBeforePaywall && pushDayThreePromptVisible && (
+        {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
+          pushDayThreePromptVisible && (
           <Modal visible transparent animationType="fade" statusBarTranslucent>
             <View style={styles.quickModalBackdrop}>
               <View style={[styles.quickModalCard, { backgroundColor: colors.card }]}>
@@ -87656,7 +88244,9 @@ useEffect(() => {
             </View>
           </Modal>
         )}
-        {!startupHardLockPendingBeforePaywall && ratingPromptVisible && (
+        {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
+          ratingPromptVisible && (
           <Modal
             visible
             transparent
@@ -88322,6 +88912,7 @@ useEffect(() => {
         />
 
         {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
           !premiumPaywallState.visible &&
           activeTab !== "profile" &&
           fabTutorialVisible && (
@@ -88381,6 +88972,7 @@ useEffect(() => {
         <BudgetWidgetTutorialModal
           visible={
             !startupHardLockPendingBeforePaywall &&
+            !automaticModalPresentationPaused &&
             !premiumPaywallState.visible &&
             budgetWidgetTutorialVisible
           }
@@ -89741,7 +90333,9 @@ useEffect(() => {
           </TouchableWithoutFeedback>
         </Modal>
 
-        {!startupHardLockPendingBeforePaywall && frequencyReminderPrompt.visible && (
+        {!startupHardLockPendingBeforePaywall &&
+          !automaticModalPresentationPaused &&
+          frequencyReminderPrompt.visible && (
           <Modal
             visible
             transparent
@@ -90358,7 +90952,7 @@ useEffect(() => {
           </View>
         )}
 
-        {!startupHardLockPendingBeforePaywall && (
+        {!startupHardLockPendingBeforePaywall && !automaticModalPresentationPaused && (
           <>
             {overlay &&
               overlay.type !== "level" &&
@@ -91334,6 +91928,7 @@ useEffect(() => {
         <Modal
           visible={
             !startupHardLockPendingBeforePaywall &&
+            !automaticModalPresentationPaused &&
             goalRenewalPromptVisible &&
             !overlay &&
             !goalCompletionFlowActive
@@ -91392,7 +91987,7 @@ useEffect(() => {
         </Modal>
 
         <IncomeEntryModal
-          visible={incomeEntryModalVisible}
+          visible={!automaticModalPresentationPaused && incomeEntryModalVisible}
           startupHardLockPendingBeforePaywall={startupHardLockPendingBeforePaywall}
           initialInput={incomeEntryInput}
           isExtra={isExtraIncomeEntry}
@@ -92754,42 +93349,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(3,8,20,0.62)",
     paddingHorizontal: 16,
-    paddingTop: 72,
-    paddingBottom: 28,
+    paddingVertical: 20,
     justifyContent: "center",
   },
   tycoonAutosaveCard: {
-    maxHeight: "92%",
-    borderRadius: 26,
+    maxHeight: "96%",
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 12,
   },
   tycoonAutosaveHeader: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "flex-start",
-  },
-  tycoonAutosaveHeaderText: {
-    flex: 1,
+    paddingRight: 4,
   },
   tycoonAutosaveTitle: {
-    ...createBodyText({ fontSize: 22, lineHeight: 27, fontWeight: "900" }),
+    ...createBodyText({ fontSize: 23, lineHeight: 29, fontWeight: "900" }),
   },
   tycoonAutosaveSubtitle: {
-    ...createSecondaryText({ fontSize: 13, lineHeight: 18, fontWeight: "600" }),
-    marginTop: 5,
-  },
-  tycoonAutosaveClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tycoonAutosaveCloseText: {
-    fontSize: 26,
-    lineHeight: 28,
-    fontWeight: "500",
+    ...createSecondaryText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
+    marginTop: 6,
   },
   tycoonAutosaveReview: {
     borderRadius: 16,
@@ -92806,38 +93385,51 @@ const styles = StyleSheet.create({
   },
   tycoonAutosaveTotals: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
     marginTop: 14,
   },
   tycoonAutosaveTotalPill: {
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-  },
-  tycoonAutosaveTotalText: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
-  },
-  tycoonAutosaveList: {
-    marginTop: 12,
-    maxHeight: 420,
-  },
-  tycoonAutosaveListContent: {
-    gap: 9,
-    paddingBottom: 4,
-  },
-  tycoonAutosaveItem: {
-    minHeight: 66,
-    borderRadius: 18,
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 9,
+    justifyContent: "center",
+  },
+  tycoonAutosaveTotalText: {
+    ...createCtaText({ fontSize: 12 }),
+    textAlign: "center",
+  },
+  tycoonAutosaveListHeader: {
+    marginTop: 16,
+  },
+  tycoonAutosaveListTitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
+  },
+  tycoonAutosaveListHint: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "600" }),
+    marginTop: 2,
+  },
+  tycoonAutosaveList: {
+    marginTop: 8,
+    maxHeight: 360,
+    flexShrink: 1,
+  },
+  tycoonAutosaveListContent: {
     gap: 10,
+    paddingBottom: 4,
+  },
+  tycoonAutosaveItem: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 11,
   },
   tycoonAutosaveItemExpanded: {
-    paddingBottom: 12,
+    paddingBottom: 10,
   },
   tycoonAutosaveItemMain: {
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -92860,59 +93452,62 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
   },
   tycoonAutosaveItemMeta: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+    ...createSecondaryText({ fontSize: 13, lineHeight: 17, fontWeight: "700" }),
     marginTop: 2,
   },
-  tycoonAutosaveSwitch: {
-    width: 74,
-    height: 34,
-    borderRadius: 17,
-    padding: 3,
-    justifyContent: "center",
-  },
-  tycoonAutosaveSwitchThumb: {
-    position: "absolute",
-    left: 4,
-    top: 4,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  tycoonAutosaveSwitchText: {
-    ...createCtaText({ fontSize: 8, textTransform: "uppercase" }),
-    color: "#FFFFFF",
-    maxWidth: 40,
-  },
-  tycoonAutosaveSwitchTextSaveSide: {
-    alignSelf: "flex-start",
-    marginLeft: 5,
-  },
-  tycoonAutosaveSwitchTextSpendSide: {
-    alignSelf: "flex-end",
-    marginRight: 5,
-  },
-  tycoonAutosaveExclude: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  tycoonAutosaveAmountDisclosure: {
+    minHeight: 36,
+    maxWidth: 92,
+    borderRadius: 12,
     borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     alignItems: "center",
     justifyContent: "center",
   },
-  tycoonAutosaveExcludeText: {
-    fontSize: 22,
-    lineHeight: 24,
-    fontWeight: "500",
+  tycoonAutosaveAmountDisclosureText: {
+    ...createCtaText({ fontSize: 10 }),
+    textAlign: "center",
+  },
+  tycoonAutosaveDecisionBlock: {
+    marginTop: 10,
+  },
+  tycoonAutosaveDecisionLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
+    marginBottom: 6,
+  },
+  tycoonAutosaveDecisionControl: {
+    minHeight: Platform.OS === "ios" ? 50 : 54,
+    borderRadius: 14,
+    padding: 3,
+    flexDirection: "row",
+    gap: 4,
+  },
+  tycoonAutosaveDecisionOption: {
+    flex: 1,
+    minHeight: Platform.OS === "ios" ? 44 : 48,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "transparent",
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  tycoonAutosaveDecisionDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+  },
+  tycoonAutosaveDecisionText: {
+    ...createCtaText({ fontSize: 12 }),
   },
   tycoonAutosaveAmountPanel: {
-    marginLeft: 54,
-    paddingRight: 40,
+    marginTop: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
   },
   tycoonAutosaveAmountHeader: {
     flexDirection: "row",
@@ -92920,11 +93515,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
+  tycoonAutosaveAmountLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "700" }),
+    marginBottom: 1,
+  },
   tycoonAutosaveAmountValue: {
     ...createBodyText({ fontSize: 20, lineHeight: 24, fontWeight: "900" }),
   },
   tycoonAutosaveAmountLimit: {
     ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "700" }),
+    maxWidth: "48%",
+    textAlign: "right",
   },
   tycoonAutosaveAmountTrackWrap: {
     height: 28,
@@ -92954,35 +93555,57 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  tycoonAutosaveState: {
-    minWidth: 58,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+  tycoonAutosaveExclude: {
+    minHeight: Platform.OS === "ios" ? 44 : 48,
+    marginTop: 4,
     alignItems: "center",
+    justifyContent: "center",
   },
-  tycoonAutosaveStateText: {
-    ...createCtaText({ fontSize: 9, textTransform: "uppercase" }),
-    color: "#FFFFFF",
+  tycoonAutosaveExcludeText: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    textAlign: "center",
   },
   tycoonAutosaveConfirm: {
-    borderRadius: 18,
-    paddingVertical: 14,
+    minHeight: 52,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     alignItems: "center",
-    marginTop: 10,
-  },
-  tycoonAutosaveConfirmText: {
-    ...createCtaText({ fontSize: 13, textTransform: "uppercase" }),
-  },
-  tycoonAutosaveLater: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingVertical: 13,
-    alignItems: "center",
+    justifyContent: "center",
     marginTop: 12,
   },
+  tycoonAutosaveConfirmText: {
+    ...createCtaText({ fontSize: 14 }),
+    textAlign: "center",
+  },
+  tycoonAutosaveLater: {
+    minHeight: 58,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
   tycoonAutosaveLaterText: {
-    ...createCtaText({ fontSize: 12, textTransform: "uppercase" }),
+    ...createCtaText({ fontSize: 13 }),
+    textAlign: "center",
+  },
+  tycoonAutosaveLaterHint: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "600" }),
+    textAlign: "center",
+    marginTop: 2,
+  },
+  tycoonAutosaveCloseAction: {
+    minHeight: Platform.OS === "ios" ? 44 : 48,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveCloseActionText: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+    textAlign: "center",
   },
   tycoonAutosaveHungryBackdrop: {
     flex: 1,
@@ -107208,14 +107831,14 @@ const styles = StyleSheet.create({
   },
   budgetPaneTabs: {
     flexDirection: "row",
-    gap: 4,
-    padding: 4,
-    borderRadius: UI_RADIUS.card,
+    gap: 2,
+    padding: 2,
+    borderRadius: UI_RADIUS.pill,
   },
   budgetPaneTabButton: {
     flex: 1,
     minHeight: UI_TOUCH_TARGET.current,
-    borderRadius: UI_RADIUS.control,
+    borderRadius: UI_RADIUS.pill,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -107224,6 +107847,364 @@ const styles = StyleSheet.create({
   budgetPaneTabText: {
     ...createCtaText({ fontSize: 14 }),
     textAlign: "center",
+  },
+  budgetHeaderBlock: {
+    gap: 2,
+    marginBottom: 0,
+  },
+  budgetHeaderTitle: {
+    fontSize: IS_SHORT_DEVICE ? 27 : 28,
+    lineHeight: IS_SHORT_DEVICE ? 32 : 34,
+    marginBottom: 0,
+  },
+  budgetHeaderSubtitle: {
+    ...createSecondaryText({
+      fontSize: IS_SHORT_DEVICE ? 13 : 14,
+      lineHeight: IS_SHORT_DEVICE ? 17 : 19,
+      fontWeight: "500",
+    }),
+    marginBottom: 0,
+  },
+  budgetAvailableCard: {
+    minHeight: IS_SHORT_DEVICE ? 78 : 84,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: UI_RADIUS.card,
+    paddingHorizontal: IS_SHORT_DEVICE ? 12 : 14,
+    paddingVertical: IS_SHORT_DEVICE ? 9 : 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
+  },
+  budgetAvailableCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  budgetAvailableLabel: {
+    ...createSecondaryText({
+      fontSize: IS_SHORT_DEVICE ? 12 : 13,
+      lineHeight: IS_SHORT_DEVICE ? 16 : 17,
+      fontWeight: "500",
+    }),
+  },
+  budgetAvailableAmount: {
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 30 : 33,
+      lineHeight: IS_SHORT_DEVICE ? 34 : 38,
+      fontWeight: "900",
+    }),
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.4,
+  },
+  budgetAvailableIcon: {
+    width: IS_SHORT_DEVICE ? 42 : 46,
+    height: IS_SHORT_DEVICE ? 42 : 46,
+    borderRadius: UI_RADIUS.control,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetFocusCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: UI_RADIUS.card,
+    padding: IS_SHORT_DEVICE ? 9 : 10,
+    gap: IS_SHORT_DEVICE ? 6 : 7,
+    shadowOpacity: 0.035,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  budgetFocusHeader: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  budgetFocusTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  budgetFocusTitleIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetFocusTitle: {
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 18 : 19,
+      lineHeight: IS_SHORT_DEVICE ? 22 : 24,
+      fontWeight: "900",
+    }),
+  },
+  budgetFocusEditButton: {
+    minHeight: UI_TOUCH_TARGET.current,
+    maxWidth: "48%",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: UI_RADIUS.control,
+    paddingHorizontal: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetFocusEditText: {
+    ...createCtaText({ fontSize: 12, lineHeight: 16 }),
+    textAlign: "center",
+  },
+  budgetFocusArtFrame: {
+    height: IS_SHORT_DEVICE ? 114 : 124,
+    borderRadius: UI_RADIUS.card,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  budgetFocusArtStage: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetJarStage: {
+    position: "relative",
+    width: IS_SHORT_DEVICE ? 132 : 144,
+    height: IS_SHORT_DEVICE ? 114 : 124,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetJarDropCoin: {
+    position: "absolute",
+    top: 6,
+    left: "50%",
+    width: 20,
+    height: 20,
+    marginLeft: -10,
+    borderRadius: 10,
+    zIndex: 12,
+    shadowColor: "#000000",
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  budgetJarDropCoinShine: {
+    position: "absolute",
+    top: 3,
+    left: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.62)",
+  },
+  budgetDebtEmptyVisual: {
+    width: "100%",
+    height: "100%",
+    paddingHorizontal: IS_SHORT_DEVICE ? 10 : 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+  },
+  budgetDebtEmptyDocument: {
+    width: IS_SHORT_DEVICE ? 62 : 68,
+    height: IS_SHORT_DEVICE ? 72 : 78,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: "-3deg" }],
+  },
+  budgetDebtEmptyPlus: {
+    position: "absolute",
+    right: -6,
+    bottom: -5,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetDebtEmptyCopy: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 250,
+    gap: 3,
+  },
+  budgetDebtEmptyTitle: {
+    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 16 : 17, lineHeight: 21, fontWeight: "900" }),
+  },
+  budgetDebtEmptyBody: {
+    ...createSecondaryText({ fontSize: IS_SHORT_DEVICE ? 11.5 : 12.5, lineHeight: 16, fontWeight: "600" }),
+  },
+  budgetDebtMeter: {
+    width: "100%",
+    maxWidth: 360,
+    paddingHorizontal: IS_SHORT_DEVICE ? 12 : 16,
+    gap: IS_SHORT_DEVICE ? 8 : 10,
+  },
+  budgetDebtMeterSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  budgetDebtMeterIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetDebtMeterCopy: {
+    minWidth: 74,
+    gap: 0,
+  },
+  budgetDebtMeterLabel: {
+    ...createSecondaryText({ fontSize: 11.5, lineHeight: 14, fontWeight: "600" }),
+  },
+  budgetDebtMeterPercent: {
+    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 22 : 24, lineHeight: 27, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetDebtTrack: {
+    position: "relative",
+    width: "100%",
+    height: 10,
+    borderRadius: 5,
+  },
+  budgetDebtTrackRemaining: {
+    height: "100%",
+    borderRadius: 5,
+  },
+  budgetDebtTrackMarker: {
+    position: "absolute",
+    top: -4,
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    borderRadius: 9,
+    borderWidth: 4,
+  },
+  budgetDebtMeterEndpoints: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  budgetDebtMeterEndpoint: {
+    flex: 1,
+    minWidth: 0,
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "600" }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetDebtMeterEndpointGoal: {
+    textAlign: "right",
+  },
+  budgetFocusAmountRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    columnGap: 7,
+  },
+  budgetFocusAmount: {
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 22 : 24,
+      lineHeight: IS_SHORT_DEVICE ? 27 : 29,
+      fontWeight: "900",
+    }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetFocusAmountLabel: {
+    ...createSecondaryText({
+      fontSize: IS_SHORT_DEVICE ? 12.5 : 13.5,
+      lineHeight: IS_SHORT_DEVICE ? 17 : 18,
+      fontWeight: "600",
+    }),
+  },
+  budgetFocusStats: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 8,
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 12,
+  },
+  budgetFocusStat: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  budgetFocusStatLabel: {
+    ...createSecondaryText({ fontSize: 10.5, lineHeight: 14, fontWeight: "600" }),
+  },
+  budgetFocusStatValue: {
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 14 : 15,
+      lineHeight: IS_SHORT_DEVICE ? 18 : 19,
+      fontWeight: "800",
+    }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetFocusRecommendation: {
+    ...createSecondaryText({ fontSize: 11.5, lineHeight: 15, fontWeight: "600", textAlign: "center" }),
+  },
+  budgetGuideCard: {
+    minHeight: IS_SHORT_DEVICE ? 138 : 154,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: UI_RADIUS.card,
+    padding: IS_SHORT_DEVICE ? 12 : 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    overflow: "hidden",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
+  },
+  budgetGuideSteps: {
+    flex: 1,
+    minWidth: 0,
+    gap: IS_SHORT_DEVICE ? 7 : 9,
+  },
+  budgetGuideStep: {
+    minHeight: 34,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  budgetGuideStepIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetGuideStepNumber: {
+    width: 14,
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "900", textAlign: "center" }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetGuideStepText: {
+    flex: 1,
+    minWidth: 0,
+    ...createBodyText({ fontSize: IS_SHORT_DEVICE ? 12.5 : 13.5, lineHeight: IS_SHORT_DEVICE ? 17 : 18, fontWeight: "700" }),
+  },
+  budgetGuideMascot: {
+    width: IS_SHORT_DEVICE ? 72 : 86,
+    height: IS_SHORT_DEVICE ? 104 : 122,
+    alignSelf: "flex-end",
+    marginBottom: -9,
+    marginRight: -4,
   },
   budgetVaultCard: {
     borderWidth: 1,
@@ -107373,11 +108354,16 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   budgetPrimaryButton: {
-    minHeight: UI_TOUCH_TARGET.current,
-    borderRadius: UI_RADIUS.control,
+    minHeight: Math.max(50, UI_TOUCH_TARGET.current),
+    borderRadius: UI_RADIUS.card,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
   budgetPrimaryButtonText: {
     fontSize: IS_SHORT_DEVICE ? 15 : 16,
@@ -107397,6 +108383,57 @@ const styles = StyleSheet.create({
     lineHeight: IS_SHORT_DEVICE ? 16 : 17,
     fontWeight: "800",
   },
+  budgetTransferDestination: {
+    minHeight: 66,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: UI_RADIUS.card,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  budgetTransferDestinationIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetTransferDestinationCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  budgetTransferDestinationLabel: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
+  },
+  budgetTransferDestinationMeta: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+    fontVariant: ["tabular-nums"],
+  },
+  budgetTransferGuideRow: {
+    borderRadius: UI_RADIUS.card,
+    padding: 11,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  budgetTransferGuideIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  budgetTransferGuideCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  budgetTransferGuideTitle: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+  },
   budgetProofModalRoot: {
     flex: 1,
   },
@@ -107410,16 +108447,16 @@ const styles = StyleSheet.create({
   budgetProofModalDock: {
     flex: 1,
     justifyContent: "flex-end",
-    paddingHorizontal: 12,
     paddingTop: 24,
-    paddingBottom: 12,
   },
   budgetProofModalCard: {
+    width: "100%",
     borderWidth: 1,
-    borderRadius: UI_RADIUS.sheet,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: UI_RADIUS.sheet,
+    borderTopRightRadius: UI_RADIUS.sheet,
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 12,
     maxHeight: "92%",
   },
   budgetSheetHandle: {
@@ -109165,47 +110202,194 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 22,
   },
-  coinValueHero: {
-    height: 140,
-    borderRadius: 22,
-    backgroundColor: LEVEL_SHARE_BG,
-    borderWidth: 1,
-    borderColor: "rgba(255,180,71,0.6)",
+  coinValueBackdrop: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.lg,
+  },
+  coinValueCard: {
+    width: "100%",
+    maxWidth: 520,
+    borderRadius: UI_RADIUS.sheet,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
+    shadowOpacity: Platform.OS === "ios" ? 0.2 : 0.26,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    elevation: 12,
   },
-  coinValueHeroGlow: {
-    position: "absolute",
-    top: -40,
-    right: -20,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(255,180,71,0.25)",
+  coinValueScroll: {
+    width: "100%",
   },
-  coinValueHeroCat: {
-    width: 92,
-    height: 92,
-    resizeMode: "contain",
+  coinValueContent: {
+    padding: UI_SPACING.md,
+    gap: UI_SPACING.md,
   },
-  coinValueHeroFooter: {
-    position: "absolute",
-    bottom: 12,
-    right: 14,
+  coinValueHero: {
+    minHeight: 142,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: UI_SPACING.md,
+  },
+  coinValueHeroCoinWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: UI_RADIUS.card,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    shadowColor: "#1F66B3",
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  coinValueHeroCoin: {
+    width: 68,
+    height: 68,
+  },
+  coinValueHeroCopy: {
+    flex: 1,
+    minWidth: 180,
+    gap: UI_SPACING.xs,
+  },
+  coinValueTitle: {
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    textAlign: "auto",
+  },
+  coinValueBody: {
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "auto",
+  },
+  coinValueEarnBlock: {
+    minHeight: 76,
+    borderRadius: UI_RADIUS.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: UI_SPACING.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: UI_SPACING.sm,
   },
-  coinValueHeroLogo: {
-    width: 18,
-    height: 18,
-    resizeMode: "contain",
+  coinValueEarnCoin: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
   },
-  coinValueHeroBrand: {
-    color: LEVEL_SHARE_MUTED,
-    fontSize: 12,
+  coinValueEarnCopy: {
+    flex: 1,
+    gap: UI_SPACING.xxs,
+  },
+  coinValueEarnTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "700",
+    textAlign: "auto",
+  },
+  coinValueEarnBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "auto",
+  },
+  coinValueUseTitle: {
+    marginTop: UI_SPACING.xs,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
+    textAlign: "auto",
+  },
+  coinValueUseList: {
+    borderRadius: UI_RADIUS.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  coinValueUseRow: {
+    minHeight: 86,
+    padding: UI_SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.sm,
+  },
+  coinValueUseVisual: {
+    width: 56,
+    height: 56,
+    borderRadius: UI_RADIUS.control,
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+    overflow: "hidden",
+  },
+  coinValueUseMascot: {
+    width: 50,
+    height: 50,
+  },
+  coinValueUseCoin: {
+    width: 40,
+    height: 40,
+  },
+  coinValueUseCopy: {
+    flex: 1,
+    gap: UI_SPACING.xxs,
+  },
+  coinValueUseRowTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+    textAlign: "auto",
+  },
+  coinValueUseRowBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "auto",
+  },
+  coinValueUseSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: UI_SPACING.sm,
+  },
+  coinValueBalanceHint: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.xs,
+    paddingHorizontal: UI_SPACING.xs,
+  },
+  coinValueBalanceHintCoin: {
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+  },
+  coinValueBalanceHintText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "600",
+    textAlign: "auto",
+  },
+  coinValueFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.sm,
+    paddingBottom: UI_SPACING.md,
+  },
+  coinValuePrimary: {
+    minHeight: UI_TOUCH_TARGET.current,
+    borderRadius: UI_RADIUS.control,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: UI_SPACING.md,
+    paddingVertical: UI_SPACING.sm,
+  },
+  coinValuePrimaryText: {
+    ...createCtaText(),
+    textAlign: "center",
   },
   quickModalTitle: {
     fontSize: 20,

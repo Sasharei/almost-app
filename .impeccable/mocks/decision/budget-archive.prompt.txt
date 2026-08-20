@@ -1,0 +1,6 @@
+Use case: ui-mockup
+Asset: portrait native Budget screen for Almost.
+Direction: museum accession ledger as a modern operational finance interface.
+Structure: one continuous vertical route from “available to allocate” to equal Savings and Debt destinations, one selected state, one allocate action, three-step external-bank proof explanation, and a verified last transfer.
+Palette/material: mineral blue-green ink, oxidized teal enamel tags, archival paper, vermilion confirmation stamp.
+Constraints: no charts, cash pile, coins, piggy bank, mascot, glass, gradients, bank integration claim, or generic card dashboard.

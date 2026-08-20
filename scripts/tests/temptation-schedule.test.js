@@ -3,10 +3,69 @@ const assert = require("node:assert/strict");
 
 const {
   advanceAnchoredTemptationSchedule,
+  buildAnchoredTemptationDueWindows,
   isManualTemptationCycleAlreadyConsumed,
   resolveTemptationActionSchedulePolicy,
   shouldPreserveTemptationScheduleOnAction,
 } = require("../../src/engagement/temptationSchedule");
+
+test("auto-collect follows the timer's anchored calendar windows", () => {
+  const augustFirst = new Date(2026, 7, 1, 10, 0, 0).getTime();
+  const augustFifteenth = new Date(2026, 7, 15, 10, 0, 0).getTime();
+  const septemberFirst = new Date(2026, 8, 1, 10, 0, 0).getTime();
+  const septemberFifteenth = new Date(2026, 8, 15, 10, 0, 0).getTime();
+  const anchoredWindows = [
+    augustFirst,
+    augustFifteenth,
+    septemberFirst,
+    septemberFifteenth,
+  ];
+
+  assert.deepEqual(
+    buildAnchoredTemptationDueWindows({
+      firstDueAt: augustFirst,
+      now: septemberFifteenth,
+      maxWindows: 3,
+      fallbackIntervalMs: 30 * 24 * 60 * 60 * 1000,
+      resolveNextCheckAt: (timestamp) =>
+        anchoredWindows[anchoredWindows.indexOf(timestamp) + 1] || null,
+    }),
+    [augustFifteenth, septemberFirst, septemberFifteenth]
+  );
+});
+
+test("auto-collect uses its interval only when the timer cannot resolve a next anchor", () => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const firstDueAt = new Date(2026, 7, 20, 9, 0, 0).getTime();
+
+  assert.deepEqual(
+    buildAnchoredTemptationDueWindows({
+      firstDueAt,
+      now: firstDueAt + 2 * dayMs,
+      maxWindows: 3,
+      fallbackIntervalMs: dayMs,
+      resolveNextCheckAt: () => null,
+    }),
+    [firstDueAt, firstDueAt + dayMs, firstDueAt + 2 * dayMs]
+  );
+});
+
+test("auto-collect keeps the latest windows across a long inactive backlog", () => {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const firstDueAt = new Date(2025, 0, 1, 9, 0, 0).getTime();
+  const now = firstDueAt + 500 * dayMs;
+
+  assert.deepEqual(
+    buildAnchoredTemptationDueWindows({
+      firstDueAt,
+      now,
+      maxWindows: 3,
+      fallbackIntervalMs: dayMs,
+      resolveNextCheckAt: () => null,
+    }),
+    [now - 2 * dayMs, now - dayMs, now]
+  );
+});
 
 test("a manually configured monthly schedule is immutable during later actions", () => {
   const now = new Date(2026, 7, 14, 9, 0, 0).getTime();

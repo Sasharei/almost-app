@@ -1,0 +1,4 @@
+Use case: ui-mockup
+References: current Almost App Store screens for Feed, Goal Jar and Progress; current Almi mascot asset.
+Structure: available amount followed by a connected three-step route — choose destination, transfer in the user's bank, add screenshot — with one primary action and verified history.
+Identity constraints: preserve Almost background, typography, white surfaces, radii, icon weight, green/blue accents, bottom navigation and Almi exactly.

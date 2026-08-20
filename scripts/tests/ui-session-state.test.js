@@ -2,9 +2,33 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  UI_SESSION_HOME_RESET_MS,
   createUiSessionState,
   normalizeUiSessionState,
+  shouldResetUiSessionNavigation,
 } = require("../../src/utils/uiSessionState");
+
+test("opens home after a cold start or five minutes away", () => {
+  assert.equal(shouldResetUiSessionNavigation({ isColdStart: true }), true);
+  assert.equal(
+    shouldResetUiSessionNavigation({
+      backgroundedAt: 1_000,
+      resumedAt: 1_000 + UI_SESSION_HOME_RESET_MS - 1,
+    }),
+    false
+  );
+  assert.equal(
+    shouldResetUiSessionNavigation({
+      backgroundedAt: 1_000,
+      resumedAt: 1_000 + UI_SESSION_HOME_RESET_MS,
+    }),
+    true
+  );
+  assert.equal(
+    shouldResetUiSessionNavigation({ backgroundedAt: 0, resumedAt: 999_999 }),
+    false
+  );
+});
 
 test("restores navigation and unfinished profile/card drafts", () => {
   const session = createUiSessionState({

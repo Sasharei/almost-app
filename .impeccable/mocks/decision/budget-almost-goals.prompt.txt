@@ -1,0 +1,4 @@
+Use case: ui-mockup
+References: current Almost App Store screens for Feed, Goal Jar and Progress; current Almi mascot and token assets.
+Structure: available amount above two equal financial goals; Savings uses the existing translucent jar and tokens, Debt uses a complementary soft lavender stack that visibly shrinks; one selection summary, action and proof explanation.
+Identity constraints: preserve Almost background, typography, card radii, border restraint, bottom navigation and friendly 3D illustration material; no bill pile or generic fintech art.

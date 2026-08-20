@@ -63,6 +63,54 @@ const advanceAnchoredTemptationSchedule = ({
   return null;
 };
 
+const buildAnchoredTemptationDueWindows = ({
+  firstDueAt = 0,
+  now = Date.now(),
+  maxWindows = 3,
+  maxIterations = 370,
+  fallbackIntervalMs = 0,
+  resolveNextCheckAt = null,
+} = {}) => {
+  const firstAt = Math.max(0, Number(firstDueAt) || 0);
+  const referenceAt = Math.max(0, Number(now) || Date.now());
+  const windowLimit = Math.max(1, Math.floor(Number(maxWindows) || 1));
+  const baseIterationLimit = Math.max(
+    windowLimit,
+    Math.floor(Number(maxIterations) || windowLimit)
+  );
+  const fallbackInterval = Math.max(0, Number(fallbackIntervalMs) || 0);
+  if (!firstAt || firstAt > referenceAt) return [];
+  const estimatedFallbackSteps =
+    fallbackInterval > 0
+      ? Math.ceil((referenceAt - firstAt) / fallbackInterval) + 2
+      : 0;
+  const iterationLimit = Math.max(
+    baseIterationLimit,
+    Math.min(5000, estimatedFallbackSteps * 8)
+  );
+
+  const windows = [];
+  let cursor = firstAt;
+  for (let step = 0; step < iterationLimit && cursor <= referenceAt; step += 1) {
+    windows.push(cursor);
+    if (windows.length > windowLimit) windows.shift();
+
+    const resolvedNextAt =
+      typeof resolveNextCheckAt === "function"
+        ? Number(resolveNextCheckAt(cursor))
+        : Number.NaN;
+    const nextAt =
+      Number.isFinite(resolvedNextAt) && resolvedNextAt > cursor
+        ? resolvedNextAt
+        : fallbackInterval > 0
+        ? cursor + fallbackInterval
+        : null;
+    if (!Number.isFinite(nextAt) || nextAt <= cursor) break;
+    cursor = nextAt;
+  }
+  return windows;
+};
+
 const isManualTemptationCycleAlreadyConsumed = ({
   skipTargetAt = 0,
   skipCreatedAt = 0,
@@ -86,6 +134,7 @@ const isManualTemptationCycleAlreadyConsumed = ({
 
 module.exports = {
   advanceAnchoredTemptationSchedule,
+  buildAnchoredTemptationDueWindows,
   hasStableManualTemptationSchedule,
   isManualTemptationCycleAlreadyConsumed,
   resolveTemptationActionSchedulePolicy,
