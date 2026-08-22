@@ -1,6 +1,7 @@
 package com.sasarei.almostclean.widget
 
 import android.content.Context
+import com.sasarei.almostclean.R
 
 internal data class WidgetData(
   val savedMonthLabel: String,
@@ -96,20 +97,46 @@ internal object WidgetDataStore {
     val recentEvents =
       if (recentRaw.isBlank()) emptyList()
       else recentRaw.split("||").map { it.trim() }.filter { it.isNotEmpty() }
-    val labelSavedMonth = prefs.getString(KEY_WIDGET_LABEL_SAVED_MONTH, "Saved") ?: "Saved"
-    val labelTotal = prefs.getString(KEY_WIDGET_LABEL_TOTAL, "Total") ?: "Total"
-    val labelBalance = prefs.getString(KEY_WIDGET_LABEL_BALANCE, "Balance") ?: "Balance"
-    val labelToday = prefs.getString(KEY_WIDGET_LABEL_TODAY, "Today") ?: "Today"
-    val labelGoal = prefs.getString(KEY_WIDGET_LABEL_GOAL, "To goal") ?: "To goal"
-    val labelMonthGoal = prefs.getString(KEY_WIDGET_LABEL_MONTH_GOAL, "Monthly goal") ?: "Monthly goal"
+    val labelSavedMonth =
+      prefs.getString(KEY_WIDGET_LABEL_SAVED_MONTH, context.getString(R.string.widget_label_saved_default))
+        ?: context.getString(R.string.widget_label_saved_default)
+    val labelTotal =
+      prefs.getString(KEY_WIDGET_LABEL_TOTAL, context.getString(R.string.widget_label_total_default))
+        ?: context.getString(R.string.widget_label_total_default)
+    val labelBalance =
+      prefs.getString(KEY_WIDGET_LABEL_BALANCE, context.getString(R.string.widget_label_balance_default))
+        ?: context.getString(R.string.widget_label_balance_default)
+    val labelToday =
+      prefs.getString(KEY_WIDGET_LABEL_TODAY, context.getString(R.string.widget_label_today_default))
+        ?: context.getString(R.string.widget_label_today_default)
+    val labelGoal =
+      prefs.getString(KEY_WIDGET_LABEL_GOAL, context.getString(R.string.widget_label_goal_default))
+        ?: context.getString(R.string.widget_label_goal_default)
+    val labelMonthGoal =
+      prefs.getString(KEY_WIDGET_LABEL_MONTH_GOAL, context.getString(R.string.widget_label_month_goal_default))
+        ?: context.getString(R.string.widget_label_month_goal_default)
     val labelBudgetRemaining =
-      prefs.getString(KEY_WIDGET_LABEL_BUDGET_REMAINING, "Budget remaining") ?: "Budget remaining"
-    val labelRecent = prefs.getString(KEY_WIDGET_LABEL_RECENT, "Recent events:") ?: "Recent events:"
-    val labelRecentEmpty = prefs.getString(KEY_WIDGET_LABEL_RECENT_EMPTY, "No events") ?: "No events"
+      prefs.getString(
+        KEY_WIDGET_LABEL_BUDGET_REMAINING,
+        context.getString(R.string.widget_label_budget_remaining_default)
+      ) ?: context.getString(R.string.widget_label_budget_remaining_default)
+    val labelRecent =
+      prefs.getString(KEY_WIDGET_LABEL_RECENT, context.getString(R.string.widget_label_recent_default))
+        ?: context.getString(R.string.widget_label_recent_default)
+    val labelRecentEmpty =
+      prefs.getString(
+        KEY_WIDGET_LABEL_RECENT_EMPTY,
+        context.getString(R.string.widget_label_recent_empty_default)
+      ) ?: context.getString(R.string.widget_label_recent_empty_default)
     val labelEmptyState =
-      prefs.getString(KEY_WIDGET_LABEL_EMPTY_STATE, "Start saving today") ?: "Start saving today"
-    val labelActionSave = prefs.getString(KEY_WIDGET_ACTION_SAVE, "Save") ?: "Save"
-    val labelActionSpend = prefs.getString(KEY_WIDGET_ACTION_SPEND, "Spend") ?: "Spend"
+      prefs.getString(KEY_WIDGET_LABEL_EMPTY_STATE, context.getString(R.string.widget_empty_state_default))
+        ?: context.getString(R.string.widget_empty_state_default)
+    val labelActionSave =
+      prefs.getString(KEY_WIDGET_ACTION_SAVE, context.getString(R.string.widget_action_save_default))
+        ?: context.getString(R.string.widget_action_save_default)
+    val labelActionSpend =
+      prefs.getString(KEY_WIDGET_ACTION_SPEND, context.getString(R.string.widget_action_spend_default))
+        ?: context.getString(R.string.widget_action_spend_default)
     val themeId = prefs.getString(KEY_WIDGET_THEME_ID, "light") ?: "light"
     val proThemeAccentId = prefs.getString(KEY_WIDGET_PRO_THEME_ACCENT_ID, "none") ?: "none"
     val themePrimaryColor = prefs.getString(KEY_WIDGET_THEME_PRIMARY_COLOR, "#111111") ?: "#111111"

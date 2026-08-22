@@ -5,7 +5,20 @@ import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "../constants/languageMapFall
 export const DEFAULT_LANGUAGE = "en";
 export const FALLBACK_LANGUAGE = "en";
 const DEFAULT_ARABIC_LANGUAGE = "ar-sa";
-export const SUPPORTED_LANGUAGES = ["en", "es", "fr", "ru", "de", "pt", "it", "ar-sa", "ar-ae", "zh", "ko"];
+export const SUPPORTED_LANGUAGES = [
+  "en",
+  "es",
+  "fr",
+  "ru",
+  "de",
+  "pt",
+  "it",
+  "ar-sa",
+  "ar-ae",
+  "zh",
+  "ko",
+  "ja",
+];
 const RTL_LANGUAGES = new Set(["ar-sa", "ar-ae"]);
 const LANGUAGE_ALIASES = {
   en: "en",
@@ -61,6 +74,10 @@ const LANGUAGE_ALIASES = {
   kor: "ko",
   korean: "ko",
   "south-korean": "ko",
+  ja: "ja",
+  "ja-jp": "ja",
+  jpn: "ja",
+  japanese: "ja",
 };
 const LANGUAGE_LABEL_KEYS = {
   ru: "languageRussian",
@@ -74,6 +91,7 @@ const LANGUAGE_LABEL_KEYS = {
   "ar-ae": "languageArabicUAE",
   zh: "languageChinese",
   ko: "languageKorean",
+  ja: "languageJapanese",
 };
 export const LANGUAGE_NATIVE_LABELS = {
   ru: "Русский",
@@ -87,6 +105,7 @@ export const LANGUAGE_NATIVE_LABELS = {
   "ar-ae": "العربية (الإمارات)",
   zh: "中文",
   ko: "한국어",
+  ja: "日本語",
 };
 const FORMAT_LOCALES = {
   ru: "ru-RU",
@@ -100,6 +119,7 @@ const FORMAT_LOCALES = {
   "ar-ae": "ar-AE",
   zh: "zh-CN",
   ko: "ko-KR",
+  ja: "ja-JP",
 };
 const SHORT_LANGUAGE_MAP = {
   ru: "ru",
@@ -113,6 +133,7 @@ const SHORT_LANGUAGE_MAP = {
   "ar-ae": "ar",
   zh: "zh",
   ko: "ko",
+  ja: "ja",
 };
 const ARABIC_INDIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
 const EASTERN_ARABIC_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
@@ -146,6 +167,7 @@ const LANGUAGE_DEFAULT_CURRENCY_BY_CODE = {
   "ar-ae": "AED",
   zh: "CNY",
   ko: "KRW",
+  ja: "JPY",
 };
 
 const canonicalizeLanguageCode = (value) =>

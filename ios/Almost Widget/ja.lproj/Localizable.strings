@@ -1,0 +1,14 @@
+"widget.savedMonth" = "今月の節約";
+"widget.total" = "合計";
+"widget.balance" = "残高";
+"widget.today" = "今日";
+"widget.goal" = "目標まで";
+"widget.monthGoal" = "月間目標";
+"widget.budgetRemaining" = "予算残額";
+"widget.recent" = "最近の記録：";
+"widget.recentEmpty" = "記録はありません";
+"widget.empty" = "今日から節約を始めましょう";
+"widget.save" = "貯める";
+"widget.spend" = "使う";
+"widget.summary" = "まとめ";
+"widget.configuration.description" = "節約状況の確認とクイック操作。";

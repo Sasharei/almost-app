@@ -47,6 +47,10 @@ private let keyWidgetDailySummaryAvailable = "widget_daily_summary_available"
 private let keyWidgetDailySummaryExpiresAt = "widget_daily_summary_expires_at"
 private let keyWidgetDailySummaryLabel = "widget_daily_summary_label"
 
+private func widgetLocalized(_ key: String, fallback: String) -> String {
+    NSLocalizedString(key, tableName: nil, bundle: .main, value: fallback, comment: "")
+}
+
 private struct WidgetThemePalette {
     let backgroundTop: Color
     let backgroundBottom: Color
@@ -134,25 +138,25 @@ struct AlmostWidgetProvider: TimelineProvider {
             budgetRemainingLabel: "--",
             budgetTotalValue: 0,
             recentEvents: [],
-            labelSavedMonth: "Сэкономлено",
-            labelTotal: "Всего",
-            labelBalance: "Баланс",
-            labelToday: "Сегодня",
-            labelGoal: "До цели",
-            labelMonthGoal: "Цель месяца",
-            labelBudgetRemaining: "Остаток бюджета",
-            labelRecent: "Последние события:",
-            labelRecentEmpty: "Нет событий",
-            labelEmptyState: "Start saving today",
-            actionSaveLabel: "Копить",
-            actionSpendLabel: "Тратить",
+            labelSavedMonth: widgetLocalized("widget.savedMonth", fallback: "Saved this month"),
+            labelTotal: widgetLocalized("widget.total", fallback: "Total"),
+            labelBalance: widgetLocalized("widget.balance", fallback: "Balance"),
+            labelToday: widgetLocalized("widget.today", fallback: "Today"),
+            labelGoal: widgetLocalized("widget.goal", fallback: "To goal"),
+            labelMonthGoal: widgetLocalized("widget.monthGoal", fallback: "Monthly goal"),
+            labelBudgetRemaining: widgetLocalized("widget.budgetRemaining", fallback: "Budget remaining"),
+            labelRecent: widgetLocalized("widget.recent", fallback: "Recent events:"),
+            labelRecentEmpty: widgetLocalized("widget.recentEmpty", fallback: "No events"),
+            labelEmptyState: widgetLocalized("widget.empty", fallback: "Start saving today"),
+            actionSaveLabel: widgetLocalized("widget.save", fallback: "Save"),
+            actionSpendLabel: widgetLocalized("widget.spend", fallback: "Spend"),
             widgetThemeId: "light",
             widgetProThemeAccentId: "none",
             widgetThemePrimaryColor: "#111111",
             widgetThemeBackgroundColor: "#F6F7FB",
             dailySummaryAvailable: false,
             dailySummaryExpiresAt: 0,
-            dailySummaryLabel: "Отчёт"
+            dailySummaryLabel: widgetLocalized("widget.summary", fallback: "Summary")
         )
     }
 
@@ -185,26 +189,39 @@ struct AlmostWidgetProvider: TimelineProvider {
         let budgetRemainingLabel = defaults?.string(forKey: keyBudgetRemainingLabel) ?? "--"
         let budgetTotalValue = defaults?.double(forKey: keyBudgetTotalValue) ?? 0
         let recentEvents = defaults?.stringArray(forKey: keyRecentEvents) ?? []
-        let labelSavedMonth = defaults?.string(forKey: keyWidgetLabelSavedMonth) ?? "Сэкономлено"
-        let labelTotal = defaults?.string(forKey: keyWidgetLabelTotal) ?? "Всего"
-        let labelBalance = defaults?.string(forKey: keyWidgetLabelBalance) ?? "Баланс"
-        let labelToday = defaults?.string(forKey: keyWidgetLabelToday) ?? "Сегодня"
-        let labelGoal = defaults?.string(forKey: keyWidgetLabelGoal) ?? "До цели"
-        let labelMonthGoal = defaults?.string(forKey: keyWidgetLabelMonthGoal) ?? "Цель месяца"
+        let labelSavedMonth = defaults?.string(forKey: keyWidgetLabelSavedMonth)
+            ?? widgetLocalized("widget.savedMonth", fallback: "Saved this month")
+        let labelTotal = defaults?.string(forKey: keyWidgetLabelTotal)
+            ?? widgetLocalized("widget.total", fallback: "Total")
+        let labelBalance = defaults?.string(forKey: keyWidgetLabelBalance)
+            ?? widgetLocalized("widget.balance", fallback: "Balance")
+        let labelToday = defaults?.string(forKey: keyWidgetLabelToday)
+            ?? widgetLocalized("widget.today", fallback: "Today")
+        let labelGoal = defaults?.string(forKey: keyWidgetLabelGoal)
+            ?? widgetLocalized("widget.goal", fallback: "To goal")
+        let labelMonthGoal = defaults?.string(forKey: keyWidgetLabelMonthGoal)
+            ?? widgetLocalized("widget.monthGoal", fallback: "Monthly goal")
         let labelBudgetRemaining =
-            defaults?.string(forKey: keyWidgetLabelBudgetRemaining) ?? "Остаток бюджета"
-        let labelRecent = defaults?.string(forKey: keyWidgetLabelRecent) ?? "Последние события:"
-        let labelRecentEmpty = defaults?.string(forKey: keyWidgetLabelRecentEmpty) ?? "Нет событий"
-        let labelEmptyState = defaults?.string(forKey: keyWidgetLabelEmptyState) ?? "Start saving today"
-        let actionSaveLabel = defaults?.string(forKey: keyWidgetActionSave) ?? "Копить"
-        let actionSpendLabel = defaults?.string(forKey: keyWidgetActionSpend) ?? "Тратить"
+            defaults?.string(forKey: keyWidgetLabelBudgetRemaining)
+            ?? widgetLocalized("widget.budgetRemaining", fallback: "Budget remaining")
+        let labelRecent = defaults?.string(forKey: keyWidgetLabelRecent)
+            ?? widgetLocalized("widget.recent", fallback: "Recent events:")
+        let labelRecentEmpty = defaults?.string(forKey: keyWidgetLabelRecentEmpty)
+            ?? widgetLocalized("widget.recentEmpty", fallback: "No events")
+        let labelEmptyState = defaults?.string(forKey: keyWidgetLabelEmptyState)
+            ?? widgetLocalized("widget.empty", fallback: "Start saving today")
+        let actionSaveLabel = defaults?.string(forKey: keyWidgetActionSave)
+            ?? widgetLocalized("widget.save", fallback: "Save")
+        let actionSpendLabel = defaults?.string(forKey: keyWidgetActionSpend)
+            ?? widgetLocalized("widget.spend", fallback: "Spend")
         let widgetThemeId = defaults?.string(forKey: keyWidgetThemeId) ?? "light"
         let widgetProThemeAccentId = defaults?.string(forKey: keyWidgetProThemeAccentId) ?? "none"
         let widgetThemePrimaryColor = defaults?.string(forKey: keyWidgetThemePrimaryColor) ?? "#111111"
         let widgetThemeBackgroundColor = defaults?.string(forKey: keyWidgetThemeBackgroundColor) ?? "#F6F7FB"
         let dailySummaryAvailable = defaults?.bool(forKey: keyWidgetDailySummaryAvailable) ?? false
         let dailySummaryExpiresAt = defaults?.double(forKey: keyWidgetDailySummaryExpiresAt) ?? 0
-        let dailySummaryLabel = defaults?.string(forKey: keyWidgetDailySummaryLabel) ?? "Отчёт"
+        let dailySummaryLabel = defaults?.string(forKey: keyWidgetDailySummaryLabel)
+            ?? widgetLocalized("widget.summary", fallback: "Summary")
         return AlmostWidgetEntry(
             date: Date(),
             savedMonthLabel: savedMonthLabel,
@@ -989,7 +1006,7 @@ struct Almost_Widget: Widget {
             Almost_WidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Almost")
-        .description("Сбережения и быстрые действия.")
+        .description("widget.configuration.description")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }

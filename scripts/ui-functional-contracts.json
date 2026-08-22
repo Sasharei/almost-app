@@ -51,6 +51,9 @@
         "return coinValueModalQueueReady();",
         "onRequestClose={dismissCoinValueModal}",
         "onPress={dismissCoinValueModal}",
+        "source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}",
+        "HEALTH_COIN_TIERS.map((tier, index) =>",
+        "COIN_VALUE_COLOR_LABEL_KEYS[tier.id]",
         "clearQueuedModal(QUEUED_MODAL_TYPES.COIN_VALUE);"
       ],
       "requiredPatterns": [
@@ -139,20 +142,71 @@
     },
     {
       "id": "profile-edit-settings-actions",
-      "description": "Profile edit/save/cancel and Settings navigation remain wired.",
+      "description": "Profile overview, Reports, Settings, History, edit/save/cancel, and Settings navigation remain wired.",
       "file": "App.js",
       "requiredFragments": [
         "const showProfileActions = isEditing || !!onReportsPress;",
-        "{ id: \"overview\", label: t(\"profileOverviewTab\") },",
-        "{ id: \"settings\", label: t(\"profileSettingsTab\") },",
-        "{ id: \"history\", label: t(\"profileHistoryTab\") },",
-        "onPress={() => setProfileSection(section.id)}",
-        "onPress={isEditing ? onSaveEdit : onEditPress}",
+        "const isEditingProfile = editMode === \"profile\";",
+        "const isEditingSettings = editMode === \"settings\";",
+        "const isCurrentSectionEditing =",
+        "{ id: \"overview\", label: t(\"profileOverviewTab\"), icon: \"overview\" },",
+        "{ id: \"reports\", label: t(\"reportsButton\"), icon: \"reports\" },",
+        "{ id: \"settings\", label: t(\"profileSettingsTab\"), icon: \"settings\" },",
+        "{ id: \"history\", label: t(\"profileHistoryTab\"), icon: \"history\" },",
+        "onPress={() => handleProfileSectionSelect(section.id)}",
+        "profileSection === \"settings\" ? \"settings\" : \"profile\"",
+        "onPress={() => onEditPress?.(\"settings\")}",
         "onPress={onCancelEdit}",
         "onPress={() => setProfileSection(\"settings\")}",
         "onPress={() => onFieldChange?.(\"incomePayday\", day)}",
         "{t(\"incomePaydayValue\", { day: incomePayday })}",
         "onThemeToggle(option.id"
+      ]
+    },
+    {
+      "id": "profile-edit-mode-restoration",
+      "description": "Profile and Settings edit drafts remain separately scoped when unfinished UI state is serialized.",
+      "file": "src/utils/uiSessionState.js",
+      "requiredFragments": [
+        "const RESTORABLE_PROFILE_EDIT_MODES = new Set([\"profile\", \"settings\"]);",
+        "profileEditMode && profileEditMode !== \"none\"",
+        "? { mode: profileEditMode, draft: profileDraft }"
+      ]
+    },
+    {
+      "id": "profile-reports-actions",
+      "description": "The Profile Reports section keeps period switching, archive navigation, Premium preview, insight expansion, category-limit routing, goal creation, and notification deep links connected.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const ProfileReportsSection = React.memo(function ProfileReportsSection({",
+        "lockedAccent={reportsPremiumAccent}",
+        "resolvePremiumUiAccent({ isDark: isDarkTheme })",
+        "const reportsContentAccent = reportsLockedState ? reportsPremiumAccent : colors.text;",
+        "const reportAccent = isPremiumUser",
+        "? colors.text",
+        "onPress={() => openReportsSection(\"profile_overview\")}",
+        "accessibilityLabel={t(\"reportsButton\")}",
+        "latestProfileReport?.label || t(\"reportsGenerating\")",
+        "backgroundColor: isActive ? reportAccent : \"transparent\"",
+        "!isPremiumUser ? (",
+        "onPress={() => selectReportTab(tab.id)}",
+        "onPress={onPremiumPress}",
+        "onPress={() => onPrimaryAction?.(activeReport)}",
+        "onPress={() => onCreateGoal?.(activeReport)}",
+        "onPress={() => setDetailsExpanded((prev) => !prev)}",
+        "<ReportsTrend",
+        "report={activeReport}",
+        "{t(\"reportsPeriodSnapshotTitle\")}",
+        "{t(\"reportsDriversTitle\")}",
+        "secondaryInsights.map((line, index) => (",
+        "onReportsPrimaryAction={handleReportPrimaryAction}",
+        "onReportsCreateGoal={handleReportCreateGoal}",
+        "onReportsPremiumPress={handleReportsPremiumPress}",
+        "setProfileReportsOpenRequest(Date.now());",
+        "goToTab(\"profile\");",
+        "setBudgetLimitOpenRequest({ tick: Date.now(), categoryId });",
+        "requestProgressBudgetFocus();",
+        "openNewGoalModal(false, \"reports_recommendation\");"
       ]
     },
     {
@@ -596,6 +650,23 @@
       ]
     },
     {
+      "id": "android-coin-entry-circular-transparency",
+      "description": "The quick-entry coin uses a blurred pre-modal Android screen snapshot beneath exact vector circles and a clip-path-free circular fill segment over a continuous sheet surface, preserving glass translucency without stale native-modal cutout buffers, polygonal SVG clip artifacts, or Android elevation outlines.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const useCoinSurfaceCutout = Platform.OS === \"ios\" && !reduceTransparency;",
+        "useCoinSurfaceCutout && coinCutoutFrame ? \"transparent\" : sheetSurfaceColor",
+        "nextBackdropUri = await captureScreen({",
+        "blurRadius={18}",
+        "hasAndroidBackdropSnapshot",
+        "const androidCoinFillPath = [",
+        "<SvgPath d={androidCoinFillPath} fill={coinFillColor} />",
+        "elevation: Platform.OS === \"android\" ? 0 : 9,",
+        "ref={coinEntryCardRef}\n            collapsable={false}",
+        "ref={coinCircleRef}\n                  collapsable={false}"
+      ]
+    },
+    {
       "id": "android-native-modal-host-stability",
       "description": "Repeated Fabric prop commits do not recreate an unchanged Android native modal dialog.",
       "file": "android/app/build.gradle",
@@ -609,6 +680,22 @@
         "mv.visitMethodInsn(",
         "InstrumentationScope.ALL",
         "FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS"
+      ]
+    },
+    {
+      "id": "android-manual-amount-blurred-backdrop",
+      "description": "Manual amount entry separates its Android blur and translucent scrim so the underlying screen remains visible without hard modal-edge bands.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const AndroidManualAmountBackdropVisual = React.memo(",
+        "const amountManualBackdropStyle =",
+        "const manualBackdropStyle =",
+        "blurAmount={12}",
+        "autoUpdate={false}",
+        "Platform.OS === \"android\"\n      ? { backgroundColor: \"transparent\" }\n      : null;",
+        "styles.temptationAmountManualInlineBackdrop,\n                    amountManualBackdropStyle",
+        "style={[styles.coinEntryManualBackdrop, amountManualBackdropStyle]}",
+        "style={[styles.coinEntryManualBackdrop, manualBackdropStyle]}"
       ]
     },
     {
@@ -1231,6 +1318,41 @@
       ]
     },
     {
+      "id": "goal-completion-celebration-flow",
+      "description": "Goal completion opens the full celebration on both platforms before renewal, preserves CTA, backdrop, close-button and system-Back dismissal, then hands off to the earned reward and the new-goal prompt.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const pendingGoalCelebrationRef = useRef(null);",
+        "const pendingCelebration = { payload, config };",
+        "pendingGoalCelebrationRef.current = pendingCelebration;",
+        "setPendingGoalCelebration(pendingCelebration);",
+        "goalRenewalPromptAfterGoalRef.current = true;",
+        "if (overlay || goalCompletionFlowActive || goalCompletionQueuedGoalRef.current) {",
+        "const handleGoalCelebrationShown = useCallback(() => {",
+        "if (overlay?.type !== \"goal_complete\") return;",
+        "pendingGoalCelebrationRef.current = null;",
+        "setProfile((prev) => updateGoalCelebrationInProfile(prev, visibleGoalId, true));",
+        "const handleGoalCelebrationClose = useCallback(",
+        "analyticsSource: `goal_celebration_${source}`",
+        "triggerOverlayState(\"health\", {",
+        "onShow={handleGoalCelebrationShown}",
+        "onRequestClose={() => handleGoalCelebrationClose(\"system_back\")}",
+        "onPress={() => onClose?.(\"backdrop\")}",
+        "onPress={() => onClose?.(\"close_button\")}",
+        "onPress={() => onClose?.(\"cta\")}",
+        "const transitionProgress = useRef(new Animated.Value(0)).current;",
+        "Animated.timing(transitionProgress, {",
+        "styles.goalCelebrateFullHero",
+        "styles.goalCelebrateCompactHeader",
+        "<Animated.ScrollView",
+        "accessibilityLabel={t(\"goalCelebrationDismissA11y\")}"
+      ],
+      "requiredPatterns": [
+        "const pendingCelebration = \\{ payload, config \\};[\\s\\S]*?setPendingGoalCelebration\\(pendingCelebration\\);[\\s\\S]*?shouldDispatchPendingGoalCelebration\\([\\s\\S]*?startupHardLockPendingBeforePaywall,[\\s\\S]*?triggerOverlayState\\([\\s\\S]*?\"goal_complete\"",
+        "const handleGoalCelebrationClose = useCallback\\([\\s\\S]*?dismissOverlay\\([\\s\\S]*?triggerOverlayState\\(\"health\""
+      ]
+    },
+    {
       "id": "android-text-rendering-safety",
       "description": "Every App.js text surface uses the shared Text wrapper, which removes custom font families on Android so device and theme typefaces remain native while scaling, localization, auto-fit, and RTL direction are preserved.",
       "file": "App.js",
@@ -1811,7 +1933,7 @@
       "description": "On short devices Profile places theme controls before the taller income block so Dynamic Type targets remain fully above the floating navigation without changing theme actions.",
       "file": "App.js",
       "requiredFragments": [
-        "style={IS_SHORT_DEVICE ? styles.profileSettingsLeadCompact : null}",
+        "IS_SHORT_DEVICE && !isEditingSettings ? styles.profileSettingsLeadCompact : null",
         "flexDirection: \"column-reverse\",",
         "onThemeToggle(option.id, {",
         "accessibilityLabel={option.accessibilityLabel || option.label}",

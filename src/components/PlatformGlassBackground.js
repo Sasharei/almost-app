@@ -1,5 +1,6 @@
 import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
+import { BlurView as AndroidBlurView } from "@react-native-community/blur";
 import { BlurView as ExpoBlurView } from "expo-blur";
 import {
   GlassView,
@@ -7,6 +8,9 @@ import {
   isLiquidGlassAvailable,
 } from "expo-glass-effect";
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
+import {
+  ANDROID_LIVE_GLASS_BLUR_ENABLED,
+} from "../constants/appBehavior";
 
 const canUseNativeLiquidGlass = () => {
   if (Platform.OS !== "ios") return false;
@@ -28,6 +32,7 @@ const PlatformGlassBackground = ({
   solidFallbackColor,
   borderColor,
   androidIntensity = 42,
+  androidBlurMode = "frosted",
   iosFallbackIntensity = 54,
   nativeEffectOpacity = 1,
 }) => {
@@ -44,8 +49,18 @@ const PlatformGlassBackground = ({
   const resolvedBorderColor =
     borderColor ||
     (isDarkTheme ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.72)");
+  const isAndroid = Platform.OS === "android";
+  const useAndroidLiveBlur =
+    isAndroid && androidBlurMode === "live" && ANDROID_LIVE_GLASS_BLUR_ENABLED;
+  const useAndroidFrostedFallback = isAndroid && androidBlurMode === "frosted";
+  const useAndroidSolidFallback =
+    isAndroid && !useAndroidLiveBlur && !useAndroidFrostedFallback;
+  const androidBlurAmount = Math.max(
+    8,
+    Math.min(25, Math.round((Number(androidIntensity) || 0) * 0.56))
+  );
 
-  if (reduceTransparency) {
+  if (reduceTransparency || useAndroidSolidFallback) {
     return (
       <View
         pointerEvents="none"
@@ -54,6 +69,25 @@ const PlatformGlassBackground = ({
           styles.frame,
           style,
           { backgroundColor: resolvedSolidColor },
+        ]}
+      >
+        <View
+          pointerEvents="none"
+          style={[styles.edge, { borderColor: resolvedBorderColor }]}
+        />
+      </View>
+    );
+  }
+
+  if (useAndroidFrostedFallback) {
+    return (
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          styles.frame,
+          style,
+          { backgroundColor: resolvedFallbackColor },
         ]}
       >
         <View
@@ -98,14 +132,24 @@ const PlatformGlassBackground = ({
         style,
       ]}
     >
-      <ExpoBlurView
-        pointerEvents="none"
-        tint={isDarkTheme ? "dark" : "light"}
-        intensity={Platform.OS === "android" ? androidIntensity : iosFallbackIntensity}
-        blurReductionFactor={Platform.OS === "android" ? 2 : undefined}
-        experimentalBlurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined}
-        style={StyleSheet.absoluteFillObject}
-      />
+      {isAndroid ? (
+        <AndroidBlurView
+          pointerEvents="none"
+          blurType={isDarkTheme ? "dark" : "light"}
+          blurAmount={androidBlurAmount}
+          overlayColor="transparent"
+          enabled
+          autoUpdate
+          style={StyleSheet.absoluteFillObject}
+        />
+      ) : (
+        <ExpoBlurView
+          pointerEvents="none"
+          tint={isDarkTheme ? "dark" : "light"}
+          intensity={iosFallbackIntensity}
+          style={StyleSheet.absoluteFillObject}
+        />
+      )}
       <View
         pointerEvents="none"
         style={[StyleSheet.absoluteFillObject, { backgroundColor: resolvedFallbackColor }]}

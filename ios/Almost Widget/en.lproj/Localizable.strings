@@ -1,0 +1,14 @@
+"widget.savedMonth" = "Saved this month";
+"widget.total" = "Total";
+"widget.balance" = "Balance";
+"widget.today" = "Today";
+"widget.goal" = "To goal";
+"widget.monthGoal" = "Monthly goal";
+"widget.budgetRemaining" = "Budget remaining";
+"widget.recent" = "Recent events:";
+"widget.recentEmpty" = "No events";
+"widget.empty" = "Start saving today";
+"widget.save" = "Save";
+"widget.spend" = "Spend";
+"widget.summary" = "Summary";
+"widget.configuration.description" = "Savings and quick actions.";

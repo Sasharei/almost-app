@@ -94,6 +94,19 @@ test("explicitly closed editors are not restored", () => {
   assert.equal(session.linkedGoalEditor, null);
 });
 
+test("restores unfinished settings edits with their own scope", () => {
+  const session = createUiSessionState({
+    activeTab: "profile",
+    profileEditMode: "settings",
+    profileDraft: { firstName: "Ada", incomePayday: 18 },
+    now: 321,
+  });
+
+  const restored = normalizeUiSessionState(JSON.stringify(session));
+  assert.equal(restored.profileEditor.mode, "settings");
+  assert.equal(restored.profileEditor.draft.incomePayday, 18);
+});
+
 test("rejects malformed sessions and unsafe navigation values", () => {
   assert.equal(normalizeUiSessionState("not json"), null);
   assert.equal(normalizeUiSessionState({ version: 999 }), null);

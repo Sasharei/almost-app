@@ -9,6 +9,7 @@ export const WEEKDAY_FULL_LABELS = {
   ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
   ko: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
+  ja: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
 };
 
 export const HEALTH_COIN_LABELS = {
@@ -82,6 +83,13 @@ export const HEALTH_COIN_LABELS = {
     blue: "파란 코인",
     green: "초록 코인",
   },
+  ja: {
+    pink: "ピンクコイン",
+    red: "赤コイン",
+    orange: "オレンジコイン",
+    blue: "青コイン",
+    green: "緑コイン",
+  },
 };
 
 export const ZERO_HEALTH_REWARD_LABELS = {
@@ -95,6 +103,7 @@ export const ZERO_HEALTH_REWARD_LABELS = {
   ar: "0 عملات",
   zh: "0 个币",
   ko: "코인 0개",
+  ja: "コイン0枚",
 };
 
 export const WEEKDAY_LABELS = {
@@ -108,6 +117,7 @@ export const WEEKDAY_LABELS = {
   ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
   zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
   ko: ["일", "월", "화", "수", "목", "금", "토"],
+  ja: ["日", "月", "火", "水", "木", "金", "土"],
 };
 
 export const WEEKDAY_LABELS_MONDAY_FIRST = {
@@ -121,6 +131,7 @@ export const WEEKDAY_LABELS_MONDAY_FIRST = {
   ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
   zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
   ko: ["월", "화", "수", "목", "금", "토", "일"],
+  ja: ["月", "火", "水", "木", "金", "土", "日"],
 };
 
 export const WEEKDAY_SELECTOR_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -146,6 +157,7 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   ar: { day: "ي", hour: "س", minute: "د" },
   zh: { day: "天", hour: "小时", minute: "分" },
   ko: { day: "일", hour: "시간", minute: "분" },
+  ja: { day: "日", hour: "時間", minute: "分" },
 };
 
 export const FRIDGE_DOOR_NOTE_LABELS = {
@@ -159,6 +171,7 @@ export const FRIDGE_DOOR_NOTE_LABELS = {
   ar: "قائمة المشتريات",
   zh: "购物清单",
   ko: "구매 목록",
+  ja: "買い物リスト",
 };
 
 export const TEMPTATION_SAVINGS_SCORE_LABELS = {
@@ -172,6 +185,7 @@ export const TEMPTATION_SAVINGS_SCORE_LABELS = {
   ar: "درجة الادخار",
   zh: "储蓄评分",
   ko: "저축 점수",
+  ja: "節約スコア",
 };
 
 export const TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES = {
@@ -185,6 +199,7 @@ export const TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES = {
   ar: "تم التخطي {{count}}× · +{{amount}}",
   zh: "已跳过 {{count}}× · +{{amount}}",
   ko: "{{count}}× 건너뜀 · +{{amount}}",
+  ja: "{{count}}回見送り · +{{amount}}",
 };
 
 export const TEMPTATION_DUPLICATE_ACTION_LABELS = {
@@ -198,6 +213,7 @@ export const TEMPTATION_DUPLICATE_ACTION_LABELS = {
   ar: "تكرار البطاقة",
   zh: "复制卡片",
   ko: "카드 복제",
+  ja: "カードを複製",
 };
 
 export const TEMPTATION_DUPLICATE_HINTS = {
@@ -211,4 +227,5 @@ export const TEMPTATION_DUPLICATE_HINTS = {
   ar: "تم إنشاء النسخة بالفعل. حدّث اسمها وتفاصيلها.",
   zh: "副本已创建。请更新名称和详细信息。",
   ko: "복사본이 이미 생성되었습니다. 이름과 세부 정보를 수정하세요.",
+  ja: "コピーを作成しました。名前と詳細を編集してください。",
 };
