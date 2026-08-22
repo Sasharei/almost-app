@@ -7,6 +7,7 @@ export const TERMS_LINKS = {
   "ar-sa": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
   "ar-ae": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
   zh: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
+  ja: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
 };
 
 export const PRIVACY_LINKS = {
@@ -18,6 +19,7 @@ export const PRIVACY_LINKS = {
   "ar-sa": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
   "ar-ae": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
   zh: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  ja: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
 };
 
 export const TERMS_POINTS = {
@@ -74,5 +76,11 @@ export const TERMS_POINTS = {
     "你确认所提供信息真实且自愿，用于 Almost 个性化提示、通知与匿名分析。",
     "我们仅保存运行应用所需的最少个人资料数据。你可在设置或通过支持修改/删除数据；删除资料时相关历史也会一并清除。",
     "本协议适用 Almost 注册地所在司法辖区法律。争议将先友好协商，必要时提交该辖区有管辖权法院处理。",
+  ],
+  ja: [
+    "Almostは支出を意識するためのサポートアプリであり、銀行、証券会社、金融アドバイザーではありません。貯蓄や支出に関するすべての判断は、利用者ご自身の責任で行ってください。",
+    "入力する情報が正確であり、Almostがヒント、通知、匿名化された分析をパーソナライズするために自発的に提供するものであることに同意します。",
+    "アプリの運営に必要な最小限のプロフィールデータのみを保存します。設定またはサポートから編集や削除を依頼でき、削除時には関連する履歴もシステムから消去されます。",
+    "本規約にはAlmostの登録地の法律が適用されます。紛争が生じた場合は、まず友好的な解決を図り、必要に応じて当該地域を管轄する裁判所で解決します。",
   ],
 };

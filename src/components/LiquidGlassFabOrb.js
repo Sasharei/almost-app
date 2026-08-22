@@ -93,6 +93,7 @@ const LiquidGlassFabOrb = ({
   isProTheme = false,
   proThemeAccentColor = "#3E4FD7",
   highlighted = false,
+  androidBlurMode = "live",
 }) => {
   const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const resolvedSize = Math.max(UI_TOUCH_TARGET.current, Number(size) || 64);
@@ -360,6 +361,7 @@ const LiquidGlassFabOrb = ({
           solidFallbackColor={androidShellFillColor}
           borderColor="transparent"
           androidIntensity={36}
+          androidBlurMode={androidBlurMode}
           iosFallbackIntensity={58}
         />
 
@@ -591,5 +593,6 @@ export default React.memo(
     prevProps.isDarkTheme === nextProps.isDarkTheme &&
     prevProps.isProTheme === nextProps.isProTheme &&
     prevProps.proThemeAccentColor === nextProps.proThemeAccentColor &&
-    prevProps.highlighted === nextProps.highlighted
+    prevProps.highlighted === nextProps.highlighted &&
+    prevProps.androidBlurMode === nextProps.androidBlurMode
 );

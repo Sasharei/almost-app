@@ -158,6 +158,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       ar: "نيلي",
       zh: "靛蓝",
       ko: "인디고",
+      ja: "インディゴ",
     },
     emoji: "🔵",
   },
@@ -193,6 +194,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       ar: "زمردي",
       zh: "祖母绿",
       ko: "에메랄드",
+      ja: "エメラルド",
     },
     emoji: "💚",
   },
@@ -228,6 +230,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       ar: "غروب",
       zh: "日落",
       ko: "선셋",
+      ja: "サンセット",
     },
     emoji: "🌇",
   },
@@ -252,7 +255,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       overlay: "#302006",
       shadow: "#6C4708",
     },
-    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or", de: "Gold", pt: "Ouro", it: "Oro", ar: "ذهبي", zh: "金色", ko: "골드" },
+    label: { ru: "Золото", en: "Gold", es: "Oro", fr: "Or", de: "Gold", pt: "Ouro", it: "Oro", ar: "ذهبي", zh: "金色", ko: "골드", ja: "ゴールド" },
     emoji: "✨",
   },
   {
@@ -287,6 +290,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       ar: "بنفسجي",
       zh: "紫色",
       ko: "바이올렛",
+      ja: "バイオレット",
     },
     emoji: "🍇",
   },
@@ -311,7 +315,7 @@ export const PRO_THEME_ACCENT_OPTIONS = [
       overlay: "#072D34",
       shadow: "#0B6171",
     },
-    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua", de: "Aqua", pt: "Aqua", it: "Acqua", ar: "أكوا", zh: "水蓝", ko: "아쿠아" },
+    label: { ru: "Аква", en: "Aqua", es: "Aqua", fr: "Aqua", de: "Aqua", pt: "Aqua", it: "Acqua", ar: "أكوا", zh: "水蓝", ko: "아쿠아", ja: "アクア" },
     emoji: "🌊",
   },
 ];
@@ -369,6 +373,11 @@ export const PRO_THEME_ACCENT_COPY = {
     title: "PRO 테마 강조색",
     subtitle: "버튼과 강조 UI에 사용할 색상을 선택하세요.",
     selected: "선택됨",
+  },
+  ja: {
+    title: "PROテーマのアクセント",
+    subtitle: "ボタンや強調表示に使う色を選んでください。",
+    selected: "選択中",
   },
 };
 

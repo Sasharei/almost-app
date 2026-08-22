@@ -89,6 +89,12 @@ const FALLBACK_FEATURES_BY_LANGUAGE = {
     "자동 수집으로 반복 유혹을 모아 빠르게 확인하기",
     "깊은 진행 인사이트로 절약 행동을 습관으로 바꾸기",
   ],
+  ja: [
+    "1日の無料上限を気にせず、節約を何度でも記録",
+    "見送った買い物をすべて目標につなげられる、より多くの貯蓄目標",
+    "予定された自動収集で、繰り返す誘惑をまとめてすばやく確認",
+    "より深い進捗分析で、衝動を見送る行動を良い習慣へ",
+  ],
 };
 
 const PLAN_TITLES_BY_LANGUAGE = {
@@ -103,6 +109,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     ar: "سنوي",
     zh: "年付",
     ko: "연간",
+    ja: "年額",
   },
   monthly: {
     ru: "Ежемесячный",
@@ -115,6 +122,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     ar: "شهري",
     zh: "月付",
     ko: "월간",
+    ja: "月額",
   },
   weekly: {
     ru: "Еженедельный",
@@ -127,6 +135,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     ar: "أسبوعي",
     zh: "周付",
     ko: "주간",
+    ja: "週額",
   },
   lifetime: {
     ru: "Навсегда",
@@ -139,6 +148,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     ar: "مدى الحياة",
     zh: "终身",
     ko: "평생",
+    ja: "買い切り",
   },
   premium: {
     ru: "Premium",
@@ -151,6 +161,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     ar: "Premium",
     zh: "Premium",
     ko: "Premium",
+    ja: "Premium",
   },
 };
 
@@ -346,6 +357,25 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     manage: "구독 관리",
     terms: "이용 약관",
     privacy: "개인정보 처리방침",
+  },
+  ja: {
+    title: "Premiumプランを選択",
+    trialHeadline: "Almostを無料でお試しください",
+    socialProof: "より明確に把握し、衝動的な判断を減らす",
+    ctaPrimary: "Premiumをアンロック",
+    freeTrialToggleTitle: "無料トライアル",
+    freeTrialToggleSubtitle: "オンにすると、無料トライアル付きプランを選べます。",
+    brandBadge: "Almost Premium",
+    bestValueBadge: "一番お得",
+    freeTrialLabel: "無料トライアル",
+    tryForFree: "無料で試す",
+    thenPriceTemplate: "その後{{price}}",
+    yearlyPerMonthTemplate: "月あたり{{price}}",
+    continueLimited: "制限版で続ける",
+    restore: "購入を復元",
+    manage: "サブスクリプションを管理",
+    terms: "利用規約",
+    privacy: "プライバシー",
   },
 };
 

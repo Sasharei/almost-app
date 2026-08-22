@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Almost</string>
+    <string name="widget_title_default">Almost</string>
+    <string name="widget_label_saved_default">今月の節約</string>
+    <string name="widget_label_today_default">今日</string>
+    <string name="widget_label_total_default">合計</string>
+    <string name="widget_label_balance_default">残高</string>
+    <string name="widget_label_goal_default">目標まで</string>
+    <string name="widget_label_month_goal_default">月間目標</string>
+    <string name="widget_label_budget_remaining_default">予算残額</string>
+    <string name="widget_label_recent_default">最近の記録</string>
+    <string name="widget_label_recent_empty_default">記録はありません</string>
+    <string name="widget_action_save_default">貯める</string>
+    <string name="widget_action_spend_default">使う</string>
+    <string name="widget_empty_state_default">今日から節約を始めましょう</string>
+</resources>

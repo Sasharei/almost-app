@@ -28,9 +28,31 @@ const shouldScheduleActionRewardOverlayRetry = ({
 
 const shouldDeferActionRewardOverlayPresentation = (type) => type === "save";
 
+const shouldDispatchPendingGoalCelebration = ({
+  hasPendingGoalCelebration = false,
+  startupHardLockPendingBeforePaywall = false,
+  overlayEnvironmentReady = false,
+  blockingModalVisible = false,
+  overlayVisible = false,
+  overlayActive = false,
+  overlayQueueLength = 0,
+  celebrationQueueLength = 0,
+  pendingLevelCelebration = false,
+} = {}) =>
+  Boolean(hasPendingGoalCelebration) &&
+  !startupHardLockPendingBeforePaywall &&
+  overlayEnvironmentReady &&
+  !blockingModalVisible &&
+  !overlayVisible &&
+  !overlayActive &&
+  Math.max(0, Number(overlayQueueLength) || 0) === 0 &&
+  Math.max(0, Number(celebrationQueueLength) || 0) === 0 &&
+  !pendingLevelCelebration;
+
 module.exports = {
   ACTION_REWARD_OVERLAY_GATE_STATUS,
   getActionRewardOverlayGateStatus,
   shouldDeferActionRewardOverlayPresentation,
+  shouldDispatchPendingGoalCelebration,
   shouldScheduleActionRewardOverlayRetry,
 };

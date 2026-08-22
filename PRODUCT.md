@@ -36,7 +36,7 @@ Almost connects the moment of resisting an impulse with a verified real-world mo
 - Preserve current transfer validation, proof capture/library selection, debt-plan setup and editing, persistence, analytics, cancellation, backdrop dismissal, hardware Back behavior, accessibility actions, and Premium access behavior.
 - The app ships from one React Native/Expo codebase on iOS and Android, including phone and iPad/tablet layouts.
 - Existing themes are light, dark, and PRO; PRO supports multiple accent choices.
-- Existing localization coverage includes `en`, `es`, `fr`, `ru`, `de`, `pt`, `it`, `ar`, `zh`, and `ko`.
+- Existing localization coverage includes `en`, `es`, `fr`, `ru`, `de`, `pt`, `it`, `ar`, `zh`, `ko`, and `ja`.
 
 ## Brand Commitments
 

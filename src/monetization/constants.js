@@ -1755,6 +1755,7 @@ const resolveLanguage = (language) => {
   if (normalized.startsWith("ar")) return "ar";
   if (normalized.startsWith("zh")) return "zh";
   if (normalized.startsWith("ko")) return "ko";
+  if (normalized.startsWith("ja")) return "ja";
   if (normalized.startsWith("en")) return "en";
   return "en";
 };

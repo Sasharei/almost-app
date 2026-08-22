@@ -2,7 +2,7 @@ const UI_SESSION_VERSION = 1;
 const UI_SESSION_HOME_RESET_MS = 5 * 60 * 1000;
 
 const RESTORABLE_TABS = new Set(["feed", "cart", "pending", "purchases", "profile"]);
-const RESTORABLE_PROFILE_EDIT_MODES = new Set(["profile"]);
+const RESTORABLE_PROFILE_EDIT_MODES = new Set(["profile", "settings"]);
 const RESTORABLE_PROGRESS_PANES = new Set(["progress", "rewards"]);
 const RESTORABLE_PROGRESS_SECTIONS = new Set([
   "overview",

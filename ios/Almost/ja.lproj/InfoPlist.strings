@@ -1,0 +1,5 @@
+"NSCameraUsageDescription" = "プロフィール写真を撮影するため、Almostにカメラの使用を許可してください。";
+"NSMicrophoneUsageDescription" = "音声機能を利用するため、Almostにマイクへのアクセスを許可してください。";
+"NSMotionUsageDescription" = "貯金箱のコインを端末の傾きに合わせて動かすため、モーションデータを使用します。";
+"NSPhotoLibraryUsageDescription" = "プロフィール画像を更新するため、Almostに写真へのアクセスを許可してください。";
+"NSUserTrackingUsageDescription" = "広告効果を測定するためにデータが使用されます。";

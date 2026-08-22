@@ -13,6 +13,7 @@ import Svg, {
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidTabBar, { canUseNativeLiquidTabBar } from "./NativeLiquidTabBar";
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
+import { ANDROID_LIVE_GLASS_BLUR_ENABLED } from "../constants/appBehavior";
 const TAB_ROW_HORIZONTAL_PADDING = 8;
 const TAB_ROW_VERTICAL_PADDING = 6;
 const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
@@ -408,10 +409,11 @@ const LiquidGlassTabBar = ({
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
-  const androidTrackBlurIntensity = isCompactAndroid ? 10 : 12;
-  const androidTrackBlurReductionFactor = isCompactAndroid ? 4 : 3;
+  const androidTrackBlurIntensity = isCompactAndroid ? 18 : 20;
+  const androidTrackBlurReductionFactor = 4;
   const androidBubbleTintBase = isDarkTheme ? "rgba(30,37,50,0.64)" : "rgba(255,255,255,0.68)";
   const shouldUseAndroidBubbleTintFallback = useAndroidLikeVisualStyle && !useNativeLiquidBackground;
+  const useAndroidSolidTrack = isAndroid && !ANDROID_LIVE_GLASS_BLUR_ENABLED;
   const shouldUseNativeOnly = nativeTabBarAvailable;
   const shouldRenderInnerBubble = availableTabs.length > 0;
 
@@ -448,6 +450,20 @@ const LiquidGlassTabBar = ({
             cornerRadius={999}
             tintAlpha={isDarkTheme ? 0.16 : 0.12}
             strokeOpacity={isDarkTheme ? 0.24 : 0.2}
+          />
+        ) : useAndroidSolidTrack ? (
+          <View
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFillObject,
+              {
+                backgroundColor: isDarkTheme
+                  ? "#20283A"
+                  : isProTheme
+                  ? proThemeSurfaceColor
+                  : "#EEF3FB",
+              },
+            ]}
           />
         ) : (
           <ExpoBlurView

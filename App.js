@@ -128,7 +128,11 @@ import {
 } from "@expo-google-fonts/inter";
 import Sentry, { initSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from "react-native-safe-area-context";
-import ViewShot, { captureRef } from "react-native-view-shot";
+import ViewShot, {
+  captureRef,
+  captureScreen,
+  releaseCapture,
+} from "react-native-view-shot";
 import {
   ANALYTICS_SOURCES,
   ANALYTICS_VALUE_UNKNOWN,
@@ -580,6 +584,7 @@ const {
   ACTION_REWARD_OVERLAY_GATE_STATUS,
   getActionRewardOverlayGateStatus,
   shouldDeferActionRewardOverlayPresentation,
+  shouldDispatchPendingGoalCelebration,
   shouldScheduleActionRewardOverlayRetry,
 } = require("./src/engagement/actionRewardOverlayQueue");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -711,7 +716,9 @@ const MODAL_CLOSE_SETTLE_MS = 120;
 const MODAL_CLOSE_SETTLE_TUTORIAL_MS = 140;
 const MODAL_HANDOFF_FRAME_SLACK_MS = 8;
 const STORE_REVIEW_MODAL_GUARD_MS = 900;
-const FREQUENCY_REMINDER_RETRY_MS = 24;
+// Modal eligibility already reacts to state changes. This timer only bridges ref/settle windows,
+// so frame-rate polling needlessly competes with entrance animations on the JS thread.
+const FREQUENCY_REMINDER_RETRY_MS = 120;
 const visibleModalHostIds = new Set();
 const visibleModalHostListeners = new Set();
 const getVisibleModalHostCount = () => visibleModalHostIds.size;
@@ -1321,6 +1328,7 @@ const isAndroidExpoBlurAvailable = () =>
   Platform.OS === "android" && ANDROID_EXPO_BLUR_ENABLED && isExpoBlurViewAvailable();
 const shouldUseAndroidCommunityBlur = () => {
   if (Platform.OS !== "android" || !AndroidBlurView) return false;
+  if (!ANDROID_EXPO_BLUR_ENABLED) return false;
   if (!ANDROID_DIMEZIS_DISABLED) return true;
   // Fallback to community blur on Android binaries where Expo blur manager is missing.
   return !isAndroidExpoBlurAvailable();
@@ -1331,12 +1339,47 @@ const isBlurViewAvailable = () => {
     return true;
   }
   if (Platform.OS === "android") {
+    if (!ANDROID_EXPO_BLUR_ENABLED) return false;
     if (shouldUseAndroidCommunityBlur()) return true;
     // On Android we keep Expo blur enabled even when manager detection is flaky.
     return ANDROID_EXPO_BLUR_ENABLED;
   }
   return isExpoBlurViewAvailable();
 };
+
+const AndroidManualAmountBackdropVisual = React.memo(function AndroidManualAmountBackdropVisual({
+  isDarkTheme = false,
+  reduceTransparency = false,
+  solidFallbackColor = "#000000",
+}) {
+  if (Platform.OS !== "android") return null;
+  if (reduceTransparency) {
+    return (
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: solidFallbackColor }]}
+      />
+    );
+  }
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {AndroidBlurView ? (
+        <AndroidBlurView
+          pointerEvents="none"
+          blurType={isDarkTheme ? "dark" : "light"}
+          blurAmount={12}
+          overlayColor="transparent"
+          autoUpdate={false}
+          style={StyleSheet.absoluteFillObject}
+        />
+      ) : null}
+      <View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(0,0,0,0.6)" }]}
+      />
+    </View>
+  );
+});
 
 const isFabricRendererActive = !!global?.nativeFabricUIManager;
 
@@ -2332,7 +2375,8 @@ const resolveMonetizationLanguage = (language = "en") => {
     base === "it" ||
     base === "ar" ||
     base === "zh" ||
-    base === "ko"
+    base === "ko" ||
+    base === "ja"
   ) {
     return base;
   }
@@ -2527,6 +2571,7 @@ const PAYWALL_DAY_SUFFIX_BY_LANGUAGE = {
   ar: "/يوم",
   zh: "/天",
   ko: "/일",
+  ja: "/日",
 };
 const CURRENCY_DISPLAY_SYMBOLS = {
   ARS: "$",
@@ -3871,6 +3916,9 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "zh") {
       return `${count}天前`;
     }
+    if (normalizedLanguage === "ja") {
+      return `${count}日前`;
+    }
     return `${count} day${count === 1 ? "" : "s"} ago`;
   };
   const formatOnWeekday = (dayLabel) => {
@@ -3881,6 +3929,7 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "de") return `am ${dayLabel}`;
     if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return `في ${dayLabel}`;
     if (normalizedLanguage === "zh") return `在${dayLabel}`;
+    if (normalizedLanguage === "ja") return `${dayLabel}に`;
     return `on ${dayLabel}`;
   };
   if (diff === 0) {
@@ -3890,6 +3939,7 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "de") return "heute";
     if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return "اليوم";
     if (normalizedLanguage === "zh") return "今天";
+    if (normalizedLanguage === "ja") return "今日";
     return "today";
   }
   if (diff === 1) {
@@ -3899,6 +3949,7 @@ const formatRelativeDayLabel = (timestamp, referenceTs, language = DEFAULT_LANGU
     if (normalizedLanguage === "de") return "gestern";
     if (normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae") return "أمس";
     if (normalizedLanguage === "zh") return "昨天";
+    if (normalizedLanguage === "ja") return "昨日";
     return "yesterday";
   }
   if (diff === 2) {
@@ -4069,6 +4120,13 @@ const getHealthCoinBreakdown = (amount = 0) => {
   });
   return breakdown;
 };
+const COIN_VALUE_COLOR_LABEL_KEYS = Object.freeze({
+  green: "coinValueColorGreen",
+  blue: "coinValueColorBlue",
+  orange: "coinValueColorOrange",
+  red: "coinValueColorRed",
+  pink: "coinValueColorPink",
+});
 const buildHealthCoinEntries = (amount = 0) => {
   const breakdown = getHealthCoinBreakdown(amount);
   return HEALTH_COIN_TIERS.slice().reverse().map((tier) => ({
@@ -4131,7 +4189,7 @@ const getChestCountNoun = (count = 0, language = DEFAULT_LANGUAGE, { capitalized
       value = "сундуков";
     }
   } else {
-    value = normalizedCount === 1 ? "chest" : "chests";
+    value = normalizedLanguage === "ja" ? "宝箱" : normalizedCount === 1 ? "chest" : "chests";
   }
   if (!capitalized) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
@@ -6074,6 +6132,16 @@ const getTamagotchiMood = (
         needClean: "脏了，需要清洁",
         needFood: "饿了",
       },
+	  ja: {
+	    happy: "元気いっぱいです",
+	    calm: "元気ですが、少しかまってほしそうです",
+	    sad: "寂しそうで、遊びたがっています",
+	    missed: "あなたに会えず、寂しがっています",
+	    urgent: "今すぐお世話が必要です！",
+	    needPlay: "遊びたがっています",
+	    needClean: "汚れているので、きれいにしてあげましょう",
+	    needFood: "お腹を空かせています",
+	  },
 	  };
   const dict = texts[resolveMonetizationLanguage(language)] || texts.en;
   const hungerPressure = Math.max(0, 100 - hunger);
@@ -7631,7 +7699,9 @@ const resolveSavingRatingLabel = (score = 0, language = DEFAULT_LANGUAGE) => {
 const formatSavingRatingTopLabel = (value = 50, language = DEFAULT_LANGUAGE) => {
   const normalized = Math.max(1, Math.min(99, Math.round(Number(value) || 0)));
   const short = getShortLanguageKey(normalizeLanguage(language));
-  return short === "ru" ? `Топ ${normalized}%` : `Top ${normalized}%`;
+  if (short === "ru") return `Топ ${normalized}%`;
+  if (short === "ja") return `上位${normalized}%`;
+  return `Top ${normalized}%`;
 };
 
 const buildSavingRatingSummary = ({
@@ -7976,6 +8046,7 @@ const IMPULSE_DELAY_UNITS = {
   de: { hour: "Std", minute: "Min" },
   ar: { hour: "س", minute: "د" },
   zh: { hour: "小时", minute: "分" },
+  ja: { hour: "時間", minute: "分" },
 };
 const IMPULSE_REMINDER_MIN_DELAY_MS = 5 * 60 * 1000;
 const formatImpulseDelayLabel = (minutes, language = DEFAULT_LANGUAGE) => {
@@ -8931,7 +9002,16 @@ const mapHistoryEventsToMoodEvents = (history = [], now = Date.now()) =>
     .filter(Boolean)
     .slice(0, MOOD_MAX_EVENTS);
 
-const PENDING_DAY_SUFFIX = { ru: "д", en: "d", es: "d", fr: "j", de: "T", ar: "ي", zh: "天" };
+const PENDING_DAY_SUFFIX = {
+  ru: "д",
+  en: "d",
+  es: "d",
+  fr: "j",
+  de: "T",
+  ar: "ي",
+  zh: "天",
+  ja: "日",
+};
 
 const formatBreakdownPeriodLabel = (startDate, endExclusiveDate, locale, range) => {
   if (!(startDate instanceof Date) || !(endExclusiveDate instanceof Date)) return "";
@@ -9455,12 +9535,13 @@ const buildReportsSnapshot = ({
     const normalizedTitle = stripped || displayTitle || fallbackLabel;
     return { templateId, displayTitle, normalizedTitle };
   };
-  const addToBucket = (bucketMap, entry, amount, fallbackLabel) => {
+  const addToBucket = (bucketMap, entry, amount, fallbackLabel, categoryId = null) => {
     const { templateId, displayTitle, normalizedTitle } = resolveEntryLabel(entry, fallbackLabel);
     const key = templateId ? `id:${templateId}` : `label:${normalizedTitle.toLowerCase()}`;
     const current =
       bucketMap.get(key) || {
         templateId: templateId || null,
+        categoryId: categoryId || null,
         title: normalizedTitle || fallbackLabel,
         displayTitle: displayTitle || normalizedTitle || fallbackLabel,
         amountUSD: 0,
@@ -9556,7 +9637,7 @@ const buildReportsSnapshot = ({
         savedCount += 1;
         const saveFallbackTitle =
           entry?.kind === "income_savings" ? incomeSavingsLabel : defaultDeclineTitle;
-        addToBucket(saveBuckets, entry, amount, saveFallbackTitle);
+        addToBucket(saveBuckets, entry, amount, saveFallbackTitle, categoryId);
         stats.saveUSD += amount;
         stats.saveCount += 1;
         if (isWeekendTimestamp(timestamp)) {
@@ -9567,7 +9648,7 @@ const buildReportsSnapshot = ({
       } else if (entry?.kind === "spend") {
         spendUSD += amount;
         spendCount += 1;
-        addToBucket(spendBuckets, entry, amount, defaultSpendTitle);
+        addToBucket(spendBuckets, entry, amount, defaultSpendTitle, categoryId);
         stats.spendUSD += amount;
         stats.spendCount += 1;
         if (isWeekendTimestamp(timestamp)) {
@@ -9585,7 +9666,8 @@ const buildReportsSnapshot = ({
       ...stats,
       netUSD: (stats.saveUSD || 0) - (stats.spendUSD || 0),
     }));
-    const activeDays = statsArray.length;
+    const daily = statsArray.sort((left, right) => left.dayKey.localeCompare(right.dayKey));
+    const activeDays = daily.length;
     const saveDays = statsArray.filter((entry) => (entry.saveUSD || 0) > 0).length;
     const spendDays = statsArray.filter((entry) => (entry.spendUSD || 0) > 0).length;
     const peakSaveDay = statsArray.reduce((best, current) => {
@@ -9635,6 +9717,7 @@ const buildReportsSnapshot = ({
       },
       peakSaveDay,
       peakSpendDay,
+      daily,
       topSave: pickTopBucket(saveBuckets),
       topSpend: pickTopBucket(spendBuckets),
       currency,
@@ -11779,6 +11862,9 @@ const formatTemptationPauseFreezeLabel = (
     if (translationLanguage === "zh") {
       return `${days}天`;
     }
+    if (translationLanguage === "ja") {
+      return `${days}日`;
+    }
     return `${days} ${days === 1 ? "day" : "days"}`;
   }
   const hours = Math.max(1, Math.round(normalizedDurationMs / HOUR_MS));
@@ -11805,6 +11891,9 @@ const formatTemptationPauseFreezeLabel = (
   }
   if (translationLanguage === "zh") {
     return `${hours}小时`;
+  }
+  if (translationLanguage === "ja") {
+    return `${hours}時間`;
   }
   return `${hours} ${hours === 1 ? "hour" : "hours"}`;
 };
@@ -11837,6 +11926,9 @@ const formatSaveCountLabel = (count = 0, language = DEFAULT_LANGUAGE) => {
   if (translationLanguage === "zh") {
     return `${formattedCount} 次节省`;
   }
+  if (translationLanguage === "ja") {
+    return `${formattedCount}回の節約`;
+  }
   return `${formattedCount} ${safeCount === 1 ? "save" : "saves"}`;
 };
 
@@ -11867,6 +11959,7 @@ const buildGoalCompletionHeroLine = ({
       "ar-sa": "تم تحقيق الهدف. استمر بهذا الإيقاع.",
       "ar-ae": "تم تحقيق الهدف. استمر بهذا الإيقاع.",
       zh: "目标达成，继续保持这个节奏。",
+      ja: "目標達成です。この調子で続けましょう。",
     };
     return fallbackMap[normalizedLanguage] || fallbackMap.en;
   }
@@ -11897,6 +11990,10 @@ const buildGoalCompletionHeroLine = ({
   if (normalizedLanguage === "zh") {
     const suffix = hasOther ? "及其他" : "";
     return `目标达成：对 ${compactTitle} 的拒绝次数为 ${formattedCount}${suffix}。`;
+  }
+  if (normalizedLanguage === "ja") {
+    const suffix = hasOther ? "など" : "";
+    return `目標達成：${compactTitle}${suffix}を${formattedCount}回見送りました。`;
   }
   const suffix = hasOther ? " and others" : "";
   return `Goal reached: ${formattedCount} skips on ${compactTitle}${suffix}.`;
@@ -14515,7 +14612,7 @@ function TemptationCardComponent({
   const androidSystemBottomInset = resolveAndroidSystemBottomInset({
     safeBottom: safeInsets.bottom,
   });
-  const { reduceMotion } = useMotionPreferences();
+  const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const title = resolveTemptationTitle(item, language, titleOverride);
   const isCustomCard =
     Array.isArray(item?.categories) && item.categories.some((category) => category === "custom");
@@ -15038,6 +15135,10 @@ function TemptationCardComponent({
   const amountSliderModalBorder = isDarkTheme
     ? colorWithAlpha(amountSliderAccent, 0.24)
     : "rgba(229,230,237,0.95)";
+  const amountManualBackdropStyle =
+    Platform.OS === "android"
+      ? { backgroundColor: "transparent" }
+      : null;
   const amountSliderMoodStageColor =
     Platform.OS === "android"
       ? blendColors(
@@ -17108,8 +17209,17 @@ function TemptationCardComponent({
                   style={[
                     styles.coinEntryManualBackdrop,
                     styles.temptationAmountManualInlineBackdrop,
+                    amountManualBackdropStyle,
                   ]}
                 >
+                  <AndroidManualAmountBackdropVisual
+                    isDarkTheme={isDarkTheme}
+                    reduceTransparency={reduceTransparency}
+                    solidFallbackColor={resolveAndroidOpaqueLayerColor(
+                      "rgba(0,0,0,0.6)",
+                      colors.background
+                    )}
+                  />
                   <KeyboardAvoidingView
                     style={styles.coinEntryManualKeyboardAvoider}
                     behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -17191,7 +17301,15 @@ function TemptationCardComponent({
           onRequestClose={closeAmountManual}
         >
           <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeAmountManual)}>
-            <View style={styles.coinEntryManualBackdrop}>
+            <View style={[styles.coinEntryManualBackdrop, amountManualBackdropStyle]}>
+              <AndroidManualAmountBackdropVisual
+                isDarkTheme={isDarkTheme}
+                reduceTransparency={reduceTransparency}
+                solidFallbackColor={resolveAndroidOpaqueLayerColor(
+                  "rgba(0,0,0,0.6)",
+                  colors.background
+                )}
+              />
               <KeyboardAvoidingView
                 style={styles.coinEntryManualKeyboardAvoider}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -17460,7 +17578,19 @@ function TemptationCardComponent({
                 },
               ]}
             >
-              {Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
+              {Platform.OS === "android" && !ANDROID_EXPO_BLUR_ENABLED ? (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.pauseFreezeBackdropBlur,
+                    {
+                      backgroundColor: isDarkTheme
+                        ? "rgba(18,29,48,0.76)"
+                        : "rgba(205,226,250,0.72)",
+                    },
+                  ]}
+                />
+              ) : Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
                 <AndroidBlurView
                   blurType={isDarkTheme ? "dark" : "light"}
                   blurAmount={20}
@@ -25043,7 +25173,19 @@ function FridgeFreezeTransferOverlay({
           {showFreezeGlass ? (
             <>
               <Animated.View style={[styles.fridgeFreezeIceBlurWrap, { opacity: blurOpacity }]}>
-                {Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
+                {Platform.OS === "android" && !ANDROID_EXPO_BLUR_ENABLED ? (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.fridgeFreezeIceBlur,
+                      {
+                        backgroundColor: isDarkTheme
+                          ? "rgba(88,154,214,0.24)"
+                          : "rgba(174,224,255,0.34)",
+                      },
+                    ]}
+                  />
+                ) : Platform.OS === "android" && shouldUseAndroidCommunityBlur() ? (
                   <AndroidBlurView
                     blurType={isDarkTheme ? "dark" : "light"}
                     blurAmount={28}
@@ -26320,19 +26462,299 @@ const HistoryModal = React.memo(function HistoryModal({
   );
 });
 
-const ReportsModal = React.memo(function ReportsModal({
-  visible = false,
+const ProfileSectionGlyph = React.memo(function ProfileSectionGlyph({
+  name = "overview",
+  color = "#202129",
+  size = 20,
+}) {
+  const pathProps = {
+    fill: "none",
+    stroke: color,
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      {name === "reports" ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8.2" {...pathProps} />
+          <SvgPath d="M12 3.8v8.2h8.2M12 12l-5.8 5.8" {...pathProps} />
+        </>
+      ) : name === "settings" ? (
+        <>
+          <SvgPath d="M5 6h14M5 12h14M5 18h14" {...pathProps} />
+          <SvgCircle cx="9" cy="6" r="1.7" fill="transparent" {...pathProps} />
+          <SvgCircle cx="15" cy="12" r="1.7" fill="transparent" {...pathProps} />
+          <SvgCircle cx="10" cy="18" r="1.7" fill="transparent" {...pathProps} />
+        </>
+      ) : name === "history" ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8.2" {...pathProps} />
+          <SvgPath d="M12 7.4v5l3.4 2M5.9 5.9 3.7 8.1M3.7 8.1h4.1M3.7 8.1V4" {...pathProps} />
+        </>
+      ) : name === "target" ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8" {...pathProps} />
+          <SvgCircle cx="12" cy="12" r="3.1" {...pathProps} />
+          <SvgPath d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3" {...pathProps} />
+        </>
+      ) : name === "lock" ? (
+        <>
+          <SvgRect x="5.2" y="10.2" width="13.6" height="10" rx="2.4" {...pathProps} />
+          <SvgPath d="M8.3 10.2V7.6a3.7 3.7 0 0 1 7.4 0v2.6M12 14.2v2.2" {...pathProps} />
+        </>
+      ) : name === "arrowLeft" ? (
+        <SvgPath d="m14.5 6-6 6 6 6" {...pathProps} />
+      ) : name === "arrowRight" ? (
+        <SvgPath d="m9.5 6 6 6-6 6" {...pathProps} />
+      ) : name === "chevronUp" ? (
+        <SvgPath d="m6 14 6-6 6 6" {...pathProps} />
+      ) : name === "chevronDown" ? (
+        <SvgPath d="m6 10 6 6 6-6" {...pathProps} />
+      ) : (
+        <>
+          <SvgCircle cx="12" cy="8" r="3.2" {...pathProps} />
+          <SvgPath d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6" {...pathProps} />
+        </>
+      )}
+    </Svg>
+  );
+});
+
+const ReportsTrend = React.memo(function ReportsTrend({
+  report,
+  colors,
+  language,
+  positiveColor = SAVE_ACTION_COLOR,
+  negativeColor = SPEND_ACTION_COLOR,
+}) {
+  const locale = getFormatLocale(language);
+  const chart = useMemo(() => {
+    const width = 324;
+    const height = 166;
+    const paddingLeft = 16;
+    const paddingRight = 16;
+    const paddingTop = 18;
+    const paddingBottom = 28;
+    const statsByDay = new Map(
+      (Array.isArray(report?.daily) ? report.daily : []).map((entry) => [entry?.dayKey, entry])
+    );
+    const dayCount = Math.max(1, Math.min(31, Number(report?.totals?.dayCount) || 1));
+    const startDate = report?.startAt ? new Date(report.startAt) : null;
+    const series = [];
+    let cumulative = 0;
+    if (startDate && Number.isFinite(startDate.getTime())) {
+      const cursor = new Date(startDate);
+      cursor.setHours(0, 0, 0, 0);
+      for (let index = 0; index < dayCount; index += 1) {
+        const dayKey = getDayKey(cursor);
+        const entry = statsByDay.get(dayKey) || null;
+        cumulative += Number(entry?.netUSD) || 0;
+        series.push({ dayKey, value: cumulative });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    if (!series.length) {
+      series.push({ dayKey: "", value: 0 }, { dayKey: "", value: 0 });
+    } else if (series.length === 1) {
+      series.unshift({ dayKey: series[0].dayKey, value: 0 });
+    }
+    const values = [0, ...series.map((entry) => entry.value)];
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const rawRange = Math.max(1, rawMax - rawMin);
+    const minValue = rawMin - rawRange * 0.14;
+    const maxValue = rawMax + rawRange * 0.14;
+    const range = Math.max(1, maxValue - minValue);
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const points = series.map((entry, index) => ({
+      ...entry,
+      x: paddingLeft + (plotWidth * index) / Math.max(1, series.length - 1),
+      y: paddingTop + ((maxValue - entry.value) / range) * plotHeight,
+    }));
+    let linePath = `M ${points[0].x} ${points[0].y}`;
+    const smoothness = 0.18;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const p0 = points[Math.max(0, index - 1)];
+      const p1 = points[index];
+      const p2 = points[index + 1];
+      const p3 = points[Math.min(points.length - 1, index + 2)];
+      const cp1x = p1.x + (p2.x - p0.x) * smoothness;
+      const cp1y = p1.y + (p2.y - p0.y) * smoothness;
+      const cp2x = p2.x - (p3.x - p1.x) * smoothness;
+      const cp2y = p2.y - (p3.y - p1.y) * smoothness;
+      linePath += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+    const baselineY = paddingTop + ((maxValue - 0) / range) * plotHeight;
+    const areaPath = `${linePath} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
+    const labelIndexes = Array.from(
+      new Set([0, Math.round((points.length - 1) / 2), points.length - 1])
+    );
+    const labels = labelIndexes.map((index) => {
+      const point = points[index];
+      const parsed = parseDayKey(point?.dayKey);
+      const label = parsed
+        ? parsed.toLocaleDateString(locale, report?.type === "month" ? { day: "numeric" } : { weekday: "short" })
+        : "";
+      return { x: point?.x || paddingLeft, label };
+    });
+    return {
+      width,
+      height,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      plotHeight,
+      points,
+      linePath,
+      areaPath,
+      baselineY,
+      labels,
+      gridY: [paddingTop, baselineY, paddingTop + plotHeight],
+    };
+  }, [locale, report]);
+  const lastPoint = chart.points[chart.points.length - 1];
+  const gridColor = colorWithAlpha(colors.text, 0.11);
+  const labelColor = colorWithAlpha(colors.text, 0.58);
+  return (
+    <View style={styles.profileReportsTrendChart}>
+      <Svg width="100%" height="100%" viewBox={`0 0 ${chart.width} ${chart.height}`}>
+        <Defs>
+          <SvgLinearGradient id="reportsTrendFillPositive" x1="0" y1="0" x2="0" y2="1">
+            <SvgStop offset="0%" stopColor={colorWithAlpha(positiveColor, 0.38)} />
+            <SvgStop offset="100%" stopColor={colorWithAlpha(positiveColor, 0.02)} />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="reportsTrendFillNegative" x1="0" y1="0" x2="0" y2="1">
+            <SvgStop offset="0%" stopColor={colorWithAlpha(negativeColor, 0.34)} />
+            <SvgStop offset="100%" stopColor={colorWithAlpha(negativeColor, 0.025)} />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="reportsTrendLinePositive" x1="0" y1="0" x2="1" y2="0">
+            <SvgStop offset="0%" stopColor={lightenColor(positiveColor, 0.24)} />
+            <SvgStop offset="100%" stopColor={positiveColor} />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="reportsTrendLineNegative" x1="0" y1="0" x2="1" y2="0">
+            <SvgStop offset="0%" stopColor={lightenColor(negativeColor, 0.2)} />
+            <SvgStop offset="100%" stopColor={negativeColor} />
+          </SvgLinearGradient>
+          <SvgClipPath id="reportsTrendClipPositive">
+            <SvgRect x="0" y="0" width={chart.width} height={Math.max(1, chart.baselineY)} />
+          </SvgClipPath>
+          <SvgClipPath id="reportsTrendClipNegative">
+            <SvgRect
+              x="0"
+              y={chart.baselineY}
+              width={chart.width}
+              height={Math.max(1, chart.height - chart.baselineY)}
+            />
+          </SvgClipPath>
+        </Defs>
+        {chart.gridY.map((y, index) => (
+          <SvgPath
+            key={`reports-trend-grid-${index}`}
+            d={`M ${chart.paddingLeft} ${y} L ${chart.width - chart.paddingRight} ${y}`}
+            stroke={gridColor}
+            strokeWidth={index === 1 ? 1.3 : 1}
+            strokeDasharray={index === 1 ? undefined : "5 6"}
+          />
+        ))}
+        <SvgPath d={chart.areaPath} fill="url(#reportsTrendFillPositive)" clipPath="url(#reportsTrendClipPositive)" />
+        <SvgPath d={chart.areaPath} fill="url(#reportsTrendFillNegative)" clipPath="url(#reportsTrendClipNegative)" />
+        <SvgPath
+          d={chart.linePath}
+          fill="none"
+          stroke={colorWithAlpha(positiveColor, 0.2)}
+          strokeWidth={11}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          clipPath="url(#reportsTrendClipPositive)"
+        />
+        <SvgPath
+          d={chart.linePath}
+          fill="none"
+          stroke={colorWithAlpha(negativeColor, 0.2)}
+          strokeWidth={11}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          clipPath="url(#reportsTrendClipNegative)"
+        />
+        <SvgPath
+          d={chart.linePath}
+          fill="none"
+          stroke="url(#reportsTrendLinePositive)"
+          strokeWidth={4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          clipPath="url(#reportsTrendClipPositive)"
+        />
+        <SvgPath
+          d={chart.linePath}
+          fill="none"
+          stroke="url(#reportsTrendLineNegative)"
+          strokeWidth={4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          clipPath="url(#reportsTrendClipNegative)"
+        />
+        {chart.points.map((point, index) => (
+          <SvgCircle
+            key={`reports-trend-point-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r={index === chart.points.length - 1 ? 4.6 : 2.5}
+            fill={point.value >= 0 ? positiveColor : negativeColor}
+            fillOpacity={index === chart.points.length - 1 ? 1 : 0.72}
+          />
+        ))}
+        <SvgCircle
+          cx={lastPoint.x}
+          cy={lastPoint.y}
+          r="9"
+          fill={colorWithAlpha(lastPoint.value >= 0 ? positiveColor : negativeColor, 0.16)}
+        />
+        <SvgCircle
+          cx={lastPoint.x}
+          cy={lastPoint.y}
+          r="4.6"
+          fill={lastPoint.value >= 0 ? positiveColor : negativeColor}
+        />
+        {chart.labels.map((entry, index) => (
+          <SvgText
+            key={`reports-trend-label-${index}`}
+            x={entry.x}
+            y={chart.height - 6}
+            fill={labelColor}
+            fontSize="10"
+            fontWeight="700"
+            textAnchor={index === 0 ? "start" : index === chart.labels.length - 1 ? "end" : "middle"}
+          >
+            {entry.label}
+          </SvgText>
+        ))}
+      </Svg>
+    </View>
+  );
+});
+
+const ProfileReportsSection = React.memo(function ProfileReportsSection({
   reports,
   activeTab = "weekly",
   onTabChange = () => {},
-  onClose = () => {},
+  onPrimaryAction = null,
+  onCreateGoal = null,
+  onPremiumPress = null,
+  premiumPreview = null,
+  reportsPreparing = false,
   t,
   colors,
   currency,
   language,
   isPremiumUser = false,
+  lockedAccent = null,
 }) {
   const locale = getFormatLocale(language);
+  const isReportsRtl = isRtlLanguage(normalizeLanguage(language || DEFAULT_LANGUAGE));
   const normalizedReports = useMemo(
     () => normalizeProfileReports(reports),
     [reports]
@@ -26341,6 +26763,15 @@ const ReportsModal = React.memo(function ReportsModal({
   const monthlyReports = normalizedReports.monthly || [];
   const resolvedTab = activeTab === "monthly" ? "monthly" : "weekly";
   const activeReports = resolvedTab === "monthly" ? monthlyReports : weeklyReports;
+  const [reportIndex, setReportIndex] = useState(0);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  useEffect(() => {
+    setReportIndex(0);
+    setDetailsExpanded(false);
+  }, [resolvedTab]);
+  useEffect(() => {
+    setReportIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, activeReports.length - 1)));
+  }, [activeReports.length]);
   const updatedAtLabel = useMemo(() => {
     if (!normalizedReports.updatedAt) return null;
     const date = new Date(normalizedReports.updatedAt);
@@ -26598,198 +27029,682 @@ const ReportsModal = React.memo(function ReportsModal({
     },
     [t]
   );
-  const renderReportCard = (report) => {
-    if (!report) return null;
-    const savedUSD = Math.max(0, Number(report.totals?.savedUSD) || 0);
-    const spendUSD = Math.max(0, Number(report.totals?.spendUSD) || 0);
-    const balanceUSD = savedUSD - spendUSD;
-    const balancePositive = balanceUSD >= 0;
-    const savedLabel = formatLocalAmount(savedUSD);
-    const spendLabel = spendUSD ? `-${formatLocalAmount(spendUSD)}` : formatLocalAmount(0);
-    const balanceLabel = `${balancePositive ? "+" : "-"}${formatLocalAmount(Math.abs(balanceUSD))}`;
-    const insights = buildInsights(report);
-    const nextSteps = buildNextSteps(report);
-    return (
-      <View
-        key={report.id}
-        style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      >
-        <View style={styles.reportHeaderRow}>
-          <Text style={[styles.reportTitle, { color: colors.text }]}>{report.label}</Text>
-          <View
-            style={[
-              styles.reportBadge,
-              { borderColor: colors.border, backgroundColor: colors.background },
-            ]}
-          >
-            <Text style={[styles.reportBadgeText, { color: colors.muted }]}>
-              {resolvedTab === "monthly" ? t("reportsMonthlyBadge") : t("reportsWeeklyBadge")}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.reportStatsRow}>
-          <View
-            style={[
-              styles.reportStatPill,
-              { borderColor: colors.border, backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.12) },
-            ]}
-          >
-            <Text style={[styles.reportStatLabel, { color: colors.muted }]}>{t("reportsSavedLabel")}</Text>
-            <Text style={[styles.reportStatValue, { color: SAVE_ACTION_COLOR }]}>{savedLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.reportStatPill,
-              { borderColor: colors.border, backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.12) },
-            ]}
-          >
-            <Text style={[styles.reportStatLabel, { color: colors.muted }]}>{t("reportsSpentLabel")}</Text>
-            <Text style={[styles.reportStatValue, { color: SPEND_ACTION_COLOR }]}>{spendLabel}</Text>
-          </View>
-          <View
-            style={[
-              styles.reportStatPill,
-              { borderColor: colors.border, backgroundColor: colorWithAlpha(colors.text, 0.06) },
-            ]}
-          >
-            <Text style={[styles.reportStatLabel, { color: colors.muted }]}>{t("reportsBalanceLabel")}</Text>
-            <Text
-              style={[
-                styles.reportStatValue,
-                { color: balancePositive ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR },
-              ]}
-            >
-              {balanceLabel}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.reportTopRow}>
-          <View style={styles.reportTopItem}>
-            <Text style={[styles.reportTopLabel, { color: colors.muted }]}>
-              {t("reportsTopSavedLabel")}
-            </Text>
-            <Text style={[styles.reportTopValue, { color: colors.text }]} numberOfLines={1}>
-              {report.topSave?.displayTitle || t("reportsEmptyShort")}
-            </Text>
-            {report.topSave?.amountUSD ? (
-              <Text style={[styles.reportTopAmount, { color: SAVE_ACTION_COLOR }]}>
-                {formatLocalAmount(report.topSave.amountUSD)}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.reportTopItem}>
-            <Text style={[styles.reportTopLabel, { color: colors.muted }]}>
-              {t("reportsTopSpentLabel")}
-            </Text>
-            <Text style={[styles.reportTopValue, { color: colors.text }]} numberOfLines={1}>
-              {report.topSpend?.displayTitle || t("reportsEmptyShort")}
-            </Text>
-            {report.topSpend?.amountUSD ? (
-              <Text style={[styles.reportTopAmount, { color: SPEND_ACTION_COLOR }]}>
-                {formatLocalAmount(report.topSpend.amountUSD)}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-        <View style={styles.reportSection}>
-          <Text style={[styles.reportSectionTitle, { color: colors.text }]}>{t("reportsInsightsTitle")}</Text>
-          <View style={styles.reportSectionList}>
-            {insights.map((line, index) => (
-              <Text key={`${report.id}-insight-${index}`} style={[styles.reportLine, { color: colors.muted }]}>
-                {`• ${line}`}
-              </Text>
-            ))}
-          </View>
-        </View>
-        <View style={styles.reportSection}>
-          <Text style={[styles.reportSectionTitle, { color: colors.text }]}>{t("reportsNextStepsTitle")}</Text>
-          <View style={styles.reportSectionList}>
-            {nextSteps.map((line, index) => (
-              <Text key={`${report.id}-step-${index}`} style={[styles.reportLine, { color: colors.muted }]}>
-                {`• ${line}`}
-              </Text>
-            ))}
-          </View>
-        </View>
-      </View>
-    );
+  const activeReport = activeReports[reportIndex] || null;
+  const savedUSD = Math.max(0, Number(activeReport?.totals?.savedUSD) || 0);
+  const spendUSD = Math.max(0, Number(activeReport?.totals?.spendUSD) || 0);
+  const balanceUSD = savedUSD - spendUSD;
+  const balancePositive = balanceUSD >= 0;
+  const balanceLabel = `${balancePositive ? "+" : "-"}${formatLocalAmount(Math.abs(balanceUSD))}`;
+  const insights = activeReport ? buildInsights(activeReport) : [];
+  const nextSteps = activeReport ? buildNextSteps(activeReport) : [];
+  const mainInsight = insights[0] || t("reportsInsightEmpty");
+  const savedCount = Math.max(0, Number(activeReport?.totals?.savedCount) || 0);
+  const spendCount = Math.max(0, Number(activeReport?.totals?.spendCount) || 0);
+  const totalActions = savedCount + spendCount;
+  const activeDays = Math.max(0, Number(activeReport?.metrics?.activeDays) || 0);
+  const dayCount = Math.max(1, Number(activeReport?.totals?.dayCount) || 1);
+  const saveSharePercent = Math.round(Math.max(0, Number(activeReport?.metrics?.saveShare) || 0) * 100);
+  const topSpendSharePercent =
+    spendUSD > 0 && activeReport?.topSpend?.amountUSD
+      ? Math.round((activeReport.topSpend.amountUSD / spendUSD) * 100)
+      : 0;
+  const focusTitle = activeReport?.topSpend?.displayTitle || t("reportsMainInsightTitle");
+  const focusMeta = activeReport?.topSpend?.amountUSD
+    ? t("reportsCategorySpendShare", {
+        amount: formatLocalAmount(activeReport.topSpend.amountUSD),
+        percent: topSpendSharePercent,
+      })
+    : balanceLabel;
+  const focusSummary = activeReport?.topSpend?.displayTitle
+    ? nextSteps[0] || mainInsight
+    : mainInsight;
+  const secondaryInsights = insights.slice(1);
+  const supportingNextSteps = nextSteps.slice(1);
+  const primaryActionLabel = activeReport?.topSpend?.categoryId
+    ? t("reportsActionSetLimit", {
+        title: activeReport.topSpend.displayTitle || t("reportsSpentLabel"),
+      })
+    : t("reportsActionCreateGoal");
+  const reportAccent = isPremiumUser
+    ? colors.text
+    : lockedAccent ||
+      resolvePremiumUiAccent({
+        isDark: colors.background === THEMES.dark.background,
+      });
+  const onReportAccent = resolveForegroundForColor(reportAccent);
+  const mutedSurface = colors.surfaceMuted || colorWithAlpha(colors.text, 0.045);
+  const canShowOlder = reportIndex < activeReports.length - 1;
+  const canShowNewer = reportIndex > 0;
+  const selectReportTab = (nextTab) => {
+    if (nextTab === resolvedTab) return;
+    setDetailsExpanded(false);
+    setReportIndex(0);
+    onTabChange(nextTab);
   };
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <View style={styles.reportsModalRoot}>
-        <TouchableWithoutFeedback onPress={onClose}>
-          <View style={styles.reportsBackdrop} />
-        </TouchableWithoutFeedback>
-        <View style={styles.reportsModalWrap} pointerEvents="box-none">
-          <View style={[styles.reportsModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.reportsHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.reportsTitle, { color: colors.text }]}>{t("reportsTitle")}</Text>
-                {updatedAtLabel ? (
-                  <Text style={[styles.reportsUpdated, { color: colors.muted }]}>{updatedAtLabel}</Text>
-                ) : null}
-              </View>
-              <TouchableOpacity onPress={onClose} style={styles.reportsClose}>
-                <Text style={[styles.reportsCloseText, { color: colors.muted }]}>✕</Text>
-              </TouchableOpacity>
+    <View style={styles.profileReportsSection}>
+      {isPremiumUser ? (
+        <View
+          style={[
+            styles.reportsTabsRow,
+            isReportsRtl && styles.profileReportsRtlRow,
+            { backgroundColor: mutedSurface },
+          ]}
+          accessibilityRole="tablist"
+        >
+          {[
+            { id: "weekly", label: t("reportsWeeklyTab") },
+            { id: "monthly", label: t("reportsMonthlyTab") },
+          ].map((tab) => {
+            const isActive = resolvedTab === tab.id;
+            return (
+              <Pressable
+                key={tab.id}
+                style={({ pressed }) => [
+                  styles.reportsTab,
+                  {
+                    backgroundColor: isActive ? reportAccent : "transparent",
+                    borderColor: isActive ? reportAccent : "transparent",
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  },
+                ]}
+                onPress={() => selectReportTab(tab.id)}
+                accessibilityRole="tab"
+                accessibilityLabel={tab.label}
+                accessibilityState={{ selected: isActive }}
+              >
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.84}
+                  style={[
+                    styles.reportsTabText,
+                    { color: isActive ? onReportAccent : colors.muted },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {!isPremiumUser ? (
+        <View
+          style={[
+            styles.profileReportsLockedCard,
+            {
+              backgroundColor: colorWithAlpha(reportAccent, 0.09),
+              borderColor: colorWithAlpha(reportAccent, 0.24),
+            },
+          ]}
+        >
+          <View style={[styles.profileReportsLockedIcon, { backgroundColor: colorWithAlpha(reportAccent, 0.14) }]}>
+            <ProfileSectionGlyph name="lock" color={reportAccent} size={24} />
+          </View>
+          <Text style={[styles.profileReportsLockedTitle, { color: colors.text }]}>
+            {premiumPreview?.title || t("premiumReportsPreviewTitle")}
+          </Text>
+          <Text style={[styles.profileReportsLockedBody, { color: colors.muted }]}>
+            {premiumPreview?.body || t("premiumReportsPreviewEmpty")}
+          </Text>
+          <View style={[styles.profileReportsLockedMetric, { backgroundColor: colors.card }]}>
+            <Text style={[styles.profileReportsLockedMetricValue, { color: reportAccent }]}>
+              {premiumPreview?.relevantCount || "—"}
+            </Text>
+            <Text style={[styles.profileReportsLockedMetricLabel, { color: colors.muted }]}>
+              {t("premiumFomoSignalsLabel")}
+            </Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.profileReportsPrimaryAction,
+              {
+                backgroundColor: reportAccent,
+                transform: [{ scale: pressed ? 0.97 : 1 }],
+              },
+            ]}
+            onPress={onPremiumPress}
+            accessibilityRole="button"
+            accessibilityLabel={t("premiumFomoRevealCta")}
+          >
+            <Text style={[styles.profileReportsPrimaryActionText, { color: onReportAccent }]}>
+              {t("premiumFomoRevealCta")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : !activeReport ? (
+        <View style={[styles.profileReportsEmptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {reportsPreparing ? <ActivityIndicator color={reportAccent} /> : null}
+          <Text style={[styles.reportsEmpty, { color: colors.muted }]}>
+            {reportsPreparing ? t("reportsGenerating") : t("reportsEmpty")}
+          </Text>
+        </View>
+      ) : (
+        <>
+          <View
+            style={[
+              styles.profileReportsArchiveRow,
+              isReportsRtl && styles.profileReportsRtlRow,
+            ]}
+          >
+            <Pressable
+              style={({ pressed }) => [
+                styles.profileReportsArchiveButton,
+                { borderColor: colors.border, opacity: canShowOlder ? (pressed ? 0.62 : 1) : 0.32 },
+              ]}
+              disabled={!canShowOlder}
+              onPress={() => {
+                setDetailsExpanded(false);
+                setReportIndex((prev) => Math.min(activeReports.length - 1, prev + 1));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("reportsArchivePrevious")}
+              accessibilityState={{ disabled: !canShowOlder }}
+            >
+              <ProfileSectionGlyph
+                name={isReportsRtl ? "arrowRight" : "arrowLeft"}
+                color={colors.text}
+                size={20}
+              />
+            </Pressable>
+            <View style={styles.profileReportsArchiveCopy}>
+              <Text style={[styles.profileReportsArchiveLabel, { color: colors.text }]} numberOfLines={1}>
+                {activeReport.label}
+              </Text>
+              {updatedAtLabel ? (
+                <Text style={[styles.reportsUpdated, { color: colors.muted }]} numberOfLines={1}>
+                  {updatedAtLabel}
+                </Text>
+              ) : null}
             </View>
-            <View style={styles.reportsTabsRow}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.profileReportsArchiveButton,
+                { borderColor: colors.border, opacity: canShowNewer ? (pressed ? 0.62 : 1) : 0.32 },
+              ]}
+              disabled={!canShowNewer}
+              onPress={() => {
+                setDetailsExpanded(false);
+                setReportIndex((prev) => Math.max(0, prev - 1));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={t("reportsArchiveNext")}
+              accessibilityState={{ disabled: !canShowNewer }}
+            >
+              <ProfileSectionGlyph
+                name={isReportsRtl ? "arrowLeft" : "arrowRight"}
+                color={colors.text}
+                size={20}
+              />
+            </Pressable>
+          </View>
+
+          <View
+            style={[
+              styles.profileReportsOutcomeCard,
+              {
+                backgroundColor: colorWithAlpha(
+                  balancePositive ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR,
+                  colors.background === THEMES.dark.background ? 0.13 : 0.065
+                ),
+                borderColor: colorWithAlpha(
+                  balancePositive ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR,
+                  0.28
+                ),
+                shadowColor: balancePositive ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileReportsOutcomeHeader,
+                isReportsRtl && styles.profileReportsRtlRow,
+              ]}
+            >
+              <View
+                style={[
+                  styles.profileReportsOutcomeCopy,
+                  isReportsRtl && styles.profileReportsRtlCopy,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.profileReportsOutcomeLabel,
+                    isReportsRtl && styles.profileReportsRtlText,
+                    { color: colors.text },
+                  ]}
+                >
+                  {resolvedTab === "monthly" ? t("reportsOutcomeMonth") : t("reportsOutcomeWeek")}
+                </Text>
+                <Text
+                  style={[
+                    styles.profileReportsTrendLabel,
+                    isReportsRtl && styles.profileReportsRtlText,
+                    { color: colors.muted },
+                  ]}
+                >
+                  {t("reportsCumulativeTrendLabel")}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.profileReportsOutcomeValue,
+                  isReportsRtl && styles.profileReportsRtlText,
+                  { color: balancePositive ? SAVE_ACTION_COLOR : SPEND_ACTION_COLOR },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.68}
+              >
+                {balanceLabel}
+              </Text>
+            </View>
+
+            <ReportsTrend
+              report={activeReport}
+              colors={colors}
+              language={language}
+              positiveColor={SAVE_ACTION_COLOR}
+              negativeColor={SPEND_ACTION_COLOR}
+            />
+
+            <View
+              style={[
+                styles.profileReportsMetricsRow,
+                isReportsRtl && styles.profileReportsRtlRow,
+                { borderTopColor: colorWithAlpha(colors.text, 0.12) },
+              ]}
+            >
               {[
-                { id: "weekly", label: t("reportsWeeklyTab") },
-                { id: "monthly", label: t("reportsMonthlyTab") },
-              ].map((tab) => {
-                const isActive = resolvedTab === tab.id;
-                return (
-                  <TouchableOpacity
-                    key={tab.id}
-                    style={[
-                      styles.reportsTab,
-                      {
-                        backgroundColor: isActive ? colors.text : "transparent",
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    activeOpacity={0.85}
-                    onPress={() => onTabChange(tab.id)}
-                  >
+                {
+                  id: "saved",
+                  label: t("reportsSavedLabel"),
+                  value: formatLocalAmount(savedUSD),
+                  color: SAVE_ACTION_COLOR,
+                },
+                {
+                  id: "spent",
+                  label: t("reportsSpentLabel"),
+                  value: formatLocalAmount(spendUSD),
+                  color: SPEND_ACTION_COLOR,
+                },
+                {
+                  id: "share",
+                  label: t("reportsSaveShareLabel"),
+                  value: `${saveSharePercent}%`,
+                  color: colors.text,
+                },
+              ].map((metric, index) => (
+                <React.Fragment key={metric.id}>
+                  {index ? (
+                    <View
+                      style={[
+                        styles.profileReportsMetricDivider,
+                        { backgroundColor: colorWithAlpha(colors.text, 0.12) },
+                      ]}
+                    />
+                  ) : null}
+                  <View style={styles.profileReportsMetric}>
                     <Text
                       style={[
-                        styles.reportsTabText,
-                        { color: isActive ? colors.background : colors.muted },
+                        styles.profileReportsMetricLabel,
+                        isReportsRtl && styles.profileReportsRtlText,
+                        { color: colors.muted },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {metric.label}
+                    </Text>
+                    <Text
+                      style={[styles.profileReportsMetricValue, { color: metric.color }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                    >
+                      {metric.value}
+                    </Text>
+                  </View>
+                </React.Fragment>
+              ))}
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.profileReportsInsightCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colorWithAlpha(reportAccent, 0.2),
+                shadowColor: reportAccent,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.profileReportsInsightHeader,
+                isReportsRtl && styles.profileReportsRtlRow,
+              ]}
+            >
+              <View style={[styles.profileReportsInsightIcon, { backgroundColor: colorWithAlpha(reportAccent, 0.12) }]}>
+                <ProfileSectionGlyph name="target" color={reportAccent} size={20} />
+              </View>
+              <Text
+                style={[
+                  styles.profileReportsInsightLabel,
+                  isReportsRtl && styles.profileReportsRtlText,
+                  { color: colors.text },
+                ]}
+              >
+                {t("reportsMainInsightTitle")}
+              </Text>
+            </View>
+
+            <View style={[styles.profileReportsFocusBlock, { backgroundColor: mutedSurface }]}>
+              <Text
+                style={[
+                  styles.profileReportsFocusTitle,
+                  isReportsRtl && styles.profileReportsRtlText,
+                  { color: colors.text },
+                ]}
+                numberOfLines={2}
+              >
+                {focusTitle}
+              </Text>
+              <Text
+                style={[
+                  styles.profileReportsFocusMeta,
+                  isReportsRtl && styles.profileReportsRtlText,
+                  { color: reportAccent },
+                ]}
+              >
+                {focusMeta}
+              </Text>
+              <Text
+                style={[
+                  styles.profileReportsFocusSummary,
+                  isReportsRtl && styles.profileReportsRtlText,
+                  { color: colors.muted },
+                ]}
+              >
+                {focusSummary}
+              </Text>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.profileReportsPrimaryAction,
+                {
+                  backgroundColor: reportAccent,
+                  shadowColor: reportAccent,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                },
+              ]}
+              onPress={() => onPrimaryAction?.(activeReport)}
+              accessibilityRole="button"
+              accessibilityLabel={primaryActionLabel}
+            >
+              <Text
+                style={[styles.profileReportsPrimaryActionText, { color: onReportAccent }]}
+                numberOfLines={2}
+              >
+                {primaryActionLabel}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.profileReportsDetailsToggle,
+                {
+                  backgroundColor: colorWithAlpha(reportAccent, pressed ? 0.16 : 0.09),
+                  borderColor: colorWithAlpha(reportAccent, 0.2),
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+              onPress={() => setDetailsExpanded((prev) => !prev)}
+              accessibilityRole="button"
+              accessibilityLabel={detailsExpanded ? t("reportsHideInsights") : t("reportsAllInsights")}
+              accessibilityState={{ expanded: detailsExpanded }}
+            >
+              <Text style={[styles.profileReportsDetailsToggleText, { color: reportAccent }]}>
+                {detailsExpanded ? t("reportsHideInsights") : t("reportsAllInsights")}
+              </Text>
+              <ProfileSectionGlyph
+                name={detailsExpanded ? "chevronUp" : "chevronDown"}
+                color={reportAccent}
+                size={18}
+              />
+            </Pressable>
+
+            {detailsExpanded ? (
+              <View style={[styles.profileReportsDetails, { borderTopColor: colors.border }]}>
+                <View style={styles.reportSection}>
+                  <Text
+                    style={[
+                      styles.reportSectionTitle,
+                      isReportsRtl && styles.profileReportsRtlText,
+                      { color: colors.text },
+                    ]}
+                  >
+                    {t("reportsPeriodSnapshotTitle")}
+                  </Text>
+                  <View
+                    style={[
+                      styles.profileReportsSnapshotRow,
+                      isReportsRtl && styles.profileReportsRtlRow,
+                    ]}
+                  >
+                    {[
+                      { id: "decisions", label: t("reportsDecisionsLabel"), value: `${totalActions}` },
+                      { id: "share", label: t("reportsSaveShareLabel"), value: `${saveSharePercent}%` },
+                      { id: "days", label: t("reportsActiveDaysShort"), value: `${activeDays}/${dayCount}` },
+                    ].map((metric) => (
+                      <View
+                        key={metric.id}
+                        style={[
+                          styles.profileReportsSnapshotMetric,
+                          { backgroundColor: mutedSurface },
+                        ]}
+                      >
+                        <Text style={[styles.profileReportsSnapshotValue, { color: colors.text }]}>
+                          {metric.value}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.profileReportsSnapshotLabel,
+                            isReportsRtl && styles.profileReportsRtlText,
+                            { color: colors.muted },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {metric.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {activeReport.topSave || activeReport.topSpend ? (
+                  <View style={styles.reportSection}>
+                    <Text
+                      style={[
+                        styles.reportSectionTitle,
+                        isReportsRtl && styles.profileReportsRtlText,
+                        { color: colors.text },
                       ]}
                     >
-                      {tab.label}
+                      {t("reportsDriversTitle")}
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={[styles.reportsScopeNote, { color: colors.muted }]}>
-              {t("reportsExcludedMandatoryNote")}
-            </Text>
-            {activeReports.length === 0 ? (
-              <Text style={[styles.reportsEmpty, { color: colors.muted }]}>
-                {isPremiumUser ? t("reportsGenerating") : t("reportsEmpty")}
-              </Text>
-            ) : (
-              <ScrollView
-                style={styles.reportsList}
-                contentContainerStyle={styles.reportsListContent}
-                showsVerticalScrollIndicator
-              >
-                {activeReports.map(renderReportCard)}
-              </ScrollView>
-            )}
+                    <View
+                      style={[
+                        styles.profileReportsDriversRow,
+                        isReportsRtl && styles.profileReportsRtlRow,
+                      ]}
+                    >
+                      {[
+                        {
+                          id: "save",
+                          data: activeReport.topSave,
+                          label: t("reportsTopSavedLabel"),
+                          color: SAVE_ACTION_COLOR,
+                        },
+                        {
+                          id: "spend",
+                          data: activeReport.topSpend,
+                          label: t("reportsTopSpentLabel"),
+                          color: SPEND_ACTION_COLOR,
+                        },
+                      ]
+                        .filter((entry) => entry.data)
+                        .map((entry) => (
+                          <View
+                            key={entry.id}
+                            style={[
+                              styles.profileReportsDriverCard,
+                              { backgroundColor: colorWithAlpha(entry.color, 0.1) },
+                            ]}
+                          >
+                            <Text style={[styles.profileReportsDriverLabel, { color: entry.color }]}>
+                              {entry.label}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.profileReportsDriverTitle,
+                                isReportsRtl && styles.profileReportsRtlText,
+                                { color: colors.text },
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {entry.data.displayTitle || t("reportsEmptyShort")}
+                            </Text>
+                            <Text style={[styles.profileReportsDriverAmount, { color: entry.color }]}>
+                              {formatLocalAmount(entry.data.amountUSD || 0)}
+                            </Text>
+                          </View>
+                        ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {secondaryInsights.length ? (
+                  <View style={styles.reportSection}>
+                    <Text
+                      style={[
+                        styles.reportSectionTitle,
+                        isReportsRtl && styles.profileReportsRtlText,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {t("reportsInsightsTitle")}
+                    </Text>
+                    <View style={styles.reportSectionList}>
+                      {secondaryInsights.map((line, index) => (
+                        <View
+                          key={`${activeReport.id}-insight-${index}`}
+                          style={[
+                            styles.profileReportsInsightItem,
+                            isReportsRtl && styles.profileReportsRtlRow,
+                            { backgroundColor: mutedSurface },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.profileReportsItemNumber,
+                              { backgroundColor: colorWithAlpha(reportAccent, 0.14) },
+                            ]}
+                          >
+                            <Text style={[styles.profileReportsItemNumberText, { color: reportAccent }]}>
+                              {index + 1}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.reportLine,
+                              isReportsRtl && styles.profileReportsRtlText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {line}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {supportingNextSteps.length ? (
+                  <View style={styles.reportSection}>
+                    <Text
+                      style={[
+                        styles.reportSectionTitle,
+                        isReportsRtl && styles.profileReportsRtlText,
+                        { color: colors.text },
+                      ]}
+                    >
+                      {t("reportsNextStepsTitle")}
+                    </Text>
+                    <View style={styles.reportSectionList}>
+                      {supportingNextSteps.map((line, index) => (
+                        <View
+                          key={`${activeReport.id}-step-${index}`}
+                          style={[
+                            styles.profileReportsPlanItem,
+                            isReportsRtl && styles.profileReportsRtlRow,
+                            { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.1) },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.profileReportsItemNumber,
+                              { backgroundColor: colorWithAlpha(SAVE_ACTION_COLOR, 0.17) },
+                            ]}
+                          >
+                            <Text style={[styles.profileReportsItemNumberText, { color: SAVE_ACTION_COLOR }]}>
+                              {index + 1}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.profileReportsPlanText,
+                              isReportsRtl && styles.profileReportsRtlText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {line}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.profileReportsSecondaryAction,
+                    {
+                      borderColor: colorWithAlpha(reportAccent, 0.24),
+                      backgroundColor: colorWithAlpha(reportAccent, 0.09),
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    },
+                  ]}
+                  onPress={() => onCreateGoal?.(activeReport)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("reportsActionCreateGoal")}
+                >
+                  <Text style={[styles.profileReportsSecondaryActionText, { color: colors.text }]}>
+                    {t("reportsActionCreateGoal")}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-        </View>
-      </View>
-    </Modal>
+          <Text style={[styles.reportsScopeNote, { color: colors.muted }]}>
+            {t("reportsExcludedMandatoryNote")}
+          </Text>
+        </>
+      )}
+    </View>
   );
 });
 
@@ -28185,6 +29100,124 @@ const MENU_TOP_CONTENT_OFFSET = 24;
 const ANDROID_STATUS_GLASS_FADE_HEIGHT = 44;
 const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = IS_SHORT_DEVICE ? 12 : 24;
 
+const TycoonAutosaveAmountSlider = React.memo(function TycoonAutosaveAmountSlider({
+  value = 0,
+  maximumValue = 1,
+  accentColor,
+  trackColor,
+  thumbColor,
+  onValueChange,
+  accessibilityLabel,
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackWidthRef = useRef(0);
+  const trackPageXRef = useRef(0);
+  const trackRef = useRef(null);
+  const safeMaximum = Math.max(1, Number(maximumValue) || 1);
+  const ratio = Math.max(0, Math.min(1, (Number(value) || 0) / safeMaximum));
+
+  const measureTrack = useCallback(() => {
+    if (!trackRef.current?.measureInWindow) return;
+    trackRef.current.measureInWindow((pageX, _pageY, width) => {
+      const nextWidth = Math.max(0, Number(width) || 0);
+      trackPageXRef.current = Number(pageX) || 0;
+      trackWidthRef.current = nextWidth;
+      if (nextWidth > 0) setTrackWidth(nextWidth);
+    });
+  }, []);
+
+  const updateFromPageX = useCallback(
+    (pageX) => {
+      const width = trackWidthRef.current || trackWidth;
+      if (!width || !Number.isFinite(pageX)) return;
+      const localX = Math.max(0, Math.min(width, pageX - trackPageXRef.current));
+      const nextRatio = localX / width;
+      onValueChange?.(Math.max(0.001, nextRatio) * safeMaximum);
+    },
+    [onValueChange, safeMaximum, trackWidth]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) >= Math.abs(gesture.dy),
+        onPanResponderGrant: (event) => {
+          measureTrack();
+          updateFromPageX(Number(event?.nativeEvent?.pageX));
+        },
+        onPanResponderMove: (event) => {
+          updateFromPageX(Number(event?.nativeEvent?.pageX));
+        },
+        onPanResponderRelease: (event) => {
+          updateFromPageX(Number(event?.nativeEvent?.pageX));
+        },
+      }),
+    [measureTrack, updateFromPageX]
+  );
+
+  const updateByStep = useCallback(
+    (direction) => {
+      const step = Math.max(safeMaximum * 0.05, 0.01);
+      onValueChange?.(Math.max(0.001, Math.min(safeMaximum, value + step * direction)));
+    },
+    [onValueChange, safeMaximum, value]
+  );
+  const fillWidth = Math.max(0, Math.min(trackWidth, trackWidth * ratio));
+  const thumbTranslate = Math.max(0, Math.min(Math.max(0, trackWidth - 22), trackWidth * ratio - 11));
+
+  return (
+    <View
+      style={styles.tycoonAutosaveAmountTrackWrap}
+      accessibilityRole="adjustable"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ min: 0, max: Math.round(safeMaximum), now: Math.round(value) }}
+      accessibilityActions={[
+        { name: "increment", label: "+" },
+        { name: "decrement", label: "−" },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (event?.nativeEvent?.actionName === "increment") updateByStep(1);
+        if (event?.nativeEvent?.actionName === "decrement") updateByStep(-1);
+      }}
+      {...panResponder.panHandlers}
+    >
+      <View
+        ref={trackRef}
+        collapsable={false}
+        onLayout={(event) => {
+          const width = Math.max(0, Number(event?.nativeEvent?.layout?.width) || 0);
+          trackWidthRef.current = width;
+          setTrackWidth(width);
+          requestAnimationFrame(measureTrack);
+        }}
+        style={[styles.tycoonAutosaveAmountTrack, { backgroundColor: trackColor }]}
+      >
+        <View
+          style={[
+            styles.tycoonAutosaveAmountTrackFill,
+            { width: fillWidth, backgroundColor: accentColor },
+          ]}
+        />
+      </View>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.tycoonAutosaveAmountThumb,
+          {
+            borderColor: accentColor,
+            backgroundColor: thumbColor,
+            transform: [{ translateX: thumbTranslate }],
+          },
+        ]}
+      >
+        <View style={[styles.tycoonAutosaveAmountThumbInner, { backgroundColor: accentColor }]} />
+      </View>
+    </View>
+  );
+});
+
 function TycoonAutosaveModal({
   visible,
   events = [],
@@ -28203,17 +29236,16 @@ function TycoonAutosaveModal({
 }) {
   const entrance = useRef(new Animated.Value(0)).current;
   const [expandedEventId, setExpandedEventId] = useState(null);
-  const [amountSliderTrackWidth, setAmountSliderTrackWidth] = useState(0);
-  const amountSliderTrackWidthRef = useRef(0);
-  const amountSliderTrackPageXRef = useRef(0);
-  const amountSliderTrackRef = useRef(null);
+  const [manualAmountDrafts, setManualAmountDrafts] = useState({});
   const isDarkTheme = colors?.background === THEMES.dark.background;
-  const savedTextColor = colors?.success || SAVE_ACTION_COLOR;
-  const spentTextColor = colors?.error || SPEND_ACTION_COLOR;
-  const activeEvent = useMemo(
-    () => (Array.isArray(events) ? events.find((entry) => entry?.id === expandedEventId) : null),
-    [events, expandedEventId]
-  );
+  const actionButtonPalette = resolveTemptationActionButtonPalette(isDarkTheme);
+  const savedTextColor = actionButtonPalette.saveBackground;
+  const spentTextColor = actionButtonPalette.spendBackground;
+  const currencySymbol =
+    CURRENCY_SIGNS[currency] ||
+    CURRENCY_SIGNS[DEFAULT_PROFILE.currency] ||
+    DEFAULT_PROFILE.currency ||
+    "$";
   const resolveEntryAmountUSD = useCallback(
     (entry) => {
       const override = clampTransactionAmountUSD(amountOverrides?.[entry?.id]);
@@ -28230,62 +29262,11 @@ function TycoonAutosaveModal({
     },
     [resolveEntryAmountUSD]
   );
-  const commitAmountSliderTrackLayout = useCallback((width, pageX) => {
-    const nextWidth = Math.max(0, Number(width) || 0);
-    if (nextWidth > 0 && Math.abs(amountSliderTrackWidthRef.current - nextWidth) > 0.5) {
-      amountSliderTrackWidthRef.current = nextWidth;
-      setAmountSliderTrackWidth(nextWidth);
-    }
-    if (Number.isFinite(pageX)) {
-      amountSliderTrackPageXRef.current = pageX;
-    }
-  }, []);
-  const measureAmountSliderTrack = useCallback(() => {
-    const trackNode = amountSliderTrackRef.current;
-    if (!trackNode?.measureInWindow) return;
-    trackNode.measureInWindow((x, _y, width) => {
-      commitAmountSliderTrackLayout(width, x);
-    });
-  }, [commitAmountSliderTrackLayout]);
-  const updateExpandedAmountFromPageX = useCallback(
-    (pageX) => {
-      if (!activeEvent?.id || typeof onAmountChange !== "function") return;
-      const width = amountSliderTrackWidthRef.current || amountSliderTrackWidth;
-      if (!width) return;
-      const localX = Math.max(0, Math.min(width, pageX - amountSliderTrackPageXRef.current));
-      const sliderValue = localX / width;
-      const maxUSD = resolveSliderMaxUSD(activeEvent);
-      const amountUSD = clampTransactionAmountUSD(sliderValue * maxUSD);
-      const amountLocal = snapCurrencyValue(convertToCurrency(amountUSD, currency), currency);
-      const normalizedUSD = clampTransactionAmountUSD(convertFromCurrency(amountLocal, currency));
-      if (normalizedUSD > 0) {
-        onAmountChange(activeEvent.id, normalizedUSD);
-      }
-    },
-    [activeEvent, amountSliderTrackWidth, currency, onAmountChange, resolveSliderMaxUSD]
-  );
-  const amountSliderPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => Boolean(activeEvent?.id),
-        onMoveShouldSetPanResponder: () => Boolean(activeEvent?.id),
-        onPanResponderGrant: (event) => {
-          measureAmountSliderTrack();
-          updateExpandedAmountFromPageX(event?.nativeEvent?.pageX || 0);
-        },
-        onPanResponderMove: (event) => {
-          updateExpandedAmountFromPageX(event?.nativeEvent?.pageX || 0);
-        },
-        onPanResponderRelease: (event) => {
-          updateExpandedAmountFromPageX(event?.nativeEvent?.pageX || 0);
-        },
-      }),
-    [activeEvent?.id, measureAmountSliderTrack, updateExpandedAmountFromPageX]
-  );
   useEffect(() => {
     if (!visible) {
       entrance.setValue(0);
       setExpandedEventId(null);
+      setManualAmountDrafts({});
       return;
     }
     entrance.setValue(0);
@@ -28343,11 +29324,36 @@ function TycoonAutosaveModal({
           ]}
         >
           <View style={styles.tycoonAutosaveHeader}>
-            <Text style={[styles.tycoonAutosaveTitle, { color: colors.text }]}>
-              {t("tycoonAutosaveTitle")}
-            </Text>
-            <Text style={[styles.tycoonAutosaveSubtitle, { color: colors.muted }]}>
-              {t("tycoonAutosaveSubtitle")}
+            <View style={styles.tycoonAutosaveHeaderRow}>
+              <Text style={[styles.tycoonAutosaveTitle, { color: colors.text }]}> 
+                {t("tycoonAutosaveTitle")}
+              </Text>
+              <View style={styles.tycoonAutosaveHeaderActions}>
+                <TouchableOpacity
+                  style={styles.tycoonAutosaveHeaderLater}
+                  activeOpacity={0.72}
+                  onPress={onSnooze}
+                >
+                  <Text style={[styles.tycoonAutosaveHeaderLaterText, { color: colors.muted }]}> 
+                    {t("tycoonAutosaveLater")}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tycoonAutosaveHeaderClose,
+                    { backgroundColor: colors.surfaceMuted || colorWithAlpha(colors.text, isDarkTheme ? 0.12 : 0.06) },
+                  ]}
+                  activeOpacity={0.72}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("tycoonAutosaveClose")}
+                  onPress={onClose}
+                >
+                  <Text style={[styles.tycoonAutosaveHeaderCloseGlyph, { color: colors.text }]}>×</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Text style={[styles.tycoonAutosaveSubtitle, { color: colors.muted }]}> 
+              {t("tycoonAutosaveCardsTitle", { count: events.length })}
             </Text>
           </View>
           {showReviewWarning ? (
@@ -28368,54 +29374,37 @@ function TycoonAutosaveModal({
               </Text>
             </View>
           ) : null}
-          <View style={styles.tycoonAutosaveTotals}>
-            <View
-              style={[
-                styles.tycoonAutosaveTotalPill,
-                {
-                  borderColor: colorWithAlpha(savedTextColor, 0.34),
-                  backgroundColor: colorWithAlpha(savedTextColor, isDarkTheme ? 0.18 : 0.1),
-                },
-              ]}
-            >
-              <Text style={[styles.tycoonAutosaveTotalText, { color: savedTextColor }]}>
+          <View style={[styles.tycoonAutosaveTotals, { borderColor: colors.border }]}>
+            <View style={styles.tycoonAutosaveTotalItem}>
+              <View style={[styles.tycoonAutosaveTotalDot, { backgroundColor: savedTextColor }]} />
+              <Text style={[styles.tycoonAutosaveTotalText, { color: colors.text }]}> 
                 {t("tycoonAutosaveSavedTotal", { amount: savedLabel })}
               </Text>
             </View>
-            <View
-              style={[
-                styles.tycoonAutosaveTotalPill,
-                {
-                  borderColor: colorWithAlpha(spentTextColor, 0.34),
-                  backgroundColor: colorWithAlpha(spentTextColor, isDarkTheme ? 0.18 : 0.09),
-                },
-              ]}
-            >
-              <Text style={[styles.tycoonAutosaveTotalText, { color: spentTextColor }]}>
+            <View style={styles.tycoonAutosaveTotalItem}>
+              <View style={[styles.tycoonAutosaveTotalDot, { backgroundColor: spentTextColor }]} />
+              <Text style={[styles.tycoonAutosaveTotalText, { color: colors.text }]}> 
                 {t("tycoonAutosaveSpentTotal", { amount: spentLabel })}
               </Text>
             </View>
           </View>
-          <View style={styles.tycoonAutosaveListHeader}>
-            <Text style={[styles.tycoonAutosaveListTitle, { color: colors.text }]}>
-              {t("tycoonAutosaveCardsTitle", { count: events.length })}
-            </Text>
-            <Text style={[styles.tycoonAutosaveListHint, { color: colors.muted }]}>
-              {t("tycoonAutosaveCardsHint")}
-            </Text>
-          </View>
-          <ScrollView style={styles.tycoonAutosaveList} contentContainerStyle={styles.tycoonAutosaveListContent}>
+          <ScrollView
+            style={styles.tycoonAutosaveList}
+            contentContainerStyle={styles.tycoonAutosaveListContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={events.length > 3}
+          >
             {events.map((entry) => {
               const spent = !!selectedSpentIds?.[entry.id];
               const expanded = expandedEventId === entry.id;
               const amountUSD = resolveEntryAmountUSD(entry);
               const amountLabel = formatCurrency(convertToCurrency(amountUSD, currency), currency);
               const sliderMaxUSD = resolveSliderMaxUSD(entry);
-              const sliderValue = sliderMaxUSD > 0 ? Math.max(0, Math.min(1, amountUSD / sliderMaxUSD)) : 0;
-              const sliderFillWidth = Math.max(0, Math.min(amountSliderTrackWidth, amountSliderTrackWidth * sliderValue));
-              const sliderThumbTranslate = Math.max(0, Math.min(amountSliderTrackWidth - 22, amountSliderTrackWidth * sliderValue - 11));
               const sliderMaxLabel = formatCurrency(convertToCurrency(sliderMaxUSD, currency), currency);
               const itemAccent = spent ? spentTextColor : savedTextColor;
+              const manualDraft =
+                manualAmountDrafts?.[entry.id] ??
+                String(snapCurrencyValue(convertToCurrency(amountUSD, currency), currency));
               return (
                 <View
                   key={entry.id}
@@ -28423,26 +29412,13 @@ function TycoonAutosaveModal({
                     styles.tycoonAutosaveItem,
                     expanded && styles.tycoonAutosaveItemExpanded,
                     {
-                      borderColor: spent
-                        ? colorWithAlpha(spentTextColor, 0.5)
-                        : colorWithAlpha(savedTextColor, 0.46),
-                      backgroundColor: spent
-                        ? colorWithAlpha(spentTextColor, isDarkTheme ? 0.22 : 0.11)
-                        : colorWithAlpha(savedTextColor, isDarkTheme ? 0.22 : 0.11),
+                      borderColor: colors.border,
+                      backgroundColor: colors.surfaceMuted || colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.035),
                     },
                   ]}
                 >
-                  <Pressable
-                    style={styles.tycoonAutosaveItemMain}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("tycoonAutosaveAdjustAmountA11y", {
-                      title: entry.title,
-                      amount: amountLabel,
-                    })}
-                    accessibilityState={{ expanded }}
-                    onPress={() => setExpandedEventId((current) => (current === entry.id ? null : entry.id))}
-                  >
-                    <View style={[styles.tycoonAutosaveItemIcon, { backgroundColor: colorWithAlpha(itemAccent, 0.16) }]}>
+                  <View style={styles.tycoonAutosaveItemMain}>
+                    <View style={[styles.tycoonAutosaveItemIcon, { backgroundColor: colors.card }]}> 
                       <Text style={styles.tycoonAutosaveItemEmoji}>{entry.emoji || DEFAULT_TEMPTATION_EMOJI}</Text>
                     </View>
                     <View style={styles.tycoonAutosaveItemBody}>
@@ -28450,170 +29426,151 @@ function TycoonAutosaveModal({
                         {entry.title}
                       </Text>
                       <Text style={[styles.tycoonAutosaveItemMeta, { color: colors.muted }]} numberOfLines={1}>
+                        {t("tycoonAutosaveAmountLimit", { amount: sliderMaxLabel })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.tycoonAutosaveExcludeCompact,
+                        { backgroundColor: colors.card },
+                      ]}
+                      activeOpacity={0.72}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("tycoonAutosaveExclude")}
+                      onPress={() => onExclude?.(entry.id)}
+                    >
+                      <Text style={[styles.tycoonAutosaveExcludeCompactGlyph, { color: colors.muted }]}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.tycoonAutosaveAmountPanel}>
+                    <View style={styles.tycoonAutosaveAmountHeader}>
+                      <Text style={[styles.tycoonAutosaveAmountLabel, { color: colors.muted }]}> 
+                        {t("tycoonAutosaveAmountLabel")}
+                      </Text>
+                      <Text style={[styles.tycoonAutosaveAmountValue, { color: colors.text }]}> 
                         {amountLabel}
                       </Text>
                     </View>
-                    <View
-                      style={[
-                        styles.tycoonAutosaveAmountDisclosure,
-                        {
-                          borderColor: colorWithAlpha(itemAccent, 0.32),
-                          backgroundColor: colorWithAlpha(itemAccent, isDarkTheme ? 0.16 : 0.08),
-                        },
-                      ]}
+                    <TycoonAutosaveAmountSlider
+                      value={amountUSD}
+                      maximumValue={sliderMaxUSD}
+                      accentColor={itemAccent}
+                      trackColor={colorWithAlpha(colors.text, isDarkTheme ? 0.16 : 0.1)}
+                      thumbColor={colors.card}
+                      accessibilityLabel={t("tycoonAutosaveAdjustAmountA11y", {
+                        title: entry.title,
+                        amount: amountLabel,
+                      })}
+                      onValueChange={(nextAmountUSD) => {
+                        const nextLocalAmount = snapCurrencyValue(
+                          convertToCurrency(nextAmountUSD, currency),
+                          currency
+                        );
+                        const normalizedUSD = clampTransactionAmountUSD(
+                          convertFromCurrency(nextLocalAmount, currency)
+                        );
+                        if (normalizedUSD <= 0) return;
+                        onAmountChange?.(entry.id, normalizedUSD);
+                        if (expanded) {
+                          setManualAmountDrafts((current) => ({
+                            ...(current || {}),
+                            [entry.id]: String(nextLocalAmount),
+                          }));
+                        }
+                      }}
+                    />
+                  </View>
+                  <View style={styles.tycoonAutosaveDecisionBlock}>
+                    <TouchableOpacity
+                      style={styles.tycoonAutosaveManualToggle}
+                      activeOpacity={0.72}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded }}
+                      onPress={() => {
+                        setExpandedEventId((current) => (current === entry.id ? null : entry.id));
+                        setManualAmountDrafts((current) => ({
+                          ...(current || {}),
+                          [entry.id]:
+                            current?.[entry.id] ??
+                            String(snapCurrencyValue(convertToCurrency(amountUSD, currency), currency)),
+                        }));
+                      }}
                     >
-                      <Text style={[styles.tycoonAutosaveAmountDisclosureText, { color: itemAccent }]}>
+                      <Text style={[styles.tycoonAutosaveManualToggleText, { color: colors.muted }]}> 
                         {t(expanded ? "tycoonAutosaveHideAmount" : "tycoonAutosaveAdjustAmount")}
                       </Text>
-                    </View>
-                  </Pressable>
-                  <View style={styles.tycoonAutosaveDecisionBlock}>
-                    <Text style={[styles.tycoonAutosaveDecisionLabel, { color: colors.muted }]}>
-                      {t("tycoonAutosaveDecisionLabel")}
-                    </Text>
-                    <View
-                      style={[
-                        styles.tycoonAutosaveDecisionControl,
-                        { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.1 : 0.05) },
-                      ]}
-                      accessibilityRole="radiogroup"
-                    >
+                    </TouchableOpacity>
+                    <View style={styles.tycoonAutosaveDecisionSummary}>
+                      <View style={styles.tycoonAutosaveDecisionCopy}>
+                        <Text style={[styles.tycoonAutosaveDecisionLabel, { color: colors.muted }]}> 
+                          {t("tycoonAutosaveDecisionLabel")}
+                        </Text>
+                        <Text style={[styles.tycoonAutosaveDecisionText, { color: colors.text }]}> 
+                          {t(spent ? "tycoonAutosaveSwitchSpent" : "tycoonAutosaveSwitchSaved")}
+                        </Text>
+                      </View>
                       <TouchableOpacity
                         style={[
-                          styles.tycoonAutosaveDecisionOption,
-                          !spent && {
-                            borderColor: colorWithAlpha(savedTextColor, 0.48),
-                            backgroundColor: colorWithAlpha(savedTextColor, isDarkTheme ? 0.2 : 0.12),
-                          },
+                          styles.tycoonAutosaveDecisionSwitch,
+                          { backgroundColor: itemAccent },
                         ]}
                         activeOpacity={0.82}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: !spent }}
-                        accessibilityLabel={t("tycoonAutosaveSwitchSaved")}
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: spent }}
+                        accessibilityLabel={t(spent ? "tycoonAutosaveSwitchSpent" : "tycoonAutosaveSwitchSaved")}
                         onPress={() => {
                           if (spent) onToggleSpent?.(entry.id);
+                          if (!spent) onToggleSpent?.(entry.id);
                         }}
                       >
                         <View
                           style={[
-                            styles.tycoonAutosaveDecisionDot,
+                            styles.tycoonAutosaveDecisionSwitchThumb,
                             {
-                              borderColor: !spent ? savedTextColor : colors.muted,
-                              backgroundColor: !spent ? savedTextColor : "transparent",
+                              backgroundColor: colors.card,
+                              transform: [{ translateX: spent ? 28 : 0 }],
                             },
                           ]}
                         />
-                        <Text
-                          style={[
-                            styles.tycoonAutosaveDecisionText,
-                            { color: !spent ? savedTextColor : colors.muted },
-                          ]}
-                        >
-                          {t("tycoonAutosaveSwitchSaved")}
-                        </Text>
                       </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.tycoonAutosaveDecisionOption,
-                        spent && {
-                          borderColor: colorWithAlpha(spentTextColor, 0.48),
-                          backgroundColor: colorWithAlpha(spentTextColor, isDarkTheme ? 0.2 : 0.11),
-                        },
-                      ]}
-                      activeOpacity={0.82}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: spent }}
-                      accessibilityLabel={t("tycoonAutosaveSwitchSpent")}
-                      onPress={() => {
-                        if (!spent) onToggleSpent?.(entry.id);
-                      }}
-                    >
-                      <View
-                        style={[
-                          styles.tycoonAutosaveDecisionDot,
-                          {
-                            borderColor: spent ? spentTextColor : colors.muted,
-                            backgroundColor: spent ? spentTextColor : "transparent",
-                          },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.tycoonAutosaveDecisionText,
-                          { color: spent ? spentTextColor : colors.muted },
-                        ]}
-                      >
-                        {t("tycoonAutosaveSwitchSpent")}
-                      </Text>
-                    </TouchableOpacity>
                     </View>
                   </View>
                   {expanded ? (
-                    <Pressable
-                      style={styles.tycoonAutosaveAmountPanel}
-                      onPress={(event) => event?.stopPropagation?.()}
-                    >
-                      <View style={styles.tycoonAutosaveAmountHeader}>
-                        <View>
-                          <Text style={[styles.tycoonAutosaveAmountLabel, { color: colors.muted }]}>
-                            {t("tycoonAutosaveAmountLabel")}
-                          </Text>
-                          <Text style={[styles.tycoonAutosaveAmountValue, { color: colors.text }]}>
-                            {amountLabel}
-                          </Text>
-                        </View>
-                        <Text style={[styles.tycoonAutosaveAmountLimit, { color: colors.muted }]}>
-                          {t("tycoonAutosaveAmountLimit", { amount: sliderMaxLabel })}
-                        </Text>
-                      </View>
-                      <View style={styles.tycoonAutosaveAmountTrackWrap} {...amountSliderPanResponder.panHandlers}>
-                        <View
-                          ref={amountSliderTrackRef}
-                          collapsable={false}
-                          onLayout={(event) => {
-                            commitAmountSliderTrackLayout(
-                              event?.nativeEvent?.layout?.width || 0,
-                              amountSliderTrackPageXRef.current
-                            );
-                            requestAnimationFrame(measureAmountSliderTrack);
-                          }}
-                          style={[
-                            styles.tycoonAutosaveAmountTrack,
-                            { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.16 : 0.1) },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              styles.tycoonAutosaveAmountTrackFill,
-                              { width: sliderFillWidth, backgroundColor: colorWithAlpha(itemAccent, 0.28) },
-                            ]}
-                          />
-                        </View>
-                        <View
-                          style={[
-                            styles.tycoonAutosaveAmountThumb,
-                            {
-                              borderColor: itemAccent,
-                              backgroundColor: colors.card,
-                              transform: [{ translateX: sliderThumbTranslate }],
-                            },
-                          ]}
-                        >
-                          <View style={[styles.tycoonAutosaveAmountThumbInner, { backgroundColor: itemAccent }]} />
-                        </View>
-                      </View>
-                    </Pressable>
+                    <View style={styles.tycoonAutosaveManualField}>
+                      <Text style={[styles.tycoonAutosaveManualCurrency, { color: colors.muted }]}> 
+                        {currencySymbol}
+                      </Text>
+                      <TextInput
+                        style={[
+                          styles.tycoonAutosaveManualInput,
+                          {
+                            color: colors.text,
+                            borderColor: colors.border,
+                            backgroundColor: colors.card,
+                          },
+                        ]}
+                        value={manualDraft}
+                        keyboardType="decimal-pad"
+                        returnKeyType="done"
+                        selectTextOnFocus
+                        accessibilityLabel={t("tycoonAutosaveAmountLabel")}
+                        onChangeText={(nextValue) => {
+                          setManualAmountDrafts((current) => ({
+                            ...(current || {}),
+                            [entry.id]: nextValue,
+                          }));
+                          const parsedLocal = parseNumberInputValue(nextValue);
+                          if (!Number.isFinite(parsedLocal) || parsedLocal <= 0) return;
+                          const normalizedLocal = snapCurrencyValue(parsedLocal, currency);
+                          const normalizedUSD = clampTransactionAmountUSD(
+                            convertFromCurrency(normalizedLocal, currency)
+                          );
+                          if (normalizedUSD > 0) onAmountChange?.(entry.id, normalizedUSD);
+                        }}
+                        onSubmitEditing={() => Keyboard.dismiss()}
+                      />
+                    </View>
                   ) : null}
-                  <TouchableOpacity
-                    style={styles.tycoonAutosaveExclude}
-                    activeOpacity={0.76}
-                    accessibilityLabel={t("tycoonAutosaveExclude")}
-                    onPress={() => onExclude?.(entry.id)}
-                  >
-                    <Text style={[styles.tycoonAutosaveExcludeText, { color: colors.muted }]}>
-                      {t("tycoonAutosaveExclude")}
-                    </Text>
-                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -28625,29 +29582,6 @@ function TycoonAutosaveModal({
           >
             <Text style={[styles.tycoonAutosaveConfirmText, { color: colors.background }]}>
               {t("tycoonAutosaveConfirm")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tycoonAutosaveLater,
-              { borderColor: colors.border, backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.04) },
-            ]}
-            onPress={onSnooze}
-          >
-            <Text style={[styles.tycoonAutosaveLaterText, { color: colors.text }]}>
-              {t("tycoonAutosaveLater")}
-            </Text>
-            <Text style={[styles.tycoonAutosaveLaterHint, { color: colors.muted }]}>
-              {t("tycoonAutosaveLaterHint")}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tycoonAutosaveCloseAction}
-            activeOpacity={0.72}
-            onPress={onClose}
-          >
-            <Text style={[styles.tycoonAutosaveCloseActionText, { color: colors.muted }]}>
-              {t("tycoonAutosaveClose")}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -44876,7 +45810,7 @@ const getChallengeCopy = (def, language = DEFAULT_LANGUAGE) => {
 const isSaveEvent = (kind) => kind === "refuse_spend" || kind === "pending_to_decline";
 const isStatsSaveEvent = (kind) => isSaveEvent(kind) || kind === "income_savings";
 
-const buildGoalCelebrationSummary = (history = [], goalId) => {
+const buildGoalCelebrationSummary = (history = [], goalId, goalCreatedAt = null) => {
   if (!Array.isArray(history)) return null;
   const spendStats = {};
   history.forEach((entry) => {
@@ -44940,8 +45874,14 @@ const buildGoalCelebrationSummary = (history = [], goalId) => {
     return isMatchingGoalId(entryGoalId, goalId);
   });
   const allStats = collectSaveStats(() => true);
-  const activeStats = goalId ? goalStats : allStats;
-  const usingFallback = false;
+  const normalizedGoalCreatedAt = Number(new Date(goalCreatedAt).getTime());
+  const timelineFallbackStats =
+    Number.isFinite(normalizedGoalCreatedAt) && normalizedGoalCreatedAt > 0
+      ? collectSaveStats((entry) => entry.timestamp >= normalizedGoalCreatedAt)
+      : allStats;
+  const hasGoalLinkedHistory = goalStats.totalSavedUSD > 0 || goalStats.totalCount > 0;
+  const activeStats = goalId && hasGoalLinkedHistory ? goalStats : timelineFallbackStats;
+  const usingFallback = Boolean(goalId && !hasGoalLinkedHistory);
   const resolveTopTitle = (stats) => {
     if (!stats?.titleTotals) return "";
     let topTitle = "";
@@ -47506,6 +48446,13 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onFieldChange,
   onEditPress,
   onReportsPress,
+  reports = EMPTY_PROFILE_REPORTS,
+  reportsActiveTab = "weekly",
+  onReportsTabChange = () => {},
+  onReportsPrimaryAction = null,
+  onReportsCreateGoal = null,
+  onReportsPremiumPress = null,
+  reportsOpenRequest = 0,
   reportsBadgeVisible = false,
   reportsLocked = false,
   reportsPreparing = false,
@@ -47548,9 +48495,14 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const fallbackAvatar = mascotImageSource || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const resolvedAvatarUri = useMemo(() => resolveAvatarUri(profile?.avatar), [profile?.avatar]);
   const currentCurrency = currencyValue || profile.currency || DEFAULT_PROFILE.currency;
-  const isEditing = editMode !== "none";
-  const isEditingIdentity = isEditing;
+  const { width: profileViewportWidth, fontScale: profileFontScale } = useWindowDimensions();
+  const isEditingProfile = editMode === "profile";
+  const isEditingSettings = editMode === "settings";
+  const isEditing = isEditingProfile || isEditingSettings;
+  const isEditingIdentity = isEditingProfile;
+  const stackProfileNameFields = profileViewportWidth < 600 || profileFontScale > 1.1;
   const [profileSection, setProfileSection] = useState("overview");
+  const reportsOpenRequestRef = useRef(0);
   const profileLanguageScrollRef = useRef(null);
   const profileLanguageChipLayoutsRef = useRef({});
   const profileLanguageViewportWidthRef = useRef(0);
@@ -47587,6 +48539,33 @@ const ProfileScreen = React.memo(function ProfileScreen({
       if (frame != null) cancelAnimationFrame(frame);
     };
   }, [isEditingIdentity]);
+  useEffect(() => {
+    if (!isEditingSettings) return;
+    setProfileSection("settings");
+  }, [isEditingSettings]);
+  const openReportsSection = useCallback(
+    (source = "profile_tab") => {
+      setProfileSection("reports");
+      onReportsPress?.(source);
+    },
+    [onReportsPress]
+  );
+  const handleProfileSectionSelect = useCallback(
+    (sectionId) => {
+      if (sectionId === "reports") {
+        openReportsSection("profile_tab");
+        return;
+      }
+      setProfileSection(sectionId);
+    },
+    [openReportsSection]
+  );
+  useEffect(() => {
+    const requestValue = Math.max(0, Number(reportsOpenRequest) || 0);
+    if (!requestValue || reportsOpenRequestRef.current === requestValue) return;
+    reportsOpenRequestRef.current = requestValue;
+    setProfileSection("reports");
+  }, [reportsOpenRequest]);
   const isDarkTheme = theme === "dark";
   const isProTheme = theme === PRO_THEME_ID;
   const { reduceMotion } = useMotionPreferences();
@@ -47618,14 +48597,12 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const reportsDisabled = !onReportsPress;
   const reportsLockedState = !!reportsLocked;
   const reportsPreparingState = !reportsLockedState && !!reportsPreparing;
-  const reportsPremiumAccent = useMemo(() => {
-    if (!reportsLockedState) return colors.muted;
-    return resolvePremiumUiAccent({
-      isDark: isDarkTheme,
-      themeId: theme,
-      proAccent: colors?.primary,
-    });
-  }, [colors.muted, colors.primary, isDarkTheme, reportsLockedState, theme]);
+  const reportsPremiumAccent = useMemo(
+    () => resolvePremiumUiAccent({ isDark: isDarkTheme }),
+    [isDarkTheme]
+  );
+  const reportsContentAccent = reportsLockedState ? reportsPremiumAccent : colors.text;
+  const onReportsContentAccent = resolveForegroundForColor(reportsContentAccent);
   const reportsPremiumBackground = useMemo(() => {
     if (Platform.OS === "android") {
       return blendColors(colors.card || "#FFFFFF", reportsPremiumAccent, isDarkTheme ? 0.34 : 0.22);
@@ -47674,6 +48651,14 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
+  const normalizedProfileReports = useMemo(() => normalizeProfileReports(reports), [reports]);
+  const latestProfileReport = normalizedProfileReports.weekly?.[0] || normalizedProfileReports.monthly?.[0] || null;
+  const latestProfileSavedUSD = Math.max(0, Number(latestProfileReport?.totals?.savedUSD) || 0);
+  const latestProfileSpentUSD = Math.max(0, Number(latestProfileReport?.totals?.spendUSD) || 0);
+  const latestProfileBalanceUSD = latestProfileSavedUSD - latestProfileSpentUSD;
+  const latestProfileBalanceLabel = `${latestProfileBalanceUSD >= 0 ? "+" : "-"}${formatLocalAmount(
+    Math.abs(latestProfileBalanceUSD)
+  )}`;
   const reportsPremiumPreview = (() => {
     let relevantCount = 0;
     let movementUSD = 0;
@@ -47915,7 +48900,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   const profilePremiumBadgeText = getReadableTextColor(profilePremiumAccent);
   const tycoonModeLocked = !isPremiumUser;
   const incomeSection = (
-    isEditing ? (
+    isEditingSettings ? (
       <View style={styles.profileEditableEditor}>
         <View style={[styles.profileEditableHeader, isProfileRtlLayout && styles.profileRowRtl]}>
           <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
@@ -47961,8 +48946,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     ) : (
       <TouchableOpacity
         style={[styles.profileEditableRow, isProfileRtlLayout && styles.profileRowRtl]}
-        onPress={onEditPress}
-        disabled={!onEditPress}
+        onPress={() => onEditPress?.("settings")}
+        disabled={!onEditPress || isEditing}
         activeOpacity={0.82}
         accessibilityRole="button"
         accessibilityLabel={t("incomeEntryAmountLabel")}
@@ -47992,7 +48977,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
     )
   );
   const incomePaydaySection = (
-    isEditing ? (
+    isEditingSettings ? (
       <View style={styles.profileEditableEditor}>
         <View style={[styles.profileEditableHeader, isProfileRtlLayout && styles.profileRowRtl]}>
           <View style={[styles.profileEditableIcon, { backgroundColor: profileEditableIconSurface }]}>
@@ -48042,8 +49027,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
     ) : (
       <TouchableOpacity
         style={[styles.profileEditableRow, isProfileRtlLayout && styles.profileRowRtl]}
-        onPress={onEditPress}
-        disabled={!onEditPress}
+        onPress={() => onEditPress?.("settings")}
+        disabled={!onEditPress || isEditing}
         activeOpacity={0.82}
         accessibilityRole="button"
         accessibilityLabel={t("incomePaydayLabel")}
@@ -48122,9 +49107,16 @@ const ProfileScreen = React.memo(function ProfileScreen({
       ? t("profileSettingsTab")
       : profileSection === "history"
       ? t("profileHistoryTab")
+      : profileSection === "reports"
+      ? t("reportsButton")
       : t("profileOverviewTab");
   const profileSectionInactiveTextColor = blendColors(colors.muted, colors.text, 0.08);
-  const showProfileEditControl = isEditing || profileSection !== "history";
+  const isCurrentSectionEditing =
+    (profileSection === "overview" && isEditingProfile) ||
+    (profileSection === "settings" && isEditingSettings);
+  const canStartCurrentSectionEdit =
+    editMode === "none" && (profileSection === "overview" || profileSection === "settings");
+  const showProfileEditControl = isCurrentSectionEditing || canStartCurrentSectionEdit;
   return (
     <View
       style={[
@@ -48165,7 +49157,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 isProfileRtlLayout && styles.profileRowRtl,
               ]}
             >
-              {isEditing && onCancelEdit ? (
+              {isCurrentSectionEditing && onCancelEdit ? (
                 <TouchableOpacity
                   style={[styles.profileToolbarSecondary, { borderColor: colors.border }]}
                   onPress={onCancelEdit}
@@ -48182,16 +49174,26 @@ const ProfileScreen = React.memo(function ProfileScreen({
                 style={[
                   styles.profileToolbarPrimary,
                   { backgroundColor: colors.text },
-                  (isEditing ? !onSaveEdit : !onEditPress) && styles.profileToolbarActionDisabled,
+                  (isCurrentSectionEditing ? !onSaveEdit : !onEditPress) &&
+                    styles.profileToolbarActionDisabled,
                 ]}
-                onPress={isEditing ? onSaveEdit : onEditPress}
-                disabled={isEditing ? !onSaveEdit : !onEditPress}
+                onPress={
+                  isCurrentSectionEditing
+                    ? onSaveEdit
+                    : () =>
+                        onEditPress?.(
+                          profileSection === "settings" ? "settings" : "profile"
+                        )
+                }
+                disabled={isCurrentSectionEditing ? !onSaveEdit : !onEditPress}
                 activeOpacity={0.86}
                 accessibilityRole="button"
-                accessibilityLabel={isEditing ? t("profileSave") : t("profileEdit")}
+                accessibilityLabel={
+                  isCurrentSectionEditing ? t("profileSave") : t("profileEdit")
+                }
               >
                 <Text style={[styles.profileToolbarPrimaryText, { color: colors.background }]}>
-                  {isEditing ? t("profileSave") : t("profileEdit")}
+                  {isCurrentSectionEditing ? t("profileSave") : t("profileEdit")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -48207,9 +49209,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
           accessibilityRole="tablist"
         >
           {[
-            { id: "overview", label: t("profileOverviewTab") },
-            { id: "settings", label: t("profileSettingsTab") },
-            { id: "history", label: t("profileHistoryTab") },
+            { id: "overview", label: t("profileOverviewTab"), icon: "overview" },
+            { id: "reports", label: t("reportsButton"), icon: "reports" },
+            { id: "settings", label: t("profileSettingsTab"), icon: "settings" },
+            { id: "history", label: t("profileHistoryTab"), icon: "history" },
           ].map((section) => {
             const selected = profileSection === section.id;
             return (
@@ -48220,15 +49223,23 @@ const ProfileScreen = React.memo(function ProfileScreen({
                   styles.profileSectionTab,
                   selected && { backgroundColor: colors.card },
                 ]}
-                onPress={() => setProfileSection(section.id)}
+                onPress={() => handleProfileSectionSelect(section.id)}
                 accessibilityRole="tab"
                 accessibilityLabel={section.label}
                 accessibilityState={{ selected }}
               >
+                <ProfileSectionGlyph
+                  name={section.icon}
+                  color={selected ? colors.text : profileSectionInactiveTextColor}
+                  size={18}
+                />
                 <Text
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.68}
                   style={[
                     styles.progressSectionTabText,
+                    styles.profileSectionTabText,
                     { color: selected ? colors.text : profileSectionInactiveTextColor },
                   ]}
                 >
@@ -48297,8 +49308,18 @@ const ProfileScreen = React.memo(function ProfileScreen({
           </View>
           {isEditingIdentity ? (
             <>
-              <View style={[styles.inputRow, IS_COMPACT_DEVICE && styles.inputRowStacked]}>
-                <View style={styles.profileInputField}>
+              <View
+                style={[
+                  styles.inputRow,
+                  stackProfileNameFields && styles.inputRowStacked,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.profileInputField,
+                    stackProfileNameFields && styles.profileInputFieldStacked,
+                  ]}
+                >
                   <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputFirstName")}</Text>
                   <TextInput
                     ref={firstNameInputRef}
@@ -48317,7 +49338,12 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     onSubmitEditing={() => lastNameInputRef.current?.focus()}
                   />
                 </View>
-                <View style={styles.profileInputField}>
+                <View
+                  style={[
+                    styles.profileInputField,
+                    stackProfileNameFields && styles.profileInputFieldStacked,
+                  ]}
+                >
                   <Text style={[styles.profileInputLabel, { color: colors.muted }]}>{t("inputLastName")}</Text>
                   <TextInput
                     ref={lastNameInputRef}
@@ -48455,8 +49481,8 @@ const ProfileScreen = React.memo(function ProfileScreen({
                     styles.profileSetupRowDivider,
                     { borderBottomColor: colors.border },
                   ]}
-                  onPress={onEditPress}
-                  disabled={!onEditPress}
+                  onPress={() => onEditPress?.("profile")}
+                  disabled={!onEditPress || isEditing}
                   activeOpacity={0.82}
                   accessibilityRole="button"
                   accessibilityLabel={t("profileSetupIdentity")}
@@ -48524,79 +49550,235 @@ const ProfileScreen = React.memo(function ProfileScreen({
               {onReportsPress ? (
                 <TouchableOpacity
                   style={[
-                    styles.profileActionSecondary,
+                    styles.profileReportsOverviewCard,
                     reportsLockedState ? styles.profileActionPremiumLocked : null,
                     {
                       borderColor: reportsLockedState ? reportsPremiumBorder : colors.border,
-                      backgroundColor: reportsLockedState ? reportsPremiumBackground : "transparent",
-                      shadowColor: reportsLockedState ? reportsPremiumAccent : undefined,
+                      backgroundColor: reportsLockedState
+                        ? reportsPremiumBackground
+                        : colors.surfaceMuted || colorWithAlpha(reportsContentAccent, isDarkTheme ? 0.12 : 0.055),
                     },
                     reportsDisabled ? { opacity: 0.7 } : null,
                   ]}
-                  onPress={onReportsPress}
+                  onPress={() => openReportsSection("profile_overview")}
                   disabled={reportsDisabled}
                   activeOpacity={reportsDisabled ? 1 : 0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("reportsButton")}
                 >
-                  <View style={styles.profileActionRow}>
-                    <Text
+                  <View
+                    style={[
+                      styles.profileReportsOverviewHeader,
+                      isProfileRtlLayout && styles.profileRowRtl,
+                    ]}
+                  >
+                    <View
                       style={[
-                        styles.profileActionSecondaryText,
-                        { color: reportsLockedState ? reportsPremiumAccent : colors.muted },
+                        styles.profileReportsOverviewHeading,
+                        isProfileRtlLayout && styles.profileRowRtl,
                       ]}
                     >
-                      {t("reportsButton")}
-                    </Text>
-                    {reportsLockedState && (
                       <View
                         style={[
-                          styles.profileActionPremiumPill,
-                          {
-                            backgroundColor: reportsPremiumPillBackground,
-                            borderColor: reportsPremiumBorder,
-                          },
+                          styles.profileReportsOverviewIcon,
+                          { backgroundColor: colorWithAlpha(reportsContentAccent, isDarkTheme ? 0.16 : 0.08) },
                         ]}
                       >
-                        <Text
+                        <ProfileSectionGlyph
+                          name={reportsLockedState ? "lock" : "reports"}
+                          color={reportsContentAccent}
+                          size={22}
+                        />
+                      </View>
+                      <View style={styles.profileReportsOverviewHeadingCopy}>
+                        <View
                           style={[
-                            styles.profileActionPremiumPillText,
-                            { color: reportsPremiumAccent },
+                            styles.profileReportsOverviewTitleRow,
+                            isProfileRtlLayout && styles.profileRowRtl,
                           ]}
                         >
-                          {t("featureLockedPremiumLabel")}
+                          <Text
+                            style={[
+                              styles.profileReportsOverviewTitle,
+                              isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                              { color: colors.text },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {t("reportsButton")}
+                          </Text>
+                          {reportsLockedState ? (
+                            <View
+                              style={[
+                                styles.profileActionPremiumPill,
+                                {
+                                  backgroundColor: reportsPremiumPillBackground,
+                                  borderColor: reportsPremiumBorder,
+                                },
+                              ]}
+                            >
+                              <Text style={[styles.profileActionPremiumPillText, { color: reportsPremiumAccent }]}>
+                                {t("featureLockedPremiumLabel")}
+                              </Text>
+                            </View>
+                          ) : !reportsDisabled && reportsBadgeVisible ? (
+                            <View style={[styles.reportsBadgeChip, { backgroundColor: reportsContentAccent }]}>
+                              <Text
+                                style={[
+                                  styles.reportsBadgeText,
+                                  { color: onReportsContentAccent },
+                                ]}
+                              >
+                                {t("reportsBadgeNew")}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text
+                          style={[
+                            styles.profileReportsOverviewPeriod,
+                            isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                            { color: colors.muted },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {reportsLockedState
+                            ? reportsPremiumPreview.title
+                            : latestProfileReport?.label || t("reportsGenerating")}
                         </Text>
                       </View>
-                    )}
-                    {!reportsLockedState && !reportsDisabled && reportsBadgeVisible && (
-                      <View style={[styles.reportsBadgeChip, { backgroundColor: colors.text }]}>
-                        <Text style={[styles.reportsBadgeText, { color: colors.background }]}>
-                          {t("reportsBadgeNew")}
-                        </Text>
-                      </View>
-                    )}
+                    </View>
+                    <View
+                      style={[
+                        styles.profileReportsOverviewArrow,
+                        { backgroundColor: colorWithAlpha(reportsContentAccent, isDarkTheme ? 0.14 : 0.07) },
+                      ]}
+                    >
+                      <ProfileSectionGlyph
+                        name={isProfileRtlLayout ? "arrowLeft" : "arrowRight"}
+                        color={reportsContentAccent}
+                        size={18}
+                      />
+                    </View>
                   </View>
                   {reportsLockedState ? (
-                    <>
-                      <View style={styles.profileReportsPreview}>
-                        <Text style={[styles.profileReportsPreviewTitle, { color: colors.text }]}>
-                          {reportsPremiumPreview.title}
+                    <View
+                      style={[
+                        styles.profileReportsPreview,
+                        isProfileRtlLayout && styles.profileRowRtl,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.profileReportsPreviewSignal,
+                          { backgroundColor: colors.card, borderColor: reportsPremiumBorder },
+                        ]}
+                      >
+                        <Text style={[styles.profileReportsPreviewSignalValue, { color: reportsPremiumAccent }]}>
+                          {reportsPremiumPreview.relevantCount || "?"}
                         </Text>
-                        <Text style={[styles.profileReportsPreviewBody, { color: colors.muted }]}>
-                          {reportsPremiumPreview.body}
+                        <Text
+                          style={[styles.profileReportsPreviewSignalLabel, { color: colors.muted }]}
+                          numberOfLines={2}
+                        >
+                          {t("premiumFomoSignalsLabel")}
                         </Text>
-                        <View style={[styles.profileReportsPreviewSignal, { borderTopColor: reportsPremiumBorder }]}>
-                          <Text style={[styles.profileReportsPreviewSignalValue, { color: reportsPremiumAccent }]}>
-                            {reportsPremiumPreview.relevantCount || "?"}
-                          </Text>
-                          <Text style={[styles.profileReportsPreviewSignalLabel, { color: colors.muted }]}>
-                            {t("premiumFomoSignalsLabel")}
-                          </Text>
-                        </View>
                       </View>
-                    </>
+                      <Text
+                        style={[
+                          styles.profileReportsPreviewBody,
+                          isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                          { color: colors.muted },
+                        ]}
+                        numberOfLines={3}
+                      >
+                        {reportsPremiumPreview.body}
+                      </Text>
+                    </View>
                   ) : reportsPreparingState ? (
                     <Text style={[styles.profileActionPreparingLabel, { color: colors.muted }]}>
                       {t("reportsGenerating")}
                     </Text>
+                  ) : latestProfileReport ? (
+                    <View
+                      style={[
+                        styles.profileReportsOverviewSummary,
+                        isProfileRtlLayout && styles.profileRowRtl,
+                      ]}
+                    >
+                      <View style={styles.profileReportsOverviewBalance}>
+                        <Text
+                          style={[
+                            styles.profileReportsOverviewBalanceLabel,
+                            isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                            { color: colors.muted },
+                          ]}
+                        >
+                          {t("reportsBalanceLabel")}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.profileReportsOverviewBalanceValue,
+                            isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                            {
+                              color:
+                                latestProfileBalanceUSD >= 0
+                                  ? SAVE_ACTION_COLOR
+                                  : SPEND_ACTION_COLOR,
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {latestProfileBalanceLabel}
+                        </Text>
+                      </View>
+                      <View style={[styles.profileReportsOverviewDivider, { backgroundColor: colors.border }]} />
+                      {[
+                        {
+                          label: t("reportsSavedLabel"),
+                          value: formatLocalAmount(latestProfileSavedUSD),
+                          color: SAVE_ACTION_COLOR,
+                        },
+                        {
+                          label: t("reportsSpentLabel"),
+                          value: formatLocalAmount(latestProfileSpentUSD),
+                          color: SPEND_ACTION_COLOR,
+                        },
+                      ].map((metric) => (
+                        <View key={metric.label} style={styles.profileReportsOverviewMetricBlock}>
+                          <View
+                            style={[
+                              styles.profileReportsOverviewMetricLabelRow,
+                              isProfileRtlLayout && styles.profileRowRtl,
+                            ]}
+                          >
+                            <View style={[styles.profileReportsOverviewMetricDot, { backgroundColor: metric.color }]} />
+                            <Text
+                              style={[
+                                styles.profileReportsOverviewMetricLabel,
+                                isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                                { color: colors.muted },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {metric.label}
+                            </Text>
+                          </View>
+                          <Text
+                            style={[
+                              styles.profileReportsOverviewMetricValue,
+                              isProfileRtlLayout && styles.profileReportsOverviewTextRtl,
+                              { color: metric.color },
+                            ]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.76}
+                          >
+                            {metric.value}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   ) : null}
                 </TouchableOpacity>
               ) : null}
@@ -48606,12 +49788,40 @@ const ProfileScreen = React.memo(function ProfileScreen({
 
         <View
           style={[
+            styles.profileReportsPane,
+            profileSection !== "reports" && styles.progressSectionHidden,
+          ]}
+        >
+          <ProfileReportsSection
+            reports={reports}
+            activeTab={reportsActiveTab}
+            onTabChange={onReportsTabChange}
+            onPrimaryAction={onReportsPrimaryAction}
+            onCreateGoal={onReportsCreateGoal}
+            onPremiumPress={onReportsPremiumPress}
+            premiumPreview={reportsPremiumPreview}
+            reportsPreparing={reportsPreparingState}
+            t={t}
+            colors={colors}
+            currency={currentCurrency}
+            language={language}
+            isPremiumUser={isPremiumUser}
+            lockedAccent={reportsPremiumAccent}
+          />
+        </View>
+
+        <View
+          style={[
             styles.settingsCard,
             { backgroundColor: colors.card },
             profileSection !== "settings" && styles.progressSectionHidden,
           ]}
         >
-          <View style={IS_SHORT_DEVICE ? styles.profileSettingsLeadCompact : null}>
+          <View
+            style={
+              IS_SHORT_DEVICE && !isEditingSettings ? styles.profileSettingsLeadCompact : null
+            }
+          >
             <View
               style={[
                 styles.profileEditableGroup,
@@ -50795,6 +52005,9 @@ function AppContent() {
   const [levelReachedLoggedHydrated, setLevelReachedLoggedHydrated] = useState(false);
   const [coinEntryVisible, setCoinEntryVisible] = useState(false);
   const [coinEntryPresetAction, setCoinEntryPresetAction] = useState(null);
+  const [coinEntryBackdropUri, setCoinEntryBackdropUri] = useState(null);
+  const coinEntryBackdropUriRef = useRef(null);
+  const coinEntryCaptureRequestRef = useRef(0);
   const coinEntryContextRef = useRef({ source: null, openedAt: 0, submitted: false });
   const widgetActionFlowActiveRef = useRef(false);
   const initialLinkResolutionPendingRef = useRef(true);
@@ -50813,8 +52026,8 @@ function AppContent() {
   const [spendBreakdownOffset, setSpendBreakdownOffset] = useState(0);
   const [saveBreakdownRange, setSaveBreakdownRange] = useState("day");
   const [saveBreakdownOffset, setSaveBreakdownOffset] = useState(0);
-  const [reportsModalVisible, setReportsModalVisible] = useState(false);
   const [reportsTab, setReportsTab] = useState("weekly");
+  const [profileReportsOpenRequest, setProfileReportsOpenRequest] = useState(0);
   const visibleTemptations = useMemo(() => {
     const pricedTemptations = filterTemptationsByPrice(temptations, priceLimitUSD);
     const activeCustomTemptationCount = pricedTemptations.reduce((count, item) => {
@@ -51788,6 +53001,7 @@ function AppContent() {
   );
   const [overlay, setOverlay] = useState(null);
   const [pendingGoalCelebration, setPendingGoalCelebration] = useState(null);
+  const pendingGoalCelebrationRef = useRef(null);
   const goalCompletionQueuedGoalRef = useRef(null);
   const pendingUsageStreakRef = useRef(null);
   const pendingSaveStreakAfterReminderRef = useRef(false);
@@ -57050,7 +58264,7 @@ function AppContent() {
   }, []);
   const requestGoalRenewalPrompt = useCallback(() => {
     if (goalRenewalPromptVisible) return;
-    if (overlay || goalCompletionFlowActive) {
+    if (overlay || goalCompletionFlowActive || goalCompletionQueuedGoalRef.current) {
       goalRenewalPromptPendingRef.current = true;
       return;
     }
@@ -58012,13 +59226,6 @@ function AppContent() {
     setBreakdownVisible(true);
   }, []);
   const closeBreakdown = useCallback(() => setBreakdownVisible(false), []);
-  const closeReportsModal = useCallback(() => {
-    logEvent("reports_closed", {
-      tab: reportsTab,
-      has_data: reportsHaveData ? 1 : 0,
-    });
-    setReportsModalVisible(false);
-  }, [reportsHaveData, reportsTab]);
   const resolveHistoryCategoryIdForReports = useCallback(
     (entry) => {
       const metaCategory =
@@ -58068,48 +59275,42 @@ function AppContent() {
       t,
     ]
   );
-  const handleReportsPress = useCallback(() => {
-    if (!reportsUnlocked) {
-      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.reports);
-      return;
-    }
+  const handleReportsPress = useCallback((source = "profile") => {
     markDidYouKnowFeatureUsed("reports_profile");
     triggerHaptic();
     const snapshot = buildAndStoreReportsSnapshot();
     logEvent("reports_opened", {
-      source: "profile",
-      tab: "weekly",
+      source,
+      tab: reportsTab,
       has_data: reportsSnapshotHasMeaningfulData(snapshot) ? 1 : 0,
+      premium: reportsUnlocked ? 1 : 0,
     });
-    setReportsTab("weekly");
     setReportsBadgeVisible(false);
-    setReportsModalVisible(true);
   }, [
     buildAndStoreReportsSnapshot,
-    ensurePremiumFeatureAccess,
     markDidYouKnowFeatureUsed,
+    reportsTab,
     reportsUnlocked,
     triggerHaptic,
   ]);
+  const handleReportsPremiumPress = useCallback(() => {
+    ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.reports);
+  }, [ensurePremiumFeatureAccess]);
   const openReportsFromNotification = useCallback(() => {
-    if (!reportsUnlocked) {
-      ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.reports);
-      return;
-    }
     markDidYouKnowFeatureUsed("reports_profile");
     const snapshot = buildAndStoreReportsSnapshot();
     logEvent("reports_opened", {
       source: "notification",
       tab: "weekly",
       has_data: reportsSnapshotHasMeaningfulData(snapshot) ? 1 : 0,
+      premium: reportsUnlocked ? 1 : 0,
     });
     setReportsTab("weekly");
     setReportsBadgeVisible(false);
-    setReportsModalVisible(true);
+    setProfileReportsOpenRequest(Date.now());
     goToTab("profile");
   }, [
     buildAndStoreReportsSnapshot,
-    ensurePremiumFeatureAccess,
     goToTab,
     markDidYouKnowFeatureUsed,
     reportsUnlocked,
@@ -58125,6 +59326,56 @@ function AppContent() {
       setReportsTab(resolvedTab);
     },
     [reportsHaveData, reportsTab]
+  );
+  const handleReportPrimaryAction = useCallback(
+    (report) => {
+      if (!reportsUnlocked) {
+        handleReportsPremiumPress();
+        return;
+      }
+      const categoryId =
+        typeof report?.topSpend?.categoryId === "string" && report.topSpend.categoryId.trim()
+          ? report.topSpend.categoryId.trim()
+          : null;
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      if (categoryId) {
+        logEvent("reports_recommendation_applied", {
+          action: "category_limit",
+          category_id: categoryId,
+          report_type: report?.type || "week",
+        });
+        setBudgetLimitOpenRequest({ tick: Date.now(), categoryId });
+        requestProgressBudgetFocus();
+        return;
+      }
+      logEvent("reports_recommendation_applied", {
+        action: "create_goal",
+        report_type: report?.type || "week",
+      });
+      openNewGoalModal(false, "reports_recommendation");
+    },
+    [
+      handleReportsPremiumPress,
+      openNewGoalModal,
+      reportsUnlocked,
+      requestProgressBudgetFocus,
+      triggerHaptic,
+    ]
+  );
+  const handleReportCreateGoal = useCallback(
+    (report) => {
+      if (!reportsUnlocked) {
+        handleReportsPremiumPress();
+        return;
+      }
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+      logEvent("reports_recommendation_applied", {
+        action: "create_goal",
+        report_type: report?.type || "week",
+      });
+      openNewGoalModal(false, "reports_recommendation");
+    },
+    [handleReportsPremiumPress, openNewGoalModal, reportsUnlocked, triggerHaptic]
   );
   const reportsHistoryDigest = useMemo(() => {
     const first = resolvedHistoryEvents[0];
@@ -58281,7 +59532,6 @@ function AppContent() {
       automaticModalPresentationPaused ||
       overlay ||
       breakdownVisible ||
-      reportsModalVisible ||
       dailySummaryVisible ||
       ratingPromptVisible ||
       pushDayThreePromptVisible ||
@@ -58359,7 +59609,6 @@ function AppContent() {
       ratingPromptVisible,
       breakdownVisible,
       overlay,
-      reportsModalVisible,
       showCustomSpend,
       termsModalVisible,
       incomeEntryModalVisible,
@@ -58824,9 +60073,20 @@ function AppContent() {
     const primarySaved = Number.isFinite(primaryGoalSavedUSD) ? Math.max(primaryGoalSavedUSD, 0) : 0;
     return Math.max(wishSaved, primarySaved);
   }, [mainGoalWish?.savedUSD, primaryGoalSavedUSD]);
+  const goalCelebrationCreatedAt = useMemo(() => {
+    const primaryGoal = Array.isArray(profile.primaryGoals)
+      ? profile.primaryGoals.find((entry) => entry?.id === resolvedHeroGoalId)
+      : null;
+    return mainGoalWish?.createdAt || primaryGoal?.createdAt || null;
+  }, [mainGoalWish?.createdAt, profile.primaryGoals, resolvedHeroGoalId]);
   const goalCelebrationSummary = useMemo(
-    () => buildGoalCelebrationSummary(resolvedHistoryEvents, resolvedHeroGoalId),
-    [resolvedHistoryEvents, resolvedHeroGoalId]
+    () =>
+      buildGoalCelebrationSummary(
+        resolvedHistoryEvents,
+        resolvedHeroGoalId,
+        goalCelebrationCreatedAt
+      ),
+    [goalCelebrationCreatedAt, resolvedHistoryEvents, resolvedHeroGoalId]
   );
   const heroGoalProgressRatio = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
   const remainingGoalUSD = Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0);
@@ -70414,8 +71674,10 @@ function AppContent() {
       const rewardAmount = GOAL_COMPLETION_REWARD_VALUE;
       setHealthPoints((prev) => prev + rewardAmount);
       const payload = {
+        goalId,
         title: t("goalCelebrationTitle"),
         subtitle: t("goalCelebrationSubtitle"),
+        goalTitle: heroGoalTitle,
         targetLabel: t("goalCelebrationTarget", { amount: targetLabel }),
         summary: goalCelebrationSummary,
         fallbackTotalUSD: heroGoalSavedUSD,
@@ -70428,22 +71690,17 @@ function AppContent() {
           getChestRewardTierForAmount(rewardAmount)?.id || GOAL_COMPLETION_REWARD_TIER?.id || null,
       };
       const config = { duration: 0 };
+      const pendingCelebration = { payload, config };
+      pendingGoalCelebrationRef.current = pendingCelebration;
+      setPendingGoalCelebration(pendingCelebration);
       setProfile((prev) => ({
-        ...updateGoalCelebrationInProfile(prev, goalId, true),
+        ...prev,
         goalRenewalPending: true,
       }));
       setProfileDraft((prev) => ({
-        ...updateGoalCelebrationInProfile(prev, goalId, true),
+        ...prev,
         goalRenewalPending: true,
       }));
-      if (Platform.OS !== "android") {
-        const enqueueGoalCelebration = triggerOverlayStateRef.current;
-        if (typeof enqueueGoalCelebration === "function") {
-          enqueueGoalCelebration("goal_complete", payload, config);
-        } else {
-          setPendingGoalCelebration({ payload, config });
-        }
-      }
       if (!hasPendingGoals) {
         goalRenewalPromptPendingRef.current = true;
         goalRenewalPromptAfterGoalRef.current = true;
@@ -70459,6 +71716,7 @@ function AppContent() {
     heroGoalSavedUSD,
     hasPendingGoals,
     goalCelebrationSummary,
+    heroGoalTitle,
     language,
     t,
   ]);
@@ -70471,6 +71729,13 @@ function AppContent() {
     const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
     if (!hasMetGoal && goalCompletionQueuedGoalRef.current === goalId) {
       goalCompletionQueuedGoalRef.current = null;
+    }
+    if (
+      !hasMetGoal &&
+      normalizePrimaryGoalSelectionId(pendingGoalCelebrationRef.current?.payload?.goalId) === goalId
+    ) {
+      pendingGoalCelebrationRef.current = null;
+      setPendingGoalCelebration(null);
     }
     if (hasCelebratedGoal && !hasMetGoal) {
       setProfile((prev) => ({
@@ -72788,20 +74053,57 @@ useEffect(() => {
     const resumeAt = queueModalCloseSettle();
     requestQueuedModalProcessAfterHandoff(resumeAt);
   }, [queueModalCloseSettle, requestQueuedModalProcessAfterHandoff]);
+  const replaceCoinEntryBackdrop = useCallback((nextUri = null) => {
+    const previousUri = coinEntryBackdropUriRef.current;
+    coinEntryBackdropUriRef.current = nextUri;
+    setCoinEntryBackdropUri(nextUri);
+    if (previousUri && previousUri !== nextUri) {
+      releaseCapture(previousUri);
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (coinEntryBackdropUriRef.current) {
+        releaseCapture(coinEntryBackdropUriRef.current);
+        coinEntryBackdropUriRef.current = null;
+      }
+    },
+    []
+  );
   const openCoinEntry = useCallback(
-    (source = "unknown", presetAction = null) => {
+    async (source = "unknown", presetAction = null) => {
+      const captureRequest = coinEntryCaptureRequestRef.current + 1;
+      coinEntryCaptureRequestRef.current = captureRequest;
       coinEntryContextRef.current = {
         source,
         openedAt: Date.now(),
         submitted: false,
       };
+      let nextBackdropUri = null;
+      if (Platform.OS === "android") {
+        try {
+          nextBackdropUri = await captureScreen({
+            format: "jpg",
+            quality: 0.72,
+            result: "tmpfile",
+          });
+        } catch (error) {
+          console.warn("coin entry backdrop capture", error);
+        }
+      }
+      if (coinEntryCaptureRequestRef.current !== captureRequest) {
+        if (nextBackdropUri) releaseCapture(nextBackdropUri);
+        return;
+      }
+      replaceCoinEntryBackdrop(nextBackdropUri);
       setCoinEntryPresetAction(presetAction);
       setCoinEntryVisible(true);
       logEvent("coin_entry_opened", { source, preset_action: presetAction || "none" });
     },
-    [logEvent]
+    [logEvent, replaceCoinEntryBackdrop]
   );
   const handleCoinEntryClose = useCallback((options = {}) => {
+    coinEntryCaptureRequestRef.current += 1;
     const context = coinEntryContextRef.current;
     if (context?.source) {
       logEvent("coin_entry_closed", {
@@ -72813,11 +74115,12 @@ useEffect(() => {
     coinEntryContextRef.current = { source: null, openedAt: 0, submitted: false };
     setCoinEntryPresetAction(null);
     setCoinEntryVisible(false);
+    replaceCoinEntryBackdrop(null);
     const keepWidgetFlowActive = options?.keepWidgetFlowActive === true;
     if (!keepWidgetFlowActive && context?.source?.startsWith("widget_")) {
       finishWidgetActionFlow();
     }
-  }, [finishWidgetActionFlow, logEvent]);
+  }, [finishWidgetActionFlow, logEvent, replaceCoinEntryBackdrop]);
 
   const handleQuickCustomChange = (field, value) => {
     if (field === "category" && quickCustomLockedCategoryId) {
@@ -74701,6 +76004,8 @@ useEffect(() => {
           ? "gestern"
           : normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae"
           ? "أمس"
+          : normalizedLanguage === "ja"
+          ? "昨日"
           : "yesterday");
       const dedupeKey = `smart:${entry.id || timestamp}`;
       try {
@@ -79138,6 +80443,8 @@ useEffect(() => {
                 ? "gestern"
                 : normalizedLanguage === "ar-sa" || normalizedLanguage === "ar-ae"
                 ? "أمس"
+                : normalizedLanguage === "ja"
+                ? "昨日"
                 : "yesterday");
             const dedupeKey = `smart:${reminder.eventId || reminder.id}`;
             try {
@@ -83625,6 +84932,24 @@ useEffect(() => {
     }
   }, [overlay]);
 
+  const handleGoalCelebrationShown = useCallback(() => {
+    if (overlay?.type !== "goal_complete") return;
+    const visibleGoalId = normalizePrimaryGoalSelectionId(
+      overlay?.message?.goalId || resolvedHeroGoalId
+    );
+    if (!visibleGoalId) return;
+    if (
+      normalizePrimaryGoalSelectionId(pendingGoalCelebrationRef.current?.payload?.goalId) ===
+      visibleGoalId
+    ) {
+      pendingGoalCelebrationRef.current = null;
+      setPendingGoalCelebration(null);
+    }
+    if (isGoalCelebratedInProfile(profile, visibleGoalId)) return;
+    setProfile((prev) => updateGoalCelebrationInProfile(prev, visibleGoalId, true));
+    setProfileDraft((prev) => updateGoalCelebrationInProfile(prev, visibleGoalId, true));
+  }, [overlay?.message?.goalId, overlay?.type, profile, resolvedHeroGoalId]);
+
   const dismissOverlay = useCallback((maybeOptions = {}) => {
     const rawOptions =
       maybeOptions && typeof maybeOptions === "object" && "nativeEvent" in maybeOptions ? {} : maybeOptions;
@@ -83771,6 +85096,28 @@ useEffect(() => {
     saveOverlayCounterVisible,
     trackModalAction,
   ]);
+  const handleGoalCelebrationClose = useCallback(
+    (source = "cta") => {
+      const rewardAmount = Math.max(0, Number(overlay?.message?.rewardAmount) || 0);
+      const rewardTierId = overlay?.message?.rewardTierId || null;
+      dismissOverlay({
+        analyticsAction: "continue",
+        analyticsSource: `goal_celebration_${source}`,
+      });
+      if (rewardAmount > 0) {
+        triggerOverlayState("health", {
+          amount: rewardAmount,
+          tierId: rewardTierId,
+          chestCount: 1,
+          title: t("goalRewardChestTitle"),
+          closedSubtitle: t("goalRewardChestClosed"),
+          openedSubtitle: t("goalRewardChestOpened"),
+          onRevealReward: null,
+        });
+      }
+    },
+    [dismissOverlay, overlay?.message, t, triggerOverlayState]
+  );
   dismissOverlayRef.current = dismissOverlay;
   useEffect(() => {
     if (activeTab === "feed") return;
@@ -84630,23 +85977,31 @@ useEffect(() => {
   ]);
 
   useEffect(() => {
-    if (!pendingGoalCelebration) return;
-    if (Platform.OS === "android") {
-      setPendingGoalCelebration(null);
-      return;
-    }
-    if (blockingModalVisible) return;
-    if (overlay || overlayActiveRef.current) return;
-    if (overlayQueueRef.current.length) return;
-    if (celebrationQueueRef.current.length) return;
-    if (pendingLevelCelebrationRef.current) return;
+    const shouldDispatch = shouldDispatchPendingGoalCelebration({
+      hasPendingGoalCelebration: !!pendingGoalCelebration,
+      startupHardLockPendingBeforePaywall,
+      overlayEnvironmentReady,
+      blockingModalVisible,
+      overlayVisible: !!overlay,
+      overlayActive: overlayActiveRef.current,
+      overlayQueueLength: overlayQueueRef.current.length,
+      celebrationQueueLength: celebrationQueueRef.current.length,
+      pendingLevelCelebration: !!pendingLevelCelebrationRef.current,
+    });
+    if (!shouldDispatch) return;
     triggerOverlayState(
       "goal_complete",
       pendingGoalCelebration.payload,
       pendingGoalCelebration.config
     );
-    setPendingGoalCelebration(null);
-  }, [blockingModalVisible, overlay, pendingGoalCelebration, triggerOverlayState]);
+  }, [
+    blockingModalVisible,
+    overlay,
+    overlayEnvironmentReady,
+    pendingGoalCelebration,
+    startupHardLockPendingBeforePaywall,
+    triggerOverlayState,
+  ]);
 
   const handleRewardClaim = useCallback(
     (reward) => {
@@ -85134,10 +86489,13 @@ useEffect(() => {
     );
   };
 
-  const startProfileEdit = useCallback(() => {
+  const startProfileEdit = useCallback((mode = "profile") => {
     if (profileEditMode !== "none") return;
+    const nextEditMode = mode === "settings" ? "settings" : "profile";
     triggerHaptic();
-    markDidYouKnowFeatureUsed("profile_income_payday");
+    if (nextEditMode === "settings") {
+      markDidYouKnowFeatureUsed("profile_income_payday");
+    }
     const nextDraft = { ...profile };
     const hasFirstName =
       typeof nextDraft.firstName === "string" && nextDraft.firstName.trim().length > 0;
@@ -85151,14 +86509,14 @@ useEffect(() => {
       }
     }
     setProfileDraft(nextDraft);
-    setProfileEditMode("profile");
+    setProfileEditMode(nextEditMode);
   }, [markDidYouKnowFeatureUsed, profile, profileEditMode, triggerHaptic]);
   const handleDayTwoIncomePromptPress = useCallback(() => {
     triggerHaptic();
     dismissDayTwoIncomePrompt();
     goToTab("profile");
     InteractionManager.runAfterInteractions(() => {
-      startProfileEdit();
+      startProfileEdit("settings");
     });
   }, [dismissDayTwoIncomePrompt, goToTab, startProfileEdit, triggerHaptic]);
 
@@ -85171,10 +86529,21 @@ useEffect(() => {
 
   const saveProfileEdit = () => {
     triggerHaptic();
-    const normalizedGoals = Array.isArray(profileDraft.primaryGoals) && profileDraft.primaryGoals.length
-      ? profileDraft.primaryGoals
+    const scopedProfileDraft =
+      profileEditMode === "settings"
+        ? { ...profile, incomePayday: profileDraft.incomePayday }
+        : {
+            ...profile,
+            avatar: profileDraft.avatar,
+            firstName: profileDraft.firstName,
+            lastName: profileDraft.lastName,
+            bio: profileDraft.bio,
+          };
+    const normalizedGoals =
+      Array.isArray(scopedProfileDraft.primaryGoals) && scopedProfileDraft.primaryGoals.length
+      ? scopedProfileDraft.primaryGoals
           .map((entry) => {
-            const goalId = entry?.id || profileDraft.goal || profile.goal || null;
+            const goalId = entry?.id || scopedProfileDraft.goal || profile.goal || null;
             if (!goalId) return null;
             const targetUSD =
               Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
@@ -85203,7 +86572,7 @@ useEffect(() => {
           })
           .filter(Boolean)
       : [];
-    const fallbackGoalId = profileDraft.goal || activeGoalId || profile.goal || null;
+    const fallbackGoalId = scopedProfileDraft.goal || activeGoalId || profile.goal || null;
     const basePrimaryGoalEntries =
       normalizedGoals.length > 0
         ? normalizedGoals
@@ -85218,7 +86587,9 @@ useEffect(() => {
             },
           ]
         : [];
-    const preferredGoalId = normalizePrimaryGoalSelectionId(profileDraft.goal || activeGoalId || profile.goal);
+    const preferredGoalId = normalizePrimaryGoalSelectionId(
+      scopedProfileDraft.goal || activeGoalId || profile.goal
+    );
     const preferredEntry = preferredGoalId
       ? basePrimaryGoalEntries.find((entry) => entry?.id === preferredGoalId)
       : null;
@@ -85238,22 +86609,22 @@ useEffect(() => {
         : 0;
     const activeSaved = Number.isFinite(activeEntry?.savedUSD) ? Math.max(activeEntry.savedUSD, 0) : 0;
     const hasMetTarget = activeTarget > 0 && activeSaved >= activeTarget;
-    const rawIncomePayday = Number(profileDraft.incomePayday);
+    const rawIncomePayday = Number(scopedProfileDraft.incomePayday);
     const normalizedIncomePayday =
       Number.isFinite(rawIncomePayday) && rawIncomePayday >= 1 && rawIncomePayday <= 31
         ? Math.round(rawIncomePayday)
         : DEFAULT_INCOME_PAYDAY;
-    const trimmedFirstName = (profileDraft.firstName || "").trim();
-    const trimmedLastName = (profileDraft.lastName || "").trim();
+    const trimmedFirstName = (scopedProfileDraft.firstName || "").trim();
+    const trimmedLastName = (scopedProfileDraft.lastName || "").trim();
     const combinedName = `${trimmedFirstName} ${trimmedLastName}`.trim();
     const displayName = combinedName || "";
     const nextCelebratedProfile = hasMetTarget
       ? updateGoalCelebrationInProfile(
-          profileDraft,
+          scopedProfileDraft,
           activeEntry?.id,
-          isGoalCelebratedInProfile(profileDraft, activeEntry?.id)
+          isGoalCelebratedInProfile(scopedProfileDraft, activeEntry?.id)
         )
-      : updateGoalCelebrationInProfile(profileDraft, activeEntry?.id, false);
+      : updateGoalCelebrationInProfile(scopedProfileDraft, activeEntry?.id, false);
     const nextProfile = {
       ...nextCelebratedProfile,
       name: displayName,
@@ -85282,7 +86653,10 @@ useEffect(() => {
     (field, value) => setProfileDraft((prev) => ({ ...prev, [field]: value })),
     []
   );
-  const handleProfileEditPress = useCallback(() => startProfileEdit(), [startProfileEdit]);
+  const handleProfileEditPress = useCallback(
+    (mode = "profile") => startProfileEdit(mode),
+    [startProfileEdit]
+  );
   const handleProgressCreateGoal = useCallback(
     () => openNewGoalModal(false, "progress_goal_add"),
     [openNewGoalModal]
@@ -85374,7 +86748,6 @@ useEffect(() => {
       premiumPaywallDismissible: premiumPaywallState.dismissible,
       startupHardLockPendingBeforePaywall,
       breakdownVisible,
-      reportsModalVisible,
       incomeEntryModalVisible,
       dailySummaryVisible,
       dailyRewardModalVisible,
@@ -85430,7 +86803,6 @@ useEffect(() => {
     premiumPaywallState.visible,
     pushDayThreePromptVisible,
     ratingPromptVisible,
-    reportsModalVisible,
     saveSpamPrompt.visible,
     showImageSourceSheet,
     skinPickerVisible,
@@ -85939,6 +87311,13 @@ useEffect(() => {
             onFieldChange={handleProfileFieldChange}
             onEditPress={handleProfileEditPress}
             onReportsPress={handleReportsPress}
+            reports={reportsSnapshot}
+            reportsActiveTab={reportsTab}
+            onReportsTabChange={handleReportsTabChange}
+            onReportsPrimaryAction={handleReportPrimaryAction}
+            onReportsCreateGoal={handleReportCreateGoal}
+            onReportsPremiumPress={handleReportsPremiumPress}
+            reportsOpenRequest={profileReportsOpenRequest}
             reportsBadgeVisible={reportsBadgeVisible}
             reportsLocked={!reportsUnlocked}
             reportsPreparing={reportsPreparing}
@@ -86419,18 +87798,6 @@ useEffect(() => {
                 language={language}
                 onPress={openBugReport}
               />
-          <ReportsModal
-            visible={!startupHardLockPendingBeforePaywall && reportsModalVisible}
-            reports={reportsSnapshot}
-            activeTab={reportsTab}
-            onTabChange={handleReportsTabChange}
-            onClose={closeReportsModal}
-            t={t}
-            colors={colors}
-            currency={profile.currency || DEFAULT_PROFILE.currency}
-            language={language}
-            isPremiumUser={premiumState.isPremium}
-          />
           <BugReportModal
             visible={!startupHardLockPendingBeforePaywall && bugReportVisible}
             colors={colors}
@@ -87626,7 +88993,7 @@ useEffect(() => {
                       ]}
                     >
                       <Image
-                        source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                        source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
                         style={styles.coinValueHeroCoin}
                         resizeMode="contain"
                         accessible={false}
@@ -87652,7 +89019,7 @@ useEffect(() => {
                     ]}
                   >
                     <Image
-                      source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                      source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
                       style={styles.coinValueEarnCoin}
                       resizeMode="contain"
                       accessible={false}
@@ -87665,6 +89032,58 @@ useEffect(() => {
                         {t("coinValueEarnBody")}
                       </Text>
                     </View>
+                  </View>
+
+                  <Text style={[styles.coinValueUseTitle, { color: colors.text }]}>
+                    {t("coinValueColorsTitle")}
+                  </Text>
+                  <Text style={[styles.coinValueColorsBody, { color: colors.muted }]}>
+                    {t("coinValueColorsBody")}
+                  </Text>
+                  <View style={[styles.coinValueTierList, { borderColor: colors.border }]}>
+                    {HEALTH_COIN_TIERS.map((tier, index) => {
+                      const colorLabelKey = COIN_VALUE_COLOR_LABEL_KEYS[tier.id];
+                      const denominationLabel =
+                        tier.id === "green"
+                          ? t("coinValueBaseUnitLabel")
+                          : t("coinValueDenominationLabel", {
+                              value: formatSaveCountValue(tier.value, language),
+                            });
+                      return (
+                        <React.Fragment key={tier.id}>
+                          <View
+                            style={[
+                              styles.coinValueTierRow,
+                              tier.id === "green" && {
+                                backgroundColor:
+                                  colors.primarySurface || colors.surfaceMuted,
+                              },
+                            ]}
+                          >
+                            <Image
+                              source={tier.asset}
+                              style={styles.coinValueTierCoin}
+                              resizeMode="contain"
+                              accessible={false}
+                            />
+                            <Text style={[styles.coinValueTierName, { color: colors.text }]}>
+                              {t(colorLabelKey)}
+                            </Text>
+                            <Text style={[styles.coinValueTierValue, { color: colors.muted }]}>
+                              {denominationLabel}
+                            </Text>
+                          </View>
+                          {index < HEALTH_COIN_TIERS.length - 1 && (
+                            <View
+                              style={[
+                                styles.coinValueTierSeparator,
+                                { backgroundColor: colors.border },
+                              ]}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </View>
 
                   <Text style={[styles.coinValueUseTitle, { color: colors.text }]}>
@@ -87722,7 +89141,7 @@ useEffect(() => {
 
                   <View style={styles.coinValueBalanceHint}>
                     <Image
-                      source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                      source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
                       style={styles.coinValueBalanceHintCoin}
                       resizeMode="contain"
                       accessible={false}
@@ -88806,6 +90225,9 @@ useEffect(() => {
                   isProTheme={isProTheme}
                   proThemeAccentColor={proThemeAccentColor}
                   highlighted={fabTutorialVisible}
+                  androidBlurMode={
+                    Platform.OS === "android" && fabTutorialVisible ? "frosted" : "live"
+                  }
                 />
               </AnimatedTouchableOpacity>
             </View>
@@ -88815,6 +90237,7 @@ useEffect(() => {
         <CoinEntryModal
           visible={!startupHardLockPendingBeforePaywall && coinEntryVisible}
           presetAction={coinEntryPresetAction}
+          backdropSnapshotUri={coinEntryBackdropUri}
           colors={colors}
           t={t}
           currency={widgetCurrencyCode}
@@ -88936,6 +90359,28 @@ useEffect(() => {
                     fillRule="evenodd"
                   />
                 </Svg>
+                {Platform.OS === "android" && (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.fabTutorialFabPreview,
+                      {
+                        left: fabTutorialCutout.centerX - FAB_BUTTON_SIZE / 2,
+                        top: fabTutorialCutout.centerY - FAB_BUTTON_SIZE / 2,
+                      },
+                    ]}
+                  >
+                    <LiquidGlassFabOrb
+                      size={FAB_BUTTON_SIZE}
+                      icon={fabMainIcon}
+                      iconColor={isDarkTheme || isProTheme ? colors.text : "#000000"}
+                      isDarkTheme={isDarkTheme}
+                      isProTheme={isProTheme}
+                      proThemeAccentColor={proThemeAccentColor}
+                      androidBlurMode="frosted"
+                    />
+                  </View>
+                )}
                 <TouchableWithoutFeedback onPress={() => {}}>
                   <View style={styles.fabTutorialContent} pointerEvents="box-none">
                     <View
@@ -91473,49 +92918,24 @@ useEffect(() => {
           </Modal>
             )}
             {overlay?.type === "goal_complete" && (
-          <Modal visible transparent animationType="none" statusBarTranslucent>
+          <Modal
+            visible
+            transparent={false}
+            animationType="none"
+            statusBarTranslucent
+            navigationBarTranslucent
+            hardwareAccelerated
+            onShow={handleGoalCelebrationShown}
+            onRequestClose={() => handleGoalCelebrationClose("system_back")}
+          >
             <View style={styles.overlayFullScreen}>
-              <Pressable
-                style={StyleSheet.absoluteFillObject}
-                onPress={() => {
-                  const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
-                  dismissOverlay();
-                  if (rewardAmount > 0) {
-                    triggerOverlayState("health", {
-                      amount: rewardAmount,
-                      tierId: overlay.message?.rewardTierId || null,
-                      chestCount: 1,
-                      title: t("goalRewardChestTitle"),
-                      closedSubtitle: t("goalRewardChestClosed"),
-                      openedSubtitle: t("goalRewardChestOpened"),
-                      onRevealReward: null,
-                    });
-                  }
-                }}
+              <GoalCelebration
+                colors={colors}
+                theme={theme}
+                payload={overlay.message}
+                t={t}
+                onClose={handleGoalCelebrationClose}
               />
-              <View style={styles.overlayFullScreen} pointerEvents="box-none">
-                <GoalCelebration
-                  colors={colors}
-                  payload={overlay.message}
-                  t={t}
-                  mascotHappySource={tamagotchiAnimations.happy}
-                  onClose={() => {
-                    const rewardAmount = Math.max(0, Number(overlay.message?.rewardAmount) || 0);
-                    dismissOverlay();
-                    if (rewardAmount > 0) {
-                      triggerOverlayState("health", {
-                        amount: rewardAmount,
-                        tierId: overlay.message?.rewardTierId || null,
-                        chestCount: 1,
-                        title: t("goalRewardChestTitle"),
-                        closedSubtitle: t("goalRewardChestClosed"),
-                        openedSubtitle: t("goalRewardChestOpened"),
-                        onRevealReward: null,
-                      });
-                    }
-                  }}
-                />
-              </View>
             </View>
           </Modal>
             )}
@@ -93357,18 +94777,53 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 12,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   tycoonAutosaveHeader: {
-    paddingRight: 4,
+    gap: 2,
+  },
+  tycoonAutosaveHeaderRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  tycoonAutosaveHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+  },
+  tycoonAutosaveHeaderLater: {
+    minHeight: 44,
+    maxWidth: 118,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveHeaderLaterText: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
+    textAlign: "center",
+  },
+  tycoonAutosaveHeaderClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveHeaderCloseGlyph: {
+    ...createBodyText({ fontSize: 24, lineHeight: 26, fontWeight: "500" }),
   },
   tycoonAutosaveTitle: {
-    ...createBodyText({ fontSize: 23, lineHeight: 29, fontWeight: "900" }),
+    ...createBodyText({ fontSize: 21, lineHeight: 27, fontWeight: "900" }),
+    flex: 1,
+    minWidth: 0,
   },
   tycoonAutosaveSubtitle: {
-    ...createSecondaryText({ fontSize: 14, lineHeight: 20, fontWeight: "600" }),
-    marginTop: 6,
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "600" }),
   },
   tycoonAutosaveReview: {
     borderRadius: 16,
@@ -93385,21 +94840,29 @@ const styles = StyleSheet.create({
   },
   tycoonAutosaveTotals: {
     flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
+    gap: 18,
+    marginTop: 12,
+    paddingVertical: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(127,127,127,0.24)",
   },
-  tycoonAutosaveTotalPill: {
+  tycoonAutosaveTotalItem: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    justifyContent: "center",
+    minWidth: 0,
+    minHeight: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  tycoonAutosaveTotalDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
   },
   tycoonAutosaveTotalText: {
     ...createCtaText({ fontSize: 12 }),
-    textAlign: "center",
+    flexShrink: 1,
   },
   tycoonAutosaveListHeader: {
     marginTop: 16,
@@ -93412,21 +94875,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   tycoonAutosaveList: {
-    marginTop: 8,
-    maxHeight: 360,
+    marginTop: 10,
+    maxHeight: 470,
     flexShrink: 1,
   },
   tycoonAutosaveListContent: {
-    gap: 10,
-    paddingBottom: 4,
+    gap: 8,
+    paddingBottom: 6,
   },
   tycoonAutosaveItem: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
   },
   tycoonAutosaveItemExpanded: {
-    paddingBottom: 10,
+    paddingBottom: 12,
   },
   tycoonAutosaveItemMain: {
     minHeight: 48,
@@ -93435,9 +94899,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tycoonAutosaveItemIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -93452,8 +94916,18 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
   },
   tycoonAutosaveItemMeta: {
-    ...createSecondaryText({ fontSize: 13, lineHeight: 17, fontWeight: "700" }),
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "600" }),
     marginTop: 2,
+  },
+  tycoonAutosaveExcludeCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tycoonAutosaveExcludeCompactGlyph: {
+    ...createBodyText({ fontSize: 22, lineHeight: 24, fontWeight: "600" }),
   },
   tycoonAutosaveAmountDisclosure: {
     minHeight: 36,
@@ -93470,11 +94944,51 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tycoonAutosaveDecisionBlock: {
-    marginTop: 10,
+    minHeight: 48,
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   tycoonAutosaveDecisionLabel: {
     ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
-    marginBottom: 6,
+  },
+  tycoonAutosaveManualToggle: {
+    minHeight: 44,
+    flex: 1,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  tycoonAutosaveManualToggleText: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 16, fontWeight: "700" }),
+    textDecorationLine: "underline",
+  },
+  tycoonAutosaveDecisionSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 0,
+  },
+  tycoonAutosaveDecisionCopy: {
+    alignItems: "flex-end",
+  },
+  tycoonAutosaveDecisionSwitch: {
+    width: 64,
+    height: 38,
+    borderRadius: 19,
+    padding: 4,
+    justifyContent: "center",
+  },
+  tycoonAutosaveDecisionSwitchThumb: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    shadowColor: "#000000",
+    shadowOpacity: 0.17,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   tycoonAutosaveDecisionControl: {
     minHeight: Platform.OS === "ios" ? 50 : 54,
@@ -93505,22 +95019,21 @@ const styles = StyleSheet.create({
     ...createCtaText({ fontSize: 12 }),
   },
   tycoonAutosaveAmountPanel: {
-    marginTop: 10,
-    paddingHorizontal: 4,
-    paddingVertical: 6,
+    marginTop: 8,
+    gap: 4,
   },
   tycoonAutosaveAmountHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
   },
   tycoonAutosaveAmountLabel: {
     ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "700" }),
     marginBottom: 1,
   },
   tycoonAutosaveAmountValue: {
-    ...createBodyText({ fontSize: 20, lineHeight: 24, fontWeight: "900" }),
+    ...createBodyText({ fontSize: 16, lineHeight: 20, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
   },
   tycoonAutosaveAmountLimit: {
     ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "700" }),
@@ -93528,11 +95041,11 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   tycoonAutosaveAmountTrackWrap: {
-    height: 28,
+    height: 34,
     justifyContent: "center",
   },
   tycoonAutosaveAmountTrack: {
-    height: 8,
+    height: 7,
     borderRadius: 999,
     overflow: "hidden",
   },
@@ -93555,15 +95068,24 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  tycoonAutosaveExclude: {
-    minHeight: Platform.OS === "ios" ? 44 : 48,
-    marginTop: 4,
+  tycoonAutosaveManualField: {
+    minHeight: 48,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 8,
   },
-  tycoonAutosaveExcludeText: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
-    textAlign: "center",
+  tycoonAutosaveManualCurrency: {
+    ...createBodyText({ fontSize: 17, lineHeight: 21, fontWeight: "800" }),
+  },
+  tycoonAutosaveManualInput: {
+    flex: 1,
+    minWidth: 0,
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    ...createBodyText({ fontSize: 17, lineHeight: 21, fontWeight: "800" }),
+    fontVariant: ["tabular-nums"],
   },
   tycoonAutosaveConfirm: {
     minHeight: 52,
@@ -93572,7 +95094,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    marginTop: 10,
   },
   tycoonAutosaveConfirmText: {
     ...createCtaText({ fontSize: 14 }),
@@ -107210,10 +108732,18 @@ const styles = StyleSheet.create({
   profileSectionTabs: {
     marginTop: 0,
     marginBottom: UI_SPACING.sm,
+    minHeight: 66,
   },
   profileSectionTab: {
-    minHeight: UI_TOUCH_TARGET.current,
+    minHeight: 62,
     paddingHorizontal: UI_SPACING.xxs,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  profileSectionTabText: {
+    fontSize: 10,
+    lineHeight: 13,
+    textAlign: "center",
   },
   profileSectionTabsRtl: {
     flexDirection: "row-reverse",
@@ -107738,20 +109268,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
   },
+  profileReportsOverviewCard: {
+    alignSelf: "stretch",
+    minHeight: 148,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+  },
   profileActionPremiumLocked: {
-    borderWidth: 1.2,
-    paddingHorizontal: 14,
-    ...Platform.select({
-      android: {
-        elevation: 0,
-      },
-      default: {
-        shadowColor: "#4353FF",
-        shadowOpacity: 0.14,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
-      },
-    }),
+    borderWidth: StyleSheet.hairlineWidth,
   },
   profileActionRow: {
     flexDirection: "row",
@@ -107783,43 +109308,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   profileReportsPreview: {
-    alignSelf: "stretch",
-    marginTop: 8,
-    paddingHorizontal: 4,
-    paddingTop: 2,
-    gap: 6,
-  },
-  profileReportsPreviewTitle: {
-    ...createBodyText({ fontSize: 12, fontWeight: "800", textAlign: "center" }),
-    lineHeight: 16,
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   profileReportsPreviewBody: {
-    ...createSecondaryText({ fontSize: 11, lineHeight: 15, textAlign: "center" }),
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17, fontWeight: "600" }),
+    flex: 1,
   },
   profileReportsPreviewSignal: {
-    alignSelf: "stretch",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: 2,
-    paddingTop: 7,
-    flexDirection: "row",
-    alignItems: "baseline",
+    width: 72,
+    minHeight: 68,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: "center",
-    gap: 5,
+    alignItems: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 8,
   },
   profileReportsPreviewSignalValue: {
-    ...createBodyText({ fontSize: 18, lineHeight: 22, fontWeight: "900" }),
+    ...createBodyText({ fontSize: 23, lineHeight: 27, fontWeight: "900", textAlign: "center" }),
+    fontVariant: ["tabular-nums"],
   },
   profileReportsPreviewSignalLabel: {
-    ...createSecondaryText({ fontSize: 10, lineHeight: 14, fontWeight: "700" }),
-  },
-  profileReportsPreviewLines: {
-    gap: 5,
-    alignItems: "center",
-    marginTop: 2,
-  },
-  profileReportsPreviewLine: {
-    height: 6,
-    borderRadius: 999,
+    ...createSecondaryText({ fontSize: 9, lineHeight: 11, fontWeight: "700", textAlign: "center" }),
   },
   reportsBadgeChip: {
     borderRadius: 999,
@@ -108616,8 +110129,16 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   profileInputField: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     minWidth: 0,
+  },
+  profileInputFieldStacked: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
+    width: "100%",
   },
   profileInputLabel: {
     ...createSecondaryText({ fontSize: 11, lineHeight: 14 }),
@@ -108656,8 +110177,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   profileInputHalf: {
-    flex: 1,
-    width: "auto",
+    width: "100%",
   },
   profileHintText: {
     fontSize: 14,
@@ -108674,12 +110194,14 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: "row",
+    alignItems: "flex-end",
     gap: 10,
     width: "100%",
   },
   inputRowStacked: {
     flexDirection: "column",
-    gap: 2,
+    alignItems: "stretch",
+    gap: 12,
   },
   settingsCard: {
     borderRadius: 16,
@@ -109105,151 +110627,481 @@ const styles = StyleSheet.create({
   historyItemMeta: {
     ...createSecondaryText({ marginTop: 4 }),
   },
-  reportsModalRoot: {
-    flex: 1,
-    justifyContent: "center",
+  profileReportsPane: {
+    width: "100%",
+    paddingBottom: 12,
   },
-  reportsBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  reportsModalWrap: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  reportsModalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    maxHeight: IS_SHORT_DEVICE ? "74%" : "82%",
-  },
-  reportsHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
+  profileReportsSection: {
+    width: "100%",
     gap: 12,
-    marginBottom: 12,
   },
-  reportsTitle: {
-    fontSize: 18,
-    fontWeight: "800",
+  profileReportsRtlRow: {
+    flexDirection: "row-reverse",
+  },
+  profileReportsRtlCopy: {
+    alignItems: "flex-end",
+  },
+  profileReportsRtlText: {
+    textAlign: "right",
   },
   reportsUpdated: {
-    ...createSecondaryText({ fontSize: 12, marginTop: 4 }),
-  },
-  reportsClose: {
-    padding: 4,
-  },
-  reportsCloseText: {
-    fontSize: 18,
-    fontWeight: "700",
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, marginTop: 2 }),
   },
   reportsTabsRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
+    gap: 2,
+    padding: 3,
+    borderRadius: 18,
   },
   reportsTab: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 16,
+    minHeight: UI_TOUCH_TARGET.current,
+    paddingHorizontal: 12,
+    borderRadius: 15,
     borderWidth: 1,
     alignItems: "center",
+    justifyContent: "center",
   },
   reportsTabText: {
-    fontSize: 13,
-    fontWeight: "600",
+    ...createCtaText({ fontSize: 14, lineHeight: 18, textAlign: "center" }),
   },
   reportsScopeNote: {
-    ...createSecondaryText({ fontSize: 12 }),
-    marginBottom: 12,
-  },
-  reportsList: {
-    flexGrow: 0,
-  },
-  reportsListContent: {
-    paddingBottom: 12,
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, textAlign: "center" }),
+    marginHorizontal: 8,
   },
   reportsEmpty: {
-    ...createBodyText({ textAlign: "center", marginVertical: 16 }),
+    ...createBodyText({ textAlign: "center", fontSize: 14, lineHeight: 20 }),
+    flexShrink: 1,
   },
-  reportCard: {
-    borderWidth: 1,
+  profileReportsEmptyCard: {
+    minHeight: 150,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
-    gap: 12,
+    padding: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
-  reportHeaderRow: {
+  profileReportsArchiveRow: {
+    minHeight: UI_TOUCH_TARGET.current,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileReportsArchiveButton: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileReportsArchiveCopy: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+  },
+  profileReportsArchiveLabel: {
+    ...createBodyText({ fontSize: 15, lineHeight: 19, fontWeight: "700", textAlign: "center" }),
+  },
+  profileReportsOutcomeCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: IS_SHORT_DEVICE ? 14 : 16,
+    paddingTop: IS_SHORT_DEVICE ? 14 : 16,
+    paddingBottom: 12,
+    gap: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+  profileReportsOutcomeHeader: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 12,
   },
-  reportTitle: {
-    fontSize: 16,
-    fontWeight: "700",
+  profileReportsOutcomeCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  profileReportsOutcomeLabel: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
+  },
+  profileReportsTrendLabel: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 16, fontWeight: "650" }),
+  },
+  profileReportsOutcomeValue: {
+    ...createBodyText({
+      fontSize: IS_SHORT_DEVICE ? 32 : 38,
+      lineHeight: IS_SHORT_DEVICE ? 38 : 44,
+      fontWeight: "900",
+      textAlign: "right",
+    }),
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -1,
+    maxWidth: "54%",
+  },
+  profileReportsTrendChart: {
+    width: "100%",
+    height: IS_SHORT_DEVICE ? 148 : 166,
+    overflow: "hidden",
+  },
+  profileReportsMetricsRow: {
+    minHeight: 76,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  profileReportsMetric: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 6,
+  },
+  profileReportsMetricDivider: {
+    width: StyleSheet.hairlineWidth,
+  },
+  profileReportsMetricLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "700", textAlign: "center" }),
+  },
+  profileReportsMetricValue: {
+    ...createBodyText({ fontSize: 19, lineHeight: 24, fontWeight: "900", textAlign: "center" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsInsightCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: IS_SHORT_DEVICE ? 14 : 16,
+    gap: 12,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 2,
+  },
+  profileReportsInsightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileReportsInsightIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  profileReportsInsightCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  profileReportsInsightLabel: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
     flex: 1,
   },
-  reportBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  profileReportsFocusBlock: {
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 5,
+  },
+  profileReportsFocusTitle: {
+    ...createBodyText({ fontSize: 22, lineHeight: 28, fontWeight: "900" }),
+    letterSpacing: -0.35,
+  },
+  profileReportsFocusMeta: {
+    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsFocusSummary: {
+    ...createBodyText({ fontSize: 15, lineHeight: 21, fontWeight: "650" }),
+    marginTop: 3,
+  },
+  profileReportsPrimaryAction: {
+    minHeight: 54,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 3,
+  },
+  profileReportsPrimaryActionText: {
+    ...createCtaText({ fontSize: 15, lineHeight: 20, textAlign: "center" }),
+  },
+  profileReportsDetailsToggle: {
+    minHeight: 50,
     borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
-  reportBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
+  profileReportsDetailsToggleText: {
+    ...createCtaText({ fontSize: 15, lineHeight: 20 }),
   },
-  reportStatsRow: {
+  profileReportsDetails: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 18,
+    gap: 22,
+  },
+  profileReportsSnapshotRow: {
     flexDirection: "row",
     gap: 8,
   },
-  reportStatPill: {
+  profileReportsSnapshotMetric: {
     flex: 1,
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    gap: 6,
+    minWidth: 0,
+    minHeight: 82,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
   },
-  reportStatLabel: {
-    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+  profileReportsSnapshotValue: {
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "900", textAlign: "center" }),
+    fontVariant: ["tabular-nums"],
   },
-  reportStatValue: {
-    fontSize: 16,
-    fontWeight: "700",
+  profileReportsSnapshotLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "700", textAlign: "center" }),
   },
-  reportTopRow: {
+  profileReportsDriversRow: {
     flexDirection: "row",
     gap: 10,
   },
-  reportTopItem: {
+  profileReportsDriverCard: {
     flex: 1,
-    gap: 4,
+    minWidth: 0,
+    minHeight: 118,
+    borderRadius: 16,
+    padding: 13,
+    gap: 5,
   },
-  reportTopLabel: {
-    ...createSecondaryText({ fontSize: 11 }),
+  profileReportsDriverLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 13, fontWeight: "800" }),
+    textTransform: "uppercase",
+    letterSpacing: 0.35,
   },
-  reportTopValue: {
-    ...createBodyText({ fontWeight: "600" }),
+  profileReportsDriverTitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
+    flex: 1,
   },
-  reportTopAmount: {
-    ...createSecondaryText({ fontSize: 12, fontWeight: "700" }),
+  profileReportsDriverAmount: {
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsInsightItem: {
+    minHeight: 62,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  profileReportsPlanItem: {
+    minHeight: 58,
+    borderRadius: 14,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  profileReportsItemNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  profileReportsItemNumberText: {
+    ...createCtaText({ fontSize: 12, lineHeight: 15, textAlign: "center" }),
+  },
+  profileReportsPlanText: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "700" }),
+    flex: 1,
+  },
+  profileReportsDetailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+  },
+  profileReportsDetailDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 6,
+    flexShrink: 0,
+  },
+  profileReportsSecondaryAction: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileReportsSecondaryActionText: {
+    ...createCtaText({ fontSize: 14, lineHeight: 19, textAlign: "center" }),
+  },
+  profileReportsLockedCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 18,
+    alignItems: "center",
+    gap: 10,
+  },
+  profileReportsLockedIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileReportsLockedTitle: {
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "900", textAlign: "center" }),
+  },
+  profileReportsLockedBody: {
+    ...createSecondaryText({ fontSize: 14, lineHeight: 20, textAlign: "center" }),
+  },
+  profileReportsLockedMetric: {
+    alignSelf: "stretch",
+    minHeight: 72,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  profileReportsLockedMetricValue: {
+    ...createBodyText({ fontSize: 27, lineHeight: 32, fontWeight: "900", textAlign: "center" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsLockedMetricLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700", textAlign: "center" }),
+  },
+  profileReportsOverviewSummary: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "stretch",
+    minHeight: 58,
+  },
+  profileReportsOverviewBalance: {
+    flex: 1.16,
+    minWidth: 0,
+    justifyContent: "center",
+    paddingEnd: 12,
+  },
+  profileReportsOverviewBalanceValue: {
+    ...createBodyText({ fontSize: 25, lineHeight: 30, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsOverviewBalanceLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
+    marginBottom: 2,
+  },
+  profileReportsOverviewDivider: {
+    width: StyleSheet.hairlineWidth,
+    marginVertical: 2,
+    marginEnd: 12,
+  },
+  profileReportsOverviewMetricBlock: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+    paddingEnd: 8,
+  },
+  profileReportsOverviewMetricLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 3,
+  },
+  profileReportsOverviewMetricDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  profileReportsOverviewMetricLabel: {
+    ...createSecondaryText({ fontSize: 10, lineHeight: 14, fontWeight: "700" }),
+    flexShrink: 1,
+  },
+  profileReportsOverviewMetricValue: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "900" }),
+    fontVariant: ["tabular-nums"],
+  },
+  profileReportsOverviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  profileReportsOverviewHeading: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  profileReportsOverviewIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileReportsOverviewHeadingCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  profileReportsOverviewTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  profileReportsOverviewTitle: {
+    ...createBodyText({ fontSize: 17, lineHeight: 22, fontWeight: "900" }),
+    flexShrink: 1,
+  },
+  profileReportsOverviewPeriod: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "600" }),
+  },
+  profileReportsOverviewArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileReportsOverviewTextRtl: {
+    textAlign: "right",
   },
   reportSection: {
-    gap: 6,
+    gap: 10,
   },
   reportSectionTitle: {
-    fontSize: 13,
-    fontWeight: "700",
+    ...createBodyText({ fontSize: 18, lineHeight: 23, fontWeight: "800" }),
   },
   reportSectionList: {
-    gap: 4,
+    gap: 9,
   },
   reportLine: {
-    ...createSecondaryText({ fontSize: 12, lineHeight: 18 }),
+    ...createBodyText({ fontSize: 15, lineHeight: 21, fontWeight: "600" }),
+    flex: 1,
   },
   bugReportModalRoot: {
     flex: 1,
@@ -109964,6 +111816,13 @@ const styles = StyleSheet.create({
   fabTutorialOverlaySvg: {
     ...StyleSheet.absoluteFillObject,
   },
+  fabTutorialFabPreview: {
+    position: "absolute",
+    width: FAB_BUTTON_SIZE,
+    height: FAB_BUTTON_SIZE,
+    zIndex: 2,
+    elevation: 2,
+  },
   fabTutorialContent: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
@@ -110243,7 +112102,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     flexShrink: 0,
-    shadowColor: "#1F66B3",
+    shadowColor: "#178A50",
     shadowOpacity: 0.18,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 12,
@@ -110298,6 +112157,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     textAlign: "auto",
+  },
+  coinValueColorsBody: {
+    marginTop: -UI_SPACING.sm,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "auto",
+  },
+  coinValueTierList: {
+    borderRadius: UI_RADIUS.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  coinValueTierRow: {
+    minHeight: 54,
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.sm,
+  },
+  coinValueTierCoin: {
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+  },
+  coinValueTierName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+    textAlign: "auto",
+  },
+  coinValueTierValue: {
+    flexShrink: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+    textAlign: "auto",
+  },
+  coinValueTierSeparator: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: UI_SPACING.sm,
   },
   coinValueUseTitle: {
     marginTop: UI_SPACING.xs,
@@ -112099,7 +114002,7 @@ const styles = StyleSheet.create({
   },
   chestRewardCard: {
     width: "92%",
-    maxWidth: 390,
+    maxWidth: 350,
     borderRadius: 32,
     borderWidth: 1,
     overflow: "hidden",
@@ -112359,196 +114262,285 @@ const styles = StyleSheet.create({
   },
   goalCelebrateOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
+    overflow: "hidden",
   },
-  goalCelebrateBackdrop: {
+  goalCelebrateScroll: {
     ...StyleSheet.absoluteFillObject,
-  },
-  goalCelebrateCard: {
-    paddingVertical: 26,
-    paddingHorizontal: 22,
-    borderRadius: 34,
-    borderWidth: 2,
-    alignItems: "stretch",
-    width: OVERLAY_CARD_MAX_WIDTH,
-    maxWidth: OVERLAY_CARD_MAX_WIDTH,
-    maxHeight: SCREEN_HEIGHT * 0.78,
-    gap: 16,
+    zIndex: 3,
   },
   goalCelebrateContent: {
-    gap: 16,
-    paddingBottom: 4,
-  },
-  goalCelebrateHeader: {
-    flexDirection: "row",
+    flexGrow: 1,
     alignItems: "center",
-    gap: 16,
-  },
-  goalCelebrateCat: {
-    width: 96,
-    height: 96,
-  },
-  goalCelebrateHeaderText: {
-    flex: 1,
-    gap: 6,
-  },
-  goalCelebrateTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-  },
-  goalCelebrateSubtitle: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  goalCelebrateTarget: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  goalCelebrateBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  goalCelebrateBadgeText: {
-    ...createCtaText({ fontSize: 12 }),
-  },
-  goalCelebrateTotal: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingVertical: 14,
     paddingHorizontal: 16,
-    gap: 6,
   },
-  goalCelebrateTotalLabel: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+  goalCelebrateInner: {
+    width: "100%",
+    alignItems: "center",
   },
-  goalCelebrateTotalValue: {
-    ...TYPOGRAPHY.display,
-    fontSize: 28,
+  goalCelebrateFullHero: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
+    overflow: "hidden",
   },
-  goalCelebrateTotalSub: {
-    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+  goalCelebrateSharedArt: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  goalCelebratePraise: {
-    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
-  },
-  goalCelebrateRewardRow: {
-    marginTop: 6,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    flexDirection: "row",
+  goalCelebrateFullCopy: {
+    position: "absolute",
+    left: 20,
+    right: 20,
     alignItems: "center",
     gap: 8,
   },
-  goalCelebrateRewardCoin: {
-    width: 20,
-    height: 20,
-    resizeMode: "contain",
+  goalCelebrateFullTitle: {
+    ...TYPOGRAPHY.display,
+    width: "100%",
+    maxWidth: 350,
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: "900",
+    textAlign: "center",
+    letterSpacing: -0.6,
   },
-  goalCelebrateRewardText: {
-    ...createBodyText({ fontSize: 12, fontWeight: "700" }),
+  goalCelebrateFullSubtitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 21, fontWeight: "400" }),
+    textAlign: "center",
+    maxWidth: 360,
+    marginTop: 2,
+  },
+  goalCelebrateFullAmount: {
+    alignItems: "center",
+    marginTop: 26,
+    gap: 0,
+  },
+  goalCelebrateFullTotalLabel: {
+    ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "600" }),
+  },
+  goalCelebrateFullTotalValue: {
+    ...TYPOGRAPHY.display,
+    maxWidth: 390,
+    fontSize: 54,
+    lineHeight: 62,
+    fontWeight: "900",
+    letterSpacing: -1,
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
+  goalCelebrateCompactHeader: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingRight: 8,
+  },
+  goalCelebrateCompactHeaderRtl: {
+    flexDirection: "row-reverse",
+    paddingRight: 0,
+    paddingLeft: 8,
+  },
+  goalCelebrateTextRtl: {
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  goalCelebrateCompactCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  goalCelebrateCompactTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    width: "100%",
+    fontSize: 27,
+    lineHeight: 32,
+    fontWeight: "900",
+    letterSpacing: -0.45,
+  },
+  goalCelebrateCompactAmount: {
+    gap: 0,
+  },
+  goalCelebrateCompactTotalLabel: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
+  },
+  goalCelebrateCompactTotalValue: {
+    ...TYPOGRAPHY.display,
+    width: "100%",
+    fontSize: 40,
+    lineHeight: 45,
+    fontWeight: "900",
+    letterSpacing: -0.6,
+    fontVariant: ["tabular-nums"],
+  },
+  goalCelebratePraise: {
+    ...createBodyText({ fontSize: 15, lineHeight: 21, fontWeight: "400" }),
+    marginTop: 6,
+  },
+  goalCelebrateStory: {
+    width: "100%",
+    marginTop: 12,
+    borderRadius: 16,
+    padding: 16,
+  },
+  goalCelebrateStoryTitle: {
+    ...TYPOGRAPHY.blockTitle,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.3,
   },
   goalCelebrateStatsRow: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "center",
+    marginTop: 20,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  goalCelebrateStatCard: {
+  goalCelebrateStatBlock: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    minHeight: 58,
+    paddingHorizontal: 8,
     gap: 4,
   },
+  goalCelebrateStatsDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 46,
+  },
   goalCelebrateStatLabel: {
-    ...createCtaText({ fontSize: 10, textTransform: "uppercase" }),
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "600" }),
   },
   goalCelebrateStatValue: {
-    ...createBodyText({ fontSize: 18, fontWeight: "800" }),
+    ...TYPOGRAPHY.display,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
   },
   goalCelebrateWeek: {
-    gap: 8,
+    minHeight: 132,
+    paddingVertical: 20,
+    gap: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   goalCelebrateSectionLabel: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "800" }),
+  },
+  goalCelebrateWeekHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  goalCelebrateWeekTotal: {
+    ...createBodyText({ fontSize: 12, lineHeight: 17, fontWeight: "500" }),
+    flexShrink: 1,
+    textAlign: "right",
   },
   goalCelebrateWeekBars: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 6,
+    gap: 8,
+    minHeight: 66,
   },
   goalCelebrateWeekBarWrap: {
     flex: 1,
     alignItems: "center",
+    justifyContent: "space-between",
+    height: 66,
+    gap: 5,
+  },
+  goalCelebrateWeekTrack: {
+    width: "68%",
+    maxWidth: 24,
+    height: 48,
+    borderRadius: 5,
+    overflow: "hidden",
+    justifyContent: "flex-end",
   },
   goalCelebrateWeekBar: {
-    width: 10,
-    borderRadius: 6,
+    width: "100%",
+    borderRadius: 5,
+  },
+  goalCelebrateWeekDay: {
+    ...createBodyText({ fontSize: 10, lineHeight: 12, fontWeight: "600" }),
   },
   goalCelebrateInsights: {
-    gap: 12,
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   goalCelebrateCta: {
-    borderRadius: 18,
-    paddingVertical: 12,
+    minHeight: 52,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 20,
   },
   goalCelebrateCtaText: {
-    ...createCtaText({ fontSize: 14 }),
+    ...createCtaText({ fontSize: 16 }),
   },
   goalCelebrateInsightCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  goalCelebrateInsightHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  goalCelebrateInsightCardLast: {
+    paddingTop: 8,
+    paddingBottom: 16,
   },
-  goalCelebrateInsightIcon: {
-    fontSize: 18,
+  goalCelebrateInsightCopy: {
+    flex: 1,
+    gap: 4,
   },
   goalCelebrateInsightTitle: {
-    ...createBodyText({ fontSize: 15, fontWeight: "800" }),
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
   },
   goalCelebrateInsightBody: {
-    ...createBodyText({ fontSize: 13, lineHeight: 19 }),
+    ...createBodyText({ fontSize: 13, lineHeight: 19, fontWeight: "500" }),
   },
   goalCelebrateBreakdown: {
+    paddingVertical: 20,
     gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   goalCelebrateBreakdownList: {
-    gap: 10,
+    gap: 0,
   },
   goalCelebrateBreakdownRow: {
-    borderRadius: 14,
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(0,0,0,0.04)",
   },
   goalCelebrateBreakdownTitle: {
     ...createBodyText({ fontSize: 14, fontWeight: "700" }),
+    flex: 1,
   },
   goalCelebrateBreakdownMeta: {
-    ...createBodyText({ fontSize: 12, lineHeight: 18 }),
+    ...createBodyText({ fontSize: 12, lineHeight: 18, fontWeight: "600" }),
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
   },
-  heartRain: {
+  goalCelebrateConfettiLeft: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 6,
   },
-  heartRainDrop: {
+  goalCelebrateConfettiRight: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 6,
+  },
+  goalCelebrateClose: {
     position: "absolute",
-    top: -40,
-    textShadowColor: "rgba(0,0,0,0.25)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
+    zIndex: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rewardHeart: {
     position: "absolute",
@@ -116560,6 +118552,7 @@ function ImpulseCategorySelector({
 function CoinEntryModal({
   visible,
   presetAction = null,
+  backdropSnapshotUri = null,
   colors,
   t,
   currency,
@@ -116580,6 +118573,10 @@ function CoinEntryModal({
   const { reduceMotion, reduceTransparency } = useMotionPreferences();
   const viewportWidth = Math.max(1, Number(windowWidth) || SCREEN_WIDTH);
   const viewportHeight = Math.max(1, Number(windowHeight) || SCREEN_HEIGHT);
+  const manualBackdropStyle =
+    Platform.OS === "android"
+      ? { backgroundColor: "transparent" }
+      : null;
   const systemBottomInset = resolveAndroidSystemBottomInset({
     safeBottom: safeInsets.bottom,
     viewportHeight,
@@ -116638,6 +118635,7 @@ function CoinEntryModal({
   const [manualError, setManualError] = useState("");
   const [manualExactLocal, setManualExactLocal] = useState(null);
   const [coinCutoutFrame, setCoinCutoutFrame] = useState(null);
+  const [coinBackdropFrame, setCoinBackdropFrame] = useState(null);
   const [coinPresentationReady, setCoinPresentationReady] = useState(true);
   const [flightCoinAsset, setFlightCoinAsset] = useState(HEALTH_COIN_TIERS[0]?.asset || null);
   const [flightDirection, setFlightDirection] = useState("save");
@@ -116680,6 +118678,21 @@ function CoinEntryModal({
   const touchStartRef = useRef(0);
   const manualVisible = manualMode !== null;
   const manualIsAmountMode = manualMode === "amount";
+  const measureAndroidCoinBackdrop = useCallback(() => {
+    if (Platform.OS !== "android" || !backdropSnapshotUri || reduceTransparency) return;
+    const coinNode = coinCircleRef.current;
+    if (!coinNode?.measureInWindow) return;
+    coinNode.measureInWindow((windowX, windowY, width, height) => {
+      if (
+        ![windowX, windowY, width, height].every(Number.isFinite) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        return;
+      }
+      setCoinBackdropFrame({ windowX, windowY, width, height });
+    });
+  }, [backdropSnapshotUri, reduceTransparency]);
   const updateSliderValue = useCallback(
     (value, { force = false, manualOverride = false } = {}) => {
       if (!manualOverride) {
@@ -116726,6 +118739,7 @@ function CoinEntryModal({
     if (reduceMotion) {
       revealAnim.setValue(1);
       cardAnim.setValue(1);
+      requestAnimationFrame(measureAndroidCoinBackdrop);
       return;
     }
     Animated.parallel([
@@ -116741,8 +118755,19 @@ function CoinEntryModal({
         easing: Easing.bezier(0.32, 0.72, 0, 1),
         useNativeDriver: true,
       }),
-    ]).start();
-  }, [cardAnim, coinPresentationReady, reduceMotion, revealAnim, visible]);
+    ]).start(({ finished }) => {
+      if (finished) {
+        requestAnimationFrame(measureAndroidCoinBackdrop);
+      }
+    });
+  }, [
+    cardAnim,
+    coinPresentationReady,
+    measureAndroidCoinBackdrop,
+    reduceMotion,
+    revealAnim,
+    visible,
+  ]);
   useEffect(() => {
     return () => {
       if (sliderRafRef.current) {
@@ -116803,6 +118828,7 @@ function CoinEntryModal({
     cardExitAnim.setValue(0);
     coinPresentationReadyRef.current = !prepareIosCutout;
     setCoinCutoutFrame(null);
+    setCoinBackdropFrame(null);
     setCoinPresentationReady(!prepareIosCutout);
     closeTintOpacity.setValue(0);
     flightOpacity.setValue(0);
@@ -116928,14 +118954,27 @@ function CoinEntryModal({
   const coinFallbackColor = isDarkTheme
     ? "rgba(9,15,28,0.3)"
     : isProTheme
-    ? colorWithAlpha(colors.primary, 0.07)
-    : "rgba(236,244,255,0.16)";
+    ? colorWithAlpha(colors.primary, 0.12)
+    : "rgba(215,228,248,0.3)";
   const coinSolidFallback = colors.surfaceMuted || colors.card;
   const coinBorderColor = isDarkTheme
-    ? "rgba(255,255,255,0.22)"
+    ? "rgba(255,255,255,0.34)"
     : isProTheme
-    ? colorWithAlpha(colors.primary, 0.24)
-    : "rgba(255,255,255,0.78)";
+    ? colorWithAlpha(colors.primary, 0.38)
+    : "rgba(65,82,118,0.3)";
+  const coinInnerHighlightColor = isDarkTheme
+    ? "rgba(255,255,255,0.2)"
+    : "rgba(255,255,255,0.72)";
+  const coinGlassOverlayColor = isDarkTheme
+    ? "rgba(8,15,30,0.34)"
+    : isProTheme
+    ? colorWithAlpha(colors.primary, 0.1)
+    : "rgba(235,243,255,0.22)";
+  const hasAndroidBackdropSnapshot =
+    Platform.OS === "android" &&
+    !reduceTransparency &&
+    !!backdropSnapshotUri &&
+    !!coinBackdropFrame;
   const sheetMaxHeight = Math.max(360, viewportHeight - Math.max(safeInsets.top, 8) - 8);
   const sheetBottomPadding = Math.max(UI_SPACING.sm, systemBottomInset + UI_SPACING.xs);
   const errorColor = colors.error || SPEND_ACTION_COLOR;
@@ -116949,7 +118988,29 @@ function CoinEntryModal({
     ? colors.onPrimary || resolveForegroundForColor(colors.primary)
     : colors.background;
   const sheetSurfaceColor = colors.surfaceElevated || colors.card;
+  // Android transparent native-modal cutouts can expose a stale hardware buffer.
+  // Keep the sheet continuous there and render the glass coin as exact SVG geometry.
   const useCoinSurfaceCutout = Platform.OS === "ios" && !reduceTransparency;
+  const coinInnerInset = (coinSize - coinInnerSize) / 2;
+  const coinFillTop = coinInnerInset + coinInnerSize - sliderFillHeight;
+  const coinFillRadius = coinInnerSize / 2;
+  const coinFillCenter = coinSize / 2;
+  const coinFillChordOffset = Math.max(
+    -coinFillRadius,
+    Math.min(coinFillRadius, coinFillTop - coinFillCenter)
+  );
+  const coinFillChordHalfWidth = Math.sqrt(
+    Math.max(0, coinFillRadius ** 2 - coinFillChordOffset ** 2)
+  );
+  const androidCoinFillPath = [
+    `M ${coinFillCenter - coinFillChordHalfWidth} ${coinFillTop}`,
+    `L ${coinFillCenter + coinFillChordHalfWidth} ${coinFillTop}`,
+    `A ${coinFillRadius} ${coinFillRadius} 0 ${coinFillTop < coinFillCenter ? 1 : 0} 1 ${
+      coinFillCenter - coinFillChordHalfWidth
+    } ${coinFillTop}`,
+    "Z",
+  ].join(" ");
+  const androidCoinFillIsFull = sliderFillHeight >= coinInnerSize;
   const coinTranslateX = directionAnim.interpolate({
     inputRange: [-3, -1, 0, 1, 3],
     outputRange: [-viewportWidth, -48, 0, 48, viewportWidth],
@@ -117567,11 +119628,13 @@ function CoinEntryModal({
         <View style={styles.coinEntrySheetLayer} pointerEvents="box-none">
           <Animated.View
             ref={coinEntryCardRef}
+            collapsable={false}
             style={[
               styles.coinEntryCard,
               {
                 maxHeight: sheetMaxHeight,
-                backgroundColor: useCoinSurfaceCutout ? "transparent" : sheetSurfaceColor,
+                backgroundColor:
+                  useCoinSurfaceCutout && coinCutoutFrame ? "transparent" : sheetSurfaceColor,
                 borderBottomLeftRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
                 borderBottomRightRadius: viewportWidth > 540 ? UI_RADIUS.sheet : 0,
                 transform: [{ translateY: cardTranslateY }],
@@ -117668,6 +119731,7 @@ function CoinEntryModal({
               >
                 <Animated.View
                   ref={coinCircleRef}
+                  collapsable={false}
                   style={[
                     styles.coinGlassShadow,
                     {
@@ -117676,6 +119740,7 @@ function CoinEntryModal({
                       borderRadius: coinSize / 2,
                       shadowColor: isDarkTheme ? "#000000" : "#071225",
                       shadowOpacity: isDarkTheme ? 0.42 : 0.28,
+                      elevation: Platform.OS === "android" ? 0 : 9,
                       transform: [{ translateX: coinTranslateX }],
                     },
                   ]}
@@ -117706,43 +119771,107 @@ function CoinEntryModal({
                         height: coinSize,
                         borderRadius: coinSize / 2,
                         borderColor: coinBorderColor,
+                        borderWidth:
+                          Platform.OS === "android" ? 0 : StyleSheet.hairlineWidth,
+                        overflow: "hidden",
                       },
                     ]}
                   >
-                    <PlatformGlassBackground
-                      style={StyleSheet.absoluteFillObject}
-                      isDarkTheme={isDarkTheme}
-                      glassEffectStyle="regular"
-                      fallbackColor={coinFallbackColor}
-                      solidFallbackColor={coinSolidFallback}
-                      borderColor="transparent"
-                      androidIntensity={36}
-                      iosFallbackIntensity={36}
-                      nativeEffectOpacity={coinIosNativeEffectOpacity}
-                    />
-                    <View
-                      pointerEvents="none"
-                      style={[
-                        styles.coinFillTrack,
-                        {
-                          width: coinInnerSize,
-                          height: coinInnerSize,
-                          borderRadius: coinInnerSize / 2,
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.coinFill,
-                          {
-                            height: sliderFillHeight,
-                            backgroundColor: coinFillColor,
-                            borderTopLeftRadius: coinInnerSize / 2,
-                            borderTopRightRadius: coinInnerSize / 2,
-                          },
-                        ]}
-                      />
-                    </View>
+                    {Platform.OS === "android" ? (
+                      <>
+                        {hasAndroidBackdropSnapshot ? (
+                          <Image
+                            pointerEvents="none"
+                            source={{ uri: backdropSnapshotUri }}
+                            resizeMode="stretch"
+                            blurRadius={18}
+                            fadeDuration={0}
+                            style={{
+                              position: "absolute",
+                              width: viewportWidth,
+                              height: viewportHeight,
+                              left: -coinBackdropFrame.windowX,
+                              top: -coinBackdropFrame.windowY,
+                            }}
+                          />
+                        ) : null}
+                        <Svg
+                          pointerEvents="none"
+                          width={coinSize}
+                          height={coinSize}
+                          style={StyleSheet.absoluteFillObject}
+                        >
+                          <SvgCircle
+                            cx={coinSize / 2}
+                            cy={coinSize / 2}
+                            r={coinSize / 2 - 0.5}
+                            fill={
+                              reduceTransparency
+                                ? coinSolidFallback
+                                : hasAndroidBackdropSnapshot
+                                ? coinGlassOverlayColor
+                                : coinFallbackColor
+                            }
+                            stroke={coinBorderColor}
+                            strokeWidth={1}
+                          />
+                          <SvgCircle
+                            cx={coinSize / 2}
+                            cy={coinSize / 2}
+                            r={coinSize / 2 - 2}
+                            fill="transparent"
+                            stroke={coinInnerHighlightColor}
+                            strokeWidth={StyleSheet.hairlineWidth}
+                          />
+                          {androidCoinFillIsFull ? (
+                            <SvgCircle
+                              cx={coinFillCenter}
+                              cy={coinFillCenter}
+                              r={coinFillRadius}
+                              fill={coinFillColor}
+                            />
+                          ) : (
+                            <SvgPath d={androidCoinFillPath} fill={coinFillColor} />
+                          )}
+                        </Svg>
+                      </>
+                    ) : (
+                      <>
+                        <PlatformGlassBackground
+                          style={StyleSheet.absoluteFillObject}
+                          isDarkTheme={isDarkTheme}
+                          glassEffectStyle="regular"
+                          fallbackColor={coinFallbackColor}
+                          solidFallbackColor={coinSolidFallback}
+                          borderColor="transparent"
+                          iosFallbackIntensity={36}
+                          nativeEffectOpacity={coinIosNativeEffectOpacity}
+                        />
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.coinFillTrack,
+                            {
+                              width: coinInnerSize,
+                              height: coinInnerSize,
+                              borderRadius: coinInnerSize / 2,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.coinFill,
+                              {
+                                height: sliderFillHeight,
+                                backgroundColor: coinFillColor,
+                                borderTopLeftRadius: coinInnerSize / 2,
+                                borderTopRightRadius: coinInnerSize / 2,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </>
+                    )}
                     <Text
                       style={[
                         styles.coinCurrencySymbol,
@@ -117914,7 +120043,15 @@ function CoinEntryModal({
       {manualVisible && (
         <View style={[StyleSheet.absoluteFillObject, styles.coinEntryManualLayer]}>
           <TouchableWithoutFeedback onPress={() => dismissKeyboardOrRun(closeManual)}>
-            <View style={styles.coinEntryManualBackdrop}>
+            <View style={[styles.coinEntryManualBackdrop, manualBackdropStyle]}>
+              <AndroidManualAmountBackdropVisual
+                isDarkTheme={isDarkTheme}
+                reduceTransparency={reduceTransparency}
+                solidFallbackColor={resolveAndroidOpaqueLayerColor(
+                  "rgba(0,0,0,0.6)",
+                  colors.background
+                )}
+              />
               <KeyboardAvoidingView
                 style={styles.coinEntryManualKeyboardAvoider}
                 behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -121601,6 +123738,7 @@ const getSaveProgressCopy = (language) => {
     it: "Più vicino all'obiettivo",
     ar: "أقرب إلى الهدف",
     zh: "更接近目标",
+    ja: "目標に近づきました",
   };
   return map[normalized] || map[translationLanguage] || map.en;
 };
@@ -121618,6 +123756,7 @@ const getSaveCountdownTitle = (language) => {
     it: "Passi fino all'obiettivo",
     ar: "كم تبقّى للوصول إلى الهدف",
     zh: "距离目标还差多少",
+    ja: "目標まであとどれくらい",
   };
   return map[normalized] || map[translationLanguage] || map.en;
 };
@@ -121637,6 +123776,7 @@ const getSaveCountdownCopy = (language, count) => {
       it: "L'obiettivo è a portata!",
       ar: "الهدف أصبح قريباً!",
       zh: "目标触手可及！",
+      ja: "目標達成まであと少し！",
     };
     return doneMap[normalized] || doneMap[translationLanguage] || doneMap.en;
   }
@@ -121658,6 +123798,7 @@ const getSaveCountdownCopy = (language, count) => {
     it: `Ancora ${safeCount} azioni così fino all'obiettivo`,
     ar: `تبقّى ${safeCount} خطوات مماثلة للوصول إلى هدفك`,
     zh: `再完成 ${safeCount} 次类似行动即可到达目标`,
+    ja: `あと${safeCount}回、同じ選択をすると目標に届きます`,
   };
   return map[normalized] || map[translationLanguage] || map.en;
 };
@@ -123402,95 +125543,20 @@ const HealthCelebration = ({
   );
 };
 
-const HeartRain = ({ count = 26 }) => {
-  const hearts = useMemo(
-    () =>
-      Array.from({ length: count }).map((_, index) => ({
-        id: `rain_heart_${index}`,
-        left: Math.random() * (SCREEN_WIDTH - 20),
-        delay: Math.random() * 1400,
-        duration: 2200 + Math.random() * 1600,
-        size: 14 + Math.random() * 14,
-        sway: 12 + Math.random() * 16,
-        rotate: Math.random() * 40 - 20,
-      })),
-    [count]
-  );
-  return (
-    <View style={styles.heartRain} pointerEvents="none">
-      {hearts.map((heart) => (
-        <FallingHeart key={heart.id} {...heart} />
-      ))}
-    </View>
-  );
-};
+const GOAL_COMPLETION_HERO_ART = require("./assets/celebration/goal-complete-hero.webp");
 
-const FallingHeart = ({ left, delay, duration, size, sway, rotate }) => {
-  const translateY = useRef(new Animated.Value(-40)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const drop = Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: SCREEN_HEIGHT + 120,
-        duration,
-        easing: Easing.in(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: Math.min(320, duration * 0.2),
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0,
-          duration: Math.min(420, duration * 0.3),
-          delay: Math.max(duration * 0.4, 0),
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.sequence([
-        Animated.timing(translateX, {
-          toValue: sway,
-          duration: duration * 0.5,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateX, {
-          toValue: -sway,
-          duration: duration * 0.5,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    ]);
-    const anim = createMotionLoop(Animated.sequence([Animated.delay(delay), drop]), {
-      resetBeforeIteration: true,
-    });
-    anim.start();
-    return () => anim.stop();
-  }, [delay, duration, opacity, sway, translateX, translateY]);
-
-  return (
-    <AnimatedText
-      style={[
-        styles.heartRainDrop,
-        {
-          left,
-          fontSize: size,
-          opacity,
-          transform: [{ translateY }, { translateX }, { rotate: `${rotate}deg` }],
-        },
-      ]}
-    >
-      ❤️
-    </AnimatedText>
-  );
-};
-
-const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => {
-  const happySource = mascotHappySource || CLASSIC_TAMAGOTCHI_ANIMATIONS.happy;
+/*
+THESIS: Goal completion is the most joyful version of Almost's existing progress language, not a separate visual world.
+OWN-WORLD: Almost theme surfaces, Inter typography, verified-savings green, quiet separators, and one authored mascot artwork.
+STORY: The filled jar erupts, the achieved goal names the win, then real history explains how the user arrived.
+FIRST VIEWPORT: A dense full-screen celebration gives the art, achieved goal, and saved total the entire stage before any report UI appears.
+FORM: The mascot becomes the shared element: it shrinks into a compact summary header while the complete journey rises into place; reduced motion preserves the same two states without spatial travel.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+*/
+const GoalCelebration = ({ colors, theme, payload, t, onClose }) => {
+  const { reduceMotion } = useMotionPreferences();
+  const safeInsets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const data =
     payload && typeof payload === "object"
       ? payload
@@ -123498,8 +125564,7 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => 
   const summary = data.summary || null;
   const currency = data.currency || DEFAULT_PROFILE.currency;
   const language = data.language || DEFAULT_LANGUAGE;
-  const rewardCoins = Math.max(0, Number(data.rewardCoins) || 0);
-  const rewardAsset = data.rewardAsset || GOAL_COMPLETION_REWARD_TIER?.asset || null;
+  const isRtl = isRtlLanguage(normalizeLanguage(language));
   const totalSavedUSD =
     Number.isFinite(summary?.totalSavedUSD) && summary.totalSavedUSD > 0
       ? summary.totalSavedUSD
@@ -123511,7 +125576,7 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => 
   const totalDays = summary?.daysCount || 0;
   const strongDay = summary?.strongDay || null;
   const weakDay = summary?.weakDay || null;
-  const breakdown = summary?.breakdown || [];
+  const breakdown = Array.isArray(summary?.breakdown) ? summary.breakdown.slice(0, 3) : [];
   const resolveDayLabel = (dayKey) => {
     if (!dayKey) return "";
     const ts = parseDayKey(dayKey)?.getTime();
@@ -123553,163 +125618,503 @@ const GoalCelebration = ({ colors, payload, t, mascotHappySource, onClose }) => 
     : t("goalCelebrationWeakFallback");
   const weekBars = summary?.lastSevenDays || [];
   const maxWeekSaved = summary?.maxWeekSavedUSD || 0;
-  const isDarkTheme = colors.background === THEMES.dark.background;
-  const backdropColor = isDarkTheme ? "rgba(0,0,0,0.85)" : "rgba(7,44,23,0.85)";
-  const cardBg = isDarkTheme ? colors.surfaceElevated : "#E7F5EC";
-  const cardBorder = isDarkTheme ? colorWithAlpha(colors.success, 0.28) : "#8FC2A5";
-  const accent = colors.success;
+  const isDarkTheme = theme === "dark" || colors.background === THEMES.dark.background;
+  const screenBackground = colors.background;
+  const surface = colors.surfaceElevated || colors.card;
+  const subtleSurface = colors.surfaceMuted;
+  const separator = colors.separator || colors.border;
+  const accent = isDarkTheme ? "#35E295" : SAVE_ACTION_COLOR;
+  const accentText = colors.success || accent;
+  const primaryAction = colors.primary || colors.text;
+  const primaryActionText = colors.onPrimary || colors.background;
+  const veryCompactHeight = windowHeight < 700;
+  const compactHeight = windowHeight < 740;
+  const contentMaxWidth = Math.min(560, windowWidth);
+  const maxFullArtHeight = veryCompactHeight ? 280 : compactHeight ? 350 : 430;
+  const fullArtHeight = Math.max(
+    veryCompactHeight ? 250 : 320,
+    Math.min(maxFullArtHeight, windowHeight * (veryCompactHeight ? 0.44 : 0.46))
+  );
+  const fullArtWidth = fullArtHeight / 1.5;
+  const compactArtHeight = Math.max(156, Math.min(194, windowHeight * 0.22));
+  const compactArtWidth = compactArtHeight / 1.5;
+  const fullArtTop = Math.max(
+    safeInsets.top + (veryCompactHeight ? 8 : 24),
+    veryCompactHeight ? 28 : compactHeight ? 38 : 48
+  );
+  const fullCopyTop = fullArtTop + fullArtHeight - (compactHeight ? 16 : 4);
+  const compactHeaderTop = Math.max(safeInsets.top + 10, 20);
+  const contentLeft = Math.max(16, (windowWidth - contentMaxWidth) / 2 + 16);
+  const collapsedArtScale = compactArtHeight / fullArtHeight;
+  const collapsedArtTranslateX = contentLeft + compactArtWidth / 2 - windowWidth / 2;
+  const collapsedArtTranslateY =
+    compactHeaderTop + compactArtHeight / 2 - (fullArtTop + fullArtHeight / 2);
+  const [summaryReady, setSummaryReady] = useState(false);
+  const artReveal = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const copyReveal = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const transitionProgress = useRef(new Animated.Value(0)).current;
+  const artFloat = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    setSummaryReady(false);
+    transitionProgress.setValue(0);
+    if (reduceMotion) {
+      artReveal.setValue(1);
+      copyReveal.setValue(1);
+      artFloat.setValue(0);
+      const reducedMotionTimer = setTimeout(() => {
+        transitionProgress.setValue(1);
+        setSummaryReady(true);
+      }, 1500);
+      return () => clearTimeout(reducedMotionTimer);
+    }
+    artReveal.setValue(0);
+    copyReveal.setValue(0);
+    const entrance = Animated.parallel([
+      Animated.sequence([
+        Animated.delay(70),
+        Animated.spring(artReveal, {
+          toValue: 1,
+          friction: 7,
+          tension: 62,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.sequence([
+        Animated.delay(290),
+        Animated.timing(copyReveal, {
+          toValue: 1,
+          duration: 430,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+    ]);
+    entrance.start();
+    const stateTransition = Animated.sequence([
+      Animated.delay(2000),
+      Animated.timing(transitionProgress, {
+        toValue: 1,
+        duration: 640,
+        easing: Easing.bezier(0.77, 0, 0.175, 1),
+        useNativeDriver: true,
+      }),
+    ]);
+    stateTransition.start(({ finished }) => {
+      if (finished) setSummaryReady(true);
+    });
+    const floatLoop = createMotionLoop(
+      Animated.sequence([
+        Animated.delay(860),
+        Animated.timing(artFloat, {
+          toValue: -7,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+        Animated.timing(artFloat, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+          isInteraction: false,
+        }),
+      ]),
+      { iterations: 2 }
+    );
+    floatLoop.start();
+    return () => {
+      entrance.stop();
+      stateTransition.stop();
+      floatLoop.stop();
+    };
+  }, [artFloat, artReveal, copyReveal, reduceMotion, transitionProgress]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    NavigationBar.setBackgroundColorAsync(screenBackground).catch(() => {});
+    NavigationBar.setButtonStyleAsync(isDarkTheme ? "light" : "dark").catch(() => {});
+    return undefined;
+  }, [isDarkTheme, screenBackground]);
+
+  const artEntranceScale = artReveal.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] });
+  const artCollapseScale = transitionProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, collapsedArtScale],
+  });
+  const sharedArtScale = Animated.multiply(artEntranceScale, artCollapseScale);
+  const artEntranceTranslateY = artReveal.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  const artCollapseTranslateX = transitionProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, collapsedArtTranslateX],
+  });
+  const artCollapseTranslateY = transitionProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, collapsedArtTranslateY],
+  });
+  const sharedArtOpacity = transitionProgress.interpolate({
+    inputRange: [0, 0.9, 1],
+    outputRange: [1, 1, 0],
+  });
+  const fullCopyOpacity = Animated.multiply(
+    copyReveal,
+    transitionProgress.interpolate({ inputRange: [0, 0.42, 1], outputRange: [1, 0, 0] })
+  );
+  const fullCopyTranslateY = Animated.add(
+    copyReveal.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }),
+    transitionProgress.interpolate({ inputRange: [0, 1], outputRange: [0, -20] })
+  );
+  const summaryTranslateY = transitionProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [windowHeight * 0.92, 0],
+  });
+  const summaryOpacity = transitionProgress.interpolate({
+    inputRange: [0, 0.16, 1],
+    outputRange: [0, 1, 1],
+  });
+  const compactHeaderOpacity = transitionProgress.interpolate({
+    inputRange: [0, 0.8, 1],
+    outputRange: [0, 0, 1],
+  });
+  const heroTitle = data.goalTitle
+    ? t("goalCelebrationHeroTitle", { goal: data.goalTitle })
+    : t("goalCelebrationHeroTitleFallback");
+  const confettiColors = [accent, colors.primary, colors.info, colors.warning, colors.error];
+
   return (
-    <View style={styles.goalCelebrateOverlay}>
-      <View style={[styles.goalCelebrateBackdrop, { backgroundColor: backdropColor }]} />
-      <HeartRain />
-      <View style={[styles.goalCelebrateCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-        <ScrollView contentContainerStyle={styles.goalCelebrateContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.goalCelebrateHeader}>
-            <Image source={happySource} style={styles.goalCelebrateCat} />
-            <View style={styles.goalCelebrateHeaderText}>
-              <Text style={[styles.goalCelebrateTitle, { color: colors.text }]}>
-                {data.title || t("goalCelebrationTitle")}
-              </Text>
-              <Text style={[styles.goalCelebrateSubtitle, { color: colors.muted }]}>
-                {data.subtitle || t("goalCelebrationSubtitle")}
-              </Text>
-            </View>
+    <View
+      style={[styles.goalCelebrateOverlay, { backgroundColor: screenBackground }]}
+      accessibilityViewIsModal
+    >
+      <StatusBar style={isDarkTheme ? "light" : "dark"} translucent backgroundColor="transparent" />
+
+      {!reduceMotion ? (
+        <>
+          <View pointerEvents="none" style={styles.goalCelebrateConfettiLeft}>
+            <ConfettiCannon
+              count={62}
+              origin={{ x: -12, y: 0 }}
+              explosionSpeed={330}
+              fallSpeed={2500}
+              colors={confettiColors}
+              fadeOut
+            />
           </View>
-          {data.targetLabel ? (
-            <View style={[styles.goalCelebrateBadge, { borderColor: cardBorder }]}>
-              <Text style={[styles.goalCelebrateBadgeText, { color: colors.text }]}>
-                {data.targetLabel}
-              </Text>
-            </View>
-          ) : null}
-          <View style={[styles.goalCelebrateTotal, { borderColor: cardBorder }]}>
-            <Text style={[styles.goalCelebrateTotalLabel, { color: colors.muted }]}>
+          <View pointerEvents="none" style={styles.goalCelebrateConfettiRight}>
+            <ConfettiCannon
+              count={62}
+              origin={{ x: windowWidth + 12, y: 10 }}
+              explosionSpeed={330}
+              fallSpeed={2500}
+              colors={confettiColors}
+              fadeOut
+            />
+          </View>
+        </>
+      ) : null}
+
+      <Pressable
+        style={StyleSheet.absoluteFillObject}
+        onPress={() => onClose?.("backdrop")}
+        accessible={false}
+      />
+
+      <View
+        pointerEvents={summaryReady ? "none" : "box-none"}
+        style={styles.goalCelebrateFullHero}
+        accessibilityElementsHidden={summaryReady}
+        importantForAccessibility={summaryReady ? "no-hide-descendants" : "auto"}
+      >
+        <Animated.View
+          style={[
+            styles.goalCelebrateSharedArt,
+            {
+              top: fullArtTop,
+              height: fullArtHeight,
+              opacity: Animated.multiply(artReveal, sharedArtOpacity),
+              transform: [
+                { translateX: artCollapseTranslateX },
+                {
+                  translateY: Animated.add(
+                    Animated.add(artEntranceTranslateY, artFloat),
+                    artCollapseTranslateY
+                  ),
+                },
+                { scale: sharedArtScale },
+              ],
+            },
+          ]}
+        >
+          <Animated.Image
+            source={GOAL_COMPLETION_HERO_ART}
+            resizeMode="contain"
+            style={{ width: fullArtWidth, height: fullArtHeight }}
+            accessible={!summaryReady}
+            accessibilityLabel={t("goalCelebrationArtA11y")}
+          />
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.goalCelebrateFullCopy,
+            {
+              top: fullCopyTop,
+              opacity: fullCopyOpacity,
+              transform: [{ translateY: fullCopyTranslateY }],
+            },
+          ]}
+        >
+          <Text
+            style={[styles.goalCelebrateFullTitle, { color: colors.text }]}
+            accessibilityRole="header"
+            numberOfLines={3}
+          >
+            {heroTitle}
+          </Text>
+          <Text style={[styles.goalCelebrateFullSubtitle, { color: colors.muted }]}>
+            {t("goalCelebrationHeroSubtitle")}
+          </Text>
+          <View style={styles.goalCelebrateFullAmount}>
+            <Text style={[styles.goalCelebrateFullTotalLabel, { color: colors.muted }]}>
               {t("goalCelebrationTotalLabel")}
             </Text>
-            <Text style={[styles.goalCelebrateTotalValue, { color: colors.text }]}>
+            <Text
+              style={[styles.goalCelebrateFullTotalValue, { color: colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
               {totalSavedLabel}
             </Text>
-            <Text style={[styles.goalCelebrateTotalSub, { color: colors.muted }]}>
-              {t("goalCelebrationTotalSub", { wins: totalWins, days: totalDays })}
+          </View>
+        </Animated.View>
+      </View>
+
+      <Animated.ScrollView
+        pointerEvents={summaryReady ? "auto" : "none"}
+        accessibilityElementsHidden={!summaryReady}
+        importantForAccessibility={summaryReady ? "auto" : "no-hide-descendants"}
+        style={[
+          styles.goalCelebrateScroll,
+          {
+            opacity: summaryOpacity,
+            transform: [{ translateY: summaryTranslateY }],
+          },
+        ]}
+        contentContainerStyle={[
+          styles.goalCelebrateContent,
+          {
+            paddingTop: compactHeaderTop,
+            paddingBottom: Math.max(safeInsets.bottom + 28, 40),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={[styles.goalCelebrateInner, { maxWidth: contentMaxWidth }]}>
+          <Animated.View
+            style={[
+              styles.goalCelebrateCompactHeader,
+              isRtl && styles.goalCelebrateCompactHeaderRtl,
+              { minHeight: compactArtHeight, opacity: compactHeaderOpacity },
+            ]}
+          >
+            <Image
+              source={GOAL_COMPLETION_HERO_ART}
+              resizeMode="contain"
+              style={{ width: compactArtWidth, height: compactArtHeight }}
+              accessible={summaryReady}
+              accessibilityLabel={t("goalCelebrationArtA11y")}
+            />
+            <View style={styles.goalCelebrateCompactCopy}>
+              <Text
+                style={[
+                  styles.goalCelebrateCompactTitle,
+                  isRtl && styles.goalCelebrateTextRtl,
+                  { color: colors.text },
+                ]}
+                accessibilityRole="header"
+                numberOfLines={3}
+                adjustsFontSizeToFit
+                minimumFontScale={0.74}
+              >
+                {heroTitle}
+              </Text>
+              <View style={styles.goalCelebrateCompactAmount}>
+                <Text
+                  style={[
+                    styles.goalCelebrateCompactTotalLabel,
+                    isRtl && styles.goalCelebrateTextRtl,
+                    { color: colors.muted },
+                  ]}
+                >
+                  {t("goalCelebrationTotalLabel")}
+                </Text>
+                <Text
+                  style={[
+                    styles.goalCelebrateCompactTotalValue,
+                    isRtl && styles.goalCelebrateTextRtl,
+                    { color: colors.text },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {totalSavedLabel}
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
+
+          <View style={[styles.goalCelebrateStory, { backgroundColor: surface }]}>
+            <Text style={[styles.goalCelebrateStoryTitle, { color: colors.text }]}>
+              {t("goalCelebrationStoryTitle")}
             </Text>
-            <Text style={[styles.goalCelebratePraise, { color: colors.text }]}>
+            <Text style={[styles.goalCelebratePraise, { color: colors.muted }]}>
               {t("goalCelebrationPraise")}
             </Text>
-            {rewardCoins > 0 ? (
-              <View style={[styles.goalCelebrateRewardRow, { backgroundColor: "rgba(0,0,0,0.06)" }]}>
-                <Image
-                  source={
-                    (getChestRewardTierForAmount(data.rewardAmount || rewardCoins) || DEFAULT_CHEST_REWARD_TIER)
-                      ?.assets?.closed
-                  }
-                  style={styles.goalCelebrateRewardCoin}
-                />
-                <Text style={[styles.goalCelebrateRewardText, { color: colors.text }]}>
-                  {getChestRewardDisplayCount(data.rewardAmount || rewardCoins)}
+
+            <View style={[styles.goalCelebrateStatsRow, { borderColor: separator }]}>
+              <View style={styles.goalCelebrateStatBlock}>
+                <Text style={[styles.goalCelebrateStatValue, { color: accentText }]}>{totalWins}</Text>
+                <Text style={[styles.goalCelebrateStatLabel, { color: colors.muted }]}>
+                  {t("goalCelebrationTotalWinsLabel")}
                 </Text>
+              </View>
+              <View style={[styles.goalCelebrateStatsDivider, { backgroundColor: separator }]} />
+              <View style={styles.goalCelebrateStatBlock}>
+                <Text style={[styles.goalCelebrateStatValue, { color: colors.text }]}>{totalDays}</Text>
+                <Text style={[styles.goalCelebrateStatLabel, { color: colors.muted }]}>
+                  {t("goalCelebrationTotalDaysLabel")}
+                </Text>
+              </View>
+            </View>
+
+            {weekBars.length ? (
+              <View style={[styles.goalCelebrateWeek, { borderColor: separator }]}>
+                <View style={styles.goalCelebrateWeekHeader}>
+                  <Text style={[styles.goalCelebrateSectionLabel, { color: colors.text }]}>
+                    {t("goalCelebrationWeekLabel")}
+                  </Text>
+                  <Text style={[styles.goalCelebrateWeekTotal, { color: colors.muted }]}>
+                    {t("goalCelebrationTotalSub", { wins: totalWins, days: totalDays })}
+                  </Text>
+                </View>
+                <View style={styles.goalCelebrateWeekBars}>
+                  {weekBars.map((entry, index) => {
+                    const ratio = maxWeekSaved > 0 ? entry.savedUSD / maxWeekSaved : 0;
+                    const height = entry.savedUSD > 0 ? 8 + 40 * ratio : 0;
+                    const dayDate = parseDayKey(entry.dayKey);
+                    const dayLabel = dayDate
+                      ? dayDate.toLocaleDateString(getFormatLocale(language), { weekday: "narrow" })
+                      : "";
+                    return (
+                      <View key={entry.dayKey} style={styles.goalCelebrateWeekBarWrap}>
+                        <View style={[styles.goalCelebrateWeekTrack, { backgroundColor: subtleSurface }]}>
+                          <View
+                            style={[
+                              styles.goalCelebrateWeekBar,
+                              {
+                                height,
+                                backgroundColor: accent,
+                                opacity: entry.savedUSD > 0 ? 0.72 + index * 0.04 : 0,
+                              },
+                            ]}
+                          />
+                        </View>
+                        <Text style={[styles.goalCelebrateWeekDay, { color: colors.muted }]}>{dayLabel}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             ) : null}
-          </View>
-          <View style={styles.goalCelebrateStatsRow}>
-            <View style={[styles.goalCelebrateStatCard, { borderColor: cardBorder }]}>
-              <Text style={[styles.goalCelebrateStatLabel, { color: colors.muted }]}>
-                {t("goalCelebrationTotalWinsLabel")}
-              </Text>
-              <Text style={[styles.goalCelebrateStatValue, { color: colors.text }]}>
-                {totalWins}
-              </Text>
+
+            <View style={[styles.goalCelebrateInsights, { borderColor: separator }]}>
+              <View style={styles.goalCelebrateInsightCard}>
+                <View style={styles.goalCelebrateInsightCopy}>
+                  <Text style={[styles.goalCelebrateInsightTitle, { color: colors.text }]}>
+                    {t("goalCelebrationStrongTitle")}
+                  </Text>
+                  <Text style={[styles.goalCelebrateInsightBody, { color: colors.muted }]}>{strongBody}</Text>
+                </View>
+              </View>
+              <View style={[styles.goalCelebrateInsightCard, styles.goalCelebrateInsightCardLast]}>
+                <View style={styles.goalCelebrateInsightCopy}>
+                  <Text style={[styles.goalCelebrateInsightTitle, { color: colors.text }]}>
+                    {t("goalCelebrationWeakTitle")}
+                  </Text>
+                  <Text style={[styles.goalCelebrateInsightBody, { color: colors.muted }]}>{weakBody}</Text>
+                </View>
+              </View>
             </View>
-            <View style={[styles.goalCelebrateStatCard, { borderColor: cardBorder }]}>
-              <Text style={[styles.goalCelebrateStatLabel, { color: colors.muted }]}>
-                {t("goalCelebrationTotalDaysLabel")}
-              </Text>
-              <Text style={[styles.goalCelebrateStatValue, { color: colors.text }]}>
-                {totalDays}
-              </Text>
-            </View>
-          </View>
-          {weekBars.length ? (
-            <View style={styles.goalCelebrateWeek}>
-              <Text style={[styles.goalCelebrateSectionLabel, { color: colors.muted }]}>
-                {t("goalCelebrationWeekLabel")}
-              </Text>
-              <View style={styles.goalCelebrateWeekBars}>
-                {weekBars.map((entry) => {
-                  const ratio = maxWeekSaved > 0 ? entry.savedUSD / maxWeekSaved : 0;
-                  const height = 8 + 32 * ratio;
-                  return (
-                    <View key={entry.dayKey} style={styles.goalCelebrateWeekBarWrap}>
-                      <View
-                        style={[
-                          styles.goalCelebrateWeekBar,
-                          {
-                            height,
-                            backgroundColor: entry.savedUSD > 0 ? accent : "rgba(0,0,0,0.08)",
-                          },
-                        ]}
-                      />
+
+            {breakdown.length ? (
+              <View style={[styles.goalCelebrateBreakdown, { borderColor: separator }]}>
+                <Text style={[styles.goalCelebrateSectionLabel, { color: colors.text }]}>
+                  {t("goalCelebrationBreakdownLabel")}
+                </Text>
+                <View style={styles.goalCelebrateBreakdownList}>
+                  {breakdown.map((entry, index) => (
+                    <View
+                      key={`goal-breakdown-${entry.title || "entry"}-${index}`}
+                      style={[
+                        styles.goalCelebrateBreakdownRow,
+                        index < breakdown.length - 1 && { borderBottomColor: separator, borderBottomWidth: StyleSheet.hairlineWidth },
+                      ]}
+                    >
+                      <Text style={[styles.goalCelebrateBreakdownTitle, { color: colors.text }]} numberOfLines={1}>
+                        {entry.title}
+                      </Text>
+                      <Text style={[styles.goalCelebrateBreakdownMeta, { color: colors.muted }]}>
+                        {t("goalCelebrationBreakdownItem", {
+                          count: entry.count || 0,
+                          amount: formatAmount(entry.savedUSD || 0),
+                        })}
+                      </Text>
                     </View>
-                  );
-                })}
+                  ))}
+                </View>
               </View>
-            </View>
-          ) : null}
-          <View style={styles.goalCelebrateInsights}>
-            <View style={[styles.goalCelebrateInsightCard, { borderColor: cardBorder }]}>
-              <View style={styles.goalCelebrateInsightHeader}>
-                <Text style={styles.goalCelebrateInsightIcon}>🔥</Text>
-                <Text style={[styles.goalCelebrateInsightTitle, { color: colors.text }]}>
-                  {t("goalCelebrationStrongTitle")}
-                </Text>
-              </View>
-              <Text style={[styles.goalCelebrateInsightBody, { color: colors.muted }]}>
-                {strongBody}
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.goalCelebrateCta,
+                { backgroundColor: primaryAction, transform: [{ scale: pressed ? 0.98 : 1 }] },
+              ]}
+              onPress={() => onClose?.("cta")}
+              accessibilityRole="button"
+              accessibilityLabel={t("goalCelebrationCta")}
+            >
+              <Text style={[styles.goalCelebrateCtaText, { color: primaryActionText }]}>
+                {t("goalCelebrationCta")}
               </Text>
-            </View>
-            <View style={[styles.goalCelebrateInsightCard, { borderColor: cardBorder }]}>
-              <View style={styles.goalCelebrateInsightHeader}>
-                <Text style={styles.goalCelebrateInsightIcon}>🌧️</Text>
-                <Text style={[styles.goalCelebrateInsightTitle, { color: colors.text }]}>
-                  {t("goalCelebrationWeakTitle")}
-                </Text>
-              </View>
-              <Text style={[styles.goalCelebrateInsightBody, { color: colors.muted }]}>
-                {weakBody}
-              </Text>
-            </View>
+            </Pressable>
           </View>
-          {breakdown.length ? (
-            <View style={styles.goalCelebrateBreakdown}>
-              <Text style={[styles.goalCelebrateSectionLabel, { color: colors.muted }]}>
-                {t("goalCelebrationBreakdownLabel")}
-              </Text>
-              <View style={styles.goalCelebrateBreakdownList}>
-                {breakdown.map((entry, index) => (
-                  <View
-                    key={`goal-breakdown-${entry.title || "entry"}-${index}`}
-                    style={styles.goalCelebrateBreakdownRow}
-                  >
-                    <Text style={[styles.goalCelebrateBreakdownTitle, { color: colors.text }]}>
-                      {entry.title}
-                    </Text>
-                    <Text style={[styles.goalCelebrateBreakdownMeta, { color: colors.muted }]}>
-                      {t("goalCelebrationBreakdownItem", {
-                        count: entry.count || 0,
-                        amount: formatAmount(entry.savedUSD || 0),
-                      })}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-          <TouchableOpacity style={[styles.goalCelebrateCta, { backgroundColor: colors.text }]} onPress={onClose}>
-            <Text style={[styles.goalCelebrateCtaText, { color: colors.background }]}>
-              {t("goalCelebrationCta")}
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
+        </View>
+      </Animated.ScrollView>
+
+      <Pressable
+        style={[
+          styles.goalCelebrateClose,
+          {
+            top: Math.max(safeInsets.top + 8, 18),
+            right: Math.max(safeInsets.right + 14, 18),
+            backgroundColor: surface,
+            borderColor: colors.border,
+          },
+        ]}
+        onPress={() => onClose?.("close_button")}
+        accessibilityRole="button"
+        accessibilityLabel={t("goalCelebrationDismissA11y")}
+        hitSlop={8}
+      >
+        <Svg width={19} height={19} viewBox="0 0 20 20" fill="none" accessible={false}>
+          <SvgPath d="M5 5l10 10M15 5 5 15" stroke={colors.text} strokeWidth={2} strokeLinecap="round" />
+        </Svg>
+      </Pressable>
     </View>
   );
 };
@@ -124854,6 +127259,7 @@ const UsageStreakCelebration = ({
       if (normalized === "it") return safeCount === 1 ? "giorno di serie" : "giorni di serie";
       if (normalized === "zh") return "天连胜";
       if (normalized === "ko") return "일 연속";
+      if (normalized === "ja") return "日連続";
       if (normalized === "ar-sa" || normalized === "ar-ae") {
         return safeCount === 1 ? "يوم متتالٍ" : "أيام متتالية";
       }

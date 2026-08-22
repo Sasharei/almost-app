@@ -13,10 +13,14 @@ export const DAILY_SUMMARY_LIVE_ACTIVITY_ENABLED = false;
 export const MAX_ACTIVE_CHALLENGES = 3;
 export const MAX_ACTIVE_GOALS = 5;
 
-// Crashlytics: keep community blur disabled on Android and use Expo blur path.
+// Android's realtime Dimezis blur continuously redraws the captured hierarchy and can cause
+// severe jank/blank frames when several glass surfaces or a modal are visible. Keep generic
+// overlays on theme-aware solid fallbacks and reserve live blur for the two surfaces whose
+// backdrop genuinely changes while scrolling: the bottom navigation and the quick-spend FAB.
 export const ANDROID_DIMEZIS_DISABLED = true;
 export const ANDROID_BLUR_AUTO_UPDATE = false;
-export const ANDROID_EXPO_BLUR_ENABLED = true;
+export const ANDROID_EXPO_BLUR_ENABLED = false;
+export const ANDROID_LIVE_GLASS_BLUR_ENABLED = true;
 // RenderScript blur on Android requires 0 < radius <= 25.
 // Keep reduction >= 2 so the native default blurRadius (50) stays in range during mount.
 export const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 2;

@@ -1,5 +1,43 @@
 # Release Notes
 
+## 7.1.1 (from 7.1.0)
+
+### EN
+- Almost is now available in Japanese. We also fixed bugs and polished the app for a smoother, more stable experience.
+
+### RU
+- Almost теперь доступен на японском языке. Также мы исправили ошибки и доработали приложение, чтобы оно работало стабильнее и плавнее.
+
+### ES
+- Almost ya está disponible en japonés. También corregimos errores y pulimos la app para ofrecer una experiencia más fluida y estable.
+
+### FR
+- Almost est désormais disponible en japonais. Nous avons aussi corrigé des bugs et peaufiné l’app pour une expérience plus fluide et plus stable.
+
+### DE
+- Almost ist jetzt auch auf Japanisch verfügbar. Außerdem haben wir Fehler behoben und die App für ein flüssigeres, stabileres Erlebnis optimiert.
+
+### PT
+- O Almost agora também está disponível em japonês. Também corrigimos erros e refinamos o app para uma experiência mais fluida e estável.
+
+### IT
+- Almost è ora disponibile anche in giapponese. Abbiamo inoltre corretto alcuni bug e migliorato l’app per un’esperienza più fluida e stabile.
+
+### AR (SA)
+- أصبح Almost متاحًا الآن باللغة اليابانية. كما أصلحنا الأخطاء وحسّنا التطبيق لتجربة أكثر سلاسة واستقرارًا.
+
+### AR (AE)
+- أصبح Almost متاحًا الآن باللغة اليابانية. كما أصلحنا الأخطاء وحسّنا التطبيق لتجربة أكثر سلاسة واستقرارًا.
+
+### ZH
+- Almost 现已支持日文。我们也修复了一些问题并进一步优化，带来更流畅、更稳定的使用体验。
+
+### KO
+- 이제 Almost를 일본어로도 사용할 수 있습니다. 버그를 수정하고 앱을 다듬어 더욱 부드럽고 안정적으로 사용할 수 있도록 개선했습니다.
+
+### JA
+- Almostが日本語に対応しました。あわせて不具合を修正し、より快適で安定した使い心地になるよう改善しました。
+
 ## 7.1.0 (from 7.0.4)
 
 ### EN
