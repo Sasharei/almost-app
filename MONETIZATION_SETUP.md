@@ -121,7 +121,8 @@ Experiment analytics events:
 
 - 1 active goal
 - 2 active `Think` cards (`pending`) at a time
-- 10 custom temptation cards
+- 5 active feed-card slots; custom cards, including subscription cards, replace defaults,
+  and plan-hidden extras stay stored for later Premium restoration
 - history view limited to last 7 days
 - 3 challenge claims
 - budget auto-allocation is free for first 30 days, then premium-only

@@ -4,13 +4,16 @@ const assert = require("node:assert/strict");
 const {
   TYCOON_SETTINGS_VERSION,
   expireStalePendingTycoonAutosaves,
+  getManualTycoonInteractionDayKey,
   getTycoonAutosaveEventDayKey,
+  isManualTycoonInteractionInDay,
   isTycoonAutosaveEnabled,
   isTycoonAutosaveTimestampInDay,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   skipPendingTycoonAutosaveForCards,
+  skipPendingTycoonAutosavesForManualInteractions,
   summarizeTycoonAutosaveSaveResults,
   shouldResetLegacyTycoonPendingEvents,
 } = require("../../src/engagement/tycoonAccess");
@@ -100,6 +103,86 @@ test("a manual card action durably skips only its matching pending auto-collect 
   assert.equal(reconciled[2], entries[2]);
   assert.equal(reconciled[3], entries[3]);
   assert.equal(skipPendingTycoonAutosaveForCards(entries, ["missing"], 9999), entries);
+});
+
+test("a manual card action suppresses that card for the rest of its local day", () => {
+  const manualAt = new Date(2026, 7, 20, 8, 15, 0).getTime();
+  const interactions = {
+    coffee: {
+      lastInteractionAt: manualAt,
+      lastTimerResetAt: manualAt,
+      manualAutosaveSkipDayKey: "2026-08-20",
+    },
+    snacks: {
+      lastInteractionAt: manualAt,
+      lastTimerResetAt: manualAt - 1000,
+    },
+  };
+  const entries = [
+    {
+      id: "coffee-today",
+      cardId: "coffee",
+      dayKey: "2026-08-20",
+      source: "autosave",
+      status: "pending",
+    },
+    {
+      id: "coffee-tomorrow",
+      cardId: "coffee",
+      dayKey: "2026-08-21",
+      source: "autosave",
+      status: "pending",
+    },
+    {
+      id: "snacks-today",
+      cardId: "snacks",
+      dayKey: "2026-08-20",
+      source: "autosave",
+      status: "pending",
+    },
+  ];
+
+  assert.equal(isManualTycoonInteractionInDay(interactions.coffee, "2026-08-20"), true);
+  assert.equal(isManualTycoonInteractionInDay(interactions.coffee, "2026-08-21"), false);
+  assert.deepEqual(
+    skipPendingTycoonAutosavesForManualInteractions(
+      entries,
+      interactions,
+      "2026-08-20",
+      manualAt
+    ),
+    [
+      {
+        ...entries[0],
+        status: "skipped",
+        skippedAt: manualAt,
+        skipReason: "manual_interaction",
+        rewardClaimed: true,
+      },
+      entries[1],
+      entries[2],
+    ]
+  );
+});
+
+test("legacy manual-action timestamps restore today's auto-collect suppression", () => {
+  const manualAt = new Date(2026, 7, 20, 12, 30, 0).getTime();
+  const legacyInteraction = {
+    lastInteractionAt: manualAt,
+    lastTimerResetAt: manualAt,
+    manualAutosaveSkipTargetAt: null,
+    manualAutosaveSkipCreatedAt: null,
+  };
+
+  assert.equal(getManualTycoonInteractionDayKey(legacyInteraction), "2026-08-20");
+  assert.equal(isManualTycoonInteractionInDay(legacyInteraction, "2026-08-20"), true);
+  assert.equal(
+    isManualTycoonInteractionInDay(
+      { ...legacyInteraction, lastTimerResetAt: manualAt - 1000 },
+      "2026-08-20"
+    ),
+    false
+  );
 });
 
 test("auto-collect archives yesterday's pending cards at local day rollover", () => {

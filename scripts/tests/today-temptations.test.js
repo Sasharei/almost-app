@@ -5,6 +5,7 @@ const {
   buildTodayTemptationPlan,
   getLocalDayBounds,
   getNextLocalMidnightAt,
+  isTimestampInLocalCalendarDay,
   partitionUnifiedTemptationFeed,
 } = require("../../src/engagement/todayTemptations");
 
@@ -168,6 +169,16 @@ test("the Today boundary ends at the next local midnight", () => {
 
   assert.equal(bounds.end, nextMidnight - 1);
   assert.equal(getNextLocalMidnightAt(lateToday), nextMidnight);
+});
+
+test("same-day cleanup never includes a save from the previous calendar day", () => {
+  const previousDaySave = new Date(2026, 7, 14, 23, 59, 59, 999).getTime();
+  const spend = new Date(2026, 7, 15, 0, 0, 0, 0).getTime();
+  const sameDaySave = new Date(2026, 7, 15, 0, 0, 0, 1).getTime();
+
+  assert.equal(isTimestampInLocalCalendarDay(previousDaySave, spend), false);
+  assert.equal(isTimestampInLocalCalendarDay(spend, spend), true);
+  assert.equal(isTimestampInLocalCalendarDay(sameDaySave, spend), true);
 });
 
 test("a timer cycle automatically missed today remains due in Today", () => {

@@ -104,6 +104,19 @@
       ]
     },
     {
+      "id": "feed-category-filter-session-reset",
+      "description": "Leaving the Feed resets its category selection to All, so every later return starts from the default unfiltered card list.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const [feedCategoryFilterResetTick, setFeedCategoryFilterResetTick] = useState(0);",
+        "if (prevActiveTabRef.current === \"feed\" && activeTab !== \"feed\") {",
+        "setFeedCategoryFilterResetTick((tick) => tick + 1);",
+        "feedCategoryFilterResetTick = 0,",
+        "setSelectedFeedCategoryId(\"all\");\n  }, [feedCategoryFilterResetTick]);",
+        "feedCategoryFilterResetTick={feedCategoryFilterResetTick}"
+      ]
+    },
+    {
       "id": "goal-jar-fullscreen-physics",
       "description": "The fullscreen Goal Jar keeps its coins visible and starts sensor-driven physics only after the modal is presented while the app is active.",
       "file": "App.js",
@@ -171,6 +184,22 @@
         "const RESTORABLE_PROFILE_EDIT_MODES = new Set([\"profile\", \"settings\"]);",
         "profileEditMode && profileEditMode !== \"none\"",
         "? { mode: profileEditMode, draft: profileDraft }"
+      ]
+    },
+    {
+      "id": "history-browsing-and-delete-actions",
+      "description": "History remains reachable from Profile and Home, supports newest, oldest, category, and event-type browsing, keeps explicit pagination, and preserves entry deletion plus modal dismissal paths.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const HistoryTimeline = React.memo(function HistoryTimeline({",
+        "HISTORY_SORT_MODES.CATEGORY",
+        "setSortMode(option.id)",
+        "setFilterMode(option.id)",
+        "onPress={handleLoadMore}",
+        "onHistoryDelete?.(entry)",
+        "accessibilityLabel={t(\"historyDeleteEntry\", { title: description })}",
+        "onRequestClose={onClose}",
+        "<HistoryTimeline"
       ]
     },
     {
@@ -295,8 +324,20 @@
       ]
     },
     {
+      "id": "temptation-card-lifetime-savings-totals",
+      "description": "Each temptation card keeps a lifetime save count and amount independently of the rolling history-retention window. New saves only increase it, and manually deleting a save from History decrements the matching card total.",
+      "file": "App.js",
+      "requiredFragments": [
+        "reconcileTemptationLifetimeStats(prev, temptationInteractions)",
+        "savedAmountUSD:",
+        "decrementTemptationLifetimeRefuseStats(prev, entry, lifetimeStatKeys)",
+        "decrementTemptationLifetimeInteractionStats(prev, entry, lifetimeStatKeys)",
+        "setDeclineCount((prev) => Math.max(0, Number(prev) - 1));"
+      ]
+    },
+    {
       "id": "temptation-manual-frequency-timer-reset",
-      "description": "A manually configured cadence remains anchored during later actions, while a manual save or spend consumes the current check, invalidates matching pending auto-collect entries, and schedules the next anchored occurrence. Automatic confirmations preserve their current timer and ledger entry.",
+      "description": "A manually configured cadence remains anchored during later actions, while a manual save or spend consumes the current check, suppresses that card from auto-collect for the rest of the local day, invalidates matching pending entries, and schedules the next anchored occurrence. Automatic confirmations preserve their current timer and ledger entry.",
       "file": "App.js",
       "requiredFragments": [
         "resolveTemptationActionSchedulePolicy",
@@ -304,6 +345,8 @@
         "isManualTemptationCycleAlreadyConsumed",
         "shouldAdvanceAnchoredSchedule",
         "shouldInvalidatePendingAutosave",
+        "isManualTycoonInteractionInDay(interaction, currentDayKey)",
+        "manualAutosaveSkipDayKey: shouldInvalidatePendingAutosave",
         "skipPendingTycoonAutosaveForCards",
         "const currentEntries = candidateKeys",
         "interactionEntry.frequencyReminderManualConfigured === true &&",
@@ -495,11 +538,27 @@
       ]
     },
     {
+      "id": "coin-denomination-visual-sync",
+      "description": "Home, Progress, and Almi derive colored coin tokens from the same full five-tier denomination resolver. Exact rollover boundaries replace lower colors, non-zero balances never render as an empty zero, and the Almi header no longer hard-codes only blue and green tiers.",
+      "file": "App.js",
+      "requiredFragments": [
+        "return getCoinTierForAmount(amount, HEALTH_COIN_TIERS) || HEALTH_COIN_TIERS[0];",
+        "return buildCoinDenominationEntries(amount, HEALTH_COIN_TIERS);",
+        "const coinEntries = useMemo(() => buildHealthCoinEntries(healthPoints), [healthPoints]);",
+        "getVisibleCoinDenominationEntries(tamagotchiCoins, HEALTH_COIN_TIERS)",
+        "{tamagotchiStickyCoinTokens.map((token) => ("
+      ]
+    },
+    {
       "id": "coin-balance-resolution-policy",
-      "description": "The pure balance resolver accepts only finite non-negative values, gives a valid primary zero precedence over an older backup, validates versioned backups, and uses legacy pet coins only when the primary and backup are unavailable or corrupt. Its incident repair counts unique vulnerable save rewards, ignores pre-incident and explicitly credited saves, raises the balance only to the resulting floor, and records a one-time marker.",
+      "description": "The pure balance resolver accepts only finite non-negative values, gives a valid primary zero precedence over an older backup, validates versioned backups, and uses legacy pet coins only when the primary and backup are unavailable or corrupt. The same module owns deterministic denomination rollover and visible-token fallback. Its incident repair counts unique vulnerable save rewards, ignores pre-incident and explicitly credited saves, raises the balance only to the resulting floor, and records a one-time marker.",
       "file": "src/engagement/coinBalance.js",
       "requiredFragments": [
         "const COIN_BALANCE_BACKUP_VERSION = 1;",
+        "const getCoinBreakdown = (amount = 0, tiers = []) => {",
+        "const buildCoinDenominationEntries = (amount = 0, tiers = []) => {",
+        "const getVisibleCoinDenominationEntries = (amount = 0, tiers = []) => {",
+        "if (visibleEntries.length) return visibleEntries;",
         "if (!Number.isFinite(parsed) || parsed < 0) return null;",
         "if (Number(parsed.version) !== COIN_BALANCE_BACKUP_VERSION) return null;",
         "const parseLegacyTamagotchiCoinBalance = (value) => {",
@@ -1108,11 +1167,18 @@
       "file": "App.js",
       "requiredFragments": [
         "onPress={handleBudgetWidgetPress}",
+        "const budgetWidgetCalendarMonthRef = useRef(budgetMonthKey);",
+        "const budgetModalCalendarMonthRef = useRef(budgetMonthKey);",
+        "resolveBudgetMonthSelection({",
+        "() => [...availableBudgetMonths]",
+        "calculateBudgetCategoryRemainingUSD({",
+        "t(\"budgetPastMonthReadOnly\")",
         "openCategoryHistory(entry.id);",
         "onRequestClose={closeBudgetModal}",
         "onPress={() => dismissKeyboardOrRun(closeBudgetModal)}",
         "onPress={() => setBudgetModalMonthKey(monthKey)}",
         "onPress={handleBudgetModalRemainingPress}",
+        "accessibilityHint={budgetModalRemainingEditable ? t(\"budgetTapToEdit\") : undefined}",
         "accessibilityRole=\"adjustable\"",
         "const absoluteX = Number.isFinite(pageX) ? pageX : moveX;",
         "activeTrackGeometryRef.current = grantGeometry;",
@@ -1209,6 +1275,37 @@
         "onRequestClose={closeSubscriptionModal}",
         "onPress={closeSubscriptionModal}",
         "logEvent(\"subscription_watch_opened\""
+      ]
+    },
+    {
+      "id": "free-subscription-card-gate",
+      "description": "Free users keep at most the shared free number of custom feed cards active, subscription cards consume those same slots, plan-hidden cards stay stored for Premium restoration, and hidden recurring cards cannot keep reminders or due prompts active.",
+      "file": "App.js",
+      "requiredFragments": [
+        "selectPlanVisibleTemptations({",
+        "freeFeedLimit: FREE_TEMPTATION_CARD_LIMIT",
+        "getFreeCustomCardSlotsRemaining({",
+        "const hasFreeTemptationCardSlot =",
+        "if (!hasFreeTemptationCardSlot) {",
+        "activeTemptationCardIdSet.has(templateId)",
+        "return (Array.isArray(products) ? products : []).filter((item) => {",
+        ": Math.min(hardSlots, freeTemptationCardSlotsRemaining)"
+      ]
+    },
+    {
+      "id": "subscription-due-decision-lifecycle",
+      "description": "An overdue subscription decision is queued globally from every screen, Later defers only the current app session, the next full app entry asks again, notification taps reopen the decision, and Paid/Not paid keep their spend/save handlers connected.",
+      "file": "App.js",
+      "requiredFragments": [
+        "QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE",
+        "findPendingSubscriptionDueEntry(subscriptionDueEntries",
+        "subscriptionDueDismissedSessionRef.current.clear();",
+        "setSubscriptionDueSessionVersion((version) => version + 1);",
+        "onRequestClose={dismissSubscriptionDuePrompt}",
+        "onDecision={handleSubscriptionDuePromptDecision}",
+        "handleSubscriptionPaymentAction(entry.item, action",
+        "buildSubscriptionNotificationPlan({",
+        "doesScheduledSubscriptionNotificationMatchPlan("
       ]
     },
     {
@@ -1446,6 +1543,34 @@
       ]
     },
     {
+      "id": "daily-challenge-next-day-entry-prompt",
+      "description": "A challenge derived only from the previous local day's spend history is queued on the next app entry and waits for a free Feed modal slot without requiring another action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "require(\"./src/engagement/dailyChallenge\")",
+        "const dailyChallengePreviousDayPressure = useMemo(() => {",
+        "const previousDayKey = getDayKey(Date.now() - DAY_MS);",
+        "if (entry?.kind !== \"spend\") return;",
+        "action: \"spend\",",
+        "if (!isDailyChallengePromptPending) return;\n    enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);",
+        "return dailyChallengePromptAllowed && isDailyChallengePromptPending;",
+        "setCurrentDayKey(getDayKey(Date.now()));"
+      ],
+      "requiredPatterns": [
+        "^(?![\\s\\S]*dailyChallengePromptGate)"
+      ]
+    },
+    {
+      "id": "daily-challenge-single-pressure-signal",
+      "description": "One valid spend from the previous local day is sufficient to prepare the next daily challenge draw; saves are ignored and fallback temptations can fill the remaining card choices.",
+      "file": "src/constants/engagementConfig.js",
+      "requiredFragments": [
+        "export const DAILY_CHALLENGE_MIN_SPEND_EVENTS = 1;",
+        "export const DAILY_CHALLENGE_MIN_UNIQUE_TEMPLATES = 1;",
+        "export const DAILY_CHALLENGE_DRAW_COUNT = 3;"
+      ]
+    },
+    {
       "id": "post-action-prompt-policy",
       "description": "The centralized prompt policy gates only attention prompts after an action; transactional auto-collect and hunger modals remain outside that slot while retaining deterministic queue priorities.",
       "file": "src/constants/tutorialUiConstants.js",
@@ -1459,7 +1584,8 @@
         "export const POST_ACTION_PROMPT_MODAL_PRIORITY = Object.freeze({"
       ],
       "requiredPatterns": [
-        "POST_ACTION_PROMPT_MODAL_TYPES = new Set\\(\\[(?:(?!TYCOON_AUTOSAVE|TYCOON_REWARD).)*?\\]\\);"
+        "POST_ACTION_PROMPT_MODAL_TYPES = new Set\\(\\[(?:(?!TYCOON_AUTOSAVE|TYCOON_REWARD).)*?\\]\\);",
+        "POST_ACTION_PROMPT_MODAL_TYPES = new Set\\(\\[(?:(?!QUEUED_MODAL_TYPES\\.DAILY_CHALLENGE\\s*,)[\\s\\S])*?\\]\\);"
       ]
     },
     {
@@ -1476,16 +1602,19 @@
     },
     {
       "id": "rating-prompt-actions",
-      "description": "The localized, app-owned rating prompt becomes eligible only after three completed temptation series, never in the claim session, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "description": "The localized, app-owned rating prompt becomes eligible after the second successful save or spend in any order, or after the first claimed temptation-series reward, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
       "file": "App.js",
       "requiredFragments": [
-        "ratingPromptSeriesCompletionCount >= RATING_PROMPT_SERIES_THRESHOLD",
+        "applyRatingPromptDecisionAction(ratingPromptStateRef.current",
+        "actionThreshold: RATING_PROMPT_ACTION_THRESHOLD",
+        "recordRatingPromptDecisionAction(action);",
+        "queueRatingPrompt(\"actions\")",
+        "applyRatingPromptSeriesCompletion(ratingPromptStateRef.current",
         "queueRatingPrompt(\"series\")",
-        "seriesCompletionCount: currentSeriesCount + 1,",
         "recordRatingPromptSeriesCompletion();",
-        "!temptationSeriesClaimedThisSessionRef.current",
         "if (canShowRatingPromptNowRef.current()) {",
         "ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);",
+        "canTriggerStoreReviewNowRef.current = () => {",
         "const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);",
         "onPress={handleRatingPromptLater}",
         "onPress={handleRatingPromptConfirm}",
@@ -1506,15 +1635,17 @@
       "requiredPatterns": [
         "^(?![\\s\\S]*(?:expo-store-review|\\.requestReview\\())",
         "^(?![\\s\\S]*ratingPromptActionGateReady)",
-        "^(?![\\s\\S]*RATING_PROMPT_SESSION_ID)"
+        "^(?![\\s\\S]*RATING_PROMPT_SESSION_ID)",
+        "canTriggerStoreReviewNowRef\\.current = \\(\\) => \\{(?:(?!canShowRatingPromptNowRef\\.current|postActionPromptSlotRef\\.current)[\\s\\S])*?return true;"
       ]
     },
     {
       "id": "rating-prompt-second-action-threshold",
-      "description": "The rating trigger is delayed until three completed temptation series, with four stars as the store threshold and five visible characters as the feedback minimum.",
+      "description": "The rating trigger starts after two successful save/spend decisions or one claimed temptation series, with four stars as the store threshold and five visible characters as the feedback minimum.",
       "file": "src/constants/economyConfig.js",
       "requiredFragments": [
-        "export const RATING_PROMPT_SERIES_THRESHOLD = 3;",
+        "export const RATING_PROMPT_ACTION_THRESHOLD = 2;",
+        "export const RATING_PROMPT_SERIES_THRESHOLD = 1;",
         "export const RATING_PROMPT_STORE_THRESHOLD = 4;",
         "export const RATING_PROMPT_FEEDBACK_MIN_LENGTH = 5;"
       ]
@@ -2246,6 +2377,33 @@
         "style={styles.bugReportKeyboardAvoider}",
         "style={[styles.bugReportModalWrap, modalSafeAreaStyle]}",
         "maxHeight: \"100%\""
+      ]
+    },
+    {
+      "id": "onboarding-redesign-production-actions",
+      "description": "The approved production onboarding keeps language and currency selection, analytics accept and decline, profile and gender selection, the full persona catalog, goal selection and amount editing, custom-goal creation, Terms actions, Back, and accessible selected states wired.",
+      "file": "src/components/OnboardingRedesign.js",
+      "requiredFragments": [
+        "onPress={() => onLanguageChange?.(option.id)}",
+        "onPress={() => onCurrencyChange?.(currency)}",
+        "onPrimary={onAgree}",
+        "onSecondary={onSkip}",
+        "onPress={() => onChange?.(\"gender\", id)}",
+        "onPress={() => onChange?.(\"persona\", persona.id)}",
+        "onPress={() => setShowAll(true)}",
+        "onBack={handleBack}",
+        "onSkip={onSkip}",
+        "onToggle?.(goal.id);",
+        "onGoalTargetChange?.(entry.id, value)",
+        "inputRefs.current?.[entry.id]?.focus?.()",
+        "setKeyboardVisible(true);",
+        "automaticallyAdjustKeyboardInsets={keyboardAware && Platform.OS === \"ios\"}",
+        "onPress={onCustomGoalCreate}",
+        "onPrimary={onSubmit}",
+        "onPress={onOpenLink}",
+        "onPress={onAccept}",
+        "onRequestClose={onClose}",
+        "accessibilityState={{ selected }}"
       ]
     }
   ]

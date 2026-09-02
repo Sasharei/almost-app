@@ -5,7 +5,10 @@ const path = require("node:path");
 
 const {
   DEFERRED_COIN_REWARD_INCIDENT_STARTED_AT,
+  buildCoinDenominationEntries,
+  getCoinBreakdown,
   getIncidentHistoryRewardFloor,
+  getVisibleCoinDenominationEntries,
   isCoinBalanceIncidentRepairApplied,
   parseCoinBalanceBackup,
   parseLegacyTamagotchiCoinBalance,
@@ -16,6 +19,14 @@ const {
   serializeCoinBalanceIncidentRepair,
 } = require("../../src/engagement/coinBalance");
 
+const HEALTH_COIN_TIERS = [
+  { id: "green", value: 1 },
+  { id: "blue", value: 10 },
+  { id: "orange", value: 100 },
+  { id: "red", value: 1000 },
+  { id: "pink", value: 10000 },
+];
+
 const appSource = fs.readFileSync(path.resolve(__dirname, "../../App.js"), "utf8");
 
 const getSourceSection = (start, end) => {
@@ -25,6 +36,74 @@ const getSourceSection = (start, end) => {
   assert.notEqual(endIndex, -1, `missing source section end: ${end}`);
   return appSource.slice(startIndex, endIndex);
 };
+
+test("coin denominations roll over at every hierarchy boundary", () => {
+  const cases = [
+    [0, { pink: 0, red: 0, orange: 0, blue: 0, green: 0 }],
+    [9, { pink: 0, red: 0, orange: 0, blue: 0, green: 9 }],
+    [10, { pink: 0, red: 0, orange: 0, blue: 1, green: 0 }],
+    [99, { pink: 0, red: 0, orange: 0, blue: 9, green: 9 }],
+    [100, { pink: 0, red: 0, orange: 1, blue: 0, green: 0 }],
+    [999, { pink: 0, red: 0, orange: 9, blue: 9, green: 9 }],
+    [1000, { pink: 0, red: 1, orange: 0, blue: 0, green: 0 }],
+    [9999, { pink: 0, red: 9, orange: 9, blue: 9, green: 9 }],
+    [10000, { pink: 1, red: 0, orange: 0, blue: 0, green: 0 }],
+  ];
+
+  cases.forEach(([amount, expected]) => {
+    assert.deepEqual(getCoinBreakdown(amount, HEALTH_COIN_TIERS), expected);
+    const entries = buildCoinDenominationEntries(amount, HEALTH_COIN_TIERS);
+    const reconstructedAmount = entries.reduce(
+      (total, entry) => total + entry.value * entry.count,
+      0
+    );
+    assert.equal(reconstructedAmount, amount);
+  });
+});
+
+test("visible balance tokens replace lower denominations and never collapse to an empty zero", () => {
+  assert.deepEqual(
+    getVisibleCoinDenominationEntries(100, HEALTH_COIN_TIERS).map(({ id, count }) => ({
+      id,
+      count,
+    })),
+    [{ id: "orange", count: 1 }]
+  );
+  assert.deepEqual(
+    getVisibleCoinDenominationEntries(99, HEALTH_COIN_TIERS).map(({ id, count }) => ({
+      id,
+      count,
+    })),
+    [
+      { id: "blue", count: 9 },
+      { id: "green", count: 9 },
+    ]
+  );
+  assert.deepEqual(
+    getVisibleCoinDenominationEntries(0, HEALTH_COIN_TIERS).map(({ id, count }) => ({
+      id,
+      count,
+    })),
+    [{ id: "green", count: 0 }]
+  );
+  assert.deepEqual(getCoinBreakdown(Number.POSITIVE_INFINITY, HEALTH_COIN_TIERS), {
+    pink: 0,
+    red: 0,
+    orange: 0,
+    blue: 0,
+    green: 0,
+  });
+});
+
+test("the Almi balance uses the same complete denomination resolver as other balance surfaces", () => {
+  const balanceSection = getSourceSection(
+    "const tamagotchiCoins = healthPoints;",
+    "const tamagotchiDesiredFood ="
+  );
+
+  assert.match(balanceSection, /getVisibleCoinDenominationEntries\(tamagotchiCoins, HEALTH_COIN_TIERS\)/);
+  assert.doesNotMatch(balanceSection, /id: "blue"|id: "green"/);
+});
 
 test("a valid zero balance wins over an older non-zero backup", () => {
   const backupRaw = serializeCoinBalanceBackup(18, 100);
@@ -136,18 +215,28 @@ test("the incident repair deduplicates repeated history records", () => {
   assert.equal(getIncidentHistoryRewardFloor([entry, { ...entry }]), 3);
 });
 
-test("history deletion and same-cycle spend cleanup never claw back earned coins", () => {
+test("history deletion and same-day spend cleanup never claw back earned coins", () => {
   const historyDelete = getSourceSection(
     "const handleHistoryDelete = useCallback(",
     "useEffect(() => {\n    recomputeHistoryAggregates"
   );
-  const sameCycleCleanup = getSourceSection(
-    "const revokeCycleSavingsForSpend = useCallback(",
+  const sameDayCleanup = getSourceSection(
+    "const revokeSameDaySavingsForSpend = useCallback(",
     "const priceEditorTemplateId ="
   );
 
   assert.doesNotMatch(historyDelete, /setHealthPoints|coinRefund/);
-  assert.doesNotMatch(sameCycleCleanup, /setHealthPoints|coinRefund/);
+  assert.doesNotMatch(sameDayCleanup, /setHealthPoints|coinRefund/);
+});
+
+test("same-day spend cleanup is bounded by the local calendar day", () => {
+  const sameDayCleanup = getSourceSection(
+    "const revokeSameDaySavingsForSpend = useCallback(",
+    "const priceEditorTemplateId ="
+  );
+
+  assert.match(sameDayCleanup, /isTimestampInLocalCalendarDay/);
+  assert.doesNotMatch(sameDayCleanup, /resolveCycleWindow|nextCheckAt|intervalMs/);
 });
 
 test("save rewards are credited before the cosmetic reward overlay", () => {

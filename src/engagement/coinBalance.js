@@ -4,6 +4,74 @@ const DEFERRED_COIN_REWARD_INCIDENT_STARTED_AT = Date.parse(
   "2026-08-16T21:04:16+03:00"
 );
 
+const normalizeCoinAmount = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+};
+
+const normalizeCoinTiers = (tiers = []) =>
+  (Array.isArray(tiers) ? tiers : [])
+    .filter(
+      (tier) =>
+        tier &&
+        typeof tier.id === "string" &&
+        tier.id.trim() &&
+        Number.isInteger(Number(tier.value)) &&
+        Number(tier.value) > 0
+    )
+    .map((tier) => ({
+      ...tier,
+      id: tier.id.trim(),
+      value: Math.floor(Number(tier.value)),
+    }))
+    .sort((left, right) => left.value - right.value);
+
+const getCoinTierForAmount = (amount = 0, tiers = []) => {
+  const normalizedAmount = normalizeCoinAmount(amount);
+  const normalizedTiers = normalizeCoinTiers(tiers);
+  for (let index = normalizedTiers.length - 1; index >= 0; index -= 1) {
+    if (normalizedAmount >= normalizedTiers[index].value) {
+      return normalizedTiers[index];
+    }
+  }
+  return normalizedTiers[0] || null;
+};
+
+const getCoinBreakdown = (amount = 0, tiers = []) => {
+  let remaining = normalizeCoinAmount(amount);
+  const normalizedTiers = normalizeCoinTiers(tiers);
+  return normalizedTiers
+    .slice()
+    .reverse()
+    .reduce((breakdown, tier) => {
+      const count = Math.floor(remaining / tier.value);
+      breakdown[tier.id] = count;
+      remaining -= count * tier.value;
+      return breakdown;
+    }, {});
+};
+
+const buildCoinDenominationEntries = (amount = 0, tiers = []) => {
+  const normalizedTiers = normalizeCoinTiers(tiers);
+  const breakdown = getCoinBreakdown(amount, normalizedTiers);
+  return normalizedTiers
+    .slice()
+    .reverse()
+    .map((tier) => ({
+      ...tier,
+      count: breakdown[tier.id] || 0,
+    }));
+};
+
+const getVisibleCoinDenominationEntries = (amount = 0, tiers = []) => {
+  const entries = buildCoinDenominationEntries(amount, tiers);
+  const visibleEntries = entries.filter((entry) => entry.count > 0);
+  if (visibleEntries.length) return visibleEntries;
+  const baseTier = entries[entries.length - 1];
+  return baseTier ? [{ ...baseTier, count: 0 }] : [];
+};
+
 const parseStoredCoinBalance = (value) => {
   if (value === null || typeof value === "undefined") return null;
   const normalized = typeof value === "string" ? value.trim() : value;
@@ -143,8 +211,14 @@ module.exports = {
   COIN_BALANCE_BACKUP_VERSION,
   COIN_BALANCE_INCIDENT_REPAIR_VERSION,
   DEFERRED_COIN_REWARD_INCIDENT_STARTED_AT,
+  buildCoinDenominationEntries,
+  getCoinBreakdown,
+  getCoinTierForAmount,
   getIncidentHistoryRewardFloor,
+  getVisibleCoinDenominationEntries,
   isCoinBalanceIncidentRepairApplied,
+  normalizeCoinAmount,
+  normalizeCoinTiers,
   parseCoinBalanceBackup,
   parseLegacyTamagotchiCoinBalance,
   parseStoredCoinBalance,

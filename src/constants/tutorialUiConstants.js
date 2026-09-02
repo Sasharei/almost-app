@@ -16,16 +16,17 @@ export const QUEUED_MODAL_TYPES = {
   INCOME_PROMPT: "income_prompt",
   CYCLE_SAVINGS_REVOKED: "cycle_savings_revoked",
   NO_GOAL_SAVE_PROMPT: "no_goal_save_prompt",
+  SUBSCRIPTION_DUE: "subscription_due",
   TYCOON_AUTOSAVE_HUNGRY: "tycoon_autosave_hungry",
   TYCOON_AUTOSAVE: "tycoon_autosave",
 };
 
-// Attention prompts are deferred until a successful save/spend and share one
-// presentation slot. Transactional and safety-critical modals stay outside this set.
+// Attention prompts in this set are deferred until a successful save/spend and
+// share one presentation slot. The next-day challenge offer is an entry prompt,
+// so it intentionally stays outside this action-gated set.
 export const POST_ACTION_PROMPT_MODAL_TYPES = new Set([
   QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE,
   QUEUED_MODAL_TYPES.IMPULSE_ALERT,
-  QUEUED_MODAL_TYPES.DAILY_CHALLENGE,
   QUEUED_MODAL_TYPES.FOCUS_DIGEST,
   QUEUED_MODAL_TYPES.DID_YOU_KNOW,
   QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT,
@@ -33,6 +34,7 @@ export const POST_ACTION_PROMPT_MODAL_TYPES = new Set([
 ]);
 
 export const POST_ACTION_PROMPT_MODAL_PRIORITY = Object.freeze({
+  [QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE]: 5,
   [QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE]: 10,
   [QUEUED_MODAL_TYPES.IMPULSE_ALERT]: 20,
   [QUEUED_MODAL_TYPES.DAILY_CHALLENGE]: 30,

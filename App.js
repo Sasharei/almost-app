@@ -189,12 +189,8 @@ import {
   MAX_HISTORY_EVENTS,
   HISTORY_RETENTION_MS,
   HERO_RECENT_HISTORY_WINDOW_MS,
-  PROFILE_HISTORY_PAGE_WINDOW_MS,
   SPEND_LOGGING_REMINDER_DELAY_MS,
   SPEND_LOGGING_REMINDER_COOLDOWN_MS,
-  HISTORY_VIEWPORT_ROWS,
-  HISTORY_ITEM_HEIGHT,
-  HISTORY_VIEWPORT_HEIGHT,
   HISTORY_SAVED_GAIN_EVENTS,
   HISTORY_PROGRESS_GAIN_EVENTS,
   HISTORY_SAVED_LOSS_EVENTS,
@@ -214,7 +210,6 @@ import {
   SUPPORT_EMAIL,
   INSTAGRAM_URL,
   HEALTH_COIN_TIERS,
-  BLUE_HEALTH_COIN_TIER,
   GREEN_HEALTH_COIN_TIER,
   BLUE_HEALTH_COIN_ASSET,
   BLUE_HEALTH_COIN_VALUE,
@@ -388,6 +383,7 @@ import {
   DELETE_SWIPE_THRESHOLD,
   CHALLENGE_SWIPE_ACTION_WIDTH,
   CUSTOM_TEMPTATION_SAMPLE_USD,
+  RATING_PROMPT_ACTION_THRESHOLD,
   RATING_PROMPT_SERIES_THRESHOLD,
   RATING_PROMPT_STORE_THRESHOLD,
   RATING_PROMPT_FEEDBACK_MIN_LENGTH,
@@ -495,6 +491,15 @@ import {
 } from "./src/constants/soundConfig";
 import PremiumPaywallModalV2 from "./src/components/PremiumPaywallModalV2";
 import PremiumUnlockStories from "./src/components/PremiumUnlockStories";
+// eslint-disable-next-line import/first
+import {
+  AnalyticsConsentScreen,
+  GoalScreen,
+  LanguageScreen,
+  OnboardingGoalModal,
+  PersonaScreen,
+  TermsModal,
+} from "./src/components/OnboardingRedesign";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
 import LiquidGlassFabOrb from "./src/components/LiquidGlassFabOrb";
@@ -527,6 +532,13 @@ import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetizati
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  calculateBudgetAllocationBalanceUSD,
+  calculateBudgetCategoryRemainingUSD,
+  resolveBudgetMonthSelection,
+} = require("./src/utils/monthlyBudget");
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
   TEMPTATION_SERIES_STATUS,
   applyTemptationSeriesAction,
   claimTemptationSeries,
@@ -542,7 +554,10 @@ const {
 } = require("./src/engagement/temptationSeries");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  buildCoinDenominationEntries,
+  getCoinTierForAmount,
   getIncidentHistoryRewardFloor,
+  getVisibleCoinDenominationEntries,
   isCoinBalanceIncidentRepairApplied,
   parseLegacyTamagotchiCoinBalance,
   parseStoredCoinBalance,
@@ -555,8 +570,14 @@ const {
 const {
   buildTodayTemptationPlan,
   getNextLocalMidnightAt,
+  isTimestampInLocalCalendarDay,
   partitionUnifiedTemptationFeed,
 } = require("./src/engagement/todayTemptations");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  buildTemptationPressureMap,
+  resolveDailyChallengeDrawTemplateIds,
+} = require("./src/engagement/dailyChallenge");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   advanceAnchoredTemptationSchedule,
@@ -564,6 +585,18 @@ const {
   isManualTemptationCycleAlreadyConsumed,
   resolveTemptationActionSchedulePolicy,
 } = require("./src/engagement/temptationSchedule");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  buildSubscriptionDuePromptKey,
+  buildSubscriptionNotificationPlan,
+  doesScheduledSubscriptionNotificationMatchPlan,
+  findPendingSubscriptionDueEntry,
+} = require("./src/engagement/subscriptionWatch");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  getFreeCustomCardSlotsRemaining,
+  selectPlanVisibleTemptations,
+} = require("./src/monetization/temptationCardAccess");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   parseTemptationPriceOverrideSnapshot,
@@ -591,12 +624,14 @@ const {
 const {
   expireStalePendingTycoonAutosaves,
   getTycoonAutosaveEventDayKey,
+  isManualTycoonInteractionInDay,
   isTycoonAutosaveEnabled,
   isTycoonAutosaveTimestampInDay,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   skipPendingTycoonAutosaveForCards,
+  skipPendingTycoonAutosavesForManualInteractions,
   summarizeTycoonAutosaveSaveResults,
   shouldResetLegacyTycoonPendingEvents,
 } = require("./src/engagement/tycoonAccess");
@@ -611,8 +646,30 @@ const {
 } = require("./src/utils/fabTutorialGeometry");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  isGoalCompletionLocked,
+  resolveGoalProgressState,
   resolveGoalProgressPercentLabel,
 } = require("./src/utils/goalProgress");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  decrementTemptationLifetimeInteractionStats,
+  decrementTemptationLifetimeRefuseStats,
+  reconcileTemptationLifetimeStats,
+} = require("./src/utils/temptationLifetimeStats");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  HISTORY_EVENT_BUCKETS,
+  HISTORY_SORT_MODES,
+  filterHistoryEntries,
+  resolveHistoryCategoryId: resolveHistoryPresentationCategoryId,
+  resolveHistoryEventBucket,
+  sortHistoryEntries,
+} = require("./src/utils/historyPresentation");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  applyRatingPromptDecisionAction,
+  applyRatingPromptSeriesCompletion,
+} = require("./src/engagement/ratingPrompt");
 
 const applyTextScalingDefaults = (Component, componentLabel) => {
   if (!Component) return;
@@ -1417,7 +1474,7 @@ const FREE_GOAL_LIMIT = FREE_PLAN_LIMITS.activeGoals;
 const ONBOARDING_GOAL_SELECTION_LIMIT = 3;
 const FREE_PENDING_LIMIT = FREE_PLAN_LIMITS.activePendingCards || 2;
 const FREE_HISTORY_WINDOW_MS = FREE_PLAN_LIMITS.historyDays * 1000 * 60 * 60 * 24;
-const PROFILE_HISTORY_RENDER_LIMIT = Math.max(HISTORY_VIEWPORT_ROWS * 4, 40);
+const PROFILE_HISTORY_RENDER_LIMIT = 24;
 const FREE_TEMPTATION_CARD_LIMIT = FREE_PLAN_LIMITS.customTemptationCards;
 const FREE_DEFAULT_TEMPTATION_CARD_LIMIT =
   FREE_PLAN_LIMITS.defaultTemptationCards || Math.max(0, FREE_TEMPTATION_CARD_LIMIT - 1);
@@ -3149,119 +3206,6 @@ const loadRemoteTamagotchiSkinAnimations = async ({
   });
 };
 
-const buildTemptationPressureMap = (events = []) => {
-  const map = {};
-  (Array.isArray(events) ? events : []).forEach((event) => {
-    if (!event?.templateId) return;
-    const entry = map[event.templateId] || {
-      spend: 0,
-      save: 0,
-      lastTimestamp: 0,
-    };
-    if (event.action === "spend") {
-      entry.spend += 1;
-      if (event.timestamp && event.timestamp > entry.lastTimestamp) {
-        entry.lastTimestamp = event.timestamp;
-      }
-    } else if (event.action === "save") {
-      entry.save += 1;
-    }
-    map[event.templateId] = entry;
-  });
-  return map;
-};
-
-const resolveDailyChallengeDrawTemplateIds = (
-  pressureMap = {},
-  minSpendEvents = DAILY_CHALLENGE_MIN_SPEND_EVENTS,
-  isValidTemplate = null,
-  options = {}
-) => {
-  const normalizedMinSpend = Math.max(1, Math.floor(Number(minSpendEvents) || 0));
-  const normalizedMinUniqueTemplates = Math.max(
-    1,
-    Math.floor(Number(options?.minUniqueTemplates) || 0)
-  );
-  const normalizedPreviousTemplateId =
-    typeof options?.previousTemplateId === "string"
-      ? options.previousTemplateId.trim()
-      : "";
-  const normalizedDrawCount = Math.max(
-    1,
-    Math.floor(Number(options?.drawCount) || DAILY_CHALLENGE_DRAW_COUNT || 1)
-  );
-  const fallbackTemplateIds = Array.isArray(options?.fallbackTemplateIds)
-    ? options.fallbackTemplateIds
-    : [];
-  const ranked = Object.entries(pressureMap || {})
-    .map(([templateId, stats]) => ({
-      templateId,
-      spend: stats?.spend || 0,
-      save: stats?.save || 0,
-      lastTimestamp: stats?.lastTimestamp || 0,
-      score: (stats?.spend || 0) * 2 - (stats?.save || 0),
-    }))
-    .filter((entry) => entry.spend >= normalizedMinSpend && entry.spend > entry.save)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (b.spend !== a.spend) return b.spend - a.spend;
-      return b.lastTimestamp - a.lastTimestamp;
-    });
-  const eligible = ranked.filter(
-    (entry) => typeof isValidTemplate !== "function" || isValidTemplate(entry.templateId)
-  );
-  if (eligible.length < normalizedMinUniqueTemplates) return [];
-  let drawPool = eligible;
-  let avoidsPreviousTemplate = false;
-  if (normalizedPreviousTemplateId) {
-    const withoutPrevious = eligible.filter(
-      (entry) => entry.templateId !== normalizedPreviousTemplateId
-    );
-    if (withoutPrevious.length >= normalizedMinUniqueTemplates) {
-      drawPool = withoutPrevious;
-      avoidsPreviousTemplate = true;
-    }
-  }
-  const drawIds = [];
-  const seen = new Set();
-  const isValid = (templateId) =>
-    typeof isValidTemplate !== "function" || isValidTemplate(templateId);
-  const appendTemplateId = (templateId, allowPrevious = false) => {
-    const normalizedId = typeof templateId === "string" ? templateId.trim() : "";
-    if (!normalizedId || seen.has(normalizedId)) return false;
-    if (
-      avoidsPreviousTemplate &&
-      !allowPrevious &&
-      normalizedId === normalizedPreviousTemplateId
-    ) {
-      return false;
-    }
-    if (!isValid(normalizedId)) return false;
-    seen.add(normalizedId);
-    drawIds.push(normalizedId);
-    return true;
-  };
-  drawPool.forEach((entry) => {
-    if (drawIds.length >= normalizedDrawCount) return;
-    appendTemplateId(entry.templateId, true);
-  });
-  fallbackTemplateIds.forEach((templateId) => {
-    if (drawIds.length >= normalizedDrawCount) return;
-    appendTemplateId(templateId);
-  });
-  if (drawIds.length < normalizedDrawCount && avoidsPreviousTemplate) {
-    fallbackTemplateIds.forEach((templateId) => {
-      if (drawIds.length >= normalizedDrawCount) return;
-      appendTemplateId(templateId, true);
-    });
-  }
-  for (let index = drawIds.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [drawIds[index], drawIds[swapIndex]] = [drawIds[swapIndex], drawIds[index]];
-  }
-  return drawIds;
-};
-
 const createInitialDailyChallengeState = () => ({
   id: null,
   dateKey: null,
@@ -3693,7 +3637,7 @@ const getCelebrationMessages = (language, gender = "none") => {
   return Array.isArray(variant) ? variant : [];
 };
 const createInitialRatingPromptState = () => ({
-  triggerVersion: 2,
+  triggerVersion: 3,
   firstOpenAt: new Date().toISOString(),
   completed: false,
   lastShownAt: null,
@@ -4091,34 +4035,13 @@ const claimedRewardsEqual = (a = {}, b = {}) => {
   });
 };
 const getHealthCoinTierForAmount = (amount = 0) => {
-  const normalized = Math.max(0, Math.floor(amount));
-  for (let i = HEALTH_COIN_TIERS.length - 1; i >= 0; i -= 1) {
-    const tier = HEALTH_COIN_TIERS[i];
-    if (normalized >= tier.value) {
-      return tier;
-    }
-  }
-  return HEALTH_COIN_TIERS[0];
+  return getCoinTierForAmount(amount, HEALTH_COIN_TIERS) || HEALTH_COIN_TIERS[0];
 };
 const getHealthCoinDisplayCount = (amount = 0) => {
   const normalized = Math.max(0, Math.floor(amount));
   const tier = getHealthCoinTierForAmount(normalized);
   const tierValue = Math.max(1, Number(tier?.value) || 1);
   return Math.max(1, Math.ceil(normalized / tierValue));
-};
-const getHealthCoinBreakdown = (amount = 0) => {
-  let remaining = Math.max(0, Math.floor(amount));
-  const breakdown = {};
-  for (let i = HEALTH_COIN_TIERS.length - 1; i >= 0; i -= 1) {
-    const tier = HEALTH_COIN_TIERS[i];
-    const count = Math.floor(remaining / tier.value);
-    breakdown[tier.id] = count;
-    remaining -= count * tier.value;
-  }
-  HEALTH_COIN_TIERS.forEach((tier) => {
-    if (!breakdown[tier.id]) breakdown[tier.id] = 0;
-  });
-  return breakdown;
 };
 const COIN_VALUE_COLOR_LABEL_KEYS = Object.freeze({
   green: "coinValueColorGreen",
@@ -4128,12 +4051,7 @@ const COIN_VALUE_COLOR_LABEL_KEYS = Object.freeze({
   pink: "coinValueColorPink",
 });
 const buildHealthCoinEntries = (amount = 0) => {
-  const breakdown = getHealthCoinBreakdown(amount);
-  return HEALTH_COIN_TIERS.slice().reverse().map((tier) => ({
-    ...tier,
-    asset: tier.asset,
-    count: breakdown[tier.id] || 0,
-  }));
+  return buildCoinDenominationEntries(amount, HEALTH_COIN_TIERS);
 };
 const getChestRewardTierForAmount = (amount = 0) => {
   const normalized = Math.max(0, Math.floor(Number(amount) || 0));
@@ -10846,6 +10764,8 @@ const mergeInteractionStatMaps = (base = {}, incoming = {}) => {
     const normalizedMonthlyDay = normalizedMonthlyDays?.[0] ?? null;
     merged.saveCount = (current.saveCount || 0) + (stats.saveCount || 0);
     merged.spendCount = (current.spendCount || 0) + (stats.spendCount || 0);
+    merged.savedAmountUSD =
+      (Number(current.savedAmountUSD) || 0) + (Number(stats.savedAmountUSD) || 0);
     merged.lastInteractionAt = Math.max(current.lastInteractionAt || 0, stats.lastInteractionAt || 0);
     const latestIsIncoming = (stats.lastInteractionAt || 0) >= (current.lastInteractionAt || 0);
     if (latestIsIncoming) {
@@ -26319,18 +26239,91 @@ function BudgetLockedScreen({
   );
 }
 
-const HistoryModal = React.memo(function HistoryModal({
-  visible = false,
+const HistoryEventGlyph = React.memo(function HistoryEventGlyph({
+  bucket = HISTORY_EVENT_BUCKETS.OTHER,
+  color = "#202129",
+  size = 18,
+}) {
+  const pathProps = {
+    fill: "none",
+    stroke: color,
+    strokeWidth: 1.9,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      {bucket === HISTORY_EVENT_BUCKETS.SAVED ? (
+        <>
+          <SvgPath d="M5 12.5 9.2 17 19 7" {...pathProps} />
+          <SvgPath d="M12 3.8v3.4M12 17v3.2" {...pathProps} />
+        </>
+      ) : bucket === HISTORY_EVENT_BUCKETS.SPENT ? (
+        <>
+          <SvgPath d="M7 7 17 17M17 7 7 17" {...pathProps} />
+          <SvgCircle cx="12" cy="12" r="9" {...pathProps} />
+        </>
+      ) : bucket === HISTORY_EVENT_BUCKETS.GOALS ? (
+        <>
+          <SvgCircle cx="12" cy="12" r="8.5" {...pathProps} />
+          <SvgCircle cx="12" cy="12" r="3.2" {...pathProps} />
+          <SvgPath d="M12 3.5v2.8M20.5 12h-2.8" {...pathProps} />
+        </>
+      ) : (
+        <>
+          <SvgCircle cx="12" cy="12" r="8.5" {...pathProps} />
+          <SvgPath d="M12 7.5v5l3.2 2" {...pathProps} />
+        </>
+      )}
+    </Svg>
+  );
+});
+
+const HistoryDeleteGlyph = React.memo(function HistoryDeleteGlyph({ color = "#626774", size = 18 }) {
+  const pathProps = {
+    fill: "none",
+    stroke: color,
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <SvgPath d="M5.5 7.5h13M9 7.5V5.2h6v2.3M8 10.2l.6 8.3h6.8l.6-8.3M10.5 11.3v4.5M13.5 11.3v4.5" {...pathProps} />
+    </Svg>
+  );
+});
+
+const HistoryCloseGlyph = React.memo(function HistoryCloseGlyph({ color = "#626774", size = 18 }) {
+  const pathProps = {
+    fill: "none",
+    stroke: color,
+    strokeWidth: 1.9,
+    strokeLinecap: "round",
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <SvgPath d="M7 7 17 17M17 7 7 17" {...pathProps} />
+    </Svg>
+  );
+});
+
+const HistoryTimeline = React.memo(function HistoryTimeline({
   history = [],
-  onClose = () => {},
   onHistoryDelete = () => {},
   t,
   colors,
   currency,
   language,
+  scrollEnabled = false,
+  maxListHeight = null,
 }) {
-  const historyEntries = Array.isArray(history) ? history : [];
+  const historyEntries = useMemo(() => (Array.isArray(history) ? history.filter(Boolean) : []), [history]);
   const locale = getFormatLocale(language);
+  const isRtl = isRtlLanguage(normalizeLanguage(language || DEFAULT_LANGUAGE));
+  const [sortMode, setSortMode] = useState(HISTORY_SORT_MODES.NEWEST);
+  const [filterMode, setFilterMode] = useState("all");
+  const [visibleCount, setVisibleCount] = useState(PROFILE_HISTORY_RENDER_LIMIT);
   const formatLocalAmount = useCallback(
     (valueUSD = 0) => formatCurrency(convertToCurrency(valueUSD || 0, currency), currency),
     [currency]
@@ -26343,55 +26336,375 @@ const HistoryModal = React.memo(function HistoryModal({
     (entry) => formatHistoryEntryMeta(entry, { t, locale }),
     [locale, t]
   );
-  const historyLastIndex = historyEntries.length - 1;
-  const renderHistoryItem = useCallback(
-    ({ item: entry, index }) => (
-      <View
-        style={[
-          styles.historyItem,
-          {
-            borderColor: colors.border,
-            borderBottomWidth:
-              index === historyLastIndex ? 0 : StyleSheet.hairlineWidth,
-          },
-        ]}
-      >
-        <View style={styles.historyRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.historyItemTitle, { color: colors.text }]}>
-              {describeHistory(entry)}
-            </Text>
-            <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
-              {formatHistoryMeta(entry)}
-            </Text>
+  const formatHistoryTime = useCallback(
+    (entry) => {
+      if (!entry?.timestamp) return "";
+      try {
+        return new Date(entry.timestamp).toLocaleTimeString(locale, {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } catch {
+        return "";
+      }
+    },
+    [locale]
+  );
+  const getBucketLabel = useCallback(
+    (bucket) => {
+      if (bucket === HISTORY_EVENT_BUCKETS.SAVED) return t("historyFilterSaved");
+      if (bucket === HISTORY_EVENT_BUCKETS.SPENT) return t("historyFilterSpent");
+      if (bucket === HISTORY_EVENT_BUCKETS.GOALS) return t("historyFilterGoals");
+      return t("historyFilterOther");
+    },
+    [t]
+  );
+  const getHistoryCategoryLabel = useCallback(
+    (entry) => {
+      const categoryId = resolveHistoryPresentationCategoryId(entry);
+      if (categoryId && IMPULSE_CATEGORY_DEFS[categoryId]) {
+        return getImpulseCategoryLabel(categoryId, language);
+      }
+      return getBucketLabel(resolveHistoryEventBucket(entry));
+    },
+    [getBucketLabel, language]
+  );
+  const getHistoryCategorySortLabel = useCallback(
+    (entry) => {
+      const categoryId = resolveHistoryPresentationCategoryId(entry);
+      if (categoryId && IMPULSE_CATEGORY_DEFS[categoryId]) {
+        return getImpulseCategoryName(categoryId, language);
+      }
+      return getBucketLabel(resolveHistoryEventBucket(entry));
+    },
+    [getBucketLabel, language]
+  );
+  const bucketCounts = useMemo(() => {
+    const counts = {
+      all: historyEntries.length,
+      [HISTORY_EVENT_BUCKETS.SAVED]: 0,
+      [HISTORY_EVENT_BUCKETS.SPENT]: 0,
+      [HISTORY_EVENT_BUCKETS.GOALS]: 0,
+      [HISTORY_EVENT_BUCKETS.OTHER]: 0,
+    };
+    historyEntries.forEach((entry) => {
+      counts[resolveHistoryEventBucket(entry)] += 1;
+    });
+    return counts;
+  }, [historyEntries]);
+  const filteredAndSortedEntries = useMemo(
+    () =>
+      sortHistoryEntries(
+        filterHistoryEntries(historyEntries, filterMode),
+        sortMode,
+        getHistoryCategorySortLabel
+      ),
+    [filterMode, getHistoryCategorySortLabel, historyEntries, sortMode]
+  );
+  useEffect(() => {
+    setVisibleCount(PROFILE_HISTORY_RENDER_LIMIT);
+  }, [filterMode, sortMode]);
+  const visibleEntries = useMemo(
+    () => filteredAndSortedEntries.slice(0, visibleCount),
+    [filteredAndSortedEntries, visibleCount]
+  );
+  const formatHistorySectionDate = useCallback(
+    (timestamp) => {
+      const numericTimestamp = Number(timestamp) || 0;
+      if (!numericTimestamp) return t("historyDateUnknown");
+      const dayKey = getDayKey(numericTimestamp);
+      if (dayKey === getDayKey(Date.now())) return t("historyDateToday");
+      if (dayKey === getDayKey(Date.now() - DAY_MS)) return t("historyDateYesterday");
+      try {
+        return new Date(numericTimestamp).toLocaleDateString(locale, {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        });
+      } catch {
+        return t("historyDateUnknown");
+      }
+    },
+    [locale, t]
+  );
+  const timelineItems = useMemo(() => {
+    const groups = [];
+    visibleEntries.forEach((entry) => {
+      const label =
+        sortMode === HISTORY_SORT_MODES.CATEGORY
+          ? getHistoryCategoryLabel(entry)
+          : formatHistorySectionDate(entry?.timestamp);
+      const key =
+        sortMode === HISTORY_SORT_MODES.CATEGORY
+          ? `category-${label}`
+          : `date-${getDayKey(Number(entry?.timestamp) || 0) || "unknown"}`;
+      const current = groups[groups.length - 1];
+      if (!current || current.key !== key) {
+        groups.push({ key, label, entries: [entry] });
+      } else {
+        current.entries.push(entry);
+      }
+    });
+    return groups.flatMap((group) => [
+      {
+        type: "section",
+        key: `section-${group.key}`,
+        label: group.label,
+        count: group.entries.length,
+      },
+      ...group.entries.map((entry, index) => ({
+        type: "entry",
+        key: `${entry?.id || group.key}-${index}`,
+        entry,
+        isLastInSection: index === group.entries.length - 1,
+      })),
+    ]);
+  }, [formatHistorySectionDate, getHistoryCategoryLabel, sortMode, visibleEntries]);
+  const resolveBucketAccent = useCallback(
+    (bucket) => {
+      if (bucket === HISTORY_EVENT_BUCKETS.SAVED) return colors.success || "#247451";
+      if (bucket === HISTORY_EVENT_BUCKETS.SPENT) return colors.error || "#A73D37";
+      if (bucket === HISTORY_EVENT_BUCKETS.GOALS) return colors.info || colors.primary || colors.text;
+      return colors.muted;
+    },
+    [colors.error, colors.info, colors.muted, colors.primary, colors.success, colors.text]
+  );
+  const renderTimelineItem = useCallback(
+    ({ item }) => {
+      if (item.type === "section") {
+        return (
+          <View style={[styles.historySectionHeader, isRtl && styles.historyRtlRow]}>
+            <Text style={[styles.historySectionTitle, { color: colors.text }]}>{item.label}</Text>
+            <View style={[styles.historySectionCount, { backgroundColor: colors.surfaceMuted }]}>
+              <Text style={[styles.historySectionCountText, { color: colors.muted }]}>{item.count}</Text>
+            </View>
           </View>
-          <TouchableOpacity
-            style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
+        );
+      }
+      const entry = item.entry;
+      const bucket = resolveHistoryEventBucket(entry);
+      const accent = resolveBucketAccent(bucket);
+      const description = describeHistory(entry);
+      const meta =
+        sortMode === HISTORY_SORT_MODES.CATEGORY ? formatHistoryMeta(entry) : formatHistoryTime(entry);
+      return (
+        <View style={[styles.historyTimelineRow, isRtl && styles.historyRtlRow]}>
+          <View style={styles.historyTimelineMarkerColumn}>
+            <View
+              style={[
+                styles.historyTimelineMarker,
+                {
+                  backgroundColor: colorWithAlpha(accent, 0.12),
+                  borderColor: colorWithAlpha(accent, 0.28),
+                },
+              ]}
+            >
+              <HistoryEventGlyph bucket={bucket} color={accent} />
+            </View>
+            {!item.isLastInSection ? (
+              <View style={[styles.historyTimelineConnector, { backgroundColor: colors.separator || colors.border }]} />
+            ) : null}
+          </View>
+          <View style={[styles.historyTimelineCopy, isRtl && styles.historyTimelineCopyRtl]}>
+            <Text style={[styles.historyItemTitle, { color: colors.text }]}>{description}</Text>
+            {meta ? (
+              <Text style={[styles.historyItemMeta, { color: colors.muted }]}>{meta}</Text>
+            ) : null}
+          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.historyDeleteBtn,
+              {
+                borderColor: colors.border,
+                backgroundColor: pressed ? colors.surfaceMuted : "transparent",
+                transform: [{ scale: pressed ? UI_MOTION.pressScale : 1 }],
+              },
+            ]}
             onPress={() => onHistoryDelete?.(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={t("historyDeleteEntry", { title: description })}
           >
-            <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
-          </TouchableOpacity>
+            <HistoryDeleteGlyph color={colors.muted} />
+          </Pressable>
         </View>
-      </View>
-    ),
+      );
+    },
     [
       colors.border,
       colors.muted,
+      colors.separator,
+      colors.surfaceMuted,
       colors.text,
       describeHistory,
       formatHistoryMeta,
-      historyLastIndex,
+      formatHistoryTime,
+      isRtl,
       onHistoryDelete,
+      resolveBucketAccent,
+      sortMode,
+      t,
     ]
   );
-  const historyItemLayout = useCallback(
-    (_, index) => ({
-      length: HISTORY_ITEM_HEIGHT,
-      offset: HISTORY_ITEM_HEIGHT * index,
-      index,
-    }),
-    []
+  const sortOptions = useMemo(
+    () => [
+      { id: HISTORY_SORT_MODES.NEWEST, label: t("historySortNewest") },
+      { id: HISTORY_SORT_MODES.OLDEST, label: t("historySortOldest") },
+      { id: HISTORY_SORT_MODES.CATEGORY, label: t("historySortCategory") },
+    ],
+    [t]
   );
+  const filterOptions = useMemo(
+    () => [
+      { id: "all", label: t("historyFilterAll") },
+      { id: HISTORY_EVENT_BUCKETS.SAVED, label: t("historyFilterSaved") },
+      { id: HISTORY_EVENT_BUCKETS.SPENT, label: t("historyFilterSpent") },
+      { id: HISTORY_EVENT_BUCKETS.GOALS, label: t("historyFilterGoals") },
+      { id: HISTORY_EVENT_BUCKETS.OTHER, label: t("historyFilterOther") },
+    ],
+    [t]
+  );
+  const renderControlChip = useCallback(
+    (option, selected, onPress, count = null) => (
+      <Pressable
+        key={option.id}
+        style={({ pressed }) => [
+          styles.historyControlChip,
+          {
+            backgroundColor: selected ? colors.text : colors.surfaceMuted,
+            borderColor: selected ? colors.text : colors.border,
+            transform: [{ scale: pressed ? UI_MOTION.pressScale : 1 }],
+          },
+        ]}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        accessibilityLabel={option.label}
+      >
+        <Text
+          style={[
+            styles.historyControlChipText,
+            { color: selected ? colors.background : colors.muted },
+          ]}
+          numberOfLines={1}
+        >
+          {option.label}{count == null ? "" : ` ${count}`}
+        </Text>
+      </Pressable>
+    ),
+    [colors.background, colors.border, colors.muted, colors.surfaceMuted, colors.text]
+  );
+  const hasMore = visibleEntries.length < filteredAndSortedEntries.length;
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((current) => current + PROFILE_HISTORY_RENDER_LIMIT);
+  }, []);
+  const listFooter = hasMore ? (
+    <Pressable
+      style={({ pressed }) => [
+        styles.historyMoreButton,
+        {
+          borderColor: colors.border,
+          backgroundColor: pressed ? colors.surfaceMuted : "transparent",
+          transform: [{ scale: pressed ? UI_MOTION.pressScale : 1 }],
+        },
+      ]}
+      onPress={handleLoadMore}
+      accessibilityRole="button"
+    >
+      <Text style={[styles.historyMoreText, { color: colors.text }]}>{t("historyLoadMore")}</Text>
+    </Pressable>
+  ) : null;
+  return (
+    <View style={styles.historyTimeline}>
+      {historyEntries.length ? (
+        <>
+          <View style={[styles.historyResultsRow, isRtl && styles.historyRtlRow]}>
+            <Text style={[styles.historyResultsText, { color: colors.muted }]}>
+              {t("historyResultsCount", {
+                visible: visibleEntries.length,
+                total: filteredAndSortedEntries.length,
+              })}
+            </Text>
+          </View>
+          <View style={styles.historyControlsGroup}>
+            <Text style={[styles.historyControlLabel, { color: colors.muted }]}>{t("historySortLabel")}</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.historyControlRail,
+                isRtl && styles.historyControlRailRtl,
+              ]}
+            >
+              {sortOptions.map((option) =>
+                renderControlChip(option, sortMode === option.id, () => setSortMode(option.id))
+              )}
+            </ScrollView>
+            <Text style={[styles.historyControlLabel, { color: colors.muted }]}>{t("historyFilterLabel")}</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.historyControlRail,
+                isRtl && styles.historyControlRailRtl,
+              ]}
+            >
+              {filterOptions.map((option) =>
+                renderControlChip(
+                  option,
+                  filterMode === option.id,
+                  () => setFilterMode(option.id),
+                  bucketCounts[option.id]
+                )
+              )}
+            </ScrollView>
+          </View>
+        </>
+      ) : null}
+      {!historyEntries.length || !timelineItems.length ? (
+        <View style={[styles.historyEmptyState, { backgroundColor: colors.surfaceMuted }]}>
+          <HistoryEventGlyph color={colors.muted} size={22} />
+          <Text style={[styles.historyEmpty, { color: colors.muted }]}>
+            {historyEntries.length ? t("historyNoMatches") : t("historyEmpty")}
+          </Text>
+        </View>
+      ) : scrollEnabled ? (
+        <FlatList
+          style={[styles.historyTimelineList, maxListHeight ? { maxHeight: maxListHeight } : null]}
+          contentContainerStyle={styles.historyTimelineListContent}
+          showsVerticalScrollIndicator
+          nestedScrollEnabled
+          removeClippedSubviews={false}
+          data={timelineItems}
+          keyExtractor={(item) => item.key}
+          renderItem={renderTimelineItem}
+          initialNumToRender={18}
+          maxToRenderPerBatch={18}
+          windowSize={7}
+          ListFooterComponent={listFooter}
+        />
+      ) : (
+        <View style={styles.historyTimelineListContent}>
+          {timelineItems.map((item) => (
+            <React.Fragment key={item.key}>{renderTimelineItem({ item })}</React.Fragment>
+          ))}
+          {listFooter}
+        </View>
+      )}
+    </View>
+  );
+});
+
+const HistoryModal = React.memo(function HistoryModal({
+  visible = false,
+  history = [],
+  onClose = () => {},
+  onHistoryDelete = () => {},
+  t,
+  colors,
+  currency,
+  language,
+}) {
+  const historyInsets = useSafeAreaInsets();
   const [modalHeight, setModalHeight] = useState(0);
   const modalOpacity = useMemo(() => {
     const screenHeight = Dimensions.get("window").height || 1;
@@ -26419,7 +26732,11 @@ const HistoryModal = React.memo(function HistoryModal({
           <View
             style={[
               styles.progressCategoryModalCard,
-              { backgroundColor: colors.card, borderColor: colors.border },
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                paddingBottom: Math.max(UI_SPACING.md, historyInsets.bottom + UI_SPACING.xs),
+              },
             ]}
             onLayout={(event) => {
               const nextHeight = event?.nativeEvent?.layout?.height || 0;
@@ -26429,32 +26746,33 @@ const HistoryModal = React.memo(function HistoryModal({
             }}
           >
             <View style={styles.progressCategoryModalHeader}>
-              <Text style={[styles.progressCategoryModalTitle, { color: colors.text }]}>
-                {t("historyTitle")}
-              </Text>
-              <TouchableOpacity onPress={onClose} style={styles.progressCategoryModalClose}>
-                <Text style={[styles.progressCategoryModalCloseText, { color: colors.muted }]}>✕</Text>
+              <View style={styles.historyModalTitleBlock}>
+                <Text style={[styles.progressCategoryModalTitle, { color: colors.text }]}>
+                  {t("historyTitle")}
+                </Text>
+                <Text style={[styles.historyModalSubtitle, { color: colors.muted }]}>
+                  {t("historySubtitle")}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                style={[styles.progressCategoryModalClose, { backgroundColor: colors.surfaceMuted }]}
+                accessibilityRole="button"
+                accessibilityLabel={t("historyClose")}
+              >
+                <HistoryCloseGlyph color={colors.muted} />
               </TouchableOpacity>
             </View>
-            {historyEntries.length === 0 ? (
-              <Text style={[styles.historyEmpty, { color: colors.muted }]}>
-                {t("historyEmpty")}
-              </Text>
-            ) : (
-              <FlatList
-                style={[styles.progressCategoryModalList, { borderColor: colors.border }]}
-                contentContainerStyle={styles.historyListContent}
-                showsVerticalScrollIndicator
-                removeClippedSubviews={false}
-                data={historyEntries}
-                keyExtractor={(entry, index) => `${entry?.id || "history-entry"}-${index}`}
-                renderItem={renderHistoryItem}
-                getItemLayout={historyItemLayout}
-                initialNumToRender={12}
-                maxToRenderPerBatch={12}
-                windowSize={5}
-              />
-            )}
+            <HistoryTimeline
+              history={history}
+              onHistoryDelete={onHistoryDelete}
+              t={t}
+              colors={colors}
+              currency={currency}
+              language={language}
+              scrollEnabled
+              maxListHeight={IS_SHORT_DEVICE ? 300 : 420}
+            />
           </View>
         </View>
       </View>
@@ -29873,6 +30191,7 @@ const FeedScreen = React.memo(
   goalJarAutoOpenRequestTick = 0,
   onGoalJarDetailVisibilityChange = null,
   onGoalJarDetailClose = null,
+  feedCategoryFilterResetTick = 0,
   },
     ref
   ) {
@@ -32987,6 +33306,9 @@ const FeedScreen = React.memo(
       .map((entry) => entry.item);
   }, [feedCardOrder, feedCardOrderHydrated, filteredProducts]);
   const [selectedFeedCategoryId, setSelectedFeedCategoryId] = useState("all");
+  useEffect(() => {
+    setSelectedFeedCategoryId("all");
+  }, [feedCategoryFilterResetTick]);
   const [feedCategoryFilterUsage, setFeedCategoryFilterUsage] = useState({});
   const [feedCategoryFilterUsageHydrated, setFeedCategoryFilterUsageHydrated] = useState(false);
   useEffect(() => {
@@ -35267,6 +35589,14 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
   const safeSpentUSD = Math.max(0, Number(spentUSD) || 0);
   const safeRecommendedUSD = Math.max(0, Number(recommendedUSD) || 0);
   const safeProjectedSpentUSD = Math.max(0, Number(projectedSpentUSD) || 0);
+  const categoryRemainingUSD = calculateBudgetCategoryRemainingUSD({
+    limitUSD: safeLimitUSD,
+    spentUSD: safeSpentUSD,
+  });
+  const categoryRemainingLabel =
+    categoryRemainingUSD < -0.01
+      ? `-${formatAmount(Math.abs(categoryRemainingUSD))}`
+      : formatAmount(categoryRemainingUSD);
   const hasManualOverride = entry?.isOverride === true;
   const safeMaxValueUSD = Math.max(
     1,
@@ -35476,8 +35806,8 @@ const BudgetLimitSliderRow = React.memo(function BudgetLimitSliderRow({
           <Text style={[styles.budgetSliderTitle, { color: colors.text }]} numberOfLines={1}>
             {entry.emoji} {entry.label}
           </Text>
-          <Text style={[styles.budgetSliderSubtitle, { color: colors.muted }]}>
-            {t("budgetSpentLabel", { amount: formatAmount(safeSpentUSD) })}
+          <Text style={[styles.budgetSliderSubtitle, { color: colors.muted }]} numberOfLines={2}>
+            {t("budgetLegendSpent")}: {formatAmount(safeSpentUSD)} · {t("budgetRemainingLabel")}: {categoryRemainingLabel}
           </Text>
         </View>
         <View style={styles.budgetSliderHeaderActions}>
@@ -35686,6 +36016,371 @@ const ProgressDestinationTabs = React.memo(function ProgressDestinationTabs({
   );
 });
 
+const SubscriptionDuePromptModal = React.memo(function SubscriptionDuePromptModal({
+  visible = false,
+  entry = null,
+  colors,
+  language = DEFAULT_LANGUAGE,
+  t,
+  onRequestClose = null,
+  onDecision = null,
+}) {
+  const { reduceMotion } = useMotionPreferences();
+  const isDarkTheme = colors.background === THEMES.dark.background;
+  const urgencyColor = colors.error || SPEND_ACTION_COLOR;
+  const actionForeground = THEMES.dark.overlay;
+  const promptAnim = useRef(new Animated.Value(0)).current;
+  const chartAnim = useRef(new Animated.Value(0)).current;
+  const shouldShow = visible && !!entry;
+
+  useEffect(() => {
+    promptAnim.stopAnimation();
+    chartAnim.stopAnimation();
+    if (!shouldShow) {
+      Animated.timing(promptAnim, {
+        toValue: 0,
+        duration: reduceMotion ? 0 : 160,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      chartAnim.setValue(0);
+      return;
+    }
+    promptAnim.setValue(0);
+    chartAnim.setValue(0);
+    Animated.spring(promptAnim, {
+      toValue: 1,
+      damping: reduceMotion ? 100 : 19,
+      stiffness: 230,
+      mass: 0.78,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(chartAnim, {
+      toValue: 1,
+      duration: reduceMotion ? 0 : 720,
+      delay: reduceMotion ? 0 : 120,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [chartAnim, entry?.id, promptAnim, reduceMotion, shouldShow]);
+
+  const backdropOpacity = useMemo(
+    () =>
+      promptAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 0.5],
+      }),
+    [promptAnim]
+  );
+  const cardScale = useMemo(
+    () =>
+      promptAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [reduceMotion ? 1 : 0.92, 1],
+      }),
+    [promptAnim, reduceMotion]
+  );
+  const cardTranslateY = useMemo(
+    () =>
+      promptAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [reduceMotion ? 0 : 30, 0],
+      }),
+    [promptAnim, reduceMotion]
+  );
+  const formatDate = useCallback(
+    (timestamp) => {
+      if (!Number.isFinite(Number(timestamp))) return t("subscriptionModalNoDate");
+      try {
+        return new Date(timestamp).toLocaleDateString(getFormatLocale(language), {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      } catch {
+        return t("subscriptionModalNoDate");
+      }
+    },
+    [language, t]
+  );
+  const chartRows = useMemo(() => {
+    if (!entry) return [];
+    const maxValue = Math.max(
+      entry.annualForecastUSD || 0,
+      entry.spentUSD || 0,
+      entry.amountUSD || 0,
+      1
+    );
+    const buildRow = (key, label, value, valueLabel, color) => ({
+      key,
+      label,
+      valueLabel,
+      color,
+      targetWidth: Math.max(
+        28,
+        Math.round(
+          (Math.max(0, Number(value) || 0) / maxValue) * Math.min(SCREEN_WIDTH - 72, 360)
+        )
+      ),
+    });
+    return [
+      buildRow(
+        "charge",
+        t("subscriptionDueChartCharge"),
+        entry.amountUSD,
+        entry.amountLabel,
+        urgencyColor
+      ),
+      buildRow(
+        "spent",
+        t("subscriptionDueChartPaid"),
+        entry.spentUSD,
+        entry.spentLabel,
+        SPEND_ACTION_COLOR
+      ),
+      buildRow(
+        "forecast",
+        t("subscriptionDueChartForecast"),
+        entry.annualForecastUSD,
+        entry.annualForecastLabel,
+        "#7C5CFF"
+      ),
+    ];
+  }, [entry, t, urgencyColor]);
+
+  return (
+    <Modal
+      visible={shouldShow}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onRequestClose}
+    >
+      <View style={styles.subscriptionModalRoot}>
+        <TouchableWithoutFeedback onPress={onRequestClose}>
+          <Animated.View
+            style={[
+              styles.subscriptionModalBackdrop,
+              { backgroundColor: "#000", opacity: backdropOpacity },
+            ]}
+          />
+        </TouchableWithoutFeedback>
+        <View
+          style={[styles.subscriptionModalWrap, styles.subscriptionDueModalWrap]}
+          pointerEvents="box-none"
+        >
+          <Animated.View
+            style={[
+              styles.subscriptionDueCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colorWithAlpha(urgencyColor, 0.32),
+                opacity: promptAnim,
+                transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
+              },
+            ]}
+            accessibilityViewIsModal
+          >
+            {entry ? (
+              <>
+                <View style={styles.subscriptionDueHero}>
+                  <View
+                    style={[
+                      styles.subscriptionDueEmojiBubble,
+                      {
+                        backgroundColor: colorWithAlpha(
+                          urgencyColor,
+                          isDarkTheme ? 0.2 : 0.12
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={styles.subscriptionDueEmoji}>{entry.emoji}</Text>
+                  </View>
+                  <View style={styles.subscriptionDueHeroText}>
+                    <Text style={[styles.subscriptionDueTitle, { color: colors.text }]}>
+                      {t("subscriptionDueModalTitle")}
+                    </Text>
+                    <Text style={[styles.subscriptionDueSubtitle, { color: colors.muted }]}>
+                      {t("subscriptionDueModalSubtitle", { title: entry.title })}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.subscriptionDueStatsGrid}>
+                  <View
+                    style={[
+                      styles.subscriptionDueStat,
+                      {
+                        borderColor: colorWithAlpha(urgencyColor, 0.28),
+                        backgroundColor: colorWithAlpha(urgencyColor, 0.08),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                      {t("subscriptionDueAmount")}
+                    </Text>
+                    <Text style={[styles.subscriptionDueStatValue, { color: urgencyColor }]}>
+                      {entry.amountLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.subscriptionDueStat,
+                      {
+                        borderColor: colorWithAlpha(urgencyColor, 0.28),
+                        backgroundColor: colorWithAlpha(urgencyColor, 0.08),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                      {t("subscriptionDueFirstRecorded")}
+                    </Text>
+                    <Text
+                      style={[styles.subscriptionDueStatValue, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {formatDate(entry.firstRecordedAt)}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.subscriptionDueStat,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colorWithAlpha(
+                          colors.text,
+                          isDarkTheme ? 0.05 : 0.03
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                      {t("subscriptionDueTotalSpent")}
+                    </Text>
+                    <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
+                      {entry.spentLabel}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.subscriptionDueStat,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colorWithAlpha(
+                          "#7C5CFF",
+                          isDarkTheme ? 0.16 : 0.09
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
+                      {t("subscriptionDueYearForecast")}
+                    </Text>
+                    <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
+                      {entry.annualForecastLabel}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.subscriptionDueChart}>
+                  <Text style={[styles.subscriptionDueChartTitle, { color: colors.text }]}>
+                    {t("subscriptionDueHistoryTitle")}
+                  </Text>
+                  {chartRows.map((row) => (
+                    <View key={row.key} style={styles.subscriptionDueChartRow}>
+                      <View style={styles.subscriptionDueChartMeta}>
+                        <Text
+                          style={[styles.subscriptionDueChartLabel, { color: colors.muted }]}
+                          numberOfLines={1}
+                        >
+                          {row.label}
+                        </Text>
+                        <Text
+                          style={[styles.subscriptionDueChartValue, { color: colors.text }]}
+                          numberOfLines={1}
+                        >
+                          {row.valueLabel}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.subscriptionDueChartTrack,
+                          {
+                            backgroundColor: colorWithAlpha(
+                              colors.text,
+                              isDarkTheme ? 0.08 : 0.06
+                            ),
+                          },
+                        ]}
+                      >
+                        <Animated.View
+                          style={[
+                            styles.subscriptionDueChartFill,
+                            {
+                              backgroundColor: row.color,
+                              width: chartAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, row.targetWidth],
+                              }),
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Text style={[styles.subscriptionDueQuestion, { color: colors.text }]}>
+                  {t("subscriptionDuePaidQuestion")}
+                </Text>
+                <View style={styles.subscriptionDueActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.subscriptionDueActionButton,
+                      { backgroundColor: SAVE_ACTION_COLOR },
+                    ]}
+                    onPress={() => onDecision?.("skipped")}
+                    activeOpacity={0.88}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("subscriptionDueNotPaidButton")}
+                  >
+                    <Text style={[styles.subscriptionDueActionText, { color: actionForeground }]}>
+                      {t("subscriptionDueNotPaidButton")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.subscriptionDueActionButton,
+                      { backgroundColor: SPEND_ACTION_COLOR },
+                    ]}
+                    onPress={() => onDecision?.("paid")}
+                    activeOpacity={0.88}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("subscriptionDuePaidButton")}
+                  >
+                    <Text style={[styles.subscriptionDueActionText, { color: actionForeground }]}>
+                      {t("subscriptionDuePaidButton")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={styles.subscriptionDueLater}
+                  onPress={onRequestClose}
+                  activeOpacity={0.86}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("subscriptionDueLater")}
+                >
+                  <Text style={[styles.subscriptionDueLaterText, { color: colors.muted }]}>
+                    {t("subscriptionDueLater")}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </Animated.View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
 const ProgressScreen = React.memo(function ProgressScreen({
   wishes,
   currency = DEFAULT_PROFILE.currency,
@@ -35751,7 +36446,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
   onSubscriptionAutoImport = null,
   subscriptionAutoImportCandidates = [],
   subscriptionAutoOpenRequestTick = 0,
-  onSubscriptionPaymentAction = null,
   onFreeDayCardLayout = null,
   onImpulseMapLockedPress = null,
   contentBottomPadding = 0,
@@ -36666,10 +37360,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const [subscriptionAutoPanelVisible, setSubscriptionAutoPanelVisible] = useState(false);
   const [subscriptionAutoImportStatus, setSubscriptionAutoImportStatus] = useState(null);
   const subscriptionModalAnim = useRef(new Animated.Value(0)).current;
-  const [subscriptionDuePromptEntryId, setSubscriptionDuePromptEntryId] = useState(null);
-  const dismissedSubscriptionDueRef = useRef(new Set());
-  const subscriptionDuePromptAnim = useRef(new Animated.Value(0)).current;
-  const subscriptionDueChartAnim = useRef(new Animated.Value(0)).current;
   const openSubscriptionModal = useCallback(() => {
     onSubscriptionWidgetOpen?.();
     setSubscriptionAutoImportStatus(null);
@@ -36779,111 +37469,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
       }),
     [reduceMotion, subscriptionModalAnim]
   );
-  const subscriptionDuePromptEntry = useMemo(() => {
-    if (!subscriptionDuePromptEntryId) return null;
-    return subscriptionEntries.find((entry) => entry.id === subscriptionDuePromptEntryId) || null;
-  }, [subscriptionDuePromptEntryId, subscriptionEntries]);
-  const closeSubscriptionDuePrompt = useCallback(() => {
-    if (subscriptionDuePromptEntry) {
-      const dueKey = getDayKey(subscriptionDuePromptEntry.nextCheckAt || Date.now()) || "today";
-      dismissedSubscriptionDueRef.current.add(`${subscriptionDuePromptEntry.id}:${dueKey}`);
-    }
-    setSubscriptionDuePromptEntryId(null);
-  }, [subscriptionDuePromptEntry]);
-  const handleSubscriptionDueDecision = useCallback(
-    (decision) => {
-      const entry = subscriptionDuePromptEntry;
-      if (!entry) return;
-      const action = decision === "paid" ? "paid" : "skipped";
-      const dueKey = getDayKey(entry.nextCheckAt || Date.now()) || "today";
-      dismissedSubscriptionDueRef.current.add(`${entry.id}:${dueKey}`);
-      setSubscriptionDuePromptEntryId(null);
-      onSubscriptionPaymentAction?.(entry.item, action, {
-        subscriptionId: entry.id,
-        title: entry.title,
-        amountUSD: entry.amountUSD,
-        nextCheckAt: entry.nextCheckAt,
-      });
-    },
-    [onSubscriptionPaymentAction, subscriptionDuePromptEntry]
-  );
-  useEffect(() => {
-    if (subscriptionDuePromptEntryId) return;
-    if (!subscriptionEntries.length) return;
-    const nowTs = Number(subscriptionReferenceTs) || Date.now();
-    const dueEntry = subscriptionEntries.find((entry) => {
-      if (!Number.isFinite(Number(entry.nextCheckAt))) return false;
-      if (Number(entry.nextCheckAt) > nowTs) return false;
-      const dueKey = getDayKey(entry.nextCheckAt || nowTs) || "today";
-      return !dismissedSubscriptionDueRef.current.has(`${entry.id}:${dueKey}`);
-    });
-    if (dueEntry) {
-      setSubscriptionDuePromptEntryId(dueEntry.id);
-    }
-  }, [subscriptionDuePromptEntryId, subscriptionEntries, subscriptionReferenceTs]);
-  useEffect(() => {
-    subscriptionDuePromptAnim.stopAnimation();
-    subscriptionDueChartAnim.stopAnimation();
-    if (!subscriptionDuePromptEntry) {
-      Animated.timing(subscriptionDuePromptAnim, {
-        toValue: 0,
-        duration: 160,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-      subscriptionDueChartAnim.setValue(0);
-      return;
-    }
-    subscriptionDuePromptAnim.setValue(0);
-    subscriptionDueChartAnim.setValue(0);
-    Animated.spring(subscriptionDuePromptAnim, {
-      toValue: 1,
-      damping: 19,
-      stiffness: 230,
-      mass: 0.78,
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(subscriptionDueChartAnim, {
-      toValue: 1,
-      duration: 720,
-      delay: 120,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [subscriptionDueChartAnim, subscriptionDuePromptAnim, subscriptionDuePromptEntry]);
-  const subscriptionDueBackdropOpacity = useMemo(
-    () =>
-      subscriptionDuePromptAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, 0.5],
-      }),
-    [subscriptionDuePromptAnim]
-  );
-  const subscriptionDueCardScale = useMemo(
-    () => subscriptionDuePromptAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }),
-    [subscriptionDuePromptAnim]
-  );
-  const subscriptionDueCardTranslateY = useMemo(
-    () => subscriptionDuePromptAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }),
-    [subscriptionDuePromptAnim]
-  );
-  const subscriptionDueChartRows = useMemo(() => {
-    if (!subscriptionDuePromptEntry) return [];
-    const entry = subscriptionDuePromptEntry;
-    const maxValue = Math.max(entry.annualForecastUSD || 0, entry.spentUSD || 0, entry.amountUSD || 0, 1);
-    const buildRow = (key, label, value, valueLabel, color) => ({
-      key,
-      label,
-      valueLabel,
-      color,
-      targetWidth: Math.max(28, Math.round(((Math.max(0, Number(value) || 0) / maxValue) * Math.min(SCREEN_WIDTH - 72, 360)))),
-    });
-    return [
-      buildRow("charge", t("subscriptionDueChartCharge"), entry.amountUSD, entry.amountLabel, subscriptionUrgencyColor),
-      buildRow("spent", t("subscriptionDueChartPaid"), entry.spentUSD, entry.spentLabel, SPEND_ACTION_COLOR),
-      buildRow("forecast", t("subscriptionDueChartForecast"), entry.annualForecastUSD, entry.annualForecastLabel, "#7C5CFF"),
-    ];
-  }, [subscriptionDuePromptEntry, subscriptionUrgencyColor, t]);
   const computeProgressBalanceSnapshot = useCallback((referenceDate = new Date(todayTimestamp)) => {
     const referenceTimestampRaw =
       referenceDate instanceof Date ? referenceDate.getTime() : Number(referenceDate) || 0;
@@ -37870,6 +38455,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     [resolvedBudgetRemainingOverrides]
   );
   const [budgetWidgetMonthKey, setBudgetWidgetMonthKey] = useState(() => budgetMonthKey);
+  const budgetWidgetCalendarMonthRef = useRef(budgetMonthKey);
   const availableBudgetMonths = useMemo(() => {
     return collectBudgetMonthKeys(
       incomeEntries,
@@ -37886,18 +38472,22 @@ const ProgressScreen = React.memo(function ProgressScreen({
     }, {});
   }, [availableBudgetMonths, language]);
   const budgetMonthOptions = useMemo(
-    () => [...availableBudgetMonths].reverse(),
+    () => [...availableBudgetMonths],
     [availableBudgetMonths]
   );
   useEffect(() => {
     if (!availableBudgetMonths.length) return;
-    const fallbackKey = availableBudgetMonths.includes(budgetMonthKey)
-      ? budgetMonthKey
-      : availableBudgetMonths[0];
-    if (!budgetWidgetMonthKey || !availableBudgetMonths.includes(budgetWidgetMonthKey)) {
-      setBudgetWidgetMonthKey(fallbackKey);
-    }
-  }, [availableBudgetMonths, budgetMonthKey, budgetWidgetMonthKey]);
+    const previousCurrentMonthKey = budgetWidgetCalendarMonthRef.current;
+    budgetWidgetCalendarMonthRef.current = budgetMonthKey;
+    setBudgetWidgetMonthKey((selectedMonthKey) =>
+      resolveBudgetMonthSelection({
+        selectedMonthKey,
+        currentMonthKey: budgetMonthKey,
+        previousCurrentMonthKey,
+        availableMonthKeys: availableBudgetMonths,
+      })
+    );
+  }, [availableBudgetMonths, budgetMonthKey]);
   const budgetMonthlyStats = useMemo(
     () =>
       buildBudgetMonthlyStats({
@@ -38174,17 +38764,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
   );
   const budgetRemainingNegative = (budgetWidgetPlan?.remainingUSD || 0) < -0.01;
   const budgetPlannedUSD = useMemo(() => {
-    const rawPlannedUSD =
-      (budgetWidgetPlan?.allocatableIncomeUSD ?? budgetWidgetPlan?.incomeUSD ?? 0) -
-      (budgetWidgetPlan?.allocatedTotalUSD || 0);
-    const remainingUSD = Number(budgetWidgetPlan?.remainingUSD) || 0;
-    if (remainingUSD <= 0) return 0;
-    return rawPlannedUSD;
+    return calculateBudgetAllocationBalanceUSD({
+      allocatableIncomeUSD:
+        budgetWidgetPlan?.allocatableIncomeUSD ?? budgetWidgetPlan?.incomeUSD ?? 0,
+      allocatedTotalUSD: budgetWidgetPlan?.allocatedTotalUSD || 0,
+    });
   }, [
     budgetWidgetPlan?.allocatableIncomeUSD,
     budgetWidgetPlan?.incomeUSD,
     budgetWidgetPlan?.allocatedTotalUSD,
-    budgetWidgetPlan?.remainingUSD,
   ]);
   const budgetPlannedLabel = useMemo(
     () => formatLocalAmount(Math.abs(budgetPlannedUSD || 0)),
@@ -38590,6 +39178,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   const [budgetModalMonthKey, setBudgetModalMonthKey] = useState(
     () => budgetWidgetMonthKey || budgetMonthKey
   );
+  const budgetModalCalendarMonthRef = useRef(budgetMonthKey);
   const budgetModalAnim = useRef(new Animated.Value(0)).current;
   const [budgetModalSliderScrollEnabled, setBudgetModalSliderScrollEnabled] = useState(true);
   const [budgetDraft, setBudgetDraft] = useState({});
@@ -38619,15 +39208,17 @@ const ProgressScreen = React.memo(function ProgressScreen({
   }, [budgetDraft]);
   useEffect(() => {
     if (!availableBudgetMonths.length) return;
-    const fallbackKey = availableBudgetMonths.includes(budgetWidgetMonthKey)
-      ? budgetWidgetMonthKey
-      : availableBudgetMonths.includes(budgetMonthKey)
-      ? budgetMonthKey
-      : availableBudgetMonths[0];
-    if (!budgetModalMonthKey || !availableBudgetMonths.includes(budgetModalMonthKey)) {
-      setBudgetModalMonthKey(fallbackKey);
-    }
-  }, [availableBudgetMonths, budgetModalMonthKey, budgetMonthKey, budgetWidgetMonthKey]);
+    const previousCurrentMonthKey = budgetModalCalendarMonthRef.current;
+    budgetModalCalendarMonthRef.current = budgetMonthKey;
+    setBudgetModalMonthKey((selectedMonthKey) =>
+      resolveBudgetMonthSelection({
+        selectedMonthKey,
+        currentMonthKey: budgetMonthKey,
+        previousCurrentMonthKey,
+        availableMonthKeys: availableBudgetMonths,
+      })
+    );
+  }, [availableBudgetMonths, budgetMonthKey]);
   const budgetModalActiveMonthKey =
     budgetModalMonthKey || budgetWidgetMonthKey || budgetMonthKey;
   const budgetModalStatsOnly = budgetModalActiveMonthKey !== budgetMonthKey;
@@ -38747,7 +39338,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return map;
   }, [budgetModalAdaptivePlan?.categories]);
   const budgetModalTimeline = useMemo(() => {
-    const now = Date.now();
+    const now = todayTimestamp;
     const periodInfo = resolveBudgetPeriodInfo({
       periodKey: budgetModalActiveMonthKey,
       payday: budgetIncomePayday,
@@ -38778,7 +39369,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
       daysElapsed,
       daysRemaining,
     };
-  }, [budgetIncomePayday, budgetModalActiveMonthKey]);
+  }, [budgetIncomePayday, budgetModalActiveMonthKey, todayTimestamp]);
   const budgetModalRecommendationMap = useMemo(() => {
     if (!budgetModalDisplayCategories.length) return {};
     const targetPoolUSD = budgetModalDisplayCategories.reduce(
@@ -38848,17 +39439,15 @@ const ProgressScreen = React.memo(function ProgressScreen({
     return savingsLimitUSD + nonSavingsTotalUSD;
   }, [budgetDraft, budgetModalDisplayCategories, budgetModalPlanMap]);
   const budgetModalPlannedUSD = useMemo(() => {
-    const rawPlannedUSD =
-      (budgetModalPlan?.allocatableIncomeUSD ?? budgetModalPlan?.incomeUSD ?? 0) -
-      budgetModalDraftAllocatedUSD;
-    const remainingUSD = Number(budgetModalPlan?.remainingUSD) || 0;
-    if (remainingUSD <= 0) return 0;
-    return rawPlannedUSD;
+    return calculateBudgetAllocationBalanceUSD({
+      allocatableIncomeUSD:
+        budgetModalPlan?.allocatableIncomeUSD ?? budgetModalPlan?.incomeUSD ?? 0,
+      allocatedTotalUSD: budgetModalDraftAllocatedUSD,
+    });
   }, [
     budgetModalDraftAllocatedUSD,
     budgetModalPlan?.allocatableIncomeUSD,
     budgetModalPlan?.incomeUSD,
-    budgetModalPlan?.remainingUSD,
   ]);
   const budgetModalPlannedLabel = useMemo(
     () => formatLocalAmount(Math.abs(budgetModalPlannedUSD || 0)),
@@ -41441,189 +42030,6 @@ const ProgressScreen = React.memo(function ProgressScreen({
         </View>
       </Modal>
       <Modal
-        visible={!!subscriptionDuePromptEntry}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={closeSubscriptionDuePrompt}
-      >
-        <View style={styles.subscriptionModalRoot}>
-          <TouchableWithoutFeedback onPress={closeSubscriptionDuePrompt}>
-            <Animated.View
-              style={[
-                styles.subscriptionModalBackdrop,
-                { backgroundColor: "#000", opacity: subscriptionDueBackdropOpacity },
-              ]}
-            />
-          </TouchableWithoutFeedback>
-          <View
-            style={[styles.subscriptionModalWrap, styles.subscriptionDueModalWrap]}
-            pointerEvents="box-none"
-          >
-            <Animated.View
-              style={[
-                styles.subscriptionDueCard,
-                { backgroundColor: colors.card, borderColor: colorWithAlpha(subscriptionUrgencyColor, 0.32) },
-                {
-                  opacity: subscriptionDuePromptAnim,
-                  transform: [
-                    { translateY: subscriptionDueCardTranslateY },
-                    { scale: subscriptionDueCardScale },
-                  ],
-                },
-              ]}
-            >
-              {subscriptionDuePromptEntry ? (
-                <>
-                  <View style={styles.subscriptionDueHero}>
-                    <View
-                      style={[
-                        styles.subscriptionDueEmojiBubble,
-                        { backgroundColor: colorWithAlpha(subscriptionUrgencyColor, isDarkTheme ? 0.2 : 0.12) },
-                      ]}
-                    >
-                      <Text style={styles.subscriptionDueEmoji}>{subscriptionDuePromptEntry.emoji}</Text>
-                    </View>
-                    <View style={styles.subscriptionDueHeroText}>
-                      <Text style={[styles.subscriptionDueTitle, { color: colors.text }]}>
-                        {t("subscriptionDueModalTitle")}
-                      </Text>
-                      <Text style={[styles.subscriptionDueSubtitle, { color: colors.muted }]}>
-                        {t("subscriptionDueModalSubtitle", { title: subscriptionDuePromptEntry.title })}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.subscriptionDueStatsGrid}>
-                    <View
-                      style={[
-                        styles.subscriptionDueStat,
-                        {
-                          borderColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.28),
-                          backgroundColor: colorWithAlpha(SPEND_ACTION_COLOR, 0.08),
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
-                        {t("subscriptionDueAmount")}
-                      </Text>
-                      <Text style={[styles.subscriptionDueStatValue, { color: SPEND_ACTION_COLOR }]}>
-                        {subscriptionDuePromptEntry.amountLabel}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.subscriptionDueStat,
-                        {
-                          borderColor: colorWithAlpha(subscriptionUrgencyColor, 0.28),
-                          backgroundColor: colorWithAlpha(subscriptionUrgencyColor, 0.08),
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
-                        {t("subscriptionDueFirstRecorded")}
-                      </Text>
-                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]} numberOfLines={1}>
-                        {formatSubscriptionDate(subscriptionDuePromptEntry.firstRecordedAt)}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.subscriptionDueStat,
-                        { borderColor: colors.border, backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.05 : 0.03) },
-                      ]}
-                    >
-                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
-                        {t("subscriptionDueTotalSpent")}
-                      </Text>
-                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
-                        {subscriptionDuePromptEntry.spentLabel}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.subscriptionDueStat,
-                        { borderColor: colors.border, backgroundColor: colorWithAlpha("#7C5CFF", isDarkTheme ? 0.16 : 0.09) },
-                      ]}
-                    >
-                      <Text style={[styles.subscriptionDueStatLabel, { color: colors.muted }]}>
-                        {t("subscriptionDueYearForecast")}
-                      </Text>
-                      <Text style={[styles.subscriptionDueStatValue, { color: colors.text }]}>
-                        {subscriptionDuePromptEntry.annualForecastLabel}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.subscriptionDueChart}>
-                    <Text style={[styles.subscriptionDueChartTitle, { color: colors.text }]}>
-                      {t("subscriptionDueHistoryTitle")}
-                    </Text>
-                    {subscriptionDueChartRows.map((row) => (
-                      <View key={row.key} style={styles.subscriptionDueChartRow}>
-                        <View style={styles.subscriptionDueChartMeta}>
-                          <Text style={[styles.subscriptionDueChartLabel, { color: colors.muted }]} numberOfLines={1}>
-                            {row.label}
-                          </Text>
-                          <Text style={[styles.subscriptionDueChartValue, { color: colors.text }]} numberOfLines={1}>
-                            {row.valueLabel}
-                          </Text>
-                        </View>
-                        <View
-                          style={[
-                            styles.subscriptionDueChartTrack,
-                            { backgroundColor: colorWithAlpha(colors.text, isDarkTheme ? 0.08 : 0.06) },
-                          ]}
-                        >
-                          <Animated.View
-                            style={[
-                              styles.subscriptionDueChartFill,
-                              {
-                                backgroundColor: row.color,
-                                width: subscriptionDueChartAnim.interpolate({
-                                  inputRange: [0, 1],
-                                  outputRange: [0, row.targetWidth],
-                                }),
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                  <Text style={[styles.subscriptionDueQuestion, { color: colors.text }]}>
-                    {t("subscriptionDuePaidQuestion")}
-                  </Text>
-                  <View style={styles.subscriptionDueActions}>
-                    <TouchableOpacity
-                      style={[styles.subscriptionDueActionButton, { backgroundColor: SAVE_ACTION_COLOR }]}
-                      onPress={() => handleSubscriptionDueDecision("skipped")}
-                      activeOpacity={0.88}
-                    >
-                      <Text style={styles.subscriptionDueActionText}>{t("subscriptionDueNotPaidButton")}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.subscriptionDueActionButton, { backgroundColor: SPEND_ACTION_COLOR }]}
-                      onPress={() => handleSubscriptionDueDecision("paid")}
-                      activeOpacity={0.88}
-                    >
-                      <Text style={styles.subscriptionDueActionText}>{t("subscriptionDuePaidButton")}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.subscriptionDueLater}
-                    onPress={closeSubscriptionDuePrompt}
-                    activeOpacity={0.86}
-                  >
-                    <Text style={[styles.subscriptionDueLaterText, { color: colors.muted }]}>
-                      {t("subscriptionDueLater")}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : null}
-            </Animated.View>
-          </View>
-        </View>
-      </Modal>
-      <Modal
         visible={potentialTrendModalVisible}
         transparent
         animationType="none"
@@ -42136,7 +42542,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
                   disabled={!budgetModalRemainingEditable}
                   accessibilityRole={budgetModalRemainingEditable ? "button" : undefined}
                   accessibilityLabel={t("budgetRemainingLabel")}
-                  accessibilityHint={budgetModalRemainingEditable ? t("budgetEditHint") : undefined}
+                  accessibilityHint={budgetModalRemainingEditable ? t("budgetTapToEdit") : undefined}
                   onPress={handleBudgetModalRemainingPress}
                 >
                   <View style={styles.budgetModalRemainingCopy}>
@@ -42246,7 +42652,11 @@ const ProgressScreen = React.memo(function ProgressScreen({
                 <Text style={[styles.budgetModalHint, { color: colors.muted }]}>
                   {t("budgetEditHint")}
                 </Text>
-              ) : null}
+              ) : (
+                <Text style={[styles.budgetModalHint, { color: colors.muted }]}>
+                  {t("budgetPastMonthReadOnly")}
+                </Text>
+              )}
               <View
                 style={[
                   styles.budgetModalAdaptiveCard,
@@ -48620,34 +49030,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
     return colorWithAlpha(reportsPremiumAccent, isDarkTheme ? 0.24 : 0.16);
   }, [colors.card, isDarkTheme, reportsPremiumAccent]);
   const historyEntries = Array.isArray(history) ? history : [];
-  const [historyVisibleWindowMs, setHistoryVisibleWindowMs] = useState(PROFILE_HISTORY_PAGE_WINDOW_MS);
-  const profileHistoryWindowEntries = useMemo(
-    () => {
-      const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
-      return historyEntries.filter((entry) => {
-        const timestamp = Number(entry?.timestamp) || 0;
-        if (!timestamp) return true;
-        return timestamp >= cutoffTimestamp;
-      });
-    },
-    [historyEntries, historyVisibleWindowMs]
-  );
-  const visibleHistoryEntries = useMemo(
-    () => profileHistoryWindowEntries.slice(0, PROFILE_HISTORY_RENDER_LIMIT),
-    [profileHistoryWindowEntries]
-  );
-  const hasMoreHistoryEntries = useMemo(
-    () => {
-      if (profileHistoryWindowEntries.length > visibleHistoryEntries.length) return true;
-      const cutoffTimestamp = Date.now() - historyVisibleWindowMs;
-      return historyEntries.some((entry) => {
-        const timestamp = Number(entry?.timestamp) || 0;
-        return timestamp > 0 && timestamp < cutoffTimestamp;
-      });
-    },
-    [historyEntries, historyVisibleWindowMs, profileHistoryWindowEntries.length, visibleHistoryEntries.length]
-  );
-  const historyLastIndex = visibleHistoryEntries.length - 1;
   const locale = getFormatLocale(language);
   const formatLocalAmount = (valueUSD = 0) =>
     formatCurrency(convertToCurrency(valueUSD || 0, currentCurrency), currentCurrency);
@@ -48755,9 +49137,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
     },
     [isPremiumUser, language, proThemeAccentId, t]
   );
-  const describeHistory = (entry) =>
-    describeHistoryEntry(entry, { t, formatLocalAmount, language });
-  const formatHistoryMeta = (entry) => formatHistoryEntryMeta(entry, { t, locale });
   const joinDateLabel = useMemo(() => {
     const stamp = profile.joinedAt;
     if (!stamp) return null;
@@ -49050,57 +49429,6 @@ const ProfileScreen = React.memo(function ProfileScreen({
       </TouchableOpacity>
     )
   );
-  const renderHistoryItem = useCallback(
-    ({ item: entry, index }) => (
-      <View
-        style={[
-          styles.historyItem,
-          {
-            borderColor: colors.border,
-            borderBottomWidth:
-              index === historyLastIndex ? 0 : StyleSheet.hairlineWidth,
-          },
-        ]}
-      >
-        <View style={styles.historyRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.historyItemTitle, { color: colors.text }]}>
-              {describeHistory(entry)}
-            </Text>
-            <Text style={[styles.historyItemMeta, { color: colors.muted }]}>
-              {formatHistoryMeta(entry)}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.historyDeleteBtn, { borderColor: colors.border }]}
-            onPress={() => onHistoryDelete?.(entry)}
-          >
-            <Text style={[styles.historyDeleteText, { color: colors.muted }]}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    ),
-    [
-      colors.border,
-      colors.muted,
-      colors.text,
-      describeHistory,
-      formatHistoryMeta,
-      historyLastIndex,
-      onHistoryDelete,
-    ]
-  );
-  const historyItemLayout = useCallback(
-    (_, index) => ({
-      length: HISTORY_ITEM_HEIGHT,
-      offset: HISTORY_ITEM_HEIGHT * index,
-      index,
-    }),
-    []
-  );
-  const handleHistoryLoadMore = useCallback(() => {
-    setHistoryVisibleWindowMs((prev) => prev + PROFILE_HISTORY_PAGE_WINDOW_MS);
-  }, []);
   const showProfileActions = isEditing || !!onReportsPress;
   const profileSectionLabel =
     profileSection === "settings"
@@ -50236,40 +50564,15 @@ const ProfileScreen = React.memo(function ProfileScreen({
           ]}
         >
           <Text style={[styles.historyTitle, { color: colors.text }]}>{t("historyTitle")}</Text>
-          {visibleHistoryEntries.length === 0 ? (
-            <Text style={[styles.historyEmpty, { color: colors.muted }]}>{t("historyEmpty")}</Text>
-          ) : (
-            <FlatList
-              style={[
-                styles.historyList,
-                {
-                  borderColor: colors.border,
-                  height: HISTORY_VIEWPORT_HEIGHT,
-                },
-              ]}
-              contentContainerStyle={styles.historyListContent}
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-              scrollEventThrottle={16}
-              removeClippedSubviews={false}
-              data={visibleHistoryEntries}
-              keyExtractor={(entry, index) => `${entry?.id || "history-entry"}-${index}`}
-              renderItem={renderHistoryItem}
-              getItemLayout={historyItemLayout}
-              initialNumToRender={HISTORY_VIEWPORT_ROWS}
-              maxToRenderPerBatch={HISTORY_VIEWPORT_ROWS}
-              windowSize={5}
-            />
-          )}
-          {hasMoreHistoryEntries ? (
-            <TouchableOpacity
-              style={[styles.historyMoreButton, { borderColor: colors.border }]}
-              onPress={handleHistoryLoadMore}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.historyMoreText, { color: colors.text }]}>{t("historyLoadMore")}</Text>
-            </TouchableOpacity>
-          ) : null}
+          <Text style={[styles.historySubtitle, { color: colors.muted }]}>{t("historySubtitle")}</Text>
+          <HistoryTimeline
+            history={historyEntries}
+            onHistoryDelete={onHistoryDelete}
+            t={t}
+            colors={colors}
+            currency={currentCurrency}
+            language={language}
+          />
         </View>
         <TouchableOpacity
           style={[
@@ -50481,6 +50784,7 @@ function AppContent() {
   const deferredHydrationInFlightRef = useRef(false);
   const [deferredHydrationReady, setDeferredHydrationReady] = useState(false);
   const [activeTab, setActiveTabState] = useState("feed");
+  const [feedCategoryFilterResetTick, setFeedCategoryFilterResetTick] = useState(0);
   const uiSessionSnapshotRef = useRef(null);
   const [uiSessionHydrated, setUiSessionHydrated] = useState(false);
   const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);
@@ -51133,7 +51437,6 @@ function AppContent() {
     useState(0);
   const temptationSeriesRef = useRef(temptationSeries);
   const temptationSeriesReadyPresentedRef = useRef(null);
-  const temptationSeriesClaimedThisSessionRef = useRef(false);
   useEffect(() => {
     temptationSeriesRef.current = temptationSeries;
   }, [temptationSeries]);
@@ -52030,32 +52333,20 @@ function AppContent() {
   const [profileReportsOpenRequest, setProfileReportsOpenRequest] = useState(0);
   const visibleTemptations = useMemo(() => {
     const pricedTemptations = filterTemptationsByPrice(temptations, priceLimitUSD);
-    const activeCustomTemptationCount = pricedTemptations.reduce((count, item) => {
-      if (!item || !(item.quickTemptation || isCustomTemptation(item))) return count;
-      const templateId = item?.id || item?.templateId;
-      if (templateId && archivedTemptationSet.has(templateId)) return count;
-      return count + 1;
-    }, 0);
-    const defaultLimitForPlan = premiumState.isPremium
-      ? defaultTemptationFeedLimit
-      : Math.max(
-          0,
-          Math.min(
-            defaultTemptationFeedLimit,
-            FREE_DEFAULT_TEMPTATION_CARD_LIMIT,
-            FREE_TEMPTATION_CARD_LIMIT - activeCustomTemptationCount
-          )
-        );
-    let shownDefaultCount = 0;
-    return pricedTemptations.filter((item) => {
-      if (!item) return false;
-      if (item.quickTemptation || isCustomTemptation(item)) return true;
-      const templateId = item?.id || item?.templateId;
-      if (templateId && archivedTemptationSet.has(templateId)) {
-        return true;
-      }
-      shownDefaultCount += 1;
-      return shownDefaultCount <= defaultLimitForPlan;
+    return selectPlanVisibleTemptations({
+      temptations: pricedTemptations,
+      isPremium: premiumState.isPremium,
+      freeFeedLimit: FREE_TEMPTATION_CARD_LIMIT,
+      defaultFeedLimit: defaultTemptationFeedLimit,
+      freeDefaultLimit: Math.min(
+        defaultTemptationFeedLimit,
+        FREE_DEFAULT_TEMPTATION_CARD_LIMIT
+      ),
+      isCustomCard: (item) => item.quickTemptation || isCustomTemptation(item),
+      isArchivedCard: (item) => {
+        const templateId = item?.id || item?.templateId;
+        return Boolean(templateId && archivedTemptationSet.has(templateId));
+      },
     });
   }, [
     archivedTemptationSet,
@@ -52076,10 +52367,22 @@ function AppContent() {
       }),
     [visibleTemptations, archivedTemptationSet]
   );
-  const activeTemptationCardCount = Array.isArray(products) ? products.length : 0;
+  const activeTemptationCardIdSet = useMemo(
+    () =>
+      new Set(
+        products
+          .flatMap((item) => [item?.id, item?.templateId])
+          .filter(Boolean)
+      ),
+    [products]
+  );
   const freeTemptationCardSlotsRemaining = premiumState.isPremium
     ? Number.POSITIVE_INFINITY
-    : Math.max(0, FREE_TEMPTATION_CARD_LIMIT - activeTemptationCardCount);
+    : getFreeCustomCardSlotsRemaining({
+        cards: products,
+        freeFeedLimit: FREE_TEMPTATION_CARD_LIMIT,
+        isCustomCard: (item) => item.quickTemptation || isCustomTemptation(item),
+      });
   const hasFreeTemptationCardSlot =
     premiumState.isPremium || freeTemptationCardSlotsRemaining > 0;
   const archivedProducts = useMemo(() => {
@@ -52323,6 +52626,9 @@ function AppContent() {
   }, []);
   const prevActiveTabRef = useRef(activeTab);
   useEffect(() => {
+    if (prevActiveTabRef.current === "feed" && activeTab !== "feed") {
+      setFeedCategoryFilterResetTick((tick) => tick + 1);
+    }
     if (activeTab === "feed" && prevActiveTabRef.current && prevActiveTabRef.current !== "feed") {
       triggerHomeSpeech("tab");
     }
@@ -52570,19 +52876,44 @@ function AppContent() {
       expireStalePendingTycoonAutosaves(prev, currentDayKey, Date.now())
     );
   }, [currentDayKey, tycoonLedger, tycoonLedgerHydrated]);
+  useEffect(() => {
+    if (!tycoonLedgerHydrated || !temptationInteractionsHydrated) return;
+    setTycoonLedger((prev) =>
+      skipPendingTycoonAutosavesForManualInteractions(
+        prev,
+        temptationInteractions,
+        currentDayKey,
+        Date.now()
+      )
+    );
+  }, [
+    currentDayKey,
+    temptationInteractions,
+    temptationInteractionsHydrated,
+    tycoonLedgerHydrated,
+  ]);
   const tycoonPendingEvents = useMemo(
     () =>
       (Array.isArray(tycoonLedger) ? tycoonLedger : [])
         .filter(
           (entry) =>
             entry?.status === "pending" &&
-            getTycoonAutosaveEventDayKey(entry) === currentDayKey
+            getTycoonAutosaveEventDayKey(entry) === currentDayKey &&
+            !isManualTycoonInteractionInDay(
+              temptationInteractions?.[resolveNonEmptyString(entry?.cardId)],
+              currentDayKey
+            )
         )
         .map((entry) => {
           const snapshot = resolveTycoonAutosaveEventSnapshot(entry);
           return snapshot ? { ...entry, ...snapshot } : entry;
         }),
-    [currentDayKey, resolveTycoonAutosaveEventSnapshot, tycoonLedger]
+    [
+      currentDayKey,
+      resolveTycoonAutosaveEventSnapshot,
+      temptationInteractions,
+      tycoonLedger,
+    ]
   );
   useEffect(() => {
     if (!tycoonLedgerHydrated) return;
@@ -52757,6 +53088,7 @@ function AppContent() {
       if (pendingCardIds.has(templateId)) continue;
       const interaction = temptationInteractions?.[templateId];
       if (!interaction || typeof interaction !== "object") continue;
+      if (isManualTycoonInteractionInDay(interaction, currentDayKey)) continue;
       const frequency = normalizeFrequencyId(interaction.frequency || card.frequency);
       if (!frequency) continue;
       const intervalMs =
@@ -52955,9 +53287,14 @@ function AppContent() {
       if (hiddenTemptationSet.has(templateId) || archivedTemptationSet.has(templateId)) {
         return false;
       }
-      return Boolean(resolveTemplateCard(templateId));
+      return activeTemptationCardIdSet.has(templateId) && Boolean(resolveTemplateCard(templateId));
     },
-    [archivedTemptationSet, hiddenTemptationSet, resolveTemplateCard]
+    [
+      activeTemptationCardIdSet,
+      archivedTemptationSet,
+      hiddenTemptationSet,
+      resolveTemplateCard,
+    ]
   );
   const focusCandidateIds = useMemo(() => {
     const ids = new Set();
@@ -53184,6 +53521,9 @@ function AppContent() {
   const tutorialBlockingVisibleRef = useRef(false);
   const [queuedModalType, setQueuedModalType] = useState(null);
   const [queuedModalProcessTick, setQueuedModalProcessTick] = useState(0);
+  const [subscriptionDuePromptEntry, setSubscriptionDuePromptEntry] = useState(null);
+  const subscriptionDueDismissedSessionRef = useRef(new Set());
+  const [subscriptionDueSessionVersion, setSubscriptionDueSessionVersion] = useState(0);
   const visibleModalHostCount = useVisibleModalHostCount();
   const monetizationGroupForStartupModalGuard = normalizeMonetizationExperimentGroup(
     monetizationExperimentGroup
@@ -53390,7 +53730,6 @@ function AppContent() {
     dailyChallengeUnlocked &&
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.COMPLETED &&
     !dailyChallenge.completionDismissed;
-  const [dailyChallengePromptGate, setDailyChallengePromptGate] = useState(false);
   const dailyNudgeIdsRef = useRef({});
   const dailyNudgeLegacyCleanupDoneRef = useRef(false);
   const smartRemindersRef = useRef([]);
@@ -53530,13 +53869,9 @@ function AppContent() {
     (action) => {
       if (action !== "save" && action !== "spend") return;
       postActionPromptSlotRef.current = 1;
-      if (isDailyChallengePromptPending) {
-        setDailyChallengePromptGate(true);
-        enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
-      }
       requestQueuedModalProcess();
     },
-    [enqueueQueuedModal, isDailyChallengePromptPending, requestQueuedModalProcess]
+    [requestQueuedModalProcess]
   );
   const consumePostActionPromptSlot = useCallback((_promptType) => {
     if (postActionPromptSlotRef.current <= 0) return false;
@@ -53907,6 +54242,7 @@ function AppContent() {
     }
   }, [activeTab, availableTabs]);
   const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
+  const ratingPromptStateRef = useRef(ratingPromptState);
   const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const [ratingPromptStep, setRatingPromptStep] = useState("rating");
@@ -53917,15 +54253,6 @@ function AppContent() {
   const ratingPromptFeedbackLength = Array.from(ratingPromptFeedback.trim()).length;
   const ratingPromptFeedbackValid =
     ratingPromptFeedbackLength >= RATING_PROMPT_FEEDBACK_MIN_LENGTH;
-  const ratingPromptCompleted =
-    ratingPromptState.completed ||
-    ratingPromptState.lastAction === "rate" ||
-    ratingPromptState.lastAction === "feedback";
-  const ratingPromptSeriesCompletionCount = Math.max(
-    0,
-    Number(ratingPromptState.seriesCompletionCount) || 0
-  );
-  const ratingPromptActionPrompted = ratingPromptState.actionPrompted;
   const ratingPromptCatFloat = useRef(new Animated.Value(0)).current;
   const ratingPromptCatBob = ratingPromptCatFloat.interpolate({
     inputRange: [0, 1],
@@ -54099,11 +54426,12 @@ function AppContent() {
     [clearQueuedModal, logEvent, setFabTutorialStateAndPersist]
   );
   const updateRatingPromptState = useCallback((updater) => {
-    setRatingPromptState((prev) => {
-      const nextState = typeof updater === "function" ? updater(prev) : updater;
-      AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(nextState)).catch(() => {});
-      return nextState;
-    });
+    const previousState = ratingPromptStateRef.current;
+    const nextState = typeof updater === "function" ? updater(previousState) : updater;
+    ratingPromptStateRef.current = nextState;
+    setRatingPromptState(nextState);
+    AsyncStorage.setItem(STORAGE_KEYS.RATING_PROMPT, JSON.stringify(nextState)).catch(() => {});
+    return nextState;
   }, []);
   const ratingPromptQueuedRef = useRef(false);
   const ratingPromptSourceRef = useRef(null);
@@ -54173,9 +54501,8 @@ function AppContent() {
     }
   }, []);
   const showRatingPrompt = useCallback(
-    (source = "actions") => {
+    () => {
       if (ratingPromptVisible) return;
-      if (!consumePostActionPromptSlot("rating_prompt")) return;
       setRatingPromptStep("rating");
       setRatingPromptRating(0);
       setRatingPromptFeedback("");
@@ -54185,10 +54512,9 @@ function AppContent() {
       updateRatingPromptState((prev) => ({
         ...prev,
         lastShownAt: new Date().toISOString(),
-        actionPrompted: source === "actions" ? true : prev.actionPrompted,
       }));
     },
-    [consumePostActionPromptSlot, ratingPromptVisible, updateRatingPromptState]
+    [ratingPromptVisible, updateRatingPromptState]
   );
   const queueRatingPrompt = useCallback(
     (source = "actions") => {
@@ -54202,11 +54528,6 @@ function AppContent() {
       ratingPromptSourceRef.current = source;
       const checkAndShow = () => {
         if (!ratingPromptQueuedRef.current) return;
-        if (postActionPromptSlotRef.current <= 0) {
-          ratingPromptQueuedRef.current = false;
-          ratingPromptSourceRef.current = null;
-          return;
-        }
         if (canShowRatingPromptNowRef.current()) {
           ratingPromptQueuedRef.current = false;
           const resolvedSource = ratingPromptSourceRef.current || source;
@@ -54216,7 +54537,7 @@ function AppContent() {
         }
         ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);
       };
-      checkAndShow();
+      ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);
     },
     [showRatingPrompt]
   );
@@ -54985,17 +55306,6 @@ function AppContent() {
     waitForAndroidLevelShareCardReady,
     waitForLevelShareCardReady,
   ]);
-  const clearCompletedPrimaryGoal = useCallback(
-    (goalId) => {
-      if (!goalId) return;
-      setWishes((prev) =>
-        prev.filter(
-          (w) => !(w.kind === PRIMARY_GOAL_KIND && (w.goalId || w.id) === goalId && w.status === "done")
-        )
-      );
-    },
-    [setWishes]
-  );
   const ensureActiveGoalForNewWish = useCallback(
     (newWish) => {
       if (!newWish) return;
@@ -55009,8 +55319,6 @@ function AppContent() {
         Number.isFinite(newWish.targetUSD) && newWish.targetUSD > 0
           ? newWish.targetUSD
           : getGoalDefaultTargetUSD(newWish.goalId || newWish.id);
-      const previousGoalId = activeGoalId || profile.goal;
-      clearCompletedPrimaryGoal(previousGoalId);
       setActiveGoalId(newWish.id);
       const newPrimaryEntry = {
         id: newWish.id,
@@ -55055,8 +55363,6 @@ function AppContent() {
       dismissGoalRenewalPrompt();
     },
     [
-      activeGoalId,
-      clearCompletedPrimaryGoal,
       dismissGoalRenewalPrompt,
       mainGoalWish?.status,
       profile.goal,
@@ -55829,7 +56135,6 @@ function AppContent() {
       }
       if (nextState !== "active") {
         postActionPromptSlotRef.current = 0;
-        setDailyChallengePromptGate(false);
         const uiSessionSnapshot = uiSessionSnapshotRef.current;
         if (uiSessionSnapshot) {
           AsyncStorage.setItem(
@@ -55868,6 +56173,8 @@ function AppContent() {
           suppressResumeOnce ||
           (resumedAt && Date.now() - resumedAt < APP_RESUME_MODAL_GUARD_MS);
         if (!isTransientResume) {
+          subscriptionDueDismissedSessionRef.current.clear();
+          setSubscriptionDueSessionVersion((version) => version + 1);
           processTamagotchiDecay();
           beginHomeSession();
           tryLogHomeOpened();
@@ -55901,7 +56208,6 @@ function AppContent() {
     goToTab,
     monetizationExperimentEligibleNewInstall,
     monetizationExperimentHydrated,
-    setDailyChallengePromptGate,
     pendingFocusDigest,
     persistFirstSessionDurationBucket,
     processTamagotchiDecay,
@@ -55913,18 +56219,6 @@ function AppContent() {
     setKeyboardVisible,
     triggerWidgetRefresh,
   ]);
-  const ratingPromptSeriesEligible =
-    ratingPromptHydrated &&
-    !ratingPromptCompleted &&
-    !ratingPromptVisible &&
-    !ratingPromptActionPrompted &&
-    !temptationSeriesClaimedThisSessionRef.current &&
-    ratingPromptSeriesCompletionCount >= RATING_PROMPT_SERIES_THRESHOLD;
-  useEffect(() => {
-    if (!ratingPromptSeriesEligible) return;
-    if (postActionPromptSlotRef.current <= 0) return;
-    queueRatingPrompt("series");
-  }, [queueRatingPrompt, queuedModalProcessTick, ratingPromptSeriesEligible]);
   useEffect(() => {
     if (!ratingPromptVisible) return;
     if (!ratingPromptQueuedRef.current) return;
@@ -56521,24 +56815,9 @@ function AppContent() {
     tamagotchiImmunityHintVisible,
   ]);
   const tamagotchiCoins = healthPoints;
-  const tamagotchiCoinBreakdown = useMemo(
-    () => getHealthCoinBreakdown(tamagotchiCoins),
-    [tamagotchiCoins]
-  );
   const tamagotchiStickyCoinTokens = useMemo(
-    () => [
-      {
-        id: "blue",
-        count: Math.max(0, Number(tamagotchiCoinBreakdown.blue) || 0),
-        asset: BLUE_HEALTH_COIN_TIER?.asset || HEALTH_COIN_TIERS[1]?.asset || HEALTH_COIN_TIERS[0].asset,
-      },
-      {
-        id: "green",
-        count: Math.max(0, Number(tamagotchiCoinBreakdown.green) || 0),
-        asset: GREEN_HEALTH_COIN_TIER?.asset || HEALTH_COIN_TIERS[0].asset,
-      },
-    ],
-    [tamagotchiCoinBreakdown.blue, tamagotchiCoinBreakdown.green]
+    () => getVisibleCoinDenominationEntries(tamagotchiCoins, HEALTH_COIN_TIERS),
+    [tamagotchiCoins]
   );
   const tamagotchiDesiredFood =
     TAMAGOTCHI_FOOD_MAP[tamagotchiState.desiredFoodId] ||
@@ -56886,22 +57165,40 @@ function AppContent() {
     (card) => {
       if (!card) return null;
       const directKey = typeof card.id === "string" ? card.id : null;
-      if (directKey && refuseStats[directKey]) {
-        return refuseStats[directKey];
-      }
       const templateKey =
         typeof card.templateId === "string" && card.templateId.trim().length
           ? card.templateId.trim()
           : null;
-      if (templateKey && refuseStats[templateKey]) {
-        return refuseStats[templateKey];
-      }
-      return null;
+      return [directKey, templateKey]
+        .map((key) => (key ? refuseStats[key] : null))
+        .filter(Boolean)
+        .reduce((best, candidate) => {
+          if (!best) return candidate;
+          const bestCount = Math.max(0, Number(best.count) || 0);
+          const candidateCount = Math.max(0, Number(candidate.count) || 0);
+          if (candidateCount !== bestCount) {
+            return candidateCount > bestCount ? candidate : best;
+          }
+          return Math.max(0, Number(candidate.totalUSD) || 0) >
+            Math.max(0, Number(best.totalUSD) || 0)
+            ? candidate
+            : best;
+        }, null);
     },
     [refuseStats]
   );
   const [temptationInteractions, setTemptationInteractions] = useState({});
   const [temptationInteractionsHydrated, setTemptationInteractionsHydrated] = useState(false);
+  useEffect(() => {
+    if (!refuseStatsHydrated || !temptationInteractionsHydrated) return;
+    setRefuseStats((prev) =>
+      reconcileTemptationLifetimeStats(prev, temptationInteractions)
+    );
+  }, [
+    refuseStatsHydrated,
+    temptationInteractions,
+    temptationInteractionsHydrated,
+  ]);
   const [impulseTracker, setImpulseTracker] = useState({ ...INITIAL_IMPULSE_TRACKER });
   const [impulseTrackerHydrated, setImpulseTrackerHydrated] = useState(false);
   const [moodState, setMoodState] = useState(() => createMoodStateForToday());
@@ -58585,6 +58882,11 @@ function AppContent() {
     !levelShareFlowLocked &&
     queuedModalType === QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT &&
     noGoalSavePromptPending;
+  const subscriptionDuePromptVisible =
+    !automaticModalPresentationPaused &&
+    !levelShareFlowLocked &&
+    queuedModalType === QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE &&
+    !!subscriptionDuePromptEntry;
   const tycoonAutosaveHungryModalVisible =
     !automaticModalPresentationPaused &&
     !levelShareFlowLocked &&
@@ -58631,6 +58933,8 @@ function AppContent() {
         return coinValueModalVisible;
       case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT:
         return noGoalSavePromptVisible;
+      case QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE:
+        return subscriptionDuePromptVisible;
       case QUEUED_MODAL_TYPES.TYCOON_AUTOSAVE_HUNGRY:
         return tycoonAutosaveHungryModalVisible;
       case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
@@ -58664,6 +58968,7 @@ function AppContent() {
     noGoalSavePromptVisible,
     overlay?.type,
     queuedModalType,
+    subscriptionDuePromptVisible,
     tycoonAutosaveHungryModalVisible,
     tycoonAutosaveModalVisible,
   ]);
@@ -59541,6 +59846,7 @@ function AppContent() {
       didYouKnowVisible ||
       cycleSavingsRevokedPromptVisible ||
       noGoalSavePromptVisible ||
+      subscriptionDuePromptVisible ||
       coinEntryVisible ||
       firstSaveGoalJarVisible ||
       showCustomSpend ||
@@ -59622,6 +59928,7 @@ function AppContent() {
       feedIntroVisible,
       screenIntroState.visible,
       stormActive,
+      subscriptionDuePromptVisible,
     ]
   );
   overlayQueueRuntimeRef.current = {
@@ -59670,7 +59977,6 @@ function AppContent() {
     if (getModalCloseSettleRemainingMs() > 0) return false;
     if (storeReviewInFlightRef.current) return false;
     if (getStoreReviewModalGuardRemainingMs() > 0) return false;
-    if (postActionPromptSlotRef.current <= 0) return false;
     if (queuedModalType || queuedModalActiveRef.current) return false;
     const hasQueuedModalReady = (queuedModalQueueRef.current || []).some((candidate) =>
       canShowQueuedModalRef.current(candidate)
@@ -59686,7 +59992,19 @@ function AppContent() {
     return true;
   };
   canTriggerStoreReviewNowRef.current = () => {
-    if (!canShowRatingPromptNowRef.current()) return false;
+    if (appStateRef.current !== "active") return false;
+    if (automaticModalPresentationPausedRef.current) return false;
+    if (onboardingStep !== "done") return false;
+    if (!interfaceReady) return false;
+    if (startupHardLockPendingBeforePaywall) return false;
+    if (getModalCloseSettleRemainingMs() > 0) return false;
+    if (storeReviewInFlightRef.current) return false;
+    if (getStoreReviewModalGuardRemainingMs() > 0) return false;
+    if (queuedModalType || queuedModalActiveRef.current) return false;
+    if (blockingModalVisible) return false;
+    if (tutorialBlockingVisible) return false;
+    if (overlayActiveRef.current) return false;
+    if (visibleModalHostCount > 0) return false;
     return true;
   };
   const canShowQueuedModal = useCallback(
@@ -59696,8 +60014,9 @@ function AppContent() {
       if (!interfaceReady) return false;
       if (startupHardLockPendingBeforePaywall) return false;
       if (
-        nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
-        nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE
+        type !== QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE &&
+        (nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+          nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE)
       ) {
         return false;
       }
@@ -59723,11 +60042,7 @@ function AppContent() {
         case QUEUED_MODAL_TYPES.COIN_VALUE:
           return coinValueModalQueueReady();
         case QUEUED_MODAL_TYPES.DAILY_CHALLENGE:
-          return (
-            dailyChallengePromptAllowed &&
-            isDailyChallengePromptPending &&
-            dailyChallengePromptGate
-          );
+          return dailyChallengePromptAllowed && isDailyChallengePromptPending;
         case QUEUED_MODAL_TYPES.DAILY_CHALLENGE_COMPLETE:
           return dailyChallengePromptAllowed && isDailyChallengeCompletePending;
         case QUEUED_MODAL_TYPES.FOCUS_DIGEST:
@@ -59769,6 +60084,8 @@ function AppContent() {
           );
         case QUEUED_MODAL_TYPES.CYCLE_SAVINGS_REVOKED:
           return onboardingStep === "done" && cycleSavingsRevokedPrompt.visible;
+        case QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE:
+          return onboardingStep === "done" && !!subscriptionDuePromptEntry;
         case QUEUED_MODAL_TYPES.NO_GOAL_SAVE_PROMPT: {
           if (!noGoalSavePromptPending) return false;
           const queue = queuedModalQueueRef.current || [];
@@ -59790,7 +60107,6 @@ function AppContent() {
       coinValueModalQueueReady,
       cycleSavingsRevokedPrompt.visible,
       dailyChallengePromptAllowed,
-      dailyChallengePromptGate,
       getModalCloseSettleRemainingMs,
       isStoreReviewHandoffPending,
       didYouKnowPromptPending,
@@ -59815,6 +60131,7 @@ function AppContent() {
       shouldPromptIncome,
       startupHardLockPendingBeforePaywall,
       startupLogoVisible,
+      subscriptionDuePromptEntry,
       tycoonAutosaveEnabled,
       tycoonAutosaveHungryBlock.active,
       tycoonAutosaveDismissed,
@@ -65169,6 +65486,7 @@ function AppContent() {
           notificationKind === "tamagotchi-hourly-reward" ||
           notificationKind === "tamagotchihourlyreward" ||
           dedupeKey.startsWith("tamagotchi_hourly_reward:");
+        const isSubscriptionDuePush = notificationKind === SUBSCRIPTION_DUE_KIND;
 	        const pendingId = typeof data.pendingId === "string" ? data.pendingId : null;
         const templateId = resolveNonEmptyString(
           data.templateId || data.template_id || data.templateID || data.template || ""
@@ -65212,10 +65530,15 @@ function AppContent() {
           goToTab("purchases", { recordHistory: false });
         } else if (
           notificationKind === SUBSCRIPTION_REMINDER_KIND ||
-          notificationKind === SUBSCRIPTION_DUE_KIND ||
+          isSubscriptionDuePush ||
           normalizedTargetScreen === "subscriptions" ||
           normalizedTargetScreen === "subscription"
         ) {
+          if (isSubscriptionDuePush) {
+            subscriptionDueDismissedSessionRef.current.clear();
+            setSubscriptionDueSessionVersion((version) => version + 1);
+            enqueueQueuedModal(QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE, { priority: true });
+          }
           requestProgressSubscriptionFocus();
         } else if (templateId) {
           queueFeedNotificationFocus(templateId);
@@ -66846,13 +67169,33 @@ function AppContent() {
         const nextGoals = goals.map((entry) => {
           if (entry.id !== goalId) return entry;
           hasMatch = true;
+          const targetUSD =
+            Number.isFinite(entry.targetUSD) && entry.targetUSD > 0
+              ? entry.targetUSD
+              : fallbackTargetUSD;
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: entry.savedUSD,
+            targetUSD,
+            currentStatus: entry.status,
+            completedAt: entry.completedAt,
+            completionLocked: isGoalCelebratedInProfile(profileState, goalId),
+            requestedSavedUSD: normalizedSaved,
+            requestedStatus: status,
+          });
           const nextEntry = { ...entry };
-          if (nextEntry.savedUSD !== normalizedSaved) {
-            nextEntry.savedUSD = normalizedSaved;
+          if (nextEntry.savedUSD !== progressState.savedUSD) {
+            nextEntry.savedUSD = progressState.savedUSD;
             changed = true;
           }
-          if (status && nextEntry.status !== status) {
-            nextEntry.status = status;
+          if (nextEntry.status !== progressState.status) {
+            nextEntry.status = progressState.status;
+            changed = true;
+          }
+          if (
+            progressState.completedAt != null &&
+            nextEntry.completedAt !== progressState.completedAt
+          ) {
+            nextEntry.completedAt = progressState.completedAt;
             changed = true;
           }
           return nextEntry;
@@ -66869,12 +67212,24 @@ function AppContent() {
             primaryWish && Number.isFinite(primaryWish.targetUSD) && primaryWish.targetUSD > 0
               ? primaryWish.targetUSD
               : fallbackTargetUSD;
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: primaryWish?.savedUSD,
+            targetUSD,
+            currentStatus: primaryWish?.status,
+            completedAt: primaryWish?.completedAt,
+            completionLocked: isGoalCelebratedInProfile(profileState, goalId),
+            requestedSavedUSD: normalizedSaved,
+            requestedStatus: status,
+          });
           nextGoals.unshift({
             id: goalId,
             targetUSD,
-            savedUSD: normalizedSaved,
-            status: status || "active",
+            savedUSD: progressState.savedUSD,
+            status: progressState.status,
             createdAt: primaryWish?.createdAt || Date.now(),
+            ...(progressState.completedAt != null
+              ? { completedAt: progressState.completedAt }
+              : {}),
           });
           changed = true;
         }
@@ -66888,13 +67243,33 @@ function AppContent() {
         const next = prev.map((wish) => {
           if (!wish) return wish;
           if (wish.id !== targetWishId && wish.goalId !== goalId) return wish;
+          const targetUSD =
+            Number.isFinite(wish.targetUSD) && wish.targetUSD > 0
+              ? wish.targetUSD
+              : fallbackTargetUSD;
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: wish.savedUSD,
+            targetUSD,
+            currentStatus: wish.status,
+            completedAt: wish.completedAt,
+            completionLocked: isGoalCelebratedInProfile(profile, goalId),
+            requestedSavedUSD: normalizedSaved,
+            requestedStatus: status,
+          });
           const updated = { ...wish };
-          if (updated.savedUSD !== normalizedSaved) {
-            updated.savedUSD = normalizedSaved;
+          if (updated.savedUSD !== progressState.savedUSD) {
+            updated.savedUSD = progressState.savedUSD;
             changed = true;
           }
-          if (status && updated.status !== status) {
-            updated.status = status;
+          if (updated.status !== progressState.status) {
+            updated.status = progressState.status;
+            changed = true;
+          }
+          if (
+            progressState.completedAt != null &&
+            updated.completedAt !== progressState.completedAt
+          ) {
+            updated.completedAt = progressState.completedAt;
             changed = true;
           }
           if (updated.goalId !== goalId) {
@@ -66913,7 +67288,15 @@ function AppContent() {
         return changed ? next : prev;
       });
     },
-    [language, profile.goal, profile.goalTargetUSD, setProfile, setProfileDraft, setWishes]
+    [
+      profile.goal,
+      profile.goalCelebrated,
+      profile.goalCelebratedById,
+      profile.goalTargetUSD,
+      setProfile,
+      setProfileDraft,
+      setWishes,
+    ]
   );
 
   const assignTemptationGoal = useCallback(
@@ -67038,10 +67421,28 @@ function AppContent() {
               : 0;
           const desired = current + amountUSD;
           const capTarget = target > 0 ? target : Number.POSITIVE_INFINITY;
-          const nextSaved = Math.min(desired, capTarget);
-          applied = nextSaved - current;
-          const status = target > 0 && nextSaved >= target ? "done" : "active";
-          const becameDone = status === "done" && wish.status !== "done";
+          const requestedSaved = Math.min(desired, capTarget);
+          const completionLocked = isGoalCompletionLocked({
+            savedUSD: current,
+            targetUSD: target,
+            status: wish.status || primaryEntry?.status,
+            completedAt: wish.completedAt || primaryEntry?.completedAt || null,
+            completionLocked:
+              !!derivedGoalId && isGoalCelebratedInProfile(profile, derivedGoalId),
+          });
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: current,
+            targetUSD: target,
+            currentStatus: wish.status || primaryEntry?.status,
+            completedAt: wish.completedAt || primaryEntry?.completedAt || null,
+            completionLocked,
+            requestedSavedUSD: requestedSaved,
+          });
+          const nextSaved = progressState.savedUSD;
+          applied = completionLocked ? 0 : Math.max(0, nextSaved - current);
+          const status = progressState.status;
+          const becameDone =
+            !completionLocked && status === "done" && wish.status !== "done";
           if (
             nextSaved !== current ||
             wish.status !== status ||
@@ -67067,6 +67468,9 @@ function AppContent() {
               ...(target > 0 ? { targetUSD: target } : {}),
               savedUSD: nextSaved,
               status,
+              ...(progressState.completedAt != null
+                ? { completedAt: progressState.completedAt }
+                : {}),
               autoManaged: false,
               ...(derivedGoalId ? { goalId: derivedGoalId } : {}),
               ...(hasPrimaryWishId ? { kind: PRIMARY_GOAL_KIND } : {}),
@@ -67090,14 +67494,37 @@ function AppContent() {
             const target = created.targetUSD || 0;
             const capTarget = target > 0 ? target : Number.POSITIVE_INFINITY;
             const current = Math.max(0, Number(created.savedUSD) || 0);
-            const nextSaved = Math.min(current + Math.max(amountUSD, 0), capTarget);
-            applied = nextSaved - current;
-            const status = target > 0 && nextSaved >= target ? "done" : "active";
-            const becameDone = status === "done";
+            const requestedSaved = Math.min(
+              current + Math.max(amountUSD, 0),
+              capTarget
+            );
+            const completionLocked = isGoalCompletionLocked({
+              savedUSD: current,
+              targetUSD: target,
+              status: created.status,
+              completedAt: created.completedAt,
+              completionLocked:
+                !!created.goalId && isGoalCelebratedInProfile(profile, created.goalId),
+            });
+            const progressState = resolveGoalProgressState({
+              currentSavedUSD: current,
+              targetUSD: target,
+              currentStatus: created.status,
+              completedAt: created.completedAt,
+              completionLocked,
+              requestedSavedUSD: requestedSaved,
+            });
+            const nextSaved = progressState.savedUSD;
+            applied = completionLocked ? 0 : Math.max(0, nextSaved - current);
+            const status = progressState.status;
+            const becameDone = !completionLocked && status === "done";
             const nextCreated = {
               ...created,
               savedUSD: nextSaved,
               status,
+              ...(progressState.completedAt != null
+                ? { completedAt: progressState.completedAt }
+                : {}),
             };
             if (__DEV__ && wishId.startsWith("wish_primary_goal_")) {
               console.warn("primary_temptation_goal_created", {
@@ -67182,6 +67609,8 @@ function AppContent() {
       logEvent,
       profile.currency,
       profile.goal,
+      profile.goalCelebrated,
+      profile.goalCelebratedById,
       profile.goalTargetUSD,
       profile.primaryGoals,
       syncPrimaryGoalProgress,
@@ -67912,7 +68341,6 @@ function AppContent() {
   ]);
   const handleDailyChallengeDismiss = useCallback(() => {
     if (!dailyChallengeUnlocked) return;
-    setDailyChallengePromptGate(false);
     setDailyChallenge((prev) =>
       prev?.status === DAILY_CHALLENGE_STATUS.OFFER
         ? { ...prev, offerDismissed: true }
@@ -67928,7 +68356,6 @@ function AppContent() {
     dailyChallenge.templateId,
     dailyChallengeUnlocked,
     logEvent,
-    setDailyChallengePromptGate,
   ]);
   const deferDailyChallenge = useCallback(
     (days) => {
@@ -68913,7 +69340,30 @@ function AppContent() {
       const hydrateWishes = () => {
         try {
           if (wishesRaw) {
-            setWishes(JSON.parse(wishesRaw));
+            const parsedWishes = JSON.parse(wishesRaw);
+            const normalizedWishes = (Array.isArray(parsedWishes) ? parsedWishes : []).map(
+              (wish) => {
+                if (!wish || typeof wish !== "object") return wish;
+                const targetUSD = Math.max(0, Number(wish.targetUSD) || 0);
+                const progressState = resolveGoalProgressState({
+                  currentSavedUSD: wish.savedUSD,
+                  targetUSD,
+                  currentStatus: wish.status,
+                  completedAt: wish.completedAt,
+                  requestedSavedUSD: wish.savedUSD,
+                  requestedStatus: wish.status,
+                });
+                return {
+                  ...wish,
+                  savedUSD: progressState.savedUSD,
+                  status: progressState.status,
+                  ...(progressState.completedAt != null
+                    ? { completedAt: progressState.completedAt }
+                    : {}),
+                };
+              }
+            );
+            setWishes(normalizedWishes);
           } else {
             setWishes([]);
           }
@@ -69012,6 +69462,10 @@ function AppContent() {
           Number.isFinite(rawIncomePayday) && rawIncomePayday >= 1 && rawIncomePayday <= 31
             ? Math.round(rawIncomePayday)
             : DEFAULT_INCOME_PAYDAY;
+        const legacyCelebratedGoalIdBeforeGoalSelection =
+          parsedProfile.goalCelebrated === true
+            ? normalizePrimaryGoalSelectionId(parsedProfile.goal)
+            : "";
         const normalizedPrimaryGoals = Array.isArray(parsedProfile.primaryGoals)
           ? parsedProfile.primaryGoals
               .map((entry) => {
@@ -69021,18 +69475,25 @@ function AppContent() {
                   Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
                     ? entry.targetUSD
                     : getGoalDefaultTargetUSD(goalId);
-                const savedUSD = Number.isFinite(entry?.savedUSD) ? Math.max(entry.savedUSD, 0) : 0;
-                const normalizedStatus =
-                  entry?.status === "done" || (targetUSD > 0 && savedUSD >= targetUSD)
-                    ? "done"
-                    : entry?.status || "active";
+                const progressState = resolveGoalProgressState({
+                  currentSavedUSD: entry?.savedUSD,
+                  targetUSD,
+                  currentStatus: entry?.status,
+                  completedAt: entry?.completedAt,
+                  completionLocked: isGoalCelebratedInProfile(parsedProfile, goalId),
+                  requestedSavedUSD: entry?.savedUSD,
+                  requestedStatus: entry?.status,
+                });
                 const normalized = {
                   id: goalId,
                   targetUSD,
-                  savedUSD,
-                  status: normalizedStatus,
+                  savedUSD: progressState.savedUSD,
+                  status: progressState.status,
                   createdAt: entry?.createdAt || null,
                 };
+                if (progressState.completedAt != null) {
+                  normalized.completedAt = progressState.completedAt;
+                }
                 const customTitle =
                   typeof entry?.customTitle === "string" ? entry.customTitle.trim() : "";
                 if (customTitle) {
@@ -69092,10 +69553,7 @@ function AppContent() {
               : 0;
         }
         const normalizedCelebratedById = normalizeGoalCelebratedById(parsedProfile.goalCelebratedById);
-        const legacyCelebratedGoalId =
-          parsedProfile.goalCelebrated === true
-            ? normalizePrimaryGoalSelectionId(parsedProfile.goal)
-            : "";
+        const legacyCelebratedGoalId = legacyCelebratedGoalIdBeforeGoalSelection;
         if (legacyCelebratedGoalId) {
           normalizedCelebratedById[legacyCelebratedGoalId] = true;
         }
@@ -69554,7 +70012,7 @@ function AppContent() {
           const rawActionCount = Math.max(0, Number(parsed?.actionCount) || 0);
           const normalizedActionCount = Math.max(0, rawActionCount - legacyActionCountStart);
           normalizedRatingPrompt = {
-            triggerVersion: 2,
+            triggerVersion: 3,
             firstOpenAt:
               typeof parsed?.firstOpenAt === "string" ? parsed.firstOpenAt : fallback.firstOpenAt,
             completed: normalizedCompleted,
@@ -69563,7 +70021,7 @@ function AppContent() {
             respondedAt: typeof parsed?.respondedAt === "string" ? parsed.respondedAt : null,
             actionCount: normalizedActionCount,
             seriesCompletionCount:
-              Number(parsed?.triggerVersion) === 2
+              Number(parsed?.triggerVersion) >= 2
                 ? Math.max(0, Number(parsed?.seriesCompletionCount) || 0)
                 : 0,
             actionPrompted: Boolean(parsed?.actionPrompted),
@@ -69590,6 +70048,7 @@ function AppContent() {
       } else {
         ratingPromptNeedsRewrite = true;
       }
+      ratingPromptStateRef.current = normalizedRatingPrompt;
       setRatingPromptState(normalizedRatingPrompt);
       if (ratingPromptNeedsRewrite) {
         AsyncStorage.setItem(
@@ -70560,7 +71019,9 @@ function AppContent() {
     } catch (error) {
       console.warn("load error", error);
       setAnalyticsOptOutState((prev) => prev);
-      setRatingPromptState(createInitialRatingPromptState());
+      const resetRatingPromptState = createInitialRatingPromptState();
+      ratingPromptStateRef.current = resetRatingPromptState;
+      setRatingPromptState(resetRatingPromptState);
       setTamagotchiGreetingDayKey(null);
       setClaimedRewardsHydrated(true);
       setChallengesHydrated(true);
@@ -71469,11 +71930,7 @@ function AppContent() {
     logEvent("budget_widget_tutorial_shown", { source: "progress" });
   }, [budgetWidgetTutorialVisible, logEvent]);
   useEffect(() => {
-    if (!isDailyChallengePromptPending) {
-      setDailyChallengePromptGate(false);
-      return;
-    }
-    setDailyChallengePromptGate(false);
+    if (!isDailyChallengePromptPending) return;
     enqueueQueuedModal(QUEUED_MODAL_TYPES.DAILY_CHALLENGE);
   }, [enqueueQueuedModal, isDailyChallengePromptPending]);
   useEffect(() => {
@@ -71727,6 +72184,36 @@ function AppContent() {
     const targetUSD = heroGoalTargetUSD > 0 ? heroGoalTargetUSD : 0;
     const hasMetGoal = targetUSD > 0 && heroGoalSavedUSD >= targetUSD;
     const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
+    const profileGoalEntry = Array.isArray(profile.primaryGoals)
+      ? profile.primaryGoals.find((entry) => entry?.id === goalId)
+      : null;
+    const heroWish = Array.isArray(wishes)
+      ? wishes.find(
+          (wish) =>
+            wish?.goalId === goalId ||
+            wish?.id === getPrimaryGoalWishId(goalId) ||
+            wish?.id === goalId
+        )
+      : null;
+    const completionLocked = isGoalCompletionLocked({
+      savedUSD: Math.max(
+        0,
+        Number(profileGoalEntry?.savedUSD) || 0,
+        Number(heroWish?.savedUSD) || 0,
+        Number(heroGoalSavedUSD) || 0
+      ),
+      targetUSD,
+      status:
+        profileGoalEntry?.status === "done" || heroWish?.status === "done"
+          ? "done"
+          : profileGoalEntry?.status || heroWish?.status || "active",
+      completedAt: profileGoalEntry?.completedAt || heroWish?.completedAt || null,
+      completionLocked: hasCelebratedGoal,
+    });
+    if (completionLocked && !hasMetGoal && targetUSD > 0) {
+      syncPrimaryGoalProgress(goalId, targetUSD, "done");
+      return;
+    }
     if (!hasMetGoal && goalCompletionQueuedGoalRef.current === goalId) {
       goalCompletionQueuedGoalRef.current = null;
     }
@@ -71737,23 +72224,13 @@ function AppContent() {
       pendingGoalCelebrationRef.current = null;
       setPendingGoalCelebration(null);
     }
-    if (hasCelebratedGoal && !hasMetGoal) {
-      setProfile((prev) => ({
-        ...updateGoalCelebrationInProfile(prev, goalId, false),
-        goalRenewalPending: false,
-      }));
-      setProfileDraft((prev) => ({
-        ...updateGoalCelebrationInProfile(prev, goalId, false),
-        goalRenewalPending: false,
-      }));
-      goalRenewalPromptPendingRef.current = false;
-    }
   }, [
     heroGoalTargetUSD,
     resolvedHeroGoalId,
     profile,
     heroGoalSavedUSD,
-    setProfile,
+    syncPrimaryGoalProgress,
+    wishes,
   ]);
 
   useEffect(() => {
@@ -72700,43 +73177,20 @@ useEffect(() => {
     let cancelled = false;
     const rescheduleSubscriptionReminders = async () => {
       const nowTs = Date.now();
+      let scheduledReadSucceeded = false;
+      let existingSubscriptionNotifications = [];
       try {
         const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
-        const existingIds = (Array.isArray(scheduled) ? scheduled : []).reduce((acc, entry) => {
+        existingSubscriptionNotifications = (Array.isArray(scheduled) ? scheduled : []).filter((entry) => {
           const kind = entry?.content?.data?.kind;
-          if (kind !== SUBSCRIPTION_REMINDER_KIND && kind !== SUBSCRIPTION_DUE_KIND) return acc;
-          const id = entry?.identifier || entry?.id || null;
-          if (id) acc.push(id);
-          return acc;
-        }, []);
-        if (existingIds.length) {
-          await Promise.all(
-            existingIds.map((id) => safeNotifications.cancelScheduledNotificationAsync(id))
-          );
-        }
+          return kind === SUBSCRIPTION_REMINDER_KIND || kind === SUBSCRIPTION_DUE_KIND;
+        });
+        scheduledReadSucceeded = true;
       } catch (error) {
-        console.warn("subscription reminder cleanup", error);
+        console.warn("subscription reminder read", error);
       }
       if (cancelled) return;
-      const notificationGroups = new Map();
-      const pushSubscriptionGroup = (groupKey, payload) => {
-        if (!groupKey || !payload) return;
-        const current = notificationGroups.get(groupKey) || {
-          triggerTime: payload.triggerTime,
-          daysBefore: payload.daysBefore,
-          kind: payload.kind,
-          dayKey: payload.dayKey,
-          subscriptions: [],
-        };
-        current.triggerTime = Math.min(current.triggerTime, payload.triggerTime);
-        if (Number.isFinite(Number(payload.daysBefore))) {
-          current.daysBefore = Math.min(current.daysBefore, payload.daysBefore);
-        }
-        current.kind = payload.kind || current.kind;
-        current.dayKey = payload.dayKey || current.dayKey;
-        current.subscriptions.push(payload.subscription);
-        notificationGroups.set(groupKey, current);
-      };
+      const scheduleSources = [];
       subscriptionCards.forEach((item) => {
         if (!item) return;
         const categoryId =
@@ -72760,58 +73214,50 @@ useEffect(() => {
           convertToCurrency(Math.max(0, Number(getTemptationPrice(item)) || 0), profile.currency || DEFAULT_PROFILE.currency),
           profile.currency || DEFAULT_PROFILE.currency
         );
-        SUBSCRIPTION_REMINDER_OFFSETS_DAYS.forEach((daysBefore) => {
-          const triggerTime = nextCheckAt - daysBefore * DAY_MS;
-          if (!Number.isFinite(triggerTime) || triggerTime <= nowTs + 5 * 60 * 1000) return;
-          const dayKey = getDayKey(triggerTime);
-          if (!dayKey) return;
-          pushSubscriptionGroup(`${SUBSCRIPTION_REMINDER_KIND}:${dayKey}`, {
-            triggerTime,
-            daysBefore,
-            kind: SUBSCRIPTION_REMINDER_KIND,
-            dayKey,
-            subscription: {
-              templateId,
-              title,
-              amountLabel,
-              daysBefore,
-              nextCheckAt,
-            },
-          });
+        scheduleSources.push({
+          templateId,
+          title,
+          amountLabel,
+          nextCheckAt,
         });
-        if (nextCheckAt > nowTs + 60 * 1000) {
-          const dayKey = getDayKey(nextCheckAt);
-          if (!dayKey) return;
-          pushSubscriptionGroup(`${SUBSCRIPTION_DUE_KIND}:${dayKey}`, {
-            triggerTime: nextCheckAt,
-            daysBefore: 0,
-            kind: SUBSCRIPTION_DUE_KIND,
-            dayKey,
-            subscription: {
-              templateId,
-              title,
-              amountLabel,
-              daysBefore: 0,
-              nextCheckAt,
-            },
-          });
-        }
       });
-      const groups = Array.from(notificationGroups.entries())
-        .map(([groupKey, group]) => ({ groupKey, ...group }))
-        .sort((a, b) => a.triggerTime - b.triggerTime)
-        .slice(0, 24);
+      const groups = buildSubscriptionNotificationPlan({
+        subscriptions: scheduleSources,
+        now: nowTs,
+        reminderOffsetsDays: SUBSCRIPTION_REMINDER_OFFSETS_DAYS,
+        dayMs: DAY_MS,
+        reminderKind: SUBSCRIPTION_REMINDER_KIND,
+        dueKind: SUBSCRIPTION_DUE_KIND,
+        localeKey: normalizeLanguage(language),
+        getDayKey,
+        maxGroups: 24,
+      });
+      const retainedNotificationIds = new Set();
+      let allDesiredNotificationsReady = true;
       for (let index = 0; index < groups.length; index += 1) {
         if (cancelled) return;
         const group = groups[index];
         const subscriptions = group.subscriptions || [];
         if (!subscriptions.length) continue;
+        const existingMatch = existingSubscriptionNotifications.find((entry) => {
+          const existingId = entry?.identifier || entry?.id || null;
+          if (!existingId || retainedNotificationIds.has(existingId)) return false;
+          return doesScheduledSubscriptionNotificationMatchPlan(
+            entry,
+            group,
+            resolveNotificationTriggerTime
+          );
+        });
+        if (existingMatch) {
+          const existingId = existingMatch?.identifier || existingMatch?.id || null;
+          if (existingId) retainedNotificationIds.add(existingId);
+          continue;
+        }
         const primary = subscriptions[0];
         const count = subscriptions.length;
         const isDueGroup = group.kind === SUBSCRIPTION_DUE_KIND;
-        const dedupeKey = `${group.kind || SUBSCRIPTION_REMINDER_KIND}:${group.dayKey}`;
         try {
-          await scheduleNotificationWithCooldown({
+          const scheduledEntry = await scheduleNotificationWithCooldown({
             content: {
               title:
                 isDueGroup && count === 1
@@ -72839,16 +73285,40 @@ useEffect(() => {
               data: {
                 kind: group.kind || SUBSCRIPTION_REMINDER_KIND,
                 targetScreen: "subscriptions",
-                dedupeKey,
+                dedupeKey: group.dedupeKey,
                 dayKey: group.dayKey,
                 templateId: primary.templateId,
+                subscriptionPlanKey: group.planKey,
               },
               ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
             },
             trigger: new Date(group.triggerTime),
           });
+          if (scheduledEntry?.id) {
+            retainedNotificationIds.add(scheduledEntry.id);
+          } else {
+            allDesiredNotificationsReady = false;
+          }
         } catch (error) {
+          allDesiredNotificationsReady = false;
           console.warn("subscription reminder schedule", error);
+        }
+      }
+      if (cancelled || !scheduledReadSucceeded || !allDesiredNotificationsReady) {
+        return;
+      }
+      const staleNotificationIds = existingSubscriptionNotifications
+        .map((entry) => entry?.identifier || entry?.id || null)
+        .filter((id) => id && !retainedNotificationIds.has(id));
+      if (staleNotificationIds.length) {
+        try {
+          await Promise.all(
+            staleNotificationIds.map((id) =>
+              safeNotifications.cancelScheduledNotificationAsync(id)
+            )
+          );
+        } catch (error) {
+          console.warn("subscription reminder cleanup", error);
         }
       }
     };
@@ -72863,6 +73333,7 @@ useEffect(() => {
     profile.currency,
     quickTemptationsHydrated,
     resolveTemptationCategory,
+    resolveNotificationTriggerTime,
     safeNotifications,
     scheduleNotificationWithCooldown,
     subscriptionCards,
@@ -73122,8 +73593,15 @@ useEffect(() => {
     () => {
       if (!wishesHydrated || !savedTotalHydrated) return;
       const primaryGoalId = mainGoalWish?.goalId || activeGoalId || profile.goal || null;
-      const { targetUSD: primaryTargetUSD, savedUSD: primaryCurrentSaved } = (() => {
-        if (!primaryGoalId) return { targetUSD: 0, savedUSD: 0 };
+      const {
+        targetUSD: primaryTargetUSD,
+        savedUSD: primaryCurrentSaved,
+        status: desiredPrimaryStatus,
+        completedAt: primaryCompletedAt,
+      } = (() => {
+        if (!primaryGoalId) {
+          return { targetUSD: 0, savedUSD: 0, status: "active", completedAt: null };
+        }
         const entry = Array.isArray(profile.primaryGoals)
           ? profile.primaryGoals.find((goal) => goal?.id === primaryGoalId)
           : null;
@@ -73143,12 +73621,28 @@ useEffect(() => {
         const savedFromWish = Number.isFinite(wishSnapshot?.savedUSD)
           ? Math.max(wishSnapshot.savedUSD, 0)
           : 0;
-        return { targetUSD: target, savedUSD: Math.max(savedFromProfile, savedFromWish) };
+        const currentSavedUSD = Math.max(savedFromProfile, savedFromWish);
+        const currentStatus =
+          entry?.status === "done" || wishSnapshot?.status === "done"
+            ? "done"
+            : entry?.status || wishSnapshot?.status || "active";
+        const completedAt = entry?.completedAt || wishSnapshot?.completedAt || null;
+        const progressState = resolveGoalProgressState({
+          currentSavedUSD,
+          targetUSD: target,
+          currentStatus,
+          completedAt,
+          completionLocked: isGoalCelebratedInProfile(profile, primaryGoalId),
+          requestedSavedUSD: currentSavedUSD,
+          requestedStatus: currentStatus,
+        });
+        return {
+          targetUSD: target,
+          savedUSD: progressState.savedUSD,
+          status: progressState.status,
+          completedAt: progressState.completedAt,
+        };
       })();
-      const desiredPrimaryStatus =
-        primaryGoalId && primaryTargetUSD > 0 && primaryCurrentSaved >= primaryTargetUSD
-          ? "done"
-          : "active";
 
       setWishes((prev) => {
         if (!prev.length) return prev;
@@ -73156,16 +73650,43 @@ useEffect(() => {
         const next = prev.map((wish) => {
           const isPrimary = wish.kind === PRIMARY_GOAL_KIND && (wish.goalId || wish.id) === primaryGoalId;
           if (isPrimary) {
-            if (wish.savedUSD !== primaryCurrentSaved || wish.status !== desiredPrimaryStatus) {
+            if (
+              wish.savedUSD !== primaryCurrentSaved ||
+              wish.status !== desiredPrimaryStatus ||
+              (primaryCompletedAt != null && wish.completedAt !== primaryCompletedAt)
+            ) {
               changed = true;
-              return { ...wish, savedUSD: primaryCurrentSaved, status: desiredPrimaryStatus };
+              return {
+                ...wish,
+                savedUSD: primaryCurrentSaved,
+                status: desiredPrimaryStatus,
+                ...(primaryCompletedAt != null ? { completedAt: primaryCompletedAt } : {}),
+              };
             }
             return wish;
           }
-          const status = (wish.savedUSD || 0) >= (wish.targetUSD || 0) ? "done" : "active";
-          if (wish.status !== status) {
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: wish.savedUSD,
+            targetUSD: wish.targetUSD,
+            currentStatus: wish.status,
+            completedAt: wish.completedAt,
+            requestedSavedUSD: wish.savedUSD,
+            requestedStatus: wish.status,
+          });
+          if (
+            wish.savedUSD !== progressState.savedUSD ||
+            wish.status !== progressState.status ||
+            (progressState.completedAt != null && wish.completedAt !== progressState.completedAt)
+          ) {
             changed = true;
-            return { ...wish, status };
+            return {
+              ...wish,
+              savedUSD: progressState.savedUSD,
+              status: progressState.status,
+              ...(progressState.completedAt != null
+                ? { completedAt: progressState.completedAt }
+                : {}),
+            };
           }
           return wish;
         });
@@ -73180,6 +73701,8 @@ useEffect(() => {
       activeGoalId,
       mainGoalWish?.goalId,
       profile.goal,
+      profile.goalCelebrated,
+      profile.goalCelebratedById,
       profile.primaryGoals,
       savedTotalHydrated,
       syncPrimaryGoalProgress,
@@ -73767,7 +74290,6 @@ useEffect(() => {
         });
         return;
       }
-      clearCompletedPrimaryGoal(previousGoalId);
       setActiveGoalId(normalizedNextGoalId);
       AsyncStorage.setItem(STORAGE_KEYS.ACTIVE_GOAL, normalizedNextGoalId).catch(() => {});
       const activateGoalInProfile = (profileState = {}) => {
@@ -73798,7 +74320,6 @@ useEffect(() => {
       triggerHaptic,
       activeGoalId,
       profile.goal,
-      clearCompletedPrimaryGoal,
       premiumState.isPremium,
     ]
   );
@@ -73944,23 +74465,32 @@ useEffect(() => {
           const entrySavedUSD = Number.isFinite(entry.savedUSD) ? entry.savedUSD : 0;
           const existingSavedUSD = Number.isFinite(existing?.savedUSD) ? existing.savedUSD : 0;
           const nextSavedUSD = Math.max(entrySavedUSD, existingSavedUSD);
-          const inferredStatus =
-            targetUSD > 0 && nextSavedUSD >= targetUSD
+          const currentStatus =
+            existing?.status === "done" || entry?.status === "done"
               ? "done"
-              : existing?.status && existing.status !== "done"
-              ? existing.status
-              : entry?.status && entry.status !== "done"
-              ? entry.status
-              : "active";
+              : existing?.status || entry?.status || "active";
+          const completedAt = existing?.completedAt || entry?.completedAt || null;
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: nextSavedUSD,
+            targetUSD,
+            currentStatus,
+            completedAt,
+            completionLocked: isGoalCelebratedInProfile(profile, entry.id),
+            requestedSavedUSD: nextSavedUSD,
+            requestedStatus: currentStatus,
+          });
           return {
             id: getPrimaryGoalWishId(entry.id),
             templateId: `goal_${entry.id}`,
             title,
             emoji: resolvedEmoji,
             targetUSD,
-            savedUSD: nextSavedUSD,
-            status: inferredStatus,
+            savedUSD: progressState.savedUSD,
+            status: progressState.status,
             createdAt: existing?.createdAt || entry?.createdAt || Date.now(),
+            ...(progressState.completedAt != null
+              ? { completedAt: progressState.completedAt }
+              : {}),
             autoManaged: true,
             kind: PRIMARY_GOAL_KIND,
             goalId: entry.id,
@@ -73969,7 +74499,7 @@ useEffect(() => {
         return [...nextPrimary, ...nonPrimary];
       });
     },
-    [setWishes]
+    [profile.goal, profile.goalCelebrated, profile.goalCelebratedById, setWishes]
   );
 
   const openImagePickerSheet = (resolver) => {
@@ -74224,32 +74754,158 @@ useEffect(() => {
   );
 
   const subscriptionCards = useMemo(() => {
-    const map = new Map();
-    const hiddenSet = new Set(hiddenTemptations);
-    const archivedSet = new Set(archivedTemptations);
-    const registerCard = (card) => {
-      const normalized = applyTemptationOverrides(card);
-      const templateId = normalized?.id || normalized?.templateId;
-      if (!templateId || hiddenSet.has(templateId) || archivedSet.has(templateId)) return;
-      map.set(templateId, normalized);
-    };
-    (Array.isArray(temptations) ? temptations : []).forEach(registerCard);
-    Object.entries(categoryOverrides || {}).forEach(([templateId, categoryId]) => {
-      if (categoryId !== SUBSCRIPTION_CATEGORY_ID || map.has(templateId)) return;
-      registerCard(findTemplateById(templateId));
-    });
-    return Array.from(map.values()).filter((item) => {
+    return (Array.isArray(products) ? products : []).filter((item) => {
       const categoryId = resolveTemptationCategory(item);
       return isUserSubscriptionTemptation(item, categoryId);
     });
+  }, [products, resolveTemptationCategory]);
+  const subscriptionDueReferenceTs = useMinuteTicker(onboardingStep === "done");
+  const formatSubscriptionDueAmount = useCallback(
+    (valueUSD = 0) => {
+      const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
+      return formatCurrency(
+        convertToCurrency(Math.max(0, Number(valueUSD) || 0), currencyCode),
+        currencyCode
+      );
+    },
+    [profile.currency]
+  );
+  const subscriptionDueHistoryStats = useMemo(() => {
+    const statsByTemplateId = new Map();
+    (Array.isArray(visibleHistoryEvents) ? visibleHistoryEvents : []).forEach((historyEntry) => {
+      if (!historyEntry || historyEntry.kind !== "spend") return;
+      const meta = historyEntry.meta || {};
+      const templateId = resolveNonEmptyString(
+        meta.templateId || meta.template_id || meta.id || meta.template || ""
+      );
+      if (!templateId) return;
+      const timestamp = normalizeTemporalMs(historyEntry.timestamp, 0);
+      const current = statsByTemplateId.get(templateId) || {
+        spentUSD: 0,
+        firstRecordedAt: 0,
+      };
+      current.spentUSD += Math.max(0, Number(meta.amountUSD) || 0);
+      if (timestamp > 0) {
+        current.firstRecordedAt = current.firstRecordedAt
+          ? Math.min(current.firstRecordedAt, timestamp)
+          : timestamp;
+      }
+      statsByTemplateId.set(templateId, current);
+    });
+    return statsByTemplateId;
+  }, [visibleHistoryEvents]);
+  const subscriptionDueEntries = useMemo(() => {
+    const nowTs = Number(subscriptionDueReferenceTs) || Date.now();
+    return subscriptionCards
+      .map((item) => {
+        const templateId = resolveNonEmptyString(item?.id || item?.templateId || "");
+        if (!templateId) return null;
+        const interactionEntry = temptationInteractions?.[templateId] || {};
+        const dueState = resolveSubscriptionDueState(item, interactionEntry, nowTs);
+        if (!dueState.isDue || !Number.isFinite(Number(dueState.dueAt))) return null;
+        const amountUSD = Math.max(0, Number(getTemptationPrice(item)) || 0);
+        const checksPerMonth = Math.max(
+          0,
+          Number(resolveSubscriptionChecksPerMonth(item, interactionEntry)) || 1
+        );
+        const annualForecastUSD = amountUSD * checksPerMonth * 12;
+        const historyStats = subscriptionDueHistoryStats.get(templateId) || {
+          spentUSD: 0,
+          firstRecordedAt: 0,
+        };
+        const firstRecordedCandidates = [
+          Number(item.createdAt) || 0,
+          Number(interactionEntry.firstTimerConfiguredAt) || 0,
+          Number(historyStats.firstRecordedAt) || 0,
+        ].filter((value) => Number.isFinite(value) && value > 0);
+        const dueAt = Number(dueState.dueAt);
+        return {
+          id: templateId,
+          item,
+          title:
+            resolveTemptationTitle(item, language, item.titleOverride) ||
+            t("defaultDealTitle"),
+          emoji: item.emoji || DEFAULT_TEMPTATION_EMOJI,
+          amountUSD,
+          amountLabel: formatSubscriptionDueAmount(amountUSD),
+          annualForecastUSD,
+          annualForecastLabel: formatSubscriptionDueAmount(annualForecastUSD),
+          spentUSD: Math.max(0, Number(historyStats.spentUSD) || 0),
+          spentLabel: formatSubscriptionDueAmount(historyStats.spentUSD),
+          firstRecordedAt: firstRecordedCandidates.length
+            ? Math.min(...firstRecordedCandidates)
+            : 0,
+          dueAt,
+          nextCheckAt: dueAt,
+          scheduledNextCheckAt: Number(dueState.nextCheckAt) || null,
+          dueForConfirmation: true,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.dueAt !== b.dueAt) return a.dueAt - b.dueAt;
+        return a.id.localeCompare(b.id);
+      });
   }, [
-    applyTemptationOverrides,
-    archivedTemptations,
-    categoryOverrides,
-    hiddenTemptations,
-    resolveTemptationCategory,
-    temptations,
+    formatSubscriptionDueAmount,
+    language,
+    subscriptionCards,
+    subscriptionDueHistoryStats,
+    subscriptionDueReferenceTs,
+    t,
+    temptationInteractions,
   ]);
+  useEffect(() => {
+    if (!temptationInteractionsHydrated) return;
+    if (!quickTemptationsHydrated) return;
+    if (!categoryOverridesHydrated) return;
+    if (!historyHydrated) return;
+    const nowTs = Number(subscriptionDueReferenceTs) || Date.now();
+    const nextEntry = findPendingSubscriptionDueEntry(subscriptionDueEntries, {
+      now: nowTs,
+      dismissedKeys: subscriptionDueDismissedSessionRef.current,
+    });
+    if (!nextEntry) {
+      setSubscriptionDuePromptEntry(null);
+      const filteredQueue = (queuedModalQueueRef.current || []).filter(
+        (type) => type !== QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE
+      );
+      if (filteredQueue.length !== queuedModalQueueRef.current.length) {
+        queuedModalQueueRef.current = filteredQueue;
+        requestQueuedModalProcess();
+      }
+      if (queuedModalActiveRef.current === QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE) {
+        clearQueuedModal(QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE);
+      }
+      return;
+    }
+    setSubscriptionDuePromptEntry(nextEntry);
+    enqueueQueuedModal(QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE, { priority: true });
+  }, [
+    categoryOverridesHydrated,
+    clearQueuedModal,
+    enqueueQueuedModal,
+    historyHydrated,
+    quickTemptationsHydrated,
+    requestQueuedModalProcess,
+    subscriptionDueEntries,
+    subscriptionDueReferenceTs,
+    subscriptionDueSessionVersion,
+    temptationInteractionsHydrated,
+  ]);
+  useEffect(() => {
+    if (!subscriptionCards.length || onboardingStep !== "done") return undefined;
+    const refreshSubscriptionNotificationPermission = () => {
+      ensureNotificationPermission({ request: false }).catch(() => {});
+    };
+    refreshSubscriptionNotificationPermission();
+    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        refreshSubscriptionNotificationPermission();
+      }
+    });
+    return () => appStateSubscription.remove();
+  }, [ensureNotificationPermission, onboardingStep, subscriptionCards.length]);
   const subscriptionAutoImportCandidates = useMemo(
     () =>
       buildSubscriptionAutoImportCandidates({
@@ -75303,6 +75959,16 @@ useEffect(() => {
       return;
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    goToOnboardingStep("goal");
+  };
+
+  const handlePersonaSkip = () => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setRegistrationData((prev) => ({
+      ...prev,
+      persona: prev.persona || DEFAULT_PERSONA_ID,
+      gender: prev.gender || "none",
+    }));
     goToOnboardingStep("goal");
   };
 
@@ -76436,45 +77102,23 @@ useEffect(() => {
 
   const recomputeHistoryAggregates = useCallback(
     (list) => {
-      let nextDeclines = 0;
       let resolvedToWishes = 0;
       let resolvedToDeclines = 0;
-      const nextRefuseStats = {};
       (list || []).forEach((entry) => {
         if (!entry) return;
-        if (entry.kind === "refuse_spend") {
-          const amount = Math.max(0, Number(entry.meta?.amountUSD) || 0);
-          nextDeclines += 1;
-          const templateId =
-            entry.meta?.templateId || entry.meta?.id || entry.meta?.title || "unknown";
-          const current = nextRefuseStats[templateId] || {
-            count: 0,
-            totalUSD: 0,
-            lastSavedAt: 0,
-            lastSavedAmountUSD: 0,
-          };
-          current.count += 1;
-          current.totalUSD += amount;
-          if (!current.lastSavedAt || (entry.timestamp || 0) > current.lastSavedAt) {
-            current.lastSavedAt = entry.timestamp || 0;
-            current.lastSavedAmountUSD = amount;
-          }
-          nextRefuseStats[templateId] = current;
-        } else if (entry.kind === "pending_to_wish") {
+        if (entry.kind === "pending_to_wish") {
           resolvedToWishes += 1;
         } else if (entry.kind === "pending_to_decline") {
           resolvedToDeclines += 1;
         }
       });
-      setDeclineCount(nextDeclines);
-      setRefuseStats(nextRefuseStats);
       setDecisionStats((prev) => ({
         ...prev,
         resolvedToWishes,
         resolvedToDeclines,
       }));
     },
-    [setDeclineCount, setDecisionStats, setRefuseStats, setSavedTotalUSD]
+    [setDecisionStats]
   );
 
   const computeSavingsTotals = useCallback(
@@ -76642,9 +77286,19 @@ useEffect(() => {
               profile.goalTargetUSD > 0
             ? profile.goalTargetUSD
             : getGoalDefaultTargetUSD(goalId);
-        const nextSaved = Math.max(0, currentSaved + deltaUSD);
-        const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
-        syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
+        const currentStatus =
+          primaryEntry?.status === "done" || primaryWish?.status === "done"
+            ? "done"
+            : primaryEntry?.status || primaryWish?.status || "active";
+        const progressState = resolveGoalProgressState({
+          currentSavedUSD: currentSaved,
+          targetUSD,
+          currentStatus,
+          completedAt: primaryEntry?.completedAt || primaryWish?.completedAt || null,
+          completionLocked: isGoalCelebratedInProfile(profile, goalId),
+          requestedSavedUSD: Math.max(0, currentSaved + deltaUSD),
+        });
+        syncPrimaryGoalProgress(goalId, progressState.savedUSD, progressState.status);
         return;
       }
       setWishes((prev) => {
@@ -76657,11 +77311,28 @@ useEffect(() => {
               ? wish.targetUSD
               : getGoalDefaultTargetUSD(wish.goalId || wish.id);
           const previousSaved = Number.isFinite(wish.savedUSD) ? wish.savedUSD : 0;
-          const nextSaved = Math.max(0, previousSaved + deltaUSD);
-          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
-          if (nextSaved !== previousSaved || nextStatus !== wish.status) {
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: previousSaved,
+            targetUSD,
+            currentStatus: wish.status,
+            completedAt: wish.completedAt,
+            requestedSavedUSD: Math.max(0, previousSaved + deltaUSD),
+          });
+          if (
+            progressState.savedUSD !== previousSaved ||
+            progressState.status !== wish.status ||
+            (progressState.completedAt != null &&
+              wish.completedAt !== progressState.completedAt)
+          ) {
             changed = true;
-            return { ...wish, savedUSD: nextSaved, status: nextStatus };
+            return {
+              ...wish,
+              savedUSD: progressState.savedUSD,
+              status: progressState.status,
+              ...(progressState.completedAt != null
+                ? { completedAt: progressState.completedAt }
+                : {}),
+            };
           }
           return wish;
         });
@@ -76671,6 +77342,8 @@ useEffect(() => {
     [
       normalizeHistoryGoalId,
       profile.goal,
+      profile.goalCelebrated,
+      profile.goalCelebratedById,
       profile.goalTargetUSD,
       profile.primaryGoals,
       setWishes,
@@ -76683,6 +77356,21 @@ useEffect(() => {
       if (!entry) return;
       const entryId = entry.id;
       const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
+      const historyTemplateId =
+        entry.meta?.templateId ||
+        entry.meta?.template_id ||
+        entry.meta?.templateID ||
+        entry.meta?.id ||
+        entry.meta?.template ||
+        null;
+      const historyTemplateCard = historyTemplateId
+        ? resolveTemplateCard(historyTemplateId)
+        : null;
+      const lifetimeStatKeys = [
+        historyTemplateId,
+        historyTemplateCard?.id,
+        historyTemplateCard?.templateId,
+      ];
       const resolveHistoryGoalId = () => {
         const meta = entry.meta || {};
         const storedGoalId =
@@ -76696,6 +77384,13 @@ useEffect(() => {
         if (targetGoalId) {
           applyHistoryGoalDelta(targetGoalId, -amountUSD);
         }
+        setDeclineCount((prev) => Math.max(0, Number(prev) - 1));
+        setRefuseStats((prev) =>
+          decrementTemptationLifetimeRefuseStats(prev, entry, lifetimeStatKeys)
+        );
+        setTemptationInteractions((prev) =>
+          decrementTemptationLifetimeInteractionStats(prev, entry, lifetimeStatKeys)
+        );
       }
       if (amountUSD > 0) {
         if (entry.kind === "refuse_spend") {
@@ -76716,14 +77411,28 @@ useEffect(() => {
         setPendingList((prev) => prev.filter((p) => p.id !== entry.meta.pendingId));
       }
       if (entry.kind === "wish_added" && entry.meta?.wishId) {
-        setWishes((prev) => prev.filter((w) => w.id !== entry.meta.wishId));
+        setWishes((prev) =>
+          prev.filter((wish) => {
+            if (wish.id !== entry.meta.wishId) return true;
+            return isGoalCompletionLocked({
+              savedUSD: wish.savedUSD,
+              targetUSD: wish.targetUSD,
+              status: wish.status,
+              completedAt: wish.completedAt,
+            });
+          })
+        );
       }
     },
     [
       applyHistoryGoalDelta,
       resolveTemptationGoalId,
+      resolveTemplateCard,
       setPendingList,
       setWishes,
+      setDeclineCount,
+      setRefuseStats,
+      setTemptationInteractions,
       setProgressSavedTotalUSD,
       setSavedTotalUSD,
       setChallengesState,
@@ -78414,6 +79123,14 @@ useEffect(() => {
           ...(prevEntry || {}),
           saveCount: (prevEntry.saveCount || 0) + (actionType === "save" ? 1 : 0),
           spendCount: (prevEntry.spendCount || 0) + (actionType === "spend" ? 1 : 0),
+          savedAmountUSD:
+            Math.max(0, Number(prevEntry.savedAmountUSD) || 0) +
+            (actionType === "save" ? Math.max(0, Number(resolvedAmount) || 0) : 0),
+          lastSavedAt: actionType === "save" ? now : prevEntry.lastSavedAt ?? null,
+          lastSavedAmountUSD:
+            actionType === "save"
+              ? Math.max(0, Number(resolvedAmount) || 0)
+              : prevEntry.lastSavedAmountUSD ?? null,
           lastInteractionAt: now,
           previousInteractionAt: lastInteractionAt || priorInteractionAt || null,
           secondPreviousInteractionAt: priorInteractionAt || secondPriorInteractionAt || null,
@@ -78456,6 +79173,9 @@ useEffect(() => {
             : manualAutosaveSkipTargetAt
             ? now
             : null,
+          manualAutosaveSkipDayKey: shouldInvalidatePendingAutosave
+            ? getDayKey(now)
+            : prevEntry.manualAutosaveSkipDayKey ?? null,
           templateTitle: resolvedTitle || prevEntry.templateTitle || null,
           lastAmountUSD: resolvedAmount,
           frequencyReminderHour: preserveConfiguredTimer
@@ -79450,15 +80170,27 @@ useEffect(() => {
         const savedUSD = Number.isFinite(ensuredEntry?.savedUSD)
           ? Math.max(ensuredEntry.savedUSD, 0)
           : 0;
+        const progressState = resolveGoalProgressState({
+          currentSavedUSD: savedUSD,
+          targetUSD,
+          currentStatus: ensuredEntry?.status,
+          completedAt: ensuredEntry?.completedAt,
+          completionLocked: isGoalCelebratedInProfile(profile, goalId),
+          requestedSavedUSD: savedUSD,
+          requestedStatus: ensuredEntry?.status,
+        });
         const nextWish = {
           id: wishId,
           templateId: `goal_${goalId}`,
           title,
           emoji: resolvedEmoji,
           targetUSD,
-          savedUSD,
-          status: targetUSD > 0 && savedUSD >= targetUSD ? "done" : ensuredEntry?.status || "active",
+          savedUSD: progressState.savedUSD,
+          status: progressState.status,
           createdAt,
+          ...(progressState.completedAt != null
+            ? { completedAt: progressState.completedAt }
+            : {}),
           autoManaged: true,
           kind: PRIMARY_GOAL_KIND,
           goalId,
@@ -79467,7 +80199,15 @@ useEffect(() => {
       });
       return true;
     },
-    [language, profile.goal, profile.goalTargetUSD, profile.primaryGoals, setWishes]
+    [
+      language,
+      profile.goal,
+      profile.goalCelebrated,
+      profile.goalCelebratedById,
+      profile.goalTargetUSD,
+      profile.primaryGoals,
+      setWishes,
+    ]
   );
   const getLegacyRefuseStatsEntry = useCallback(
     (stats, templateId, item = null) => {
@@ -79486,7 +80226,7 @@ useEffect(() => {
     },
     [buildLegacyTemplateKeys]
   );
-  const revokeCycleSavingsForSpend = useCallback(
+  const revokeSameDaySavingsForSpend = useCallback(
     (item, templateId, spendTimestamp = Date.now()) => {
       const normalizedSpendTimestamp = Number(spendTimestamp);
       if (!item || !Number.isFinite(normalizedSpendTimestamp) || normalizedSpendTimestamp <= 0) {
@@ -79506,76 +80246,14 @@ useEffect(() => {
         return { removedCount: 0, removedAmountUSD: 0 };
       }
       const candidateKeySet = new Set(candidateKeys);
-      const getInteractionStamp = (entry) =>
-        Math.max(
-          0,
-          Number(entry?.lastInteractionAt) || 0,
-          Number(entry?.lastTimerResetAt) || 0,
-          Number(entry?.nextCheckAt) || 0
-        );
-      const interactionEntry = candidateKeys
-        .map((key) =>
-          temptationInteractions && typeof temptationInteractions === "object"
-            ? temptationInteractions[key]
-            : null
-        )
-        .filter((entry) => entry && typeof entry === "object")
-        .sort((a, b) => getInteractionStamp(b) - getInteractionStamp(a))[0] || null;
-      const resolveCycleWindow = () => {
-        let frequency = normalizeFrequencyId(interactionEntry?.frequency || item?.frequency) || null;
-        let frequencyCustom =
-          normalizeCustomFrequency(
-            interactionEntry?.frequencyCustom || item?.frequencyCustom || item?.customFrequency
-          ) || null;
-        if (frequency === "biweekly") {
-          frequency = "custom";
-          frequencyCustom = { count: 2, unit: "week" };
-        }
-        if (frequency === "custom" && !frequencyCustom) {
-          frequencyCustom = { ...DEFAULT_CUSTOM_FREQUENCY };
-        }
-        const intervalMs =
-          Math.max(0, Number(interactionEntry?.intervalMs) || 0) ||
-          (frequency ? resolveFrequencyIntervalMs(frequency, frequencyCustom) : 0);
-        const nextCheckAt = Math.max(0, Number(interactionEntry?.nextCheckAt) || 0);
-        if (nextCheckAt > 0 && intervalMs > 0) {
-          let windowEnd = nextCheckAt;
-          if (windowEnd <= normalizedSpendTimestamp) {
-            const cycles = Math.floor((normalizedSpendTimestamp - windowEnd) / intervalMs) + 1;
-            windowEnd += cycles * intervalMs;
-          }
-          let guard = 0;
-          while (windowEnd - intervalMs > normalizedSpendTimestamp && guard < 24) {
-            windowEnd -= intervalMs;
-            guard += 1;
-          }
-          return {
-            start: Math.max(0, windowEnd - intervalMs),
-            end: windowEnd,
-          };
-        }
-        const lastInteractionAt = Math.max(0, Number(interactionEntry?.lastInteractionAt) || 0);
-        if (lastInteractionAt > 0 && intervalMs > 0 && normalizedSpendTimestamp < lastInteractionAt + intervalMs) {
-          return {
-            start: lastInteractionAt,
-            end: lastInteractionAt + intervalMs,
-          };
-        }
-        const dayStart = parseDayKey(getDayKey(normalizedSpendTimestamp))?.getTime() || 0;
-        return {
-          start: dayStart,
-          end: dayStart + DAY_MS,
-        };
-      };
-      const cycleWindow = resolveCycleWindow();
       const historySnapshot = Array.isArray(resolvedHistoryEvents) ? resolvedHistoryEvents : [];
       const savingsToRemove = historySnapshot.filter((entry) => {
         if (!entry || entry.kind !== "refuse_spend") return false;
         const eventTimestamp = Number(entry.timestamp) || 0;
         if (
           !eventTimestamp ||
-          eventTimestamp < cycleWindow.start ||
-          eventTimestamp >= cycleWindow.end
+          eventTimestamp > normalizedSpendTimestamp ||
+          !isTimestampInLocalCalendarDay(eventTimestamp, normalizedSpendTimestamp)
         ) {
           return false;
         }
@@ -79643,7 +80321,6 @@ useEffect(() => {
       resolvedHistoryEvents,
       setChallengesState,
       setHistoryEvents,
-      temptationInteractions,
     ]
   );
   const priceEditorTemplateId = priceEditor.item ? resolveTemptationTemplateId(priceEditor.item) : null;
@@ -79658,21 +80335,38 @@ useEffect(() => {
     : "";
   const goalLinkTemplateId = goalLinkPrompt.item ? resolveTemptationTemplateId(goalLinkPrompt.item) : null;
   const goalLinkCurrentGoalId = goalLinkTemplateId ? resolveTemptationGoalId(goalLinkTemplateId) : null;
+  const recordRatingPromptDecisionAction = useCallback(
+    (action) => {
+      if (!ratingPromptHydrated) return false;
+      const result = applyRatingPromptDecisionAction(ratingPromptStateRef.current, {
+        action,
+        actionThreshold: RATING_PROMPT_ACTION_THRESHOLD,
+        seriesThreshold: RATING_PROMPT_SERIES_THRESHOLD,
+      });
+      if (!result.recorded) return false;
+      updateRatingPromptState(result.state);
+      if (result.eligible) {
+        queueRatingPrompt("actions");
+      }
+      return true;
+    },
+    [queueRatingPrompt, ratingPromptHydrated, updateRatingPromptState]
+  );
   const recordRatingPromptSeriesCompletion = useCallback(
     () => {
-      if (!ratingPromptHydrated) return;
-      updateRatingPromptState((prev) => {
-        if (prev.completed || prev.actionPrompted) return prev;
-        const currentCount = Math.max(0, Number(prev.actionCount) || 0);
-        const currentSeriesCount = Math.max(0, Number(prev.seriesCompletionCount) || 0);
-        return {
-          ...prev,
-          actionCount: currentCount + 1,
-          seriesCompletionCount: currentSeriesCount + 1,
-        };
+      if (!ratingPromptHydrated) return false;
+      const result = applyRatingPromptSeriesCompletion(ratingPromptStateRef.current, {
+        actionThreshold: RATING_PROMPT_ACTION_THRESHOLD,
+        seriesThreshold: RATING_PROMPT_SERIES_THRESHOLD,
       });
+      if (!result.recorded) return false;
+      updateRatingPromptState(result.state);
+      if (result.eligible) {
+        queueRatingPrompt("series");
+      }
+      return true;
     },
-    [ratingPromptHydrated, updateRatingPromptState]
+    [queueRatingPrompt, ratingPromptHydrated, updateRatingPromptState]
   );
   const todayTemptationMinuteTick = useMinuteTicker(activeTab === "feed");
   const todayTemptationPlan = useMemo(
@@ -79726,6 +80420,7 @@ useEffect(() => {
   ]);
   const registerTemptationSeriesAction = useCallback(
     (item, action, rewardCoins = 0, timestamp = Date.now()) => {
+      recordRatingPromptDecisionAction(action);
       const temptationId = normalizeTemptationId(
         resolveTemptationTemplateId(item) || item?.id
       );
@@ -79818,6 +80513,7 @@ useEffect(() => {
       completeNextDecisionCoach,
       grantPostActionPromptSlot,
       queuePersist,
+      recordRatingPromptDecisionAction,
       resolveTemptationTemplateId,
       temptationInteractions,
       temptationSeriesHydrated,
@@ -79845,7 +80541,6 @@ useEffect(() => {
     registerUsageStreakAction("series", claimedAt, {
       suppressOverlay: true,
     });
-    temptationSeriesClaimedThisSessionRef.current = true;
     recordRatingPromptSeriesCompletion();
     pendingUsageStreakRef.current = null;
     pendingLevelCelebrationRef.current = null;
@@ -79999,7 +80694,11 @@ useEffect(() => {
       }
       handleFocusSpend(item);
       const spendTimestamp = Date.now();
-      const revokedSavings = revokeCycleSavingsForSpend(item, templateId || item.id, spendTimestamp);
+      const revokedSavings = revokeSameDaySavingsForSpend(
+        item,
+        templateId || item.id,
+        spendTimestamp
+      );
       if (revokedSavings.removedCount > 0) {
         setCycleSavingsRevokedPrompt({
           visible: true,
@@ -80077,7 +80776,7 @@ useEffect(() => {
       registerTemptationSeriesAction,
       registerFocusLoss,
       requestMascotAnimation,
-      revokeCycleSavingsForSpend,
+      revokeSameDaySavingsForSpend,
       savedTotalUSD,
       setCycleSavingsRevokedPrompt,
       setFreeDayStats,
@@ -80623,18 +81322,36 @@ useEffect(() => {
             profile.goalTargetUSD > 0
           ? profile.goalTargetUSD
           : getGoalDefaultTargetUSD(goalId);
-      const savedUSD = Number.isFinite(primaryEntry?.savedUSD) ? primaryEntry.savedUSD : 0;
+      const progressState = resolveGoalProgressState({
+        currentSavedUSD: primaryEntry?.savedUSD,
+        targetUSD,
+        currentStatus: primaryEntry?.status,
+        completedAt: primaryEntry?.completedAt,
+        completionLocked: isGoalCelebratedInProfile(profile, goalId),
+        requestedSavedUSD: primaryEntry?.savedUSD,
+        requestedStatus: primaryEntry?.status,
+      });
       return {
         id: wishId,
         title: `${emoji} ${label}`.trim(),
         targetUSD,
-        savedUSD,
-        status: primaryEntry?.status || "active",
+        savedUSD: progressState.savedUSD,
+        status: progressState.status,
+        ...(progressState.completedAt != null
+          ? { completedAt: progressState.completedAt }
+          : {}),
         kind: PRIMARY_GOAL_KIND,
         goalId,
       };
     },
-    [language, profile.goal, profile.goalTargetUSD, profile.primaryGoals, wishes]
+    [
+      language,
+      profile,
+      profile.goal,
+      profile.goalTargetUSD,
+      profile.primaryGoals,
+      wishes,
+    ]
   );
 
   const handleTemptationAction = useCallback(
@@ -81059,8 +81776,16 @@ useEffect(() => {
             Number.isFinite(currentGoalEntry?.targetUSD) && currentGoalEntry.targetUSD > 0
               ? currentGoalEntry.targetUSD
               : getGoalDefaultTargetUSD(goalId);
-          const nextSaved = Math.max(0, currentSaved + appliedAmount);
-          const nextStatus = targetUSD > 0 && nextSaved >= targetUSD ? "done" : "active";
+          const progressState = resolveGoalProgressState({
+            currentSavedUSD: currentSaved,
+            targetUSD,
+            currentStatus: currentGoalEntry?.status,
+            completedAt: currentGoalEntry?.completedAt,
+            completionLocked: isGoalCelebratedInProfile(profile, goalId),
+            requestedSavedUSD: Math.max(0, currentSaved + appliedAmount),
+          });
+          const nextSaved = progressState.savedUSD;
+          const nextStatus = progressState.status;
           setActiveGoalId(goalId);
           syncPrimaryGoalProgress(goalId, nextSaved, nextStatus);
           setProfile((prev) => {
@@ -81078,6 +81803,9 @@ useEffect(() => {
                 targetUSD: targetUSD,
                 savedUSD: Math.max(Number(entry.savedUSD) || 0, nextSaved),
                 status: nextStatus,
+                ...(progressState.completedAt != null
+                  ? { completedAt: progressState.completedAt }
+                  : {}),
               });
             });
             if (!found) {
@@ -81087,6 +81815,9 @@ useEffect(() => {
                 savedUSD: nextSaved,
                 status: nextStatus,
                 createdAt: Date.now(),
+                ...(progressState.completedAt != null
+                  ? { completedAt: progressState.completedAt }
+                  : {}),
               });
             }
             return {
@@ -81111,6 +81842,9 @@ useEffect(() => {
                 targetUSD: targetUSD,
                 savedUSD: Math.max(Number(entry.savedUSD) || 0, nextSaved),
                 status: nextStatus,
+                ...(progressState.completedAt != null
+                  ? { completedAt: progressState.completedAt }
+                  : {}),
               });
             });
             if (!found) {
@@ -81120,6 +81854,9 @@ useEffect(() => {
                 savedUSD: nextSaved,
                 status: nextStatus,
                 createdAt: Date.now(),
+                ...(progressState.completedAt != null
+                  ? { completedAt: progressState.completedAt }
+                  : {}),
               });
             }
             return {
@@ -81139,6 +81876,9 @@ useEffect(() => {
                 targetUSD: existing.targetUSD || targetUSD,
                 savedUSD: Math.max(existing.savedUSD || 0, nextSaved),
                 status: nextStatus,
+                ...(progressState.completedAt != null
+                  ? { completedAt: progressState.completedAt }
+                  : {}),
                 autoManaged: false,
               };
               return prev.map((wish) => (wish?.id === normalizedTargetGoalId ? updated : wish));
@@ -81156,6 +81896,9 @@ useEffect(() => {
               savedUSD: nextSaved,
               status: nextStatus,
               createdAt: Date.now(),
+              ...(progressState.completedAt != null
+                ? { completedAt: progressState.completedAt }
+                : {}),
               autoManaged: false,
               kind: PRIMARY_GOAL_KIND,
               goalId,
@@ -81691,6 +82434,45 @@ useEffect(() => {
       mainGoalWish?.id,
       profile.goal,
       profile.primaryGoals,
+    ]
+  );
+  const dismissSubscriptionDuePrompt = useCallback(() => {
+    const entry = subscriptionDuePromptEntry;
+    if (entry) {
+      const promptKey = buildSubscriptionDuePromptKey(entry);
+      if (promptKey) {
+        subscriptionDueDismissedSessionRef.current.add(promptKey);
+      }
+    }
+    setSubscriptionDuePromptEntry(null);
+    setSubscriptionDueSessionVersion((version) => version + 1);
+    clearQueuedModal(QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE);
+  }, [clearQueuedModal, subscriptionDuePromptEntry]);
+  const handleSubscriptionDuePromptDecision = useCallback(
+    (decision) => {
+      const entry = subscriptionDuePromptEntry;
+      if (!entry) return;
+      const action = decision === "paid" ? "paid" : "skipped";
+      const promptKey = buildSubscriptionDuePromptKey(entry);
+      if (promptKey) {
+        subscriptionDueDismissedSessionRef.current.add(promptKey);
+      }
+      setSubscriptionDuePromptEntry(null);
+      setSubscriptionDueSessionVersion((version) => version + 1);
+      clearQueuedModal(QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE);
+      handleSubscriptionPaymentAction(entry.item, action, {
+        subscriptionId: entry.id,
+        title: entry.title,
+        amountUSD: entry.amountUSD,
+        nextCheckAt: entry.dueAt,
+      }).catch((error) => {
+        console.warn("subscription due decision", error);
+      });
+    },
+    [
+      clearQueuedModal,
+      handleSubscriptionPaymentAction,
+      subscriptionDuePromptEntry,
     ]
   );
 
@@ -82783,27 +83565,32 @@ useEffect(() => {
     );
     const currencyCode = profile.currency || DEFAULT_PROFILE.currency;
     const nextTargetUSD = convertFromCurrency(parsed, currencyCode);
-    let resultingStatus = goalEditorPrompt.wish.status || "active";
+    const currentSavedUSD = Math.max(0, Number(goalEditorPrompt.wish.savedUSD) || 0);
+    const requestedSavedUSD = Math.min(currentSavedUSD, nextTargetUSD);
+    const progressState = resolveGoalProgressState({
+      currentSavedUSD,
+      targetUSD: nextTargetUSD,
+      currentStatus: goalEditorPrompt.wish.status,
+      completedAt: goalEditorPrompt.wish.completedAt,
+      requestedSavedUSD,
+      requestedStatus: requestedSavedUSD >= nextTargetUSD ? "done" : "active",
+      allowCompletedReset: true,
+    });
     setWishes((prev) => {
-      let statusCapture = resultingStatus;
-      const next = prev.map((wish) => {
+      return prev.map((wish) => {
         if (wish.id !== goalEditorPrompt.wish.id) return wish;
-        const nextSaved = Math.min(wish.savedUSD || 0, nextTargetUSD);
-        const nextStatus = nextSaved >= nextTargetUSD ? "done" : "active";
-        statusCapture = nextStatus;
         return {
           ...wish,
           title: trimmedName,
           emoji: normalizedEmoji,
           targetUSD: nextTargetUSD,
-          savedUSD: nextSaved,
-          status: nextStatus,
+          savedUSD: progressState.savedUSD,
+          status: progressState.status,
+          completedAt: progressState.completedAt,
         };
       });
-      resultingStatus = statusCapture;
-      return next;
     });
-    const shouldResetCelebration = resultingStatus !== "done";
+    const shouldResetCelebration = progressState.status !== "done";
     if (
       goalEditorPrompt.wish.kind === PRIMARY_GOAL_KIND &&
       goalEditorPrompt.wish.goalId
@@ -82811,6 +83598,9 @@ useEffect(() => {
       const goalExtras = {
         customTitle: trimmedName,
         customEmoji: normalizedEmoji,
+        savedUSD: progressState.savedUSD,
+        status: progressState.status,
+        completedAt: progressState.completedAt,
       };
       setProfile((prev) => {
         const updated = updatePrimaryGoalTargetInProfile(
@@ -82820,7 +83610,14 @@ useEffect(() => {
           goalExtras
         );
         return shouldResetCelebration
-          ? { ...updated, goalCelebrated: false, goalRenewalPending: false }
+          ? {
+              ...updateGoalCelebrationInProfile(
+                updated,
+                goalEditorPrompt.wish.goalId,
+                false
+              ),
+              goalRenewalPending: false,
+            }
           : updated;
       });
       setProfileDraft((prev) => {
@@ -82831,7 +83628,14 @@ useEffect(() => {
           goalExtras
         );
         return shouldResetCelebration
-          ? { ...updated, goalCelebrated: false, goalRenewalPending: false }
+          ? {
+              ...updateGoalCelebrationInProfile(
+                updated,
+                goalEditorPrompt.wish.goalId,
+                false
+              ),
+              goalRenewalPending: false,
+            }
           : updated;
       });
     }
@@ -83581,12 +84385,6 @@ useEffect(() => {
         delete next[templateId];
         return next;
       });
-      setRefuseStats((prev) => {
-        if (!prev[templateId]) return prev;
-        const next = { ...prev };
-        delete next[templateId];
-        return next;
-      });
       setPendingList((prev) => prev.filter((entry) => entry.templateId !== templateId));
     },
     [
@@ -83603,7 +84401,6 @@ useEffect(() => {
       setEmojiOverrides,
       setCategoryOverrides,
       setDescriptionOverrides,
-      setRefuseStats,
       setPendingList,
       setSmartReminders,
     ]
@@ -86321,7 +87118,6 @@ useEffect(() => {
             setTemptationSeriesPaywallReleasedId(null);
             setTemptationSeriesContinuationRequestTick(0);
             temptationSeriesReadyPresentedRef.current = null;
-            temptationSeriesClaimedThisSessionRef.current = false;
             setStreakPledge({ ...INITIAL_STREAK_PLEDGE });
             setStreakPledgeHydrated(true);
             setDecisionStats({ ...INITIAL_DECISION_STATS });
@@ -86549,18 +87345,26 @@ useEffect(() => {
               Number.isFinite(entry?.targetUSD) && entry.targetUSD > 0
                 ? entry.targetUSD
                 : getGoalDefaultTargetUSD(goalId);
+            const progressState = resolveGoalProgressState({
+              currentSavedUSD: entry?.savedUSD,
+              targetUSD,
+              currentStatus: entry?.status,
+              completedAt: entry?.completedAt,
+              completionLocked: isGoalCelebratedInProfile(scopedProfileDraft, goalId),
+              requestedSavedUSD: entry?.savedUSD,
+              requestedStatus: entry?.status,
+            });
             const normalized = {
               id: goalId,
               targetUSD,
+              savedUSD: progressState.savedUSD,
+              status: progressState.status,
             };
-            if (Number.isFinite(entry?.savedUSD)) {
-              normalized.savedUSD = entry.savedUSD;
-            }
-            if (entry?.status) {
-              normalized.status = entry.status;
-            }
             if (entry?.createdAt) {
               normalized.createdAt = entry.createdAt;
+            }
+            if (progressState.completedAt != null) {
+              normalized.completedAt = progressState.completedAt;
             }
             if (entry?.customTitle) {
               normalized.customTitle = entry.customTitle;
@@ -87522,6 +88326,7 @@ useEffect(() => {
             }
             onGoalJarDetailVisibilityChange={handleFirstSaveGoalJarVisibilityChange}
             onGoalJarDetailClose={handleFirstSaveGoalJarClose}
+            feedCategoryFilterResetTick={feedCategoryFilterResetTick}
           />
         );
     }
@@ -87563,6 +88368,8 @@ useEffect(() => {
           onContinue={handleLanguageContinue}
           onBack={onboardingBackHandler}
           onShowTerms={handleTermsOpen}
+          availableCurrencies={CURRENCIES}
+          onTap={playSound}
           mascotWaveSource={tamagotchiAnimations.waving}
           bottomInset={androidNavInset}
         />
@@ -87571,10 +88378,12 @@ useEffect(() => {
       onboardContent = (
         <AnalyticsConsentScreen
           t={t}
+          language={language}
           onAgree={() => handleAnalyticsConsentChoice(true)}
           onSkip={() => handleAnalyticsConsentChoice(false)}
           onBack={onboardingBackHandler}
           bottomInset={androidNavInset}
+          onTap={playSound}
         />
       );
     } else if (onboardingDisplayStep === "persona") {
@@ -87587,8 +88396,9 @@ useEffect(() => {
           t={t}
           language={language}
           onBack={onboardingBackHandler}
-          onSkip={null}
+          onSkip={handlePersonaSkip}
           bottomInset={androidNavInset}
+          onTap={playSound}
         />
       );
     } else if (onboardingDisplayStep === "goal") {
@@ -87620,6 +88430,7 @@ useEffect(() => {
           onSkip={null}
           onSkipStep={handleGoalStageSkip}
           bottomInset={androidNavInset}
+          onTap={playSound}
         />
       );
     }
@@ -87710,6 +88521,7 @@ useEffect(() => {
             visible={onboardingGoalModal.visible}
             colors={colors}
             t={t}
+            language={language}
             currency={registrationData.currency || profile.currency || DEFAULT_PROFILE.currency}
             data={onboardingGoalModal}
             onChange={handleOnboardingGoalChange}
@@ -88933,6 +89745,17 @@ useEffect(() => {
               </View>
             </TouchableWithoutFeedback>
           </Modal>
+        )}
+        {!startupHardLockPendingBeforePaywall && (
+          <SubscriptionDuePromptModal
+            visible={subscriptionDuePromptVisible}
+            entry={subscriptionDuePromptEntry}
+            colors={colors}
+            language={language}
+            t={t}
+            onRequestClose={dismissSubscriptionDuePrompt}
+            onDecision={handleSubscriptionDuePromptDecision}
+          />
         )}
         {!startupHardLockPendingBeforePaywall &&
           !automaticModalPresentationPaused &&
@@ -94144,13 +94967,13 @@ const SPEND_STATS_CARD_PADDING = 20;
 const SPEND_STATS_CHART_GAP = 8;
 
 const ONBOARDING_GLASS_THEME = Object.freeze({
-  backgroundBlue: "#EAF3FF",
-  backgroundMint: "#EBF8F2",
-  backgroundLavender: "#F4EEFF",
-  backgroundRose: "#FFF0F8",
-  gradientStart: "#ECF4FF",
-  gradientMid: "#F5F1FF",
-  gradientEnd: "#EAF8FF",
+  backgroundBlue: "#ECEFFD",
+  backgroundMint: "#ECEFFD",
+  backgroundLavender: "#ECEFFD",
+  backgroundRose: "#ECEFFD",
+  gradientStart: "#ECEFFD",
+  gradientMid: "#ECEFFD",
+  gradientEnd: "#ECEFFD",
   orbPrimary: "rgba(127,177,255,0.28)",
   orbSecondary: "rgba(255,156,216,0.24)",
   orbTertiary: "rgba(113,227,201,0.2)",
@@ -94159,46 +94982,17 @@ const ONBOARDING_GLASS_THEME = Object.freeze({
   cardSoft: "rgba(255,255,255,0.62)",
   border: "rgba(255,255,255,0.64)",
   borderStrong: "rgba(92,126,196,0.28)",
-  textPrimary: "#1A2240",
-  textSecondary: "#5C6788",
-  accent: "#4F73E8",
-  accentStrong: "#365BD8",
+  textPrimary: "#171C46",
+  textSecondary: "#5C638F",
+  accent: "#3E4FD7",
+  accentStrong: "#3E4FD7",
   accentMint: "#2EBE9C",
   accentWarm: "#F2AE59",
   shadow: "rgba(48,74,147,0.24)",
-  buttonPrimary: "#111111",
+  buttonPrimary: "#3E4FD7",
 });
 
-const ONBOARDING_PERSONA_BACKGROUNDS = Object.freeze({
-  mindful_coffee: "#F4F6FF",
-  habit_smoking: "#F5FBF7",
-  glam_beauty: "#FFF2F8",
-  gamer_loot: "#EEF6FF",
-  foodie_delivery: "#FFF6EB",
-  online_impulse: "#EFF4FF",
-  home_picks: "#F2FAF2",
-  anime_fan: "#F5F0FF",
-  sub_lover: "#F0FFF8",
-  fashion_fan: "#FFF1EC",
-});
-
-const resolveOnboardingStatusBackground = (step, registrationData = {}) => {
-  switch (step) {
-    case "language":
-      return ONBOARDING_GLASS_THEME.backgroundLavender;
-    case "analyticsConsent":
-      return ONBOARDING_GLASS_THEME.backgroundMint;
-    case "persona":
-      return (
-        ONBOARDING_PERSONA_BACKGROUNDS[registrationData?.persona] ||
-        ONBOARDING_PERSONA_BACKGROUNDS.mindful_coffee
-      );
-    case "logo":
-    case "goal":
-    default:
-      return ONBOARDING_GLASS_THEME.backgroundBlue;
-  }
-};
+const resolveOnboardingStatusBackground = () => ONBOARDING_GLASS_THEME.backgroundLavender;
 
 const styles = StyleSheet.create({
   appGestureRoot: {
@@ -97311,26 +98105,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
     minHeight: 32,
-    paddingHorizontal: UI_SPACING.xs,
+    paddingHorizontal: scaleTamagotchiMetric(6, 4),
     paddingVertical: UI_SPACING.xxs,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: scaleTamagotchiMetric(6, 4),
+    gap: scaleTamagotchiMetric(4, 2),
     shadowOpacity: 0,
     elevation: 0,
   },
   tamagotchiStickyCoinToken: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 2,
   },
   tamagotchiStickyCoinsIcon: {
     width: scaleTamagotchiMetric(12, 10),
     height: scaleTamagotchiMetric(12, 10),
   },
   tamagotchiStickyCoinsValue: {
-    ...createCtaText({ fontSize: 13 }),
+    ...createCtaText({ fontSize: 11 }),
+    fontVariant: ["tabular-nums"],
   },
   tamagotchiBackButton: {
     minWidth: scaleTamagotchiMetric(68, 58),
@@ -104544,11 +105339,11 @@ const styles = StyleSheet.create({
   },
   subscriptionDueActionText: {
     ...createCtaText({ fontSize: 13 }),
-    color: "#FFFFFF",
   },
   subscriptionDueLater: {
+    minHeight: 44,
     alignItems: "center",
-    paddingVertical: 2,
+    justifyContent: "center",
   },
   subscriptionDueLaterText: {
     ...createSecondaryText({ fontSize: 12, fontWeight: "700" }),
@@ -110571,17 +111366,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   historyCard: {
-    borderRadius: 26,
-    padding: 20,
+    borderRadius: UI_RADIUS.card,
+    padding: UI_SPACING.md,
     marginBottom: 80,
   },
   historyTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 12,
+    ...createBodyText({ fontSize: 20, lineHeight: 25, fontWeight: "800" }),
+  },
+  historySubtitle: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+    marginTop: 2,
   },
   historyEmpty: {
-    fontSize: 14,
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    flex: 1,
   },
   historyList: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -110591,12 +111389,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   historyMoreButton: {
-    marginTop: 12,
+    minHeight: UI_TOUCH_TARGET.current,
+    marginTop: UI_SPACING.sm,
     borderWidth: 1,
-    borderRadius: 14,
-    alignSelf: "flex-start",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: UI_RADIUS.control,
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: UI_SPACING.md,
+    paddingVertical: UI_SPACING.xs,
   },
   historyMoreText: {
     ...createBodyText({ fontWeight: "600", fontSize: 13 }),
@@ -110610,22 +111411,149 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   historyDeleteBtn: {
-    width: 32,
-    height: 32,
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: UI_RADIUS.pill,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   historyDeleteText: {
     fontSize: 16,
     fontWeight: "700",
   },
   historyItemTitle: {
-    ...createBodyText({ fontWeight: "600" }),
+    ...createBodyText({ fontSize: 14, lineHeight: 19, fontWeight: "700" }),
   },
   historyItemMeta: {
-    ...createSecondaryText({ marginTop: 4 }),
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, marginTop: 4 }),
+    fontVariant: ["tabular-nums"],
+  },
+  historyTimeline: {
+    marginTop: UI_SPACING.md,
+    gap: UI_SPACING.sm,
+  },
+  historyResultsRow: {
+    minHeight: 20,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  historyResultsText: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "600" }),
+    fontVariant: ["tabular-nums"],
+  },
+  historyControlsGroup: {
+    gap: UI_SPACING.xxs,
+  },
+  historyControlLabel: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 15, fontWeight: "700" }),
+    marginTop: UI_SPACING.xxs,
+  },
+  historyControlRail: {
+    flexDirection: "row",
+    gap: UI_SPACING.xs,
+    paddingVertical: UI_SPACING.xxs,
+  },
+  historyControlRailRtl: {
+    flexDirection: "row-reverse",
+  },
+  historyControlChip: {
+    minHeight: UI_TOUCH_TARGET.current,
+    minWidth: 68,
+    borderRadius: UI_RADIUS.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: UI_SPACING.sm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyControlChipText: {
+    ...createBodyText({ fontSize: 12, lineHeight: 16, fontWeight: "700" }),
+  },
+  historyTimelineList: {
+    flexGrow: 0,
+  },
+  historyTimelineListContent: {
+    paddingBottom: UI_SPACING.xs,
+  },
+  historySectionHeader: {
+    minHeight: 34,
+    marginTop: UI_SPACING.xs,
+    marginBottom: UI_SPACING.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: UI_SPACING.xs,
+  },
+  historySectionTitle: {
+    ...createBodyText({ fontSize: 15, lineHeight: 20, fontWeight: "800" }),
+    flex: 1,
+  },
+  historySectionCount: {
+    minWidth: 28,
+    minHeight: 24,
+    paddingHorizontal: UI_SPACING.xs,
+    borderRadius: UI_RADIUS.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historySectionCountText: {
+    ...createSecondaryText({ fontSize: 11, lineHeight: 14, fontWeight: "800" }),
+    fontVariant: ["tabular-nums"],
+  },
+  historyTimelineRow: {
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: UI_SPACING.sm,
+  },
+  historyRtlRow: {
+    flexDirection: "row-reverse",
+  },
+  historyTimelineMarkerColumn: {
+    width: 36,
+    alignSelf: "stretch",
+    alignItems: "center",
+  },
+  historyTimelineMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyTimelineConnector: {
+    width: StyleSheet.hairlineWidth,
+    flex: 1,
+    minHeight: 16,
+    marginTop: UI_SPACING.xxs,
+  },
+  historyTimelineCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 1,
+    paddingBottom: UI_SPACING.md,
+  },
+  historyTimelineCopyRtl: {
+    alignItems: "flex-end",
+  },
+  historyEmptyState: {
+    minHeight: 72,
+    borderRadius: UI_RADIUS.card,
+    paddingHorizontal: UI_SPACING.md,
+    paddingVertical: UI_SPACING.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: UI_SPACING.sm,
+  },
+  historyModalTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historyModalSubtitle: {
+    ...createSecondaryText({ fontSize: 12, lineHeight: 17 }),
+    marginTop: 2,
   },
   profileReportsPane: {
     width: "100%",
@@ -117722,7 +118650,8 @@ function OnboardingGoalJarOption({
   );
 }
 
-function GoalScreen({
+// eslint-disable-next-line no-unused-vars
+function LegacyGoalScreen({
   selectedGoals = [],
   onToggle,
   onSubmit,
@@ -118104,7 +119033,8 @@ function GoalScreen({
   );
 }
 
-function PersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, onSkip, bottomInset = 0 }) {
+// eslint-disable-next-line no-unused-vars
+function LegacyPersonaScreen({ data, onChange, onSubmit, colors, t, language, onBack, onSkip, bottomInset = 0 }) {
   const fade = useFadeIn();
   const personaList = Object.values(PERSONA_PRESETS);
   const [showAllPersonas, setShowAllPersonas] = useState(() => {
@@ -122220,7 +123150,8 @@ function NewPendingModal({
   );
 }
 
-function OnboardingGoalModal({
+// eslint-disable-next-line no-unused-vars
+function LegacyOnboardingGoalModal({
   visible,
   colors,
   t,
@@ -122350,7 +123281,8 @@ function OnboardingGoalModal({
   );
 }
 
-function TermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLink }) {
+// eslint-disable-next-line no-unused-vars
+function LegacyTermsModal({ visible, colors, t, language, onAccept, onCancel, onOpenLink }) {
   const normalizedLanguage = normalizeLanguage(language);
   const points = TERMS_POINTS[normalizedLanguage] || TERMS_POINTS.en;
   return (
@@ -122873,7 +123805,8 @@ function OnboardingFixedHeader({ children }) {
   return <View style={[styles.onboardFixedHeader, { top: topOffset }]}>{children}</View>;
 }
 
-function AnalyticsConsentScreen({
+// eslint-disable-next-line no-unused-vars
+function LegacyAnalyticsConsentScreen({
   t,
   onAgree,
   onSkip,
@@ -122983,7 +123916,8 @@ function AnalyticsConsentScreen({
   );
 }
 
-function LanguageScreen({
+// eslint-disable-next-line no-unused-vars
+function LegacyLanguageScreen({
   colors,
   t,
   selectedLanguage,

@@ -34,6 +34,36 @@ const getTycoonAutosaveEventDayKey = (entry) => {
 const isTycoonAutosaveTimestampInDay = (timestamp, dayKey) =>
   getLocalDayKey(timestamp) === normalizeDayKey(dayKey);
 
+const getManualTycoonInteractionDayKey = (entry) => {
+  if (!entry || Object(entry) !== entry) return "";
+  const storedDayKey = normalizeDayKey(entry.manualAutosaveSkipDayKey);
+  if (storedDayKey) return storedDayKey;
+
+  const storedManualTimestamp =
+    Math.max(
+      0,
+      Number(entry.lastManualInteractionAt) || 0,
+      Number(entry.manualAutosaveSkipCreatedAt) || 0
+    );
+  if (storedManualTimestamp > 0) return getLocalDayKey(storedManualTimestamp);
+
+  // Older builds did not persist an explicit manual-action day. A manual
+  // action wrote both timestamps from the same `now`, while an automatic
+  // confirmation preserved the existing timer reset.
+  const lastInteractionAt = Math.max(0, Number(entry.lastInteractionAt) || 0);
+  const lastTimerResetAt = Math.max(0, Number(entry.lastTimerResetAt) || 0);
+  return lastInteractionAt > 0 && lastInteractionAt === lastTimerResetAt
+    ? getLocalDayKey(lastInteractionAt)
+    : "";
+};
+
+const isManualTycoonInteractionInDay = (entry, dayKey) => {
+  const normalizedDayKey = normalizeDayKey(dayKey);
+  return Boolean(
+    normalizedDayKey && getManualTycoonInteractionDayKey(entry) === normalizedDayKey
+  );
+};
+
 const normalizeTycoonSettings = (value = null) => {
   const source = value && typeof value === "object" ? value : {};
   const storedVersion = Math.max(0, Math.floor(Number(source.version) || 0));
@@ -124,6 +154,53 @@ const skipPendingTycoonAutosaveForCards = (
   return changed ? nextEntries : entries;
 };
 
+const skipPendingTycoonAutosavesForManualInteractions = (
+  entries = [],
+  interactions = {},
+  currentDayKey = getLocalDayKey(Date.now()),
+  timestamp = Date.now()
+) => {
+  const todayKey = normalizeDayKey(currentDayKey) || getLocalDayKey(timestamp);
+  const handledCardIds = new Set(
+    Object.entries(interactions && typeof interactions === "object" ? interactions : {})
+      .filter(([, interaction]) =>
+        isManualTycoonInteractionInDay(interaction, todayKey)
+      )
+      .map(([cardId]) => (typeof cardId === "string" ? cardId.trim() : String(cardId)))
+      .filter(Boolean)
+  );
+  if (!handledCardIds.size) return entries;
+
+  const skippedAt = Math.max(0, Number(timestamp) || Date.now());
+  let changed = false;
+  const nextEntries = (Array.isArray(entries) ? entries : []).map((entry) => {
+    const cardId =
+      typeof entry?.cardId === "string"
+        ? entry.cardId.trim()
+        : Number.isFinite(entry?.cardId)
+        ? String(entry.cardId)
+        : "";
+    if (
+      entry?.status !== "pending" ||
+      entry?.source !== "autosave" ||
+      getTycoonAutosaveEventDayKey(entry) !== todayKey ||
+      !cardId ||
+      !handledCardIds.has(cardId)
+    ) {
+      return entry;
+    }
+    changed = true;
+    return {
+      ...entry,
+      status: "skipped",
+      skippedAt,
+      skipReason: "manual_interaction",
+      rewardClaimed: true,
+    };
+  });
+  return changed ? nextEntries : entries;
+};
+
 const expireStalePendingTycoonAutosaves = (
   entries = [],
   currentDayKey = getLocalDayKey(Date.now()),
@@ -197,12 +274,15 @@ module.exports = {
   TYCOON_SETTINGS_VERSION,
   expireStalePendingTycoonAutosaves,
   getTycoonAutosaveEventDayKey,
+  getManualTycoonInteractionDayKey,
+  isManualTycoonInteractionInDay,
   isTycoonAutosaveEnabled,
   isTycoonAutosaveTimestampInDay,
   normalizeTycoonSettings,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
   skipPendingTycoonAutosaveForCards,
+  skipPendingTycoonAutosavesForManualInteractions,
   summarizeTycoonAutosaveSaveResults,
   shouldResetLegacyTycoonPendingEvents,
 };

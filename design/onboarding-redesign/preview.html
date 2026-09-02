@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Almost · онбординг · локализация</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --review-bg: #e9ecf2;
+      --review-panel: rgba(255,255,255,.78);
+      --review-text: #171923;
+      --review-muted: #676c78;
+      --review-border: rgba(29,31,42,.12);
+      --phone-bg: #eceffd;
+      --surface: #fafaff;
+      --surface-soft: #e2e6fa;
+      --text: #171c46;
+      --muted: #5c638f;
+      --border: #cbd1ef;
+      --primary: #3e4fd7;
+      --on-primary: #fff;
+      --accent: #5969e8;
+      --accent-soft: #dfe4ff;
+      --mint: #28d985;
+      --mint-soft: #d9f4e9;
+      --danger: #ff657b;
+      --shadow: 0 24px 60px rgba(25,29,45,.13), 0 2px 8px rgba(25,29,45,.08);
+      --phone-width: 390px;
+      --phone-height: 844px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(122,107,242,.11), transparent 28rem),
+        var(--review-bg);
+      color: var(--review-text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .screen button, .screen input {
+      transition:
+        transform .28s cubic-bezier(.16,1,.3,1),
+        box-shadow .28s cubic-bezier(.16,1,.3,1),
+        border-color .22s ease,
+        background-color .22s ease,
+        color .22s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .screen button:focus-visible, .screen input:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--primary) 35%, transparent);
+      outline-offset: 3px;
+    }
+    .screen button:active { transform: scale(.975); transition-duration: .09s; }
+
+    .review-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 18px clamp(20px, 4vw, 56px);
+      border-bottom: 1px solid var(--review-border);
+      background: rgba(242,244,248,.82);
+      backdrop-filter: blur(20px);
+    }
+
+    .review-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .review-mark {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: #202129;
+      color: white;
+      font-weight: 800;
+      letter-spacing: -.04em;
+    }
+    .review-title h1 { margin: 0; font-size: 18px; line-height: 1.2; letter-spacing: -.02em; }
+    .review-title p { margin: 4px 0 0; color: var(--review-muted); font-size: 13px; }
+    .review-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .segmented {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--review-border);
+      border-radius: 12px;
+      background: rgba(255,255,255,.7);
+    }
+    .segmented button {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--review-muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .segmented button.active { background: #202129; color: #fff; }
+    .locale-select-wrap {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 42px;
+      padding: 3px 3px 3px 11px;
+      border: 1px solid var(--review-border);
+      border-radius: 12px;
+      background: rgba(255,255,255,.72);
+      color: var(--review-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .locale-select {
+      min-width: 174px;
+      height: 34px;
+      padding: 0 32px 0 11px;
+      border: 0;
+      border-radius: 9px;
+      background: #202129;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 750;
+      outline: none;
+    }
+    .locale-select:focus-visible { outline: 3px solid rgba(62,79,215,.28); outline-offset: 3px; }
+
+    .review-intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      gap: 32px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 44px clamp(20px, 4vw, 56px) 20px;
+    }
+    .review-intro h2 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(34px, 4vw, 58px);
+      line-height: .98;
+      letter-spacing: -.04em;
+    }
+    .review-intro p { max-width: 670px; margin: 18px 0 0; color: var(--review-muted); font-size: 17px; line-height: 1.55; }
+    .review-note {
+      align-self: end;
+      padding: 20px;
+      border: 1px solid var(--review-border);
+      border-radius: 16px;
+      background: var(--review-panel);
+    }
+    .review-note strong { display: block; margin-bottom: 8px; font-size: 14px; }
+    .review-note span { color: var(--review-muted); font-size: 13px; line-height: 1.5; }
+
+    .copy-review {
+      max-width: 1440px;
+      margin: -40px auto 0;
+      padding: 0 clamp(20px, 4vw, 56px) 96px;
+    }
+    .copy-review-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .55fr); gap: 28px; align-items: end; margin-bottom: 22px; }
+    .copy-review h2 { margin: 0; font-size: clamp(28px, 3.2vw, 44px); line-height: 1; letter-spacing: -.035em; }
+    .copy-review-head p { margin: 0; color: var(--review-muted); font-size: 13px; line-height: 1.5; }
+    .copy-catalog { display: grid; gap: 10px; }
+    .copy-locale {
+      border: 1px solid var(--review-border);
+      border-radius: 16px;
+      background: var(--review-panel);
+      overflow: hidden;
+    }
+    .copy-locale summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      min-height: 56px;
+      padding: 0 18px;
+      cursor: pointer;
+      list-style: none;
+      font-size: 14px;
+      font-weight: 780;
+    }
+    .copy-locale summary::-webkit-details-marker { display: none; }
+    .copy-locale summary span:last-child { color: var(--review-muted); font-size: 11px; font-weight: 650; }
+    .copy-locale[open] summary { border-bottom: 1px solid var(--review-border); background: rgba(255,255,255,.52); }
+    .copy-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 18px; }
+    .copy-group { min-width: 0; }
+    .copy-group h3 { margin: 0 0 8px; color: var(--review-muted); font-size: 11px; letter-spacing: .03em; text-transform: uppercase; }
+    .copy-row { display: grid; grid-template-columns: minmax(118px, .38fr) minmax(0, 1fr); gap: 12px; padding: 9px 0; border-top: 1px solid var(--review-border); }
+    .copy-row code { color: var(--review-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
+    .copy-row p { margin: 0; color: var(--review-text); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(390px, 1fr));
+      align-items: start;
+      gap: 48px 34px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 36px clamp(20px, 4vw, 56px) 96px;
+    }
+    .mockup { min-width: 0; }
+    .mockup-caption { width: var(--phone-width); margin: 0 auto 14px; }
+    .mockup-caption strong { display: block; font-size: 14px; }
+    .mockup-caption span { display: block; margin-top: 5px; color: var(--review-muted); font-size: 12px; line-height: 1.45; }
+
+    .phone {
+      position: relative;
+      width: var(--phone-width);
+      height: var(--phone-height);
+      margin: 0 auto;
+      padding: 9px;
+      border: 1px solid rgba(18,20,28,.22);
+      border-radius: 52px;
+      background: #16171c;
+      box-shadow: var(--shadow);
+    }
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 5;
+      top: 17px;
+      left: 50%;
+      width: 106px;
+      height: 27px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: #111217;
+    }
+    .screen {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 43px;
+      background: var(--phone-bg);
+      color: var(--text);
+      isolation: isolate;
+    }
+    .screen::after {
+      content: "";
+      position: absolute;
+      z-index: 8;
+      bottom: 7px;
+      left: 50%;
+      width: 126px;
+      height: 5px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: var(--text);
+      opacity: .82;
+      pointer-events: none;
+    }
+    .status-bar {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 46px;
+      flex: 0 0 46px;
+      padding: 10px 22px 0;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .status-icons { display: flex; gap: 4px; align-items: center; }
+    .status-icons i { display: block; width: 13px; height: 7px; border: 1.6px solid currentColor; border-radius: 2px; }
+    .status-icons i:first-child { width: 11px; border-top-width: 0; border-left-color: transparent; border-right-color: transparent; }
+
+    .stepbar {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      flex: 0 0 auto;
+      grid-template-columns: 70px 1fr 70px;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 18px;
+    }
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 11px;
+      background: transparent;
+      color: var(--text);
+    }
+    .icon-button.ghost { visibility: hidden; }
+    .icon-button svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .step-skip { min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 10px; font-weight: 720; text-align: right; }
+    .progress { display: flex; gap: 6px; justify-content: center; }
+    .progress i { width: 26px; height: 4px; border-radius: 999px; background: var(--border); }
+    .progress i.done, .progress i.current { background: var(--primary); }
+    .progress i.current { width: 42px; }
+    .step-count { grid-column: 2; margin-top: -2px; color: var(--muted); text-align: center; font-size: 10px; font-weight: 700; }
+
+    .content {
+      position: relative;
+      z-index: 2;
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 8px 18px 96px;
+      scrollbar-width: none;
+    }
+    .content::-webkit-scrollbar { display: none; }
+    .content.tight { padding-bottom: 84px; }
+    .content.no-dock { padding-bottom: 22px; }
+    .screen-copy h2 { margin: 0; font-size: 28px; line-height: 1.04; letter-spacing: -.035em; }
+    .screen-copy p { margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.42; text-align: center; }
+    .fit-one-line { display: block; max-width: 100%; white-space: nowrap; }
+    .fit-two-lines { display: block; max-width: 100%; overflow: hidden; }
+    .language-copy p, .privacy-copy p { font-size: 11px; letter-spacing: -.01em; }
+
+    .hero {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 178px;
+      margin: 2px -4px 8px;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 120px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      filter: blur(10px);
+      opacity: .82;
+    }
+    .hero img { position: relative; z-index: 1; width: 100%; height: 176px; object-fit: contain; filter: drop-shadow(0 12px 16px rgba(40,36,78,.13)); }
+    .hero.privacy { height: 230px; margin-bottom: 10px; }
+    .hero.privacy img { height: 230px; }
+    .hero.goals { height: 178px; }
+    .hero.goals img { height: 210px; }
+
+    .section-label { margin: 18px 0 8px; color: var(--muted); font-size: 11px; font-weight: 750; }
+    .language-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .chip {
+      min-height: 44px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 680;
+    }
+    .chip.selected { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+    .language-grid .chip { white-space: nowrap; }
+    .currency-row { display: flex; gap: 7px; overflow: hidden; padding-bottom: 2px; }
+    .currency-row .chip { flex: 0 0 59px; }
+
+    .dock {
+      position: absolute;
+      z-index: 7;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      padding: 10px 18px 24px;
+      border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+      background: color-mix(in srgb, var(--phone-bg) 94%, transparent);
+      backdrop-filter: blur(16px);
+    }
+    .primary-button, .secondary-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 52px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 780;
+    }
+    .primary-button { border: 0; background: var(--primary); color: var(--on-primary); box-shadow: 0 7px 15px rgba(24,25,34,.12); }
+    .secondary-button { margin-top: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .primary-button svg, .secondary-button svg { width: 17px; margin-left: 8px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .legal-hint { margin: 11px 5px 0; color: var(--muted); text-align: center; font-size: 9.5px; line-height: 1.35; }
+    .inline-link { min-height: 44px; margin: -12px 0; padding: 0; border: 0; background: transparent; color: inherit; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+    .privacy-copy { text-align: center; }
+    .privacy-panel { margin-top: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); overflow: hidden; }
+    .privacy-item { display: grid; grid-template-columns: 34px 1fr; gap: 11px; align-items: center; padding: 13px; }
+    .privacy-item + .privacy-item { border-top: 1px solid var(--border); }
+    .privacy-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--mint-soft); color: #176b49; }
+    .privacy-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .privacy-item strong { display: block; font-size: 12px; line-height: 1.25; }
+    .privacy-item span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .privacy-note { margin: 14px 2px 0; color: var(--muted); font-size: 9.5px; line-height: 1.35; text-align: center; }
+
+    .gender-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 7px; }
+    .gender-row .chip { font-size: 10px; }
+    .persona-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .persona-option { position: relative; min-width: 0; isolation: isolate; }
+    .persona-option::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      right: 10px;
+      bottom: -8px;
+      left: 10px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(90deg, transparent, var(--persona-wash), var(--persona-accent), var(--persona-wash), transparent);
+      filter: blur(13px);
+      opacity: 0;
+      transform: translateY(-4px) scale(.82);
+      transition: opacity .32s ease, transform .42s cubic-bezier(.16,1,.3,1);
+    }
+    .persona-card {
+      position: relative;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 38px;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+      min-height: 0;
+      aspect-ratio: 1;
+      padding: 6px 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--surface);
+      color: var(--text);
+      text-align: left;
+      overflow: hidden;
+      box-shadow: 0 5px 12px rgba(39,48,112,.04);
+    }
+    .persona-card::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      width: 104px;
+      height: 74px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: var(--persona-wash, var(--accent-soft));
+      filter: blur(8px);
+      opacity: .74;
+    }
+    .persona-card img { position: relative; width: 100%; height: 100%; min-height: 0; object-fit: contain; filter: drop-shadow(0 7px 8px rgba(31,32,48,.11)); }
+    .persona-card span { position: relative; display: block; align-self: center; padding: 0 3px; font-size: 11px; font-weight: 750; line-height: 1.2; text-align: center; }
+    .persona-card.selected { transform: translateY(-4px) scale(1.01); border: 2px solid var(--primary); padding: 5px 7px 9px; background: color-mix(in srgb, var(--surface) 72%, var(--accent-soft)); }
+    .persona-check {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      display: none !important;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--on-primary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .persona-card.selected .persona-check { display: grid !important; }
+    .persona-option:has(.persona-card.selected)::after { opacity: .92; transform: translateY(2px) scale(1); }
+    .persona-option:has(.persona-card.selected) .persona-card { animation: persona-select .5s cubic-bezier(.16,1,.3,1); box-shadow: 0 16px 28px rgba(62,79,215,.16); }
+    .show-all {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 46px;
+      margin-top: 10px;
+      padding: 0 13px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 720;
+    }
+    .show-all b { color: var(--muted); font-size: 11px; font-weight: 650; }
+    .persona-overview .section-label { margin-top: 22px; }
+    .persona-overview .gender-row .chip { min-height: 48px; }
+    .persona-overview .show-all { margin-top: 14px; }
+    .all-personas .multiline-subtitle { max-width: 100%; margin-right: auto; margin-left: auto; font-size: 11px; line-height: 1.35; }
+    .content.all-personas { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--primary) 35%, transparent) transparent; }
+    .content.all-personas::-webkit-scrollbar { display: block; width: 4px; }
+    .content.all-personas::-webkit-scrollbar-track { background: transparent; }
+    .content.all-personas::-webkit-scrollbar-thumb { border-radius: 99px; background: color-mix(in srgb, var(--primary) 35%, transparent); }
+    .all-personas .section-label { margin-top: 14px; }
+
+    .goal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
+    .goal-card {
+      position: relative;
+      min-height: 114px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--surface);
+      color: var(--text);
+      text-align: left;
+      overflow: hidden;
+    }
+    .goal-card.selected { border: 2px solid var(--primary); padding: 12px; background: color-mix(in srgb, var(--surface) 78%, var(--accent-soft)); }
+    .goal-icon { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; background: var(--goal-wash, var(--accent-soft)); color: var(--text); }
+    .goal-icon svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .goal-card strong { display: block; margin-top: 10px; font-size: 12px; line-height: 1.2; }
+    .goal-card small { display: block; margin-top: 4px; color: var(--muted); font-size: 9.5px; }
+    .goal-card.selected::after {
+      content: "✓";
+      position: absolute;
+      top: 11px;
+      right: 11px;
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: var(--on-primary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .custom-goal-button { margin-top: 10px; }
+    .goal-amounts { margin-top: 13px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); overflow: hidden; }
+    .goal-amount-row { display: grid; grid-template-columns: 1fr 112px; gap: 12px; align-items: center; padding: 11px 13px; }
+    .goal-amount-row + .goal-amount-row { border-top: 1px solid var(--border); }
+    .goal-amount-row strong { display: block; font-size: 11px; }
+    .goal-amount-row span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .amount-field { height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--phone-bg); color: var(--text); text-align: center; font-size: 12px; font-weight: 760; }
+
+    .sheet-backdrop { position: absolute; z-index: 20; inset: 0; display: flex; align-items: flex-end; background: rgba(8,10,16,.48); }
+    .sheet {
+      width: 100%;
+      max-height: 84%;
+      padding: 10px 18px 27px;
+      border-radius: 24px 24px 0 0;
+      background: var(--surface);
+      color: var(--text);
+      overflow: auto;
+    }
+    .sheet-handle { width: 38px; height: 4px; margin: 0 auto 16px; border-radius: 99px; background: var(--border); }
+    .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .sheet-head h3 { margin: 0; font-size: 22px; line-height: 1.08; letter-spacing: -.035em; }
+    .sheet-close { width: 44px; height: 44px; border: 0; border-radius: 11px; background: var(--surface-soft); color: var(--text); font-size: 20px; line-height: 1; }
+    .sheet > p { margin: 8px 0 17px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .field-label { display: block; margin: 12px 0 7px; color: var(--muted); font-size: 10px; font-weight: 740; }
+    .text-field { display: flex; align-items: center; width: 100%; height: 48px; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--phone-bg); color: var(--text); font-size: 13px; }
+    .icon-picker { display: flex; gap: 8px; }
+    .icon-picker button { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 11px; background: var(--phone-bg); color: var(--text); }
+    .icon-picker button.selected { border: 2px solid var(--primary); }
+    .icon-picker svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .sheet .primary-button { margin-top: 19px; }
+    .terms-body { margin: 13px 0 16px; padding: 13px; border-radius: 12px; background: var(--phone-bg); }
+    .terms-body h4 { margin: 0 0 7px; font-size: 12px; }
+    .terms-body p { margin: 0 0 10px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .terms-body p:last-child { margin-bottom: 0; }
+    .text-link { display: inline-flex; align-items: center; min-height: 44px; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--text); font-size: 11px; font-weight: 730; text-decoration: underline; text-underline-offset: 3px; }
+
+    body.compact { --phone-width: 360px; --phone-height: 720px; }
+    body.compact .hero { height: 126px; margin-bottom: 10px; }
+    body.compact .hero img { height: 124px; }
+    body.compact .content.tight .hero.language { height: 92px; margin-bottom: 8px; }
+    body.compact .content.tight .hero.language img { height: 96px; }
+    body.compact .content.tight > .section-label { margin: 10px 0 5px; }
+    body.compact .content.tight .legal-hint { margin-top: 7px; }
+    body.compact .currency-row .chip { flex: 1 1 0; min-width: 0; }
+    body.compact .hero.privacy { height: 122px; }
+    body.compact .hero.privacy img { height: 122px; }
+    body.compact .hero.goals { height: 112px; }
+    body.compact .hero.goals img { height: 110px; }
+    body.compact .screen-copy h2 { font-size: 24px; }
+    body.compact .persona-card { grid-template-rows: minmax(0, 1fr) 36px; }
+    body.compact .persona-overview { padding-top: 0; }
+    body.compact .persona-overview .section-label { margin: 5px 0 2px; }
+    body.compact .persona-overview .gender-row .chip { min-height: 44px; }
+    body.compact .persona-overview .show-all { margin-top: 5px; }
+
+    [dir="rtl"] .stepbar { direction: rtl; }
+    [dir="rtl"] .icon-button svg, [dir="rtl"] .primary-button svg, [dir="rtl"] .secondary-button svg { transform: scaleX(-1); }
+    [dir="rtl"] .primary-button svg, [dir="rtl"] .secondary-button svg { margin-right: 8px; margin-left: 0; }
+    [dir="rtl"] .step-skip { text-align: left; }
+    [dir="rtl"] .currency-row { direction: ltr; justify-content: flex-start; }
+    [dir="rtl"] .persona-card, [dir="rtl"] .goal-card { text-align: right; }
+    [dir="rtl"] .persona-check, [dir="rtl"] .goal-card.selected::after { right: auto; left: 9px; }
+
+    @keyframes persona-select {
+      0% { transform: translateY(0) scale(1); }
+      48% { transform: translateY(-7px) scale(1.018); }
+      100% { transform: translateY(-4px) scale(1.01); }
+    }
+
+    @media (hover: hover) {
+      .primary-button:hover { transform: translateY(-2px); box-shadow: 0 12px 22px rgba(62,79,215,.24); }
+      .secondary-button:hover, .show-all:hover, .chip:hover, .goal-card:hover, .icon-picker button:hover, .sheet-close:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--primary) 42%, var(--border)); }
+      .icon-button:hover, .step-skip:hover, .inline-link:hover, .text-link:hover { color: var(--primary); transform: translateY(-1px); }
+      .persona-option:hover::after { opacity: .72; transform: translateY(1px) scale(.95); }
+      .persona-option:hover .persona-card { transform: translateY(-5px) scale(1.012); box-shadow: 0 16px 30px rgba(62,79,215,.14); border-color: var(--persona-accent); }
+    }
+
+    .prototype-footer { max-width: 1440px; margin: -50px auto 76px; padding: 0 clamp(20px, 4vw, 56px); color: var(--review-muted); font-size: 12px; line-height: 1.5; }
+
+    body.gallery-mode .review-header { position: static; }
+    body.gallery-mode .review-intro,
+    body.gallery-mode .copy-review,
+    body.gallery-mode .prototype-footer { display: none; }
+    body.gallery-mode .board { padding-top: 28px; padding-bottom: 34px; }
+    body.gallery-mode .mockup:nth-child(n + 4) { display: none; }
+
+    @media (max-width: 1320px) { .board { grid-template-columns: repeat(2, minmax(390px, 1fr)); } }
+    @media (max-width: 880px) {
+      .review-header { position: static; align-items: flex-start; flex-direction: column; }
+      .review-controls { justify-content: flex-start; }
+      .review-intro { grid-template-columns: 1fr; }
+      .review-intro h2 { font-size: 40px; }
+      .board { grid-template-columns: 1fr; }
+      .copy-review-head, .copy-groups { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 430px) {
+      :root, body.compact { --phone-width: calc(100vw - 24px); --phone-height: min(844px, calc((100vw - 24px) * 2.164)); }
+      .review-header, .review-intro, .board { padding-left: 12px; padding-right: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; } }
+  </style>
+</head>
+<body>
+  <header class="review-header">
+    <div class="review-title">
+      <div class="review-mark">A</div>
+      <div><h1>Almost · новый онбординг</h1><p>Локализация · 12 локалей · на проверку</p></div>
+    </div>
+    <div class="review-controls" aria-label="Настройки предпросмотра">
+      <div class="segmented" data-control="device">
+        <button class="active" data-value="regular">390 × 844</button>
+        <button data-value="compact">360 × 720</button>
+      </div>
+      <label class="locale-select-wrap" for="localeSelect">
+        <span>Язык макета</span>
+        <select class="locale-select" id="localeSelect" aria-label="Язык макета"></select>
+      </label>
+    </div>
+  </header>
+
+  <section class="review-intro">
+    <div>
+      <h2>Один макет. Все языки приложения.</h2>
+      <p>Переключатель меняет тексты сразу на восьми состояниях. Размеры экранов, иллюстрации и действия остаются одинаковыми, поэтому хорошо видно влияние длины перевода и направления письма.</p>
+    </div>
+    <div class="review-note">
+      <strong>Что проверяем</strong>
+      <span>Обычные подзаголовки остаются одной строкой. Экран «Все искушения» и нижние листы допускают две строки. Для ar-SA и ar-AE включено направление справа налево.</span>
+    </div>
+  </section>
+
+  <main class="board" id="board"></main>
+  <section class="copy-review" aria-labelledby="copyReviewTitle">
+    <div class="copy-review-head">
+      <h2 id="copyReviewTitle">Все пользовательские тексты</h2>
+      <p>Раскройте нужный язык, чтобы проверить формулировки отдельно от верстки. Арабский текст показан дважды для ar-SA и ar-AE, потому что это две отдельные локали в выборе языка.</p>
+    </div>
+    <div class="copy-catalog" id="copyCatalog"></div>
+  </section>
+  <footer class="prototype-footer">Все существующие действия сохранены в макетах. Системные запросы ATT/уведомлений не стилизуются и остаются нативными. Прототип предназначен для согласования дизайна, поэтому данные и суммы демонстрационные.</footer>
+
+  <script src="./locales.js"></script>
+  <script type="text/plain" id="prototype-v3-source">
+    const A = './assets/';
+    const arrow = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+    const back = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>`;
+    const close = '×';
+    const icons = {
+      pulse: `<svg viewBox="0 0 24 24"><path d="M3 12h4l2.2-5 4.1 10 2.1-5H21"/></svg>`,
+      lock: `<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`,
+      tune: `<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>`,
+      plane: `<svg viewBox="0 0 24 24"><path d="M3 11l18-7-7 18-3-7-8-4zM11 15l4-4"/></svg>`,
+      laptop: `<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="11" rx="2"/><path d="M3 19h18"/></svg>`,
+      spark: `<svg viewBox="0 0 24 24"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3zM18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8L18 16z"/></svg>`,
+      jar: `<svg viewBox="0 0 24 24"><path d="M7 4h10M8 4v3l-2 3v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8l-2-3V4M8 13h8"/></svg>`,
+      star: `<svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3z"/></svg>`,
+      home: `<svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-6v-6h-4v6H4v-9z"/></svg>`,
+      palette: `<svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a4 4 0 0 0 4-4c0-3.3-4-6-9-6z"/><path d="M7 10h.01M9 6h.01M14 6h.01M18 9h.01"/></svg>`
+    };
+
+    const personas = [
+      ['coffee','mindful_coffee','Любитель кофе','#f4e5d7'],
+      ['smoking','habit_smoking','Отказываюсь от сигарет','#dff3e7'],
+      ['beauty','glam_beauty','Бьюти-фанат','#f9deea'],
+      ['gamer','gamer_loot','Геймер','#dce8ff'],
+      ['delivery','foodie_delivery','Любитель доставки','#ffe8d1'],
+      ['online','online_impulse','Онлайн-шопер','#e5e7ff'],
+      ['home','home_picks','Любитель вещей для дома','#e1f1df'],
+      ['anime','anime_fan','Любитель аниме','#e9e0ff'],
+      ['subscriptions','sub_lover','Любитель подписок','#dff4ec'],
+      ['fashion','fashion_fan','Любитель одежды','#ffe2d8']
+    ];
+
+    const statusBar = `<div class="status-bar"><span>9:41</span><span class="status-icons"><i></i><i></i></span></div>`;
+    const stepbar = (step, hasBack=true, canSkip=false) => `<div class="stepbar"><button class="icon-button ${hasBack ? '' : 'ghost'}">${back}</button><div class="progress">${[1,2,3,4].map(i => `<i class="${i < step ? 'done' : i === step ? 'current' : ''}"></i>`).join('')}</div>${canSkip?'<button class="step-skip">Пропустить</button>':'<span></span>'}<div class="step-count">Шаг ${step} из 4</div></div>`;
+    const dock = (label='Продолжить', secondary='') => `<div class="dock"><button class="primary-button">${label}${arrow}</button>${secondary ? `<button class="secondary-button">${secondary}</button>` : ''}</div>`;
+    const phone = (inner, cls='') => `<div class="phone"><section class="screen ${cls}">${statusBar}${inner}</section></div>`;
+    const caption = (n,title,note) => `<div class="mockup-caption"><strong>${n}. ${title}</strong><span>${note}</span></div>`;
+
+    function languageScreen() {
+      const langs = ['Русский','English','Español','Français','Deutsch','Português','Italiano','العربية · السعودية','العربية · الإمارات','中文','한국어','日本語'];
+      return phone(`${stepbar(1,false)}<div class="content tight"><div class="hero language"><img src="${A}hero-language.png" alt="Алми рядом с глобусом и монетами" /></div><div class="screen-copy language-copy"><h2 class="fit-one-line" data-max-font="28" data-min-font="19">Настроим Almost под вас</h2><p class="fit-one-line" data-max-font="11" data-min-font="8.5">Выберите язык и валюту. Всё можно изменить позже.</p></div><div class="section-label">Язык приложения</div><div class="language-grid">${langs.map((x,i)=>`<button class="chip fit-one-line ${i===0?'selected':''}" data-max-font="11" data-min-font="7.5">${x}</button>`).join('')}</div><div class="section-label">Основная валюта</div><div class="currency-row">${['SAR','USD','EUR','AED','GBP'].map((x,i)=>`<button class="chip ${i===0?'selected':''}">${x}</button>`).join('')}</div><p class="legal-hint">Продолжая, вы принимаете <button class="inline-link">Условия использования</button>.</p></div>${dock()}`);
+    }
+
+    function privacyScreen() {
+      return phone(`${stepbar(2)}<div class="content"><div class="hero privacy"><img src="${A}hero-privacy.png" alt="Алми защищает обезличенную аналитику щитом" /></div><div class="screen-copy privacy-copy"><h2 class="fit-one-line" data-max-font="27" data-min-font="17">Помогите сделать Almost лучше</h2><p class="fit-one-line" data-max-font="11" data-min-font="8">Необязательные данные помогают быстрее находить ошибки.</p></div><div class="privacy-panel"><div class="privacy-item"><div class="privacy-icon">${icons.pulse}</div><div><strong>Стабильность и ошибки</strong><span>Быстрее находим сбои и медленные места.</span></div></div><div class="privacy-item"><div class="privacy-icon">${icons.tune}</div><div><strong>Улучшение функций</strong><span>Понимаем, какие сценарии действительно полезны.</span></div></div><div class="privacy-item"><div class="privacy-icon">${icons.lock}</div><div><strong>Без личных финансов</strong><span>Цели, сохранённые товары и суммы не передаются рекламным сетям.</span></div></div></div><p class="privacy-note fit-one-line" data-max-font="9.5" data-min-font="7.5">Выбор можно изменить позже в настройках.</p></div>${dock('Разрешить аналитику','Продолжить без аналитики')}`);
+    }
+
+    function personaCards(list=personas.slice(0,4), selected='mindful_coffee') {
+      const accents = {mindful_coffee:'#b68a67',habit_smoking:'#6ab98b',glam_beauty:'#d77aa8',gamer_loot:'#6f8ce6',foodie_delivery:'#e69a58',online_impulse:'#7c83de',home_picks:'#78aa70',anime_fan:'#9278d4',sub_lover:'#58ad91',fashion_fan:'#db816d'};
+      return list.map(([file,id,label,wash])=>`<div class="persona-option" style="--persona-wash:${wash};--persona-accent:${accents[id]}"><button class="persona-card ${id===selected?'selected':''}" data-persona="${id}"><img src="${A}persona-${file}.png" alt="" /><span>${label}</span><i class="persona-check">✓</i></button></div>`).join('');
+    }
+
+    function personaScreen(all=false) {
+      const content = all ? personas : personas.slice(0,4);
+      return phone(`${stepbar(3,true,true)}<div class="content ${all?'all-personas':'persona-overview'}"><div class="screen-copy"><h2 class="fit-one-line" data-max-font="28" data-min-font="18">${all?'Все искушения':'Какое у вас главное искушение?'}</h2><p ${all?'class="multiline-subtitle"':'class="fit-one-line" data-max-font="13" data-min-font="8"'}>${all?'Выберите самый близкий сценарий. Так Almost настроит первые подсказки. Выбор можно изменить.':'Выберите знакомый сценарий. Almost настроит первые подсказки.'}</p></div><div class="section-label">Как обращаться к вам?</div><div class="gender-row"><button class="chip selected">Женский</button><button class="chip">Мужской</button><button class="chip">Не указывать</button></div><div class="section-label">Ваш главный сценарий</div><div class="persona-grid">${personaCards(content)}</div>${all?'':`<button class="show-all"><span>Показать все искушения</span><b>ещё 6</b></button>`}</div>${dock('Продолжить')}`);
+    }
+
+    const goalCard = (icon,title,example,selected=false,wash='#eeebff') => `<button class="goal-card ${selected?'selected':''}" style="--goal-wash:${wash}" data-goal-title="${title}" data-goal-value="${example}"><span class="goal-icon">${icon}</span><strong>${title}</strong><small>Пример: ${example}</small></button>`;
+    function goalScreen(selected=false) {
+      return phone(`${stepbar(4)}<div class="content" ${selected?'':'data-goal-interactive'}><div class="hero goals"><img src="${A}hero-goals.png" alt="Алми катит монету к банке с целью" /></div><div class="screen-copy"><h2>${selected?'Уточните сумму':'К чему направим экономию?'}</h2><p class="fit-one-line" data-max-font="13" data-min-font="8">${selected?'Так прогресс будет конкретным. Суммы можно поменять позже.':'Можно выбрать до трёх целей или создать свою.'}</p></div><div class="goal-grid">${goalCard(icons.plane,'Путешествия','SAR 5 000',selected,'#dfe9ff')}${goalCard(icons.laptop,'Техника','SAR 3 000',false,'#e6e3ff')}${goalCard(icons.spark,'Ежедневные радости','SAR 900',selected,'#ffe8d6')}${goalCard(icons.jar,'Просто копить','SAR 2 000',false,'#dff4e9')}</div>${selected?`<div class="goal-amounts"><div class="goal-amount-row"><div><strong>Путешествия</strong><span>Целевая сумма</span></div><input class="amount-field" value="SAR 5 000" readonly /></div><div class="goal-amount-row"><div><strong>Ежедневные радости</strong><span>Целевая сумма</span></div><input class="amount-field" value="SAR 900" readonly /></div></div>`:`<button class="show-all custom-goal-button"><span>Создать свою цель</span><b>＋</b></button>`}</div>${dock(selected?'Завершить настройку':'Продолжить')}`);
+    }
+
+    function customSheet() {
+      return goalScreen(false).replace('</section></div>', `<div class="sheet-backdrop"><section class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h3>Своя цель</h3><button class="sheet-close">${close}</button></div><p>Дайте цели короткое имя и укажите сумму. Так прогресс будет виден с первого дня.</p><label class="field-label">Название</label><div class="text-field">Новый ноутбук</div><label class="field-label">Иконка</label><div class="icon-picker"><button>${icons.star}</button><button class="selected">${icons.laptop}</button><button>${icons.home}</button><button>${icons.palette}</button></div><label class="field-label">Целевая сумма</label><div class="text-field">SAR&nbsp;&nbsp;4 800</div><button class="primary-button">Добавить цель${arrow}</button></section></div></section></div>`);
+    }
+
+    function termsSheet() {
+      return languageScreen().replace('</section></div>', `<div class="sheet-backdrop"><section class="sheet"><div class="sheet-handle"></div><div class="sheet-head"><h3>Условия использования</h3><button class="sheet-close">${close}</button></div><p>Краткое объяснение перед продолжением. Полный юридический текст открывается отдельно.</p><div class="terms-body"><h4>Almost помогает принимать решения</h4><p>Приложение не является банком и не переводит деньги. Финансовые действия вы выполняете самостоятельно во внешнем сервисе.</p><h4>Ваши данные и подписка</h4><p>Настройки хранятся для работы функций приложения. Покупки и восстановление подписки безопасно обрабатываются магазином приложений.</p><button class="text-link">Открыть полный документ ↗</button></div><button class="primary-button">Принять и продолжить${arrow}</button><button class="secondary-button">Закрыть</button></section></div></section></div>`);
+    }
+
+    const mockups = [
+      ['01','Язык и валюта','Ровная сетка 3 × 4: все 12 вариантов, включая ar-SA и ar-AE.',languageScreen()],
+      ['02','Приватность','Ключевые строки автоматически уменьшаются и остаются цельными.',privacyScreen()],
+      ['03','Главное искушение','Карточка поднимается, подсвечивается цветом арта и мягко подтверждает выбор.',personaScreen(false)],
+      ['04','Все искушения','Все десять сценариев с уникальными мини-иллюстрациями.',personaScreen(true)],
+      ['05','Цели · выбор','Примеры не выглядят финансовым порогом; выбор вызывает автоскролл к сумме.',goalScreen(false)],
+      ['06','Цели · суммы','Поле суммы появляется сразу после выбора и остаётся редактируемым.',goalScreen(true)],
+      ['07','Своя цель','Нативный нижний лист; закрытие, иконка, название и сумма сохранены.',customSheet()],
+      ['08','Условия','Краткое объяснение в приложении и ссылка на полный документ.',termsSheet()]
+    ];
+
+    const board = document.querySelector('#board');
+    board.innerHTML = mockups.map(([n,title,note,markup])=>`<article class="mockup">${caption(n,title,note)}${markup}</article>`).join('');
+
+    document.querySelectorAll('.persona-card').forEach(card => card.addEventListener('click', () => {
+      const grid = card.closest('.persona-grid');
+      grid.querySelectorAll('.persona-card').forEach(x => x.classList.remove('selected'));
+      card.classList.add('selected');
+    }));
+    document.querySelectorAll('.gender-row .chip, .language-grid .chip, .currency-row .chip').forEach(chip => chip.addEventListener('click', () => {
+      const group = chip.parentElement;
+      group.querySelectorAll('.chip').forEach(x => x.classList.remove('selected'));
+      chip.classList.add('selected');
+    }));
+
+    const fitOneLine = (element) => {
+      const max = Number(element.dataset.maxFont) || Number.parseFloat(getComputedStyle(element).fontSize) || 16;
+      const min = Number(element.dataset.minFont) || Math.max(8, max * .68);
+      let size = max;
+      element.style.fontSize = `${size}px`;
+      while (element.scrollWidth > element.clientWidth + .5 && size > min) {
+        size = Math.max(min, size - .25);
+        element.style.fontSize = `${size}px`;
+      }
+    };
+    const fitAllSingleLines = () => document.querySelectorAll('.fit-one-line').forEach(fitOneLine);
+
+    document.querySelectorAll('[data-goal-interactive]').forEach(content => {
+      const cards = [...content.querySelectorAll('.goal-card')];
+      cards.forEach(card => card.addEventListener('click', () => {
+        const selectedCount = cards.filter(x => x.classList.contains('selected')).length;
+        if (!card.classList.contains('selected') && selectedCount >= 3) return;
+        card.classList.toggle('selected');
+        let amounts = content.querySelector('.goal-amounts.live');
+        const selectedCards = cards.filter(x => x.classList.contains('selected'));
+        if (!selectedCards.length) {
+          amounts?.remove();
+          return;
+        }
+        if (!amounts) {
+          amounts = document.createElement('div');
+          amounts.className = 'goal-amounts live';
+          content.querySelector('.custom-goal-button').before(amounts);
+        }
+        amounts.innerHTML = selectedCards.map(item => `<div class="goal-amount-row"><div><strong>${item.dataset.goalTitle}</strong><span>Целевая сумма</span></div><input class="amount-field" value="${item.dataset.goalValue}" aria-label="Целевая сумма: ${item.dataset.goalTitle}" /></div>`).join('');
+        requestAnimationFrame(() => content.scrollTo({top: Math.max(0, amounts.offsetTop - 12), behavior: 'smooth'}));
+      }));
+    });
+
+    document.querySelectorAll('[data-control] button').forEach(button => button.addEventListener('click', () => {
+      const control = button.closest('[data-control]');
+      control.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+      button.classList.add('active');
+      if (control.dataset.control === 'device') {
+        document.body.classList.toggle('compact', button.dataset.value === 'compact');
+        requestAnimationFrame(fitAllSingleLines);
+        setTimeout(fitAllSingleLines, 40);
+      }
+    }));
+    fitAllSingleLines();
+    window.addEventListener('resize', () => requestAnimationFrame(fitAllSingleLines));
+  </script>
+  <script src="./preview-localized.js"></script>
+</body>
+</html>

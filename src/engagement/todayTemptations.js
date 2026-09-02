@@ -38,6 +38,13 @@ const getNextLocalMidnightAt = (timestamp = Date.now()) => {
   ).getTime();
 };
 
+const isTimestampInLocalCalendarDay = (timestamp, referenceTimestamp = Date.now()) => {
+  const normalizedTimestamp = Number(timestamp);
+  if (!Number.isFinite(normalizedTimestamp) || normalizedTimestamp <= 0) return false;
+  const bounds = getLocalDayBounds(referenceTimestamp);
+  return normalizedTimestamp >= bounds.start && normalizedTimestamp <= bounds.end;
+};
+
 const normalizeFrequency = (value) => {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   return ["daily", "weekly", "biweekly", "monthly", "custom"].includes(normalized)
@@ -314,6 +321,7 @@ module.exports = {
   getLocalDayBounds,
   getLocalDayKey,
   getNextLocalMidnightAt,
+  isTimestampInLocalCalendarDay,
   isScheduledForDay,
   partitionUnifiedTemptationFeed,
 };
