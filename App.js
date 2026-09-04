@@ -5148,6 +5148,336 @@ const CoinRainOverlay = React.memo(function CoinRainOverlay({ dropCount = 14, as
   );
 });
 
+const COIN_VALUE_ART_LAYOUT = Object.freeze([
+  { left: "1%", top: 76, size: 42, rotate: "-16deg" },
+  { left: "20%", top: 52, size: 48, rotate: "-9deg" },
+  { left: "41%", top: 27, size: 56, rotate: "1deg" },
+  { left: "63%", top: 51, size: 48, rotate: "9deg" },
+  { left: "82%", top: 76, size: 42, rotate: "16deg" },
+]);
+
+const CoinValueTutorialModal = React.memo(function CoinValueTutorialModal({
+  visible,
+  colors,
+  language,
+  t,
+  reduceMotion,
+  safeAreaBottom = 0,
+  viewportHeight = SCREEN_HEIGHT,
+  onRequestClose,
+  onPress,
+}) {
+  const reveal = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const ambientFloat = useRef(new Animated.Value(0)).current;
+  const compactLayout = viewportHeight < 740;
+
+  useEffect(() => {
+    reveal.stopAnimation();
+    ambientFloat.stopAnimation();
+    if (!visible || reduceMotion) {
+      reveal.setValue(visible ? 1 : 0);
+      ambientFloat.setValue(0);
+      return undefined;
+    }
+
+    reveal.setValue(0);
+    ambientFloat.setValue(0);
+    const entrance = Animated.timing(reveal, {
+      toValue: 1,
+      duration: 560,
+      easing: Easing.out(Easing.exp),
+      useNativeDriver: true,
+    });
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ambientFloat, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ambientFloat, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    entrance.start(({ finished }) => {
+      if (finished) floatLoop.start();
+    });
+    return () => {
+      entrance.stop();
+      floatLoop.stop();
+    };
+  }, [ambientFloat, reduceMotion, reveal, visible]);
+
+  const cardOpacity = reveal.interpolate({
+    inputRange: [0, 0.18, 1],
+    outputRange: [0, 0.72, 1],
+  });
+  const cardTranslateY = reveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [34, 0],
+  });
+  const cardScale = reveal.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.975, 1],
+  });
+  const catTranslateY = ambientFloat.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, -3],
+  });
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onRequestClose}
+    >
+      <Animated.View
+        style={[
+          styles.coinValueBackdrop,
+          {
+            backgroundColor: colorWithAlpha(colors.overlay || "#111318", 0.74),
+            paddingBottom: Math.max(UI_SPACING.sm, safeAreaBottom + UI_SPACING.xs),
+            opacity: reduceMotion ? 1 : cardOpacity,
+          },
+        ]}
+      >
+        <Animated.View
+          style={[
+            styles.coinValueCard,
+            compactLayout && styles.coinValueCardCompact,
+            {
+              backgroundColor: colors.surfaceElevated || colors.card,
+              direction: isRtlLanguage(language) ? "rtl" : "ltr",
+              maxHeight: Math.round(viewportHeight * 0.9),
+              shadowColor: colors.shadow || colors.overlay,
+              opacity: cardOpacity,
+              transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
+            },
+          ]}
+          accessibilityViewIsModal
+        >
+          <ScrollView
+            style={styles.coinValueScroll}
+            contentContainerStyle={[
+              styles.coinValueContent,
+              compactLayout && styles.coinValueContentCompact,
+            ]}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            <View
+              style={[
+                styles.coinValueHeroStage,
+                compactLayout && styles.coinValueHeroStageCompact,
+                { backgroundColor: colors.primarySurface || colors.surfaceMuted },
+              ]}
+            >
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.coinValueHeroHalo,
+                  {
+                    backgroundColor: colorWithAlpha(colors.primary, 0.1),
+                    borderColor: colorWithAlpha(colors.primary, 0.16),
+                  },
+                ]}
+              />
+              <Animated.Image
+                source={LEVEL_SHARE_CAT}
+                style={[
+                  styles.coinValueHeroMascot,
+                  compactLayout && styles.coinValueHeroMascotCompact,
+                  { transform: [{ translateY: catTranslateY }] },
+                ]}
+                resizeMode="contain"
+                accessible={false}
+              />
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.coinValueCoinArc,
+                  compactLayout && styles.coinValueCoinArcCompact,
+                ]}
+              >
+                {HEALTH_COIN_TIERS.map((tier, index) => {
+                  const artLayout = COIN_VALUE_ART_LAYOUT[index] || COIN_VALUE_ART_LAYOUT[0];
+                  const coinReveal = reveal.interpolate({
+                    inputRange: [0, 0.18 + index * 0.08, 0.62 + index * 0.06, 1],
+                    outputRange: [0, 0, 1, 1],
+                    extrapolate: "clamp",
+                  });
+                  const coinRise = reveal.interpolate({
+                    inputRange: [0, 0.22 + index * 0.07, 1],
+                    outputRange: [30, 30, 0],
+                    extrapolate: "clamp",
+                  });
+                  const coinFloat = ambientFloat.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [index % 2 === 0 ? 1 : -2, index % 2 === 0 ? -3 : 2],
+                  });
+                  return (
+                    <Animated.Image
+                      key={tier.id}
+                      source={tier.asset}
+                      style={[
+                        styles.coinValueArcCoin,
+                        {
+                          left: artLayout.left,
+                          top: compactLayout ? artLayout.top * 0.78 : artLayout.top,
+                          width: compactLayout ? artLayout.size * 0.86 : artLayout.size,
+                          height: compactLayout ? artLayout.size * 0.86 : artLayout.size,
+                          opacity: coinReveal,
+                          transform: [
+                            { translateY: Animated.add(coinRise, coinFloat) },
+                            { rotate: artLayout.rotate },
+                            { scale: coinReveal },
+                          ],
+                        },
+                      ]}
+                      resizeMode="contain"
+                      accessible={false}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.coinValueIntroCopy}>
+              <Text
+                style={[styles.coinValueTitle, { color: colors.text }]}
+                accessibilityRole="header"
+              >
+                {t("coinValueTitle")}
+              </Text>
+              <View style={styles.coinValueBodyRow}>
+                <Image
+                  source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
+                  style={styles.coinValueBodyCoin}
+                  resizeMode="contain"
+                  accessible={false}
+                />
+                <Text style={[styles.coinValueBody, { color: colors.muted }]}>
+                  {t("coinValueEarnBody")}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.coinValueSection}>
+              <Text style={[styles.coinValueSectionTitle, { color: colors.text }]}>
+                {t("coinValueColorsTitle")}
+              </Text>
+              <Text style={[styles.coinValueSectionBody, { color: colors.muted }]}>
+                {t("coinValueColorsBody")}
+              </Text>
+              <View
+                style={[
+                  styles.coinValueTierRail,
+                  { backgroundColor: colors.surfaceMuted || colors.background },
+                ]}
+              >
+                {HEALTH_COIN_TIERS.map((tier) => {
+                  const colorLabelKey = COIN_VALUE_COLOR_LABEL_KEYS[tier.id];
+                  return (
+                    <View
+                      key={tier.id}
+                      style={styles.coinValueTierItem}
+                      accessible
+                      accessibilityLabel={`${t(colorLabelKey)}, ${formatSaveCountValue(
+                        tier.value,
+                        language
+                      )}`}
+                    >
+                      <Image
+                        source={tier.asset}
+                        style={styles.coinValueTierCoin}
+                        resizeMode="contain"
+                        accessible={false}
+                      />
+                      <Text
+                        style={[styles.coinValueTierValue, { color: colors.text }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
+                      >
+                        {formatSaveCountValue(tier.value, language)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.coinValueUseRow}>
+              <View
+                style={[
+                  styles.coinValueUseItem,
+                  { backgroundColor: colors.surfaceMuted || colors.background },
+                ]}
+              >
+                <Image
+                  source={LEVEL_SHARE_CAT}
+                  style={styles.coinValueUseMascot}
+                  resizeMode="contain"
+                  accessible={false}
+                />
+                <Text style={[styles.coinValueUseItemText, { color: colors.text }]}>
+                  {t("coinValueCustomizeTitle")}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.coinValueUseItem,
+                  { backgroundColor: colors.surfaceMuted || colors.background },
+                ]}
+              >
+                <Image
+                  source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
+                  style={styles.coinValueUseCoin}
+                  resizeMode="contain"
+                  accessible={false}
+                />
+                <Text style={[styles.coinValueUseItemText, { color: colors.text }]}>
+                  {t("coinValueRestoreTitle")}
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.coinValueFooter}>
+            <TouchableOpacity
+              style={[styles.coinValuePrimary, { backgroundColor: colors.primary }]}
+              onPress={onPress}
+              activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityLabel={t("coinValueCta")}
+            >
+              <Text
+                style={[
+                  styles.coinValuePrimaryText,
+                  { color: colors.onPrimary || resolveForegroundForColor(colors.primary) },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              >
+                {t("coinValueCta")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+});
+
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
 const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
 const TAMAGOTCHI_PLAY_DEPRIVED_VARIANTS = ["cry", "sad", "cry", "ohno", "sad"];
@@ -31215,16 +31545,6 @@ const FeedScreen = React.memo(
       offset: Math.max(0, estimatedOffset),
       animated: true,
     });
-    if (typeof listRef.current.scrollToIndex !== "function") return;
-    setTimeout(() => {
-      try {
-        listRef.current?.scrollToIndex?.({
-          index: targetIndex,
-          animated: true,
-          viewPosition: 0.06,
-        });
-      } catch (error) {}
-    }, 160);
   }, []);
   const handleHeroLayout = useCallback((event) => {
     const height = event?.nativeEvent?.layout?.height || 0;
@@ -33871,51 +34191,39 @@ const FeedScreen = React.memo(
     const requestKey = `${requestId}:${nextDecisionCoachTargetId}`;
     if (nextDecisionCoachScrollHandledRef.current === requestKey) return undefined;
     let retryTimer = null;
-    let settleTimer = null;
     let cancelled = false;
     const interactionTask = InteractionManager.runAfterInteractions(() => {
       if (cancelled) return;
-      const completeScroll = (didScroll) => {
+      const completeSuccessfulScroll = () => {
         if (cancelled) return;
-        if (!didScroll) {
-          onNextDecisionCoachUnavailable?.();
-          return;
-        }
         nextDecisionCoachScrollHandledRef.current = requestKey;
         onNextDecisionCoachShown?.(nextDecisionCoachTargetId);
-      };
-      const settleOnTarget = (initialDidScroll) => {
-        settleTimer = setTimeout(() => {
-          if (cancelled) return;
-          const settledDidScroll = scrollToTemptationCard({
-            templateId: nextDecisionCoachTargetId,
-            animated: !reduceMotion,
-          });
-          completeScroll(initialDidScroll || settledDidScroll);
-        }, 420);
       };
       const firstAttempt = scrollToTemptationCard({
         templateId: nextDecisionCoachTargetId,
         animated: !reduceMotion,
       });
       if (firstAttempt) {
-        settleOnTarget(true);
+        completeSuccessfulScroll();
         return;
       }
       retryTimer = setTimeout(() => {
-        settleOnTarget(
-          scrollToTemptationCard({
-            templateId: nextDecisionCoachTargetId,
-            animated: !reduceMotion,
-          })
-        );
+        if (cancelled) return;
+        const retryDidScroll = scrollToTemptationCard({
+          templateId: nextDecisionCoachTargetId,
+          animated: !reduceMotion,
+        });
+        if (retryDidScroll) {
+          completeSuccessfulScroll();
+          return;
+        }
+        onNextDecisionCoachUnavailable?.();
       }, 180);
     });
     return () => {
       cancelled = true;
       interactionTask?.cancel?.();
       if (retryTimer) clearTimeout(retryTimer);
-      if (settleTimer) clearTimeout(settleTimer);
     };
   }, [
     activeFeedProducts,
@@ -43577,26 +43885,47 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
   colors,
   t,
   theme,
+  language = DEFAULT_LANGUAGE,
   onClose,
 }) {
+  const { reduceMotion } = useMotionPreferences();
+  const { width: introViewportWidth, height: introViewportHeight } = useWindowDimensions();
   const introProgress = useRef(new Animated.Value(0)).current;
-  const coinMotion = useRef(new Animated.Value(0)).current;
+  const coinFlights = useRef(
+    Array.from({ length: 4 }, () => new Animated.Value(0))
+  ).current;
+  const jarPulse = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
   const isDarkSurface = colors.appearance === "dark" || colors.background === THEMES.dark.background;
+  const isProSurface = theme === PRO_THEME_ID;
+  const isRtl = isRtlLanguage(language);
+  const isCompactLayout = introViewportHeight < 740 || introViewportWidth < 360;
   const accent = colors.primary || (isDarkSurface ? THEMES.dark.info : THEMES.light.info);
   const mintAccent = colors.success || (isDarkSurface ? THEMES.dark.success : THEMES.light.success);
   const goldAccent = colors.warning || (isDarkSurface ? THEMES.dark.warning : THEMES.light.warning);
-  const cardBg = isDarkSurface
-    ? blendColors(colors.card || THEMES.dark.card, accent, 0.05)
-    : colors.surface || colors.card;
-  const cardBorder = colorWithAlpha(accent, isDarkSurface ? 0.26 : 0.2);
-  const visualBg = isDarkSurface
-    ? colorWithAlpha("#FFFFFF", 0.045)
-    : colors.surfaceMuted || colorWithAlpha(accent, 0.06);
-  const visualBorder = colorWithAlpha(accent, isDarkSurface ? 0.18 : 0.14);
-  const decisionCardBg = isDarkSurface ? colorWithAlpha("#FFFFFF", 0.06) : colors.card;
+  const cardBg = colors.surfaceElevated || colors.card;
+  const visualBg = blendColors(
+    colors.surfaceMuted || colors.card,
+    accent,
+    isDarkSurface ? 0.12 : isProSurface ? 0.09 : 0.045
+  );
+  const visualBorder = colorWithAlpha(accent, isDarkSurface ? 0.24 : 0.16);
+  const decisionCardBg = blendColors(colors.card, colors.surfaceElevated || colors.card, 0.45);
   const decisionCardBorder = colorWithAlpha(colors.text, isDarkSurface ? 0.16 : 0.1);
+  const pathColor = colorWithAlpha(accent, isDarkSurface ? 0.42 : 0.28);
+  const heroGlowColor = colorWithAlpha(accent, isDarkSurface ? 0.18 : 0.11);
+  const goalChipBg = colorWithAlpha(mintAccent, isDarkSurface ? 0.17 : 0.11);
+  const budgetChipBg = colorWithAlpha(accent, isDarkSurface ? 0.17 : 0.1);
   const buttonTextColor = colors.onPrimary || resolveForegroundForColor(accent);
+  const heroHeight = isCompactLayout ? 202 : 224;
+  const heroWidth = Math.min(400, Math.max(272, introViewportWidth - 72));
+  const flightDistance = Math.max(112, heroWidth - 176);
+  const flightDirection = isRtl ? -1 : 1;
+  const flightStartX = isRtl ? heroWidth - 96 : 96;
+  const flightEndX = isRtl ? 76 : heroWidth - 76;
+  const flightStartY = isCompactLayout ? 145 : 160;
+  const flightEndY = isCompactLayout ? 58 : 64;
+  const jarCoinColors = [mintAccent, accent, goldAccent, mintAccent, accent];
   const steps = [
     {
       title: t("feedIntroStepBanksTitle"),
@@ -43623,78 +43952,128 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
     if (!visible) {
       closingRef.current = false;
       introProgress.stopAnimation();
-      coinMotion.stopAnimation();
+      coinFlights.forEach((flight) => flight.stopAnimation());
+      jarPulse.stopAnimation();
       introProgress.setValue(0);
-      coinMotion.setValue(0);
+      coinFlights.forEach((flight) => flight.setValue(0));
+      jarPulse.setValue(0);
       return undefined;
     }
+    closingRef.current = false;
     introProgress.setValue(0);
-    coinMotion.setValue(0);
+    coinFlights.forEach((flight) => flight.setValue(0));
+    jarPulse.setValue(0);
+    if (reduceMotion) {
+      introProgress.setValue(1);
+      coinFlights.forEach((flight, index) => {
+        flight.setValue([0.16, 0.39, 0.62, 0.82][index]);
+      });
+      return undefined;
+    }
     const entrance = Animated.spring(introProgress, {
       toValue: 1,
-      damping: 18,
-      stiffness: 160,
-      mass: 0.92,
+      damping: 19,
+      stiffness: 176,
+      mass: 0.88,
       useNativeDriver: true,
     });
-    const coinLoop = createMotionLoop(
-      Animated.sequence([
-        Animated.timing(coinMotion, {
+    const flightDuration = 1050;
+    const flightStagger = 320;
+    const flightCycle = 2810;
+    const flightLoops = coinFlights.map((flight, index) =>
+      createMotionLoop(
+        Animated.sequence([
+          Animated.delay(index * flightStagger),
+          Animated.timing(flight, {
+            toValue: 1,
+            duration: flightDuration,
+            easing: Easing.bezier(0.23, 1, 0.32, 1),
+            useNativeDriver: true,
+          }),
+          Animated.delay(
+            Math.max(0, flightCycle - index * flightStagger - flightDuration)
+          ),
+        ])
+      )
+    );
+    const pulseSteps = [
+      Animated.delay(880),
+      ...coinFlights.flatMap(() => [
+        Animated.timing(jarPulse, {
           toValue: 1,
-          duration: 1900,
-          easing: Easing.inOut(Easing.quad),
+          duration: 110,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.timing(coinMotion, {
+        Animated.timing(jarPulse, {
           toValue: 0,
-          duration: 1500,
-          easing: Easing.inOut(Easing.quad),
+          duration: 190,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-      ])
+        Animated.delay(20),
+      ]),
+      Animated.delay(650),
+    ];
+    const jarPulseLoop = createMotionLoop(
+      Animated.sequence(pulseSteps)
     );
     entrance.start();
-    coinLoop.start();
+    flightLoops.forEach((loop) => loop.start());
+    jarPulseLoop.start();
     return () => {
       entrance.stop();
-      coinLoop.stop();
+      flightLoops.forEach((loop) => loop.stop());
+      jarPulseLoop.stop();
     };
-  }, [coinMotion, introProgress, visible]);
+  }, [
+    coinFlights,
+    introProgress,
+    jarPulse,
+    reduceMotion,
+    visible,
+  ]);
   const backdropOpacity = introProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
   });
   const cardTranslateY = introProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [28, 0],
+    outputRange: [22, 0],
   });
   const cardScale = introProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.96, 1],
+    outputRange: [0.965, 1],
   });
-  const coinTranslateY = coinMotion.interpolate({
-    inputRange: [0, 0.55, 1],
-    outputRange: [34, -6, 34],
-  });
-  const coinTranslateX = coinMotion.interpolate({
-    inputRange: [0, 0.55, 1],
-    outputRange: [-28, 54, -28],
-  });
-  const coinOpacity = coinMotion.interpolate({
-    inputRange: [0, 0.2, 0.78, 1],
-    outputRange: [0.38, 1, 1, 0.38],
-  });
-  const pulseScale = coinMotion.interpolate({
+  const jarScale = jarPulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.96, 1.06],
+    outputRange: [1, 1.045],
+  });
+  const jarTranslateY = jarPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -3],
+  });
+  const heroGlowScale = jarPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.94, 1.12],
+  });
+  const heroGlowOpacity = jarPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.62, 1],
   });
   const handleClose = (source = "cta") => {
     if (!visible || closingRef.current) return;
     closingRef.current = true;
+    if (reduceMotion) {
+      introProgress.setValue(0);
+      closingRef.current = false;
+      onClose?.(source);
+      return;
+    }
     Animated.timing(introProgress, {
       toValue: 0,
-      duration: 220,
-      easing: Easing.in(Easing.cubic),
+      duration: 180,
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
       useNativeDriver: true,
     }).start(({ finished }) => {
       closingRef.current = false;
@@ -43711,7 +44090,7 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
       onRequestClose={() => handleClose("system_back")}
     >
       <View style={styles.feedIntroRoot}>
-        <TouchableWithoutFeedback onPress={() => handleClose("backdrop")}>
+        <TouchableWithoutFeedback onPress={() => handleClose("backdrop")} accessible={false}>
           <Animated.View style={[styles.feedIntroBackdrop, { opacity: backdropOpacity }]} />
         </TouchableWithoutFeedback>
         <View style={styles.feedIntroWrap} pointerEvents="box-none">
@@ -43721,114 +44100,328 @@ const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
               styles.feedIntroCard,
               {
                 backgroundColor: cardBg,
-                borderColor: cardBorder,
+                maxHeight: Math.max(320, introViewportHeight - 32),
                 opacity: resolveModalCompositeOpacity(backdropOpacity),
                 transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
               },
             ]}
           >
             <ScrollView
-              showsVerticalScrollIndicator
+              showsVerticalScrollIndicator={false}
               bounces={false}
-              contentContainerStyle={styles.feedIntroScrollContent}
+              contentContainerStyle={[
+                styles.feedIntroScrollContent,
+                isCompactLayout && styles.feedIntroScrollContentCompact,
+              ]}
             >
-              <Text style={[styles.feedIntroTitle, { color: colors.text }]}>
+              <Text
+                style={[
+                  styles.feedIntroTitle,
+                  { color: colors.text },
+                  isCompactLayout && styles.feedIntroTitleCompact,
+                  isRtl && styles.feedIntroTextRtl,
+                ]}
+              >
                 {t("feedIntroTitle")}
               </Text>
-              <Text style={[styles.feedIntroSubtitle, { color: colors.muted }]}>
+              <Text
+                style={[
+                  styles.feedIntroSubtitle,
+                  { color: colors.muted },
+                  isRtl && styles.feedIntroTextRtl,
+                ]}
+              >
                 {t("feedIntroSubtitle")}
               </Text>
-              <View style={[styles.feedIntroVisual, { backgroundColor: visualBg, borderColor: visualBorder }]}>
-                <View style={styles.feedIntroScene}>
-                  <View
-                    style={[
-                      styles.feedIntroDecisionCard,
-                      { backgroundColor: decisionCardBg, borderColor: decisionCardBorder },
-                    ]}
-                  >
-                    <View style={styles.feedIntroDecisionHeader}>
-                      <View style={[styles.feedIntroDecisionIcon, { backgroundColor: colorWithAlpha(accent, 0.16) }]} />
-                      <View style={styles.feedIntroDecisionLines}>
-                        <View style={[styles.feedIntroDecisionLine, { backgroundColor: colorWithAlpha(colors.text, 0.24), width: "78%" }]} />
-                        <View style={[styles.feedIntroDecisionLine, { backgroundColor: colorWithAlpha(colors.text, 0.12), width: "52%" }]} />
-                      </View>
+              <View
+                style={[
+                  styles.feedIntroVisual,
+                  isCompactLayout && styles.feedIntroVisualCompact,
+                  { backgroundColor: visualBg, borderColor: visualBorder, height: heroHeight },
+                ]}
+              >
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.feedIntroHeroGlow,
+                    isRtl ? styles.feedIntroHeroGlowRtl : null,
+                    {
+                      backgroundColor: heroGlowColor,
+                      opacity: heroGlowOpacity,
+                      transform: [{ scale: heroGlowScale }],
+                    },
+                  ]}
+                />
+                <Svg
+                  pointerEvents="none"
+                  width={heroWidth}
+                  height={heroHeight}
+                  viewBox={`0 0 ${heroWidth} ${heroHeight}`}
+                  style={styles.feedIntroRoute}
+                >
+                  <SvgPath
+                    d={`M ${flightStartX} ${flightStartY} C ${
+                      flightStartX + flightDirection * flightDistance * 0.24
+                    } ${flightStartY - 80}, ${
+                      flightEndX - flightDirection * flightDistance * 0.28
+                    } ${flightEndY - 38}, ${flightEndX} ${flightEndY}`}
+                    fill="none"
+                    stroke={pathColor}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="5 8"
+                  />
+                </Svg>
+                <View
+                  style={[
+                    styles.feedIntroDecisionCard,
+                    isCompactLayout && styles.feedIntroDecisionCardCompact,
+                    isRtl ? styles.feedIntroDecisionCardRtl : null,
+                    { backgroundColor: decisionCardBg, borderColor: decisionCardBorder },
+                  ]}
+                >
+                  <View style={[styles.feedIntroDecisionHeader, isRtl && styles.feedIntroRowRtl]}>
+                    <View
+                      style={[
+                        styles.feedIntroDecisionIcon,
+                        { backgroundColor: colorWithAlpha(accent, isDarkSurface ? 0.22 : 0.12) },
+                      ]}
+                    >
+                      <View style={[styles.feedIntroDecisionIconCore, { backgroundColor: accent }]} />
                     </View>
-                    <Text style={[styles.feedIntroDecisionAmount, { color: colors.text }]}>$8</Text>
-                    <View style={styles.feedIntroDecisionActions}>
-                      <View style={[styles.feedIntroDecisionButton, { backgroundColor: colorWithAlpha(colors.error, isDarkSurface ? 0.12 : 0.08), borderColor: colorWithAlpha(colors.error, 0.24) }]}>
-                        <Text style={[styles.feedIntroDecisionButtonText, { color: colors.error }]} numberOfLines={1}>
-                          {t("feedIntroFlowSpend")}
-                        </Text>
-                      </View>
-                      <View style={[styles.feedIntroDecisionButton, { backgroundColor: mintAccent, borderColor: mintAccent }]}>
-                        <Text style={[styles.feedIntroDecisionButtonText, { color: resolveForegroundForColor(mintAccent) }]} numberOfLines={1}>
-                          {t("feedIntroFlowSave")}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.feedIntroCoinStream,
-                      {
-                        opacity: coinOpacity,
-                        transform: [{ translateX: coinTranslateX }, { translateY: coinTranslateY }],
-                      },
-                    ]}
-                  >
-                    {[0, 1, 2, 3].map((index) => (
+                    <View style={styles.feedIntroDecisionLines}>
                       <View
-                        key={`feed_intro_coin_${index}`}
                         style={[
-                          styles.feedIntroCoin,
-                          {
-                            backgroundColor: goldAccent,
-                            left: index * 13,
-                            top: index % 2 ? 12 : 0,
-                          },
+                          styles.feedIntroDecisionLine,
+                          { backgroundColor: colorWithAlpha(colors.text, 0.26), width: "78%" },
                         ]}
                       />
-                    ))}
-                  </Animated.View>
-                  <View style={styles.feedIntroJarColumn}>
-                    <Animated.View style={[styles.feedIntroJarHalo, { backgroundColor: colorWithAlpha(mintAccent, 0.14), transform: [{ scale: pulseScale }] }]} />
-                    <View style={[styles.feedIntroJar, { borderColor: colorWithAlpha(mintAccent, 0.32) }]}>
-                      <View style={[styles.feedIntroJarFill, { backgroundColor: colorWithAlpha(mintAccent, 0.58), height: "64%" }]} />
-                      <Text style={[styles.feedIntroJarText, { color: colors.text }]} numberOfLines={1}>
-                        {t("feedIntroFlowJar")}
+                      <View
+                        style={[
+                          styles.feedIntroDecisionLine,
+                          { backgroundColor: colorWithAlpha(colors.text, 0.12), width: "52%" },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                  <Text style={[styles.feedIntroDecisionAmount, { color: colors.text }]}>$8</Text>
+                  <View style={[styles.feedIntroDecisionActions, isRtl && styles.feedIntroRowRtl]}>
+                    <View
+                      style={[
+                        styles.feedIntroDecisionButton,
+                        {
+                          backgroundColor: colorWithAlpha(
+                            colors.error,
+                            isDarkSurface ? 0.12 : 0.07
+                          ),
+                          borderColor: colorWithAlpha(colors.error, 0.22),
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.feedIntroDecisionButtonText, { color: colors.error }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.78}
+                      >
+                        {t("feedIntroFlowSpend")}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.feedIntroDecisionButton,
+                        { backgroundColor: mintAccent, borderColor: mintAccent },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.feedIntroDecisionButtonText,
+                          { color: resolveForegroundForColor(mintAccent) },
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.78}
+                      >
+                        {t("feedIntroFlowSave")}
                       </Text>
                     </View>
                   </View>
                 </View>
+                {coinFlights.map((flight, index) => {
+                  const coinTranslateX = flight.interpolate({
+                    inputRange: [0, 0.52, 1],
+                    outputRange: [
+                      0,
+                      flightDirection * flightDistance * (0.46 + index * 0.012),
+                      flightDirection * (flightDistance + index * 2),
+                    ],
+                  });
+                  const coinTranslateY = flight.interpolate({
+                    inputRange: [0, 0.52, 1],
+                    outputRange: [0, -76 - index * 5, flightEndY - flightStartY],
+                  });
+                  const coinOpacity = flight.interpolate({
+                    inputRange: [0, 0.08, 0.84, 1],
+                    outputRange: [0, 1, 1, 0],
+                  });
+                  const coinScale = flight.interpolate({
+                    inputRange: [0, 0.48, 0.9, 1],
+                    outputRange: [0.82, 1.12, 0.78, 0.66],
+                  });
+                  const coinRotate = flight.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0deg", `${index % 2 ? -210 : 210}deg`],
+                  });
+                  return (
+                    <Animated.Image
+                      key={`feed_intro_coin_${index}`}
+                      pointerEvents="none"
+                      source={HEALTH_COIN_TIERS[index % HEALTH_COIN_TIERS.length]?.asset}
+                      style={[
+                        styles.feedIntroCoin,
+                        isRtl ? styles.feedIntroCoinRtl : null,
+                        {
+                          top: flightStartY - 12,
+                          opacity: coinOpacity,
+                          transform: [
+                            { translateX: coinTranslateX },
+                            { translateY: coinTranslateY },
+                            { rotate: coinRotate },
+                            { scale: coinScale },
+                          ],
+                        },
+                      ]}
+                    />
+                  );
+                })}
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.feedIntroJarColumn,
+                    isCompactLayout && styles.feedIntroJarColumnCompact,
+                    isRtl ? styles.feedIntroJarColumnRtl : null,
+                    { transform: [{ translateY: jarTranslateY }, { scale: jarScale }] },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.feedIntroGoalChip,
+                      { backgroundColor: goalChipBg, borderColor: colorWithAlpha(mintAccent, 0.3) },
+                    ]}
+                  >
+                    <View style={[styles.feedIntroGoalChipDot, { backgroundColor: mintAccent }]} />
+                    <Text
+                      style={[styles.feedIntroGoalChipText, { color: colors.text }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.82}
+                    >
+                      {t("feedIntroVisualGoalActive")}
+                    </Text>
+                  </View>
+                  <GoalJarGraphic
+                    progress={0.66}
+                    width={isCompactLayout ? 126 : 142}
+                    height={isCompactLayout ? 138 : 154}
+                    accent={mintAccent}
+                    secondaryAccent={accent}
+                    coinColors={jarCoinColors}
+                    forceCoinColors
+                    glassTint={colors.surface || colors.card}
+                    stroke={colorWithAlpha(mintAccent, isDarkSurface ? 0.28 : 0.18)}
+                    isDarkTheme={isDarkSurface}
+                  />
+                  <View
+                    style={[
+                      styles.feedIntroBudgetChip,
+                      { backgroundColor: budgetChipBg, borderColor: colorWithAlpha(accent, 0.24) },
+                    ]}
+                  >
+                    <View style={[styles.feedIntroBudgetChipMark, { borderColor: accent }]} />
+                    <Text style={[styles.feedIntroBudgetChipText, { color: colors.muted }]}>
+                      {t("feedIntroFlowBudget")}
+                    </Text>
+                  </View>
+                </Animated.View>
               </View>
-              <View style={styles.feedIntroStepList}>
+              <View style={[styles.feedIntroStepList, isCompactLayout && styles.feedIntroStepListCompact]}>
                 {steps.map((step, index) => (
-                  <View key={`feed_intro_step_${index}`} style={styles.feedIntroStepRow}>
-                    <View style={[styles.feedIntroStepMark, { backgroundColor: colorWithAlpha(step.accent, 0.1), borderColor: colorWithAlpha(step.accent, 0.26) }]}>
-                      <View style={[styles.feedIntroStepDot, { backgroundColor: step.accent }]} />
+                  <View
+                    key={`feed_intro_step_${index}`}
+                    style={[styles.feedIntroStepRow, isRtl && styles.feedIntroRowRtl]}
+                  >
+                    <View style={styles.feedIntroStepRail}>
+                      <View
+                        style={[
+                          styles.feedIntroStepMark,
+                          {
+                            backgroundColor: colorWithAlpha(step.accent, 0.1),
+                            borderColor: colorWithAlpha(step.accent, 0.28),
+                          },
+                        ]}
+                      >
+                        <View style={[styles.feedIntroStepDot, { backgroundColor: step.accent }]} />
+                      </View>
+                      {index < steps.length - 1 ? (
+                        <View
+                          style={[
+                            styles.feedIntroStepConnector,
+                            { backgroundColor: colorWithAlpha(colors.text, 0.1) },
+                          ]}
+                        />
+                      ) : null}
                     </View>
                     <View style={styles.feedIntroStepCopy}>
-                      <Text style={[styles.feedIntroStepTitle, { color: colors.text }]}>
+                      <Text
+                        style={[
+                          styles.feedIntroStepTitle,
+                          { color: colors.text },
+                          isRtl && styles.feedIntroTextRtl,
+                        ]}
+                      >
                         {step.title}
                       </Text>
-                      <Text style={[styles.feedIntroStepBody, { color: colors.muted }]}>
+                      <Text
+                        style={[
+                          styles.feedIntroStepBody,
+                          { color: colors.muted },
+                          isRtl && styles.feedIntroTextRtl,
+                        ]}
+                      >
                         {step.body}
                       </Text>
                     </View>
                   </View>
                 ))}
               </View>
+            </ScrollView>
+            <View
+              style={[
+                styles.feedIntroFooter,
+                isCompactLayout && styles.feedIntroFooterCompact,
+                {
+                  backgroundColor: cardBg,
+                  borderTopColor: colorWithAlpha(colors.text, isDarkSurface ? 0.12 : 0.08),
+                },
+              ]}
+            >
               <TouchableOpacity
-                activeOpacity={0.9}
-                style={[styles.feedIntroButton, { backgroundColor: accent }]}
+                activeOpacity={0.86}
+                style={[
+                  styles.feedIntroButton,
+                  { backgroundColor: accent, shadowColor: colors.shadow || accent },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={t("feedIntroCta")}
                 onPress={() => handleClose("cta")}
               >
-                <Text style={[styles.feedIntroButtonText, { color: buttonTextColor }]}>
+                <Text
+                  style={[styles.feedIntroButtonText, { color: buttonTextColor }]}
+                >
                   {t("feedIntroCta")}
                 </Text>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
           </Animated.View>
         </View>
       </View>
@@ -54243,6 +54836,7 @@ function AppContent() {
   }, [activeTab, availableTabs]);
   const [ratingPromptState, setRatingPromptState] = useState(() => createInitialRatingPromptState());
   const ratingPromptStateRef = useRef(ratingPromptState);
+  const ratingPromptShownThisSessionRef = useRef(false);
   const [ratingPromptHydrated, setRatingPromptHydrated] = useState(false);
   const [ratingPromptVisible, setRatingPromptVisible] = useState(false);
   const [ratingPromptStep, setRatingPromptStep] = useState("rating");
@@ -54502,7 +55096,8 @@ function AppContent() {
   }, []);
   const showRatingPrompt = useCallback(
     () => {
-      if (ratingPromptVisible) return;
+      if (ratingPromptVisible || ratingPromptShownThisSessionRef.current) return;
+      ratingPromptShownThisSessionRef.current = true;
       setRatingPromptStep("rating");
       setRatingPromptRating(0);
       setRatingPromptFeedback("");
@@ -54518,6 +55113,7 @@ function AppContent() {
   );
   const queueRatingPrompt = useCallback(
     (source = "actions") => {
+      if (ratingPromptShownThisSessionRef.current) return;
       if (ratingPromptQueuedRef.current) {
         if (!ratingPromptSourceRef.current || source === "actions") {
           ratingPromptSourceRef.current = source;
@@ -58080,6 +58676,7 @@ function AppContent() {
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
   const [iosTrackingStatus, setIosTrackingStatus] = useState(null);
   const [iosTrackingResolved, setIosTrackingResolved] = useState(Platform.OS !== "ios");
+  const analyticsConsentPressLockRef = useRef(false);
   const profileSelectionRef = useRef({ gender: null, persona: null });
   useEffect(() => {
     let cancelled = false;
@@ -74330,27 +74927,41 @@ useEffect(() => {
     goToOnboardingStep("analyticsConsent");
   };
 
-  const handleAnalyticsConsentChoice = async (enabled) => {
+  const handleAnalyticsConsentChoice = (enabled) => {
+    if (analyticsConsentPressLockRef.current) return;
+    analyticsConsentPressLockRef.current = true;
     const nextEnabled = enabled === true;
     const consentSource =
       onboardingStep === "analyticsConsent" ? "onboarding" : "existing_user_prompt";
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setAnalyticsOptOutState(!nextEnabled);
-    await setAnalyticsOptOutFlag(!nextEnabled);
-    await AsyncStorage.setItem(
-      STORAGE_KEYS.ANALYTICS_OPT_OUT,
-      nextEnabled ? "0" : "1"
-    ).catch(() => {});
-    if (nextEnabled) {
-      await logEvent("consent_analytics_enabled", {
-        enabled: true,
-        source: consentSource,
-      });
-      await requestTrackingTransparencyIfNeeded();
-    }
     if (onboardingStep === "analyticsConsent") {
       goToOnboardingStep("persona");
     }
+    requestAnimationFrame(() => {
+      analyticsConsentPressLockRef.current = false;
+    });
+    AsyncStorage.setItem(
+      STORAGE_KEYS.ANALYTICS_OPT_OUT,
+      nextEnabled ? "0" : "1"
+    ).catch(() => {});
+    InteractionManager.runAfterInteractions(() => {
+      const analyticsSyncTask = setAnalyticsOptOutFlag(!nextEnabled).catch((error) => {
+        console.warn("analytics consent sync", error);
+      });
+      if (!nextEnabled) return;
+      analyticsSyncTask
+        .then(() =>
+          logEvent("consent_analytics_enabled", {
+            enabled: true,
+            source: consentSource,
+          })
+        )
+        .catch((error) => {
+          console.warn("analytics consent event", error);
+        });
+      requestTrackingTransparencyIfNeeded().catch(() => {});
+    });
   };
 
   const updateRegistrationData = (field, value) => {
@@ -88640,6 +89251,7 @@ useEffect(() => {
             colors={colors}
             t={t}
             theme={theme}
+            language={language}
             onClose={closeFeedIntro}
           />
           {!startupHardLockPendingBeforePaywall && breakdownVisible && (
@@ -89761,254 +90373,17 @@ useEffect(() => {
           !automaticModalPresentationPaused &&
           queuedModalType === QUEUED_MODAL_TYPES.COIN_VALUE &&
           coinValueModalVisible && (
-          <Modal
+          <CoinValueTutorialModal
             visible
-            transparent
-            animationType={reduceMotion ? "none" : "fade"}
-            statusBarTranslucent
+            colors={colors}
+            language={language}
+            t={t}
+            reduceMotion={reduceMotion}
+            safeAreaBottom={safeAreaInsets.bottom || 0}
+            viewportHeight={viewportHeight}
             onRequestClose={dismissCoinValueModal}
-          >
-            <View
-              style={[
-                styles.coinValueBackdrop,
-                {
-                  backgroundColor: colorWithAlpha(colors.overlay || "#111318", 0.72),
-                  paddingBottom: Math.max(
-                    UI_SPACING.sm,
-                    (safeAreaInsets.bottom || 0) + UI_SPACING.xs
-                  ),
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.coinValueCard,
-                  {
-                    backgroundColor: colors.surfaceElevated || colors.card,
-                    borderColor: colors.border,
-                    direction: isRtlLanguage(language) ? "rtl" : "ltr",
-                    maxHeight: Math.round(viewportHeight * 0.88),
-                    shadowColor: colors.shadow || colors.overlay,
-                  },
-                ]}
-                accessibilityViewIsModal
-              >
-                <ScrollView
-                  style={styles.coinValueScroll}
-                  contentContainerStyle={styles.coinValueContent}
-                  showsVerticalScrollIndicator={false}
-                  bounces={false}
-                  overScrollMode="never"
-                >
-                  <View
-                    style={[
-                      styles.coinValueHero,
-                      {
-                        backgroundColor:
-                          colors.primarySurface || colorWithAlpha(colors.primary, 0.12),
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.coinValueHeroCoinWrap,
-                        { backgroundColor: colors.surfaceElevated || colors.card },
-                      ]}
-                    >
-                      <Image
-                        source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
-                        style={styles.coinValueHeroCoin}
-                        resizeMode="contain"
-                        accessible={false}
-                      />
-                    </View>
-                    <View style={styles.coinValueHeroCopy}>
-                      <Text style={[styles.coinValueTitle, { color: colors.text }]}>
-                        {t("coinValueTitle")}
-                      </Text>
-                      <Text style={[styles.coinValueBody, { color: colors.muted }]}>
-                        {t("coinValueBody")}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.coinValueEarnBlock,
-                      {
-                        backgroundColor: colors.surfaceMuted || colors.background,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <Image
-                      source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
-                      style={styles.coinValueEarnCoin}
-                      resizeMode="contain"
-                      accessible={false}
-                    />
-                    <View style={styles.coinValueEarnCopy}>
-                      <Text style={[styles.coinValueEarnTitle, { color: colors.text }]}>
-                        {t("coinValueEarnTitle")}
-                      </Text>
-                      <Text style={[styles.coinValueEarnBody, { color: colors.muted }]}>
-                        {t("coinValueEarnBody")}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Text style={[styles.coinValueUseTitle, { color: colors.text }]}>
-                    {t("coinValueColorsTitle")}
-                  </Text>
-                  <Text style={[styles.coinValueColorsBody, { color: colors.muted }]}>
-                    {t("coinValueColorsBody")}
-                  </Text>
-                  <View style={[styles.coinValueTierList, { borderColor: colors.border }]}>
-                    {HEALTH_COIN_TIERS.map((tier, index) => {
-                      const colorLabelKey = COIN_VALUE_COLOR_LABEL_KEYS[tier.id];
-                      const denominationLabel =
-                        tier.id === "green"
-                          ? t("coinValueBaseUnitLabel")
-                          : t("coinValueDenominationLabel", {
-                              value: formatSaveCountValue(tier.value, language),
-                            });
-                      return (
-                        <React.Fragment key={tier.id}>
-                          <View
-                            style={[
-                              styles.coinValueTierRow,
-                              tier.id === "green" && {
-                                backgroundColor:
-                                  colors.primarySurface || colors.surfaceMuted,
-                              },
-                            ]}
-                          >
-                            <Image
-                              source={tier.asset}
-                              style={styles.coinValueTierCoin}
-                              resizeMode="contain"
-                              accessible={false}
-                            />
-                            <Text style={[styles.coinValueTierName, { color: colors.text }]}>
-                              {t(colorLabelKey)}
-                            </Text>
-                            <Text style={[styles.coinValueTierValue, { color: colors.muted }]}>
-                              {denominationLabel}
-                            </Text>
-                          </View>
-                          {index < HEALTH_COIN_TIERS.length - 1 && (
-                            <View
-                              style={[
-                                styles.coinValueTierSeparator,
-                                { backgroundColor: colors.border },
-                              ]}
-                            />
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </View>
-
-                  <Text style={[styles.coinValueUseTitle, { color: colors.text }]}>
-                    {t("coinValueUseTitle")}
-                  </Text>
-                  <View style={[styles.coinValueUseList, { borderColor: colors.border }]}>
-                    <View style={styles.coinValueUseRow}>
-                      <View
-                        style={[
-                          styles.coinValueUseVisual,
-                          { backgroundColor: colors.primarySurface || colors.surfaceMuted },
-                        ]}
-                      >
-                        <Image
-                          source={LEVEL_SHARE_CAT}
-                          style={styles.coinValueUseMascot}
-                          resizeMode="contain"
-                          accessible={false}
-                        />
-                      </View>
-                      <View style={styles.coinValueUseCopy}>
-                        <Text style={[styles.coinValueUseRowTitle, { color: colors.text }]}>
-                          {t("coinValueCustomizeTitle")}
-                        </Text>
-                        <Text style={[styles.coinValueUseRowBody, { color: colors.muted }]}>
-                          {t("coinValueCustomizeBody")}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={[styles.coinValueUseSeparator, { backgroundColor: colors.border }]} />
-                    <View style={styles.coinValueUseRow}>
-                      <View
-                        style={[
-                          styles.coinValueUseVisual,
-                          { backgroundColor: colors.primarySurface || colors.surfaceMuted },
-                        ]}
-                      >
-                        <Image
-                          source={BLUE_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[1]?.asset}
-                          style={styles.coinValueUseCoin}
-                          resizeMode="contain"
-                          accessible={false}
-                        />
-                      </View>
-                      <View style={styles.coinValueUseCopy}>
-                        <Text style={[styles.coinValueUseRowTitle, { color: colors.text }]}>
-                          {t("coinValueRestoreTitle")}
-                        </Text>
-                        <Text style={[styles.coinValueUseRowBody, { color: colors.muted }]}>
-                          {t("coinValueRestoreBody")}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.coinValueBalanceHint}>
-                    <Image
-                      source={GREEN_HEALTH_COIN_ASSET || HEALTH_COIN_TIERS[0]?.asset}
-                      style={styles.coinValueBalanceHintCoin}
-                      resizeMode="contain"
-                      accessible={false}
-                    />
-                    <Text style={[styles.coinValueBalanceHintText, { color: colors.muted }]}>
-                      {t("coinValueBalanceHint")}
-                    </Text>
-                  </View>
-                </ScrollView>
-                <View
-                  style={[
-                    styles.coinValueFooter,
-                    {
-                      backgroundColor: colors.surfaceElevated || colors.card,
-                      borderTopColor: colors.border,
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={[styles.coinValuePrimary, { backgroundColor: colors.primary }]}
-                    onPress={dismissCoinValueModal}
-                    activeOpacity={0.9}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("coinValueCta")}
-                  >
-                    <Text
-                      style={[
-                        styles.coinValuePrimaryText,
-                        {
-                          color:
-                            colors.onPrimary || resolveForegroundForColor(colors.primary),
-                        },
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.78}
-                    >
-                      {t("coinValueCta")}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
+            onPress={dismissCoinValueModal}
+          />
         )}
         {!startupHardLockPendingBeforePaywall &&
           !automaticModalPresentationPaused &&
@@ -108853,11 +109228,11 @@ const styles = StyleSheet.create({
   feedIntroRoot: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
   },
   feedIntroBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(2,8,18,0.68)",
+    backgroundColor: "rgba(2,7,16,0.72)",
   },
   feedIntroWrap: {
     flex: 1,
@@ -108868,83 +109243,84 @@ const styles = StyleSheet.create({
   feedIntroCard: {
     width: "100%",
     maxWidth: 440,
-    maxHeight: Math.round(SCREEN_HEIGHT * 0.96),
-    borderRadius: 26,
-    borderWidth: 1,
+    borderRadius: 22,
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: Platform.OS === "android" ? 0 : 0.26,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: Platform.OS === "android" ? 0 : 14,
+    shadowOpacity: Platform.OS === "android" ? 0 : 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: Platform.OS === "android" ? 0 : 12,
   },
   feedIntroScrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingHorizontal: 20,
+    paddingTop: 22,
     paddingBottom: 16,
   },
-  feedIntroBadge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  feedIntroBadgeText: {
-    ...createCtaText({ fontSize: 11, textTransform: "uppercase" }),
-    letterSpacing: 0.4,
+  feedIntroScrollContentCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 12,
   },
   feedIntroTitle: {
-    ...createBodyText({ fontSize: 22, lineHeight: 28, fontWeight: "900" }),
+    ...createBodyText({ fontSize: 24, lineHeight: 30, fontWeight: "900" }),
+    letterSpacing: -0.25,
+  },
+  feedIntroTitleCompact: {
+    fontSize: 22,
+    lineHeight: 27,
   },
   feedIntroSubtitle: {
-    ...createBodyText({ fontSize: 14, lineHeight: 21 }),
-    marginTop: 8,
+    ...createBodyText({ fontSize: 14, lineHeight: 20 }),
+    marginTop: 6,
   },
   feedIntroVisual: {
-    marginTop: 16,
-    borderRadius: 22,
+    position: "relative",
+    marginTop: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
     overflow: "hidden",
   },
-  feedIntroFlowLabels: {
-    flexDirection: "row",
-    gap: 7,
-    marginBottom: 12,
+  feedIntroVisualCompact: {
+    marginTop: 14,
   },
-  feedIntroFlowPill: {
-    flex: 1,
-    minHeight: 30,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
+  feedIntroHeroGlow: {
+    position: "absolute",
+    width: 198,
+    height: 198,
+    borderRadius: 99,
+    right: -34,
+    top: -46,
   },
-  feedIntroFlowPillText: {
-    ...createSecondaryText({ fontSize: 10, fontWeight: "800" }),
+  feedIntroHeroGlowRtl: {
+    right: undefined,
+    left: -34,
   },
-  feedIntroScene: {
-    minHeight: 142,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  feedIntroRoute: {
+    position: "absolute",
+    left: 0,
+    top: 0,
   },
   feedIntroDecisionCard: {
-    width: "45%",
-    minHeight: 126,
-    borderRadius: 20,
+    position: "absolute",
+    left: 14,
+    bottom: 18,
+    width: 132,
+    minHeight: 112,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 10,
+    padding: 11,
     justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
+  },
+  feedIntroDecisionCardCompact: {
+    left: 12,
+    bottom: 14,
+    width: 120,
+    minHeight: 106,
+    padding: 9,
+  },
+  feedIntroDecisionCardRtl: {
+    left: undefined,
+    right: 14,
   },
   feedIntroDecisionHeader: {
     flexDirection: "row",
@@ -108954,7 +109330,14 @@ const styles = StyleSheet.create({
   feedIntroDecisionIcon: {
     width: 28,
     height: 28,
-    borderRadius: 10,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  feedIntroDecisionIconCore: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   feedIntroDecisionLines: {
     flex: 1,
@@ -108965,135 +109348,113 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   feedIntroDecisionAmount: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 25,
+    lineHeight: 29,
     fontWeight: "900",
-    textAlign: "center",
+    fontVariant: ["tabular-nums"],
   },
   feedIntroDecisionActions: {
     flexDirection: "row",
-    gap: 7,
+    gap: 6,
   },
   feedIntroDecisionButton: {
     flex: 1,
-    minHeight: 32,
-    borderRadius: 12,
+    minHeight: 34,
+    borderRadius: 10,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
   },
   feedIntroDecisionButtonText: {
-    ...createCtaText({ fontSize: 10 }),
-  },
-  feedIntroBankColumn: {
-    width: "35%",
-    alignItems: "center",
-  },
-  feedIntroBankRoof: {
-    width: 82,
-    height: 0,
-    borderLeftWidth: 42,
-    borderRightWidth: 42,
-    borderBottomWidth: 22,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-  },
-  feedIntroBankBody: {
-    width: "100%",
-    minHeight: 104,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 10,
-    justifyContent: "space-between",
-  },
-  feedIntroVisualLabel: {
-    ...createSecondaryText({ fontSize: 11, fontWeight: "800", textAlign: "center" }),
-  },
-  feedIntroBankBars: {
-    height: 56,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    gap: 7,
-  },
-  feedIntroBankBarTrack: {
-    width: 12,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
-  feedIntroBankBarFill: {
-    width: "100%",
-    borderRadius: 999,
-  },
-  feedIntroCoinStream: {
-    position: "absolute",
-    left: "43%",
-    top: 48,
-    width: 58,
-    height: 40,
+    ...createCtaText({ fontSize: 9.5 }),
   },
   feedIntroCoin: {
     position: "absolute",
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.72)",
+    left: 84,
+    width: 28,
+    height: 28,
+    resizeMode: "contain",
+    zIndex: 4,
+  },
+  feedIntroCoinRtl: {
+    left: undefined,
+    right: 84,
   },
   feedIntroJarColumn: {
-    width: "36%",
-    minHeight: 138,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  feedIntroJarHalo: {
     position: "absolute",
-    width: 104,
-    height: 104,
-    borderRadius: 999,
-  },
-  feedIntroJar: {
-    width: 94,
-    height: 104,
-    borderRadius: 24,
-    borderWidth: 2,
-    overflow: "hidden",
-    justifyContent: "flex-end",
+    right: 4,
+    top: 8,
+    width: 150,
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingBottom: 10,
   },
-  feedIntroJarFill: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
+  feedIntroJarColumnCompact: {
+    top: 6,
+    width: 134,
   },
-  feedIntroJarText: {
-    ...createSecondaryText({ fontSize: 11, fontWeight: "900", textAlign: "center" }),
+  feedIntroJarColumnRtl: {
+    right: undefined,
+    left: 4,
   },
-  feedIntroWaitingJar: {
-    marginTop: 8,
+  feedIntroGoalChip: {
+    minHeight: 26,
+    maxWidth: 136,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    zIndex: 2,
   },
-  feedIntroWaitingJarText: {
-    ...createSecondaryText({ fontSize: 10, fontWeight: "700", textAlign: "center" }),
+  feedIntroGoalChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  feedIntroGoalChipText: {
+    ...createSecondaryText({ fontSize: 10.5, lineHeight: 14, fontWeight: "800" }),
+    flexShrink: 1,
+  },
+  feedIntroBudgetChip: {
+    minHeight: 25,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    marginTop: -7,
+    zIndex: 2,
+  },
+  feedIntroBudgetChipMark: {
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    borderWidth: 1.5,
+  },
+  feedIntroBudgetChipText: {
+    ...createSecondaryText({ fontSize: 10.5, lineHeight: 14, fontWeight: "700" }),
   },
   feedIntroStepList: {
-    marginTop: 14,
-    gap: 10,
+    marginTop: 16,
+  },
+  feedIntroStepListCompact: {
+    marginTop: 12,
   },
   feedIntroStepRow: {
     flexDirection: "row",
     gap: 10,
-    alignItems: "flex-start",
+    alignItems: "stretch",
+  },
+  feedIntroRowRtl: {
+    flexDirection: "row-reverse",
+  },
+  feedIntroStepRail: {
+    width: 28,
+    alignItems: "center",
   },
   feedIntroStepMark: {
     width: 26,
@@ -109105,27 +109466,52 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   feedIntroStepDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  feedIntroStepConnector: {
+    width: 1,
+    flex: 1,
+    minHeight: 8,
+    marginTop: 4,
   },
   feedIntroStepCopy: {
     flex: 1,
+    paddingBottom: 9,
   },
   feedIntroStepTitle: {
-    ...createBodyText({ fontSize: 14, lineHeight: 18, fontWeight: "800" }),
+    ...createBodyText({ fontSize: 13.5, lineHeight: 18, fontWeight: "800" }),
   },
   feedIntroStepBody: {
-    ...createBodyText({ fontSize: 13, lineHeight: 18 }),
+    ...createBodyText({ fontSize: 12.5, lineHeight: 18 }),
     marginTop: 2,
   },
+  feedIntroTextRtl: {
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  feedIntroFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 16,
+  },
+  feedIntroFooterCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 9,
+    paddingBottom: 12,
+  },
   feedIntroButton: {
-    marginTop: 16,
-    borderRadius: 15,
-    minHeight: 46,
+    borderRadius: 12,
+    minHeight: 50,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
+    shadowOpacity: Platform.OS === "android" ? 0 : 0.13,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: Platform.OS === "android" ? 0 : 5,
   },
   feedIntroButtonText: {
     ...createCtaText({ fontSize: 15 }),
@@ -112998,217 +113384,179 @@ const styles = StyleSheet.create({
   },
   coinValueCard: {
     width: "100%",
-    maxWidth: 520,
+    maxWidth: 460,
     borderRadius: UI_RADIUS.sheet,
-    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
-    shadowOpacity: Platform.OS === "ios" ? 0.2 : 0.26,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOpacity: Platform.OS === "ios" ? 0.18 : 0.24,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  coinValueCardCompact: {
+    borderRadius: UI_RADIUS.card,
   },
   coinValueScroll: {
     width: "100%",
+    flexShrink: 1,
   },
   coinValueContent: {
-    padding: UI_SPACING.md,
+    paddingHorizontal: UI_SPACING.lg,
+    paddingTop: UI_SPACING.lg,
+    paddingBottom: UI_SPACING.md,
+    gap: UI_SPACING.lg,
+  },
+  coinValueContentCompact: {
+    paddingHorizontal: UI_SPACING.md,
+    paddingTop: UI_SPACING.md,
     gap: UI_SPACING.md,
   },
-  coinValueHero: {
-    minHeight: 142,
+  coinValueHeroStage: {
+    height: 168,
     borderRadius: UI_RADIUS.card,
-    padding: UI_SPACING.md,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: UI_SPACING.md,
+    overflow: "hidden",
   },
-  coinValueHeroCoinWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: UI_RADIUS.card,
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-    shadowColor: "#178A50",
-    shadowOpacity: 0.18,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 12,
-    elevation: 5,
+  coinValueHeroStageCompact: {
+    height: 132,
   },
-  coinValueHeroCoin: {
-    width: 68,
-    height: 68,
+  coinValueHeroHalo: {
+    position: "absolute",
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    borderWidth: StyleSheet.hairlineWidth,
+    top: -104,
+    right: -30,
   },
-  coinValueHeroCopy: {
-    flex: 1,
-    minWidth: 180,
+  coinValueHeroMascot: {
+    position: "absolute",
+    left: -8,
+    bottom: -22,
+    width: 152,
+    height: 152,
+  },
+  coinValueHeroMascotCompact: {
+    bottom: -20,
+    width: 124,
+    height: 124,
+  },
+  coinValueCoinArc: {
+    position: "absolute",
+    top: 12,
+    right: 10,
+    width: "66%",
+    height: 138,
+  },
+  coinValueCoinArcCompact: {
+    top: 7,
+    right: 6,
+    height: 108,
+  },
+  coinValueArcCoin: {
+    position: "absolute",
+  },
+  coinValueIntroCopy: {
     gap: UI_SPACING.xs,
   },
   coinValueTitle: {
-    fontSize: 24,
-    lineHeight: 29,
+    fontSize: 26,
+    lineHeight: 31,
     fontWeight: "800",
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     textAlign: "auto",
   },
   coinValueBody: {
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: "auto",
-  },
-  coinValueEarnBlock: {
-    minHeight: 76,
-    borderRadius: UI_RADIUS.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: UI_SPACING.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: UI_SPACING.sm,
-  },
-  coinValueEarnCoin: {
-    width: 44,
-    height: 44,
-    flexShrink: 0,
-  },
-  coinValueEarnCopy: {
     flex: 1,
-    gap: UI_SPACING.xxs,
-  },
-  coinValueEarnTitle: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "700",
-    textAlign: "auto",
-  },
-  coinValueEarnBody: {
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "auto",
-  },
-  coinValueColorsBody: {
-    marginTop: -UI_SPACING.sm,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "auto",
-  },
-  coinValueTierList: {
-    borderRadius: UI_RADIUS.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
-  },
-  coinValueTierRow: {
-    minHeight: 54,
-    paddingHorizontal: UI_SPACING.sm,
-    paddingVertical: UI_SPACING.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: UI_SPACING.sm,
-  },
-  coinValueTierCoin: {
-    width: 36,
-    height: 36,
-    flexShrink: 0,
-  },
-  coinValueTierName: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: "700",
-    textAlign: "auto",
-  },
-  coinValueTierValue: {
-    flexShrink: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-    textAlign: "auto",
-  },
-  coinValueTierSeparator: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: UI_SPACING.sm,
-  },
-  coinValueUseTitle: {
-    marginTop: UI_SPACING.xs,
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
-    textAlign: "auto",
-  },
-  coinValueUseList: {
-    borderRadius: UI_RADIUS.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
-  },
-  coinValueUseRow: {
-    minHeight: 86,
-    padding: UI_SPACING.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: UI_SPACING.sm,
-  },
-  coinValueUseVisual: {
-    width: 56,
-    height: 56,
-    borderRadius: UI_RADIUS.control,
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-    overflow: "hidden",
-  },
-  coinValueUseMascot: {
-    width: 50,
-    height: 50,
-  },
-  coinValueUseCoin: {
-    width: 40,
-    height: 40,
-  },
-  coinValueUseCopy: {
-    flex: 1,
-    gap: UI_SPACING.xxs,
-  },
-  coinValueUseRowTitle: {
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: "700",
     textAlign: "auto",
   },
-  coinValueUseRowBody: {
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "auto",
-  },
-  coinValueUseSeparator: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: UI_SPACING.sm,
-  },
-  coinValueBalanceHint: {
-    minHeight: UI_TOUCH_TARGET.current,
+  coinValueBodyRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: UI_SPACING.xs,
-    paddingHorizontal: UI_SPACING.xs,
   },
-  coinValueBalanceHintCoin: {
-    width: 24,
-    height: 24,
+  coinValueBodyCoin: {
+    width: 30,
+    height: 30,
     flexShrink: 0,
   },
-  coinValueBalanceHintText: {
-    flex: 1,
+  coinValueSection: {
+    gap: UI_SPACING.xxs,
+  },
+  coinValueSectionTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
+    textAlign: "auto",
+  },
+  coinValueSectionBody: {
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: "600",
+    textAlign: "auto",
+  },
+  coinValueTierRail: {
+    minHeight: 68,
+    marginTop: UI_SPACING.xs,
+    borderRadius: UI_RADIUS.control,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.xs,
+  },
+  coinValueTierItem: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    gap: 2,
+  },
+  coinValueTierCoin: {
+    width: 34,
+    height: 34,
+  },
+  coinValueTierValue: {
+    width: "100%",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+  },
+  coinValueUseRow: {
+    flexDirection: "row",
+    gap: UI_SPACING.sm,
+  },
+  coinValueUseItem: {
+    flex: 1,
+    minHeight: 74,
+    borderRadius: UI_RADIUS.control,
+    alignItems: "center",
+    flexDirection: "row",
+    paddingHorizontal: UI_SPACING.sm,
+    paddingVertical: UI_SPACING.xs,
+    gap: UI_SPACING.xs,
+  },
+  coinValueUseMascot: {
+    width: 42,
+    height: 42,
+    flexShrink: 0,
+  },
+  coinValueUseCoin: {
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+  },
+  coinValueUseItemText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "700",
     textAlign: "auto",
   },
   coinValueFooter: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: UI_SPACING.md,
-    paddingTop: UI_SPACING.sm,
-    paddingBottom: UI_SPACING.md,
+    paddingHorizontal: UI_SPACING.lg,
+    paddingTop: 0,
+    paddingBottom: UI_SPACING.lg,
   },
   coinValuePrimary: {
     minHeight: UI_TOUCH_TARGET.current,

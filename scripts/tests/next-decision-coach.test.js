@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   NEXT_DECISION_COACH_STATUS,
@@ -9,6 +11,16 @@ const {
   serializeNextDecisionCoachState,
   shouldQueueNextDecisionCoach,
 } = require("../../src/engagement/nextDecisionCoach");
+
+const appSource = fs.readFileSync(path.resolve(__dirname, "../../App.js"), "utf8");
+
+const getSourceSection = (start, end) => {
+  const startIndex = appSource.indexOf(start);
+  const endIndex = appSource.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, `missing source section start: ${start}`);
+  assert.notEqual(endIndex, -1, `missing source section end: ${end}`);
+  return appSource.slice(startIndex, endIndex);
+};
 
 test("a new user's first resolved temptation queues the next-decision coach", () => {
   assert.equal(
@@ -90,6 +102,25 @@ test("coach scrolling targets the virtualized feed index instead of a cell-local
   });
   assert.equal(Object.hasOwn(request, "offset"), false);
   assert.equal(buildNextDecisionCoachScrollRequest({ index: -1 }), null);
+});
+
+test("the next-decision coach performs one smooth scroll after the target is available", () => {
+  const presentationEffect = getSourceSection(
+    "if (!nextDecisionCoachRequest) return undefined;",
+    "const resolveAssignedGoalLabel = useCallback("
+  );
+  const failedIndexFallback = getSourceSection(
+    "const handleFeedScrollToIndexFailed = useCallback((info) => {",
+    "const handleHeroLayout = useCallback("
+  );
+
+  assert.match(
+    presentationEffect,
+    /if \(firstAttempt\) \{\s*completeSuccessfulScroll\(\);\s*return;\s*\}/
+  );
+  assert.doesNotMatch(presentationEffect, /settleOnTarget|settleTimer/);
+  assert.equal((failedIndexFallback.match(/scrollToOffset\(\{/g) || []).length, 1);
+  assert.doesNotMatch(failedIndexFallback, /scrollToIndex/);
 });
 
 test("a visible coach restores as pending until the user acts or dismisses it", () => {

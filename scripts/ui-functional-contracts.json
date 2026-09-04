@@ -61,6 +61,20 @@
       ]
     },
     {
+      "id": "feed-savings-intro-actions",
+      "description": "The post-onboarding savings explainer remains a one-time modal with CTA, backdrop, and platform Back dismissal paths, persists its shown state, and records every dismissal source.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal(",
+        "onRequestClose={() => handleClose(\"system_back\")}",
+        "onPress={() => handleClose(\"backdrop\")}",
+        "onPress={() => handleClose(\"cta\")}",
+        "onClose?.(source);",
+        "AsyncStorage.setItem(STORAGE_KEYS.FEED_INTRO_SHOWN, \"1\")",
+        "logEvent(\"screen_intro_closed\", { screen: \"feed\", source });"
+      ]
+    },
+    {
       "id": "feed-new-temptation-action",
       "description": "The regular Feed add button stays rendered beside the scrollable category rail and outside the optional coach-mark condition.",
       "file": "App.js",
@@ -141,7 +155,7 @@
     },
     {
       "id": "onboarding-analytics-consent-actions",
-      "description": "First-run analytics consent offers equally reachable accept and decline actions, persists either choice, and continues onboarding.",
+      "description": "First-run analytics consent offers equally reachable accept and decline actions, persists either choice, continues onboarding before SDK synchronization, and prevents duplicate rapid submissions.",
       "file": "App.js",
       "requiredFragments": [
         "goToOnboardingStep(\"analyticsConsent\");",
@@ -149,8 +163,13 @@
         "<AnalyticsConsentScreen",
         "onAgree={() => handleAnalyticsConsentChoice(true)}",
         "onSkip={() => handleAnalyticsConsentChoice(false)}",
+        "if (analyticsConsentPressLockRef.current) return;",
         "setAnalyticsOptOutState(!nextEnabled);",
-        "goToOnboardingStep(\"persona\");"
+        "goToOnboardingStep(\"persona\");",
+        "const analyticsSyncTask = setAnalyticsOptOutFlag(!nextEnabled).catch((error) => {"
+      ],
+      "requiredPatterns": [
+        "const handleAnalyticsConsentChoice = \\(enabled\\) => \\{(?:(?!await)[\\s\\S])*?goToOnboardingStep\\(\\\"persona\\\"\\);"
       ]
     },
     {
@@ -1602,7 +1621,7 @@
     },
     {
       "id": "rating-prompt-actions",
-      "description": "The localized, app-owned rating prompt becomes eligible after the second successful save or spend in any order, or after the first claimed temptation-series reward, waits until blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "description": "The localized, app-owned rating prompt becomes eligible after the second successful save or spend in any order, or after the first claimed temptation-series reward, appears at most once per app session after blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
       "file": "App.js",
       "requiredFragments": [
         "applyRatingPromptDecisionAction(ratingPromptStateRef.current",
@@ -1612,6 +1631,10 @@
         "applyRatingPromptSeriesCompletion(ratingPromptStateRef.current",
         "queueRatingPrompt(\"series\")",
         "recordRatingPromptSeriesCompletion();",
+        "const ratingPromptShownThisSessionRef = useRef(false);",
+        "if (ratingPromptVisible || ratingPromptShownThisSessionRef.current) return;",
+        "ratingPromptShownThisSessionRef.current = true;",
+        "if (ratingPromptShownThisSessionRef.current) return;",
         "if (canShowRatingPromptNowRef.current()) {",
         "ratingPromptCheckTimerRef.current = setTimeout(checkAndShow, 250);",
         "canTriggerStoreReviewNowRef.current = () => {",
@@ -2395,7 +2418,13 @@
         "onSkip={onSkip}",
         "onToggle?.(goal.id);",
         "onGoalTargetChange?.(entry.id, value)",
-        "inputRefs.current?.[entry.id]?.focus?.()",
+        "onActivate={() => focusTarget(entry.id)}",
+        "target.measureInWindow((_targetX, targetY, _targetWidth, targetHeight) => {",
+        "const innerView = scroll?.getInnerViewRef?.();",
+        "target.measureLayout(",
+        "contentY + contentHeight + keyboardClearance - visibleBottom;",
+        "keyboardInset={androidKeyboardScrollTail}",
+        "rowRef={(node) => {",
         "setKeyboardVisible(true);",
         "automaticallyAdjustKeyboardInsets={keyboardAware && Platform.OS === \"ios\"}",
         "onPress={onCustomGoalCreate}",

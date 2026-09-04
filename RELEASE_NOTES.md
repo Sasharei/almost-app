@@ -1,5 +1,49 @@
 # Release Notes
 
+## 7.2.0 (from 7.1.1)
+
+### EN
+- Almost now starts with a completely redesigned setup that adapts to your biggest temptations and savings goals. We also refined everyday interactions, improved responsiveness, and fixed bugs for a smoother, more reliable experience.
+
+### RU
+- В Almost появился полностью обновлённый стартовый сценарий, который учитывает ваши главные искушения и цели накоплений. Мы также улучшили повседневные взаимодействия, ускорили отклик и исправили ошибки, чтобы приложение работало плавнее и стабильнее.
+
+### ES (ES)
+- Almost estrena una experiencia inicial completamente renovada que se adapta a tus principales tentaciones y metas de ahorro. También hemos pulido las interacciones cotidianas, mejorado la respuesta y corregido errores para ofrecer una experiencia más fluida y fiable.
+
+### ES (MX)
+- Almost estrena una experiencia inicial totalmente renovada que se adapta a tus principales tentaciones y metas de ahorro. También refinamos las interacciones cotidianas, mejoramos la respuesta y corregimos errores para ofrecer una experiencia más fluida y confiable.
+
+### FR
+- Almost propose désormais un démarrage entièrement repensé, adapté à vos principales tentations et à vos objectifs d’épargne. Nous avons aussi peaufiné les interactions du quotidien, amélioré la réactivité et corrigé des bugs pour une expérience plus fluide et fiable.
+
+### DE
+- Almost bietet jetzt einen vollständig neu gestalteten Einstieg, der sich an Ihre größten Versuchungen und Sparziele anpasst. Außerdem haben wir alltägliche Abläufe verfeinert, die Reaktionsgeschwindigkeit verbessert und Fehler behoben – für ein flüssigeres und zuverlässigeres Erlebnis.
+
+### PT (PT)
+- O Almost tem agora uma experiência inicial totalmente renovada, adaptada às suas principais tentações e objetivos de poupança. Também aperfeiçoámos as interações do dia a dia, melhorámos a rapidez e corrigimos erros para uma experiência mais fluida e fiável.
+
+### PT (BR)
+- O Almost agora tem uma experiência inicial totalmente renovada, adaptada às suas principais tentações e metas de economia. Também refinamos as interações do dia a dia, melhoramos a resposta e corrigimos bugs para uma experiência mais fluida e confiável.
+
+### IT
+- Almost ora offre un’esperienza iniziale completamente rinnovata, adattata alle tue principali tentazioni e ai tuoi obiettivi di risparmio. Abbiamo anche perfezionato le interazioni quotidiane, migliorato la reattività e corretto bug per un’esperienza più fluida e affidabile.
+
+### AR
+- يقدّم Almost الآن تجربة بدء جديدة بالكامل تتكيف مع أكبر إغراءاتك وأهداف الادخار لديك. كما حسّنا التفاعلات اليومية وسرعة الاستجابة، وأصلحنا الأخطاء لتجربة أكثر سلاسة وموثوقية.
+
+### ZH (Simplified)
+- Almost 现在带来全新设计的起始体验，会根据你最大的消费诱惑和储蓄目标进行个性化设置。我们还优化了日常交互和响应速度，并修复问题，带来更流畅、更可靠的使用体验。
+
+### ZH (Traditional)
+- Almost 現在提供全新設計的起始體驗，會依照你最大的消費誘惑與儲蓄目標進行個人化設定。我們也優化了日常互動與回應速度，並修正錯誤，帶來更流暢、可靠的使用體驗。
+
+### KO
+- Almost에 가장 큰 소비 유혹과 저축 목표에 맞춰 설정되는 완전히 새로운 시작 경험이 추가되었습니다. 일상적인 상호작용과 반응 속도도 개선하고 버그를 수정해 더 부드럽고 안정적으로 사용할 수 있습니다.
+
+### JA
+- Almostの初期設定を全面的に刷新し、主な誘惑や貯蓄目標に合わせて自分らしく始められるようになりました。日々の操作と応答性も改善し、不具合を修正して、よりスムーズで安定した体験をお届けします。
+
 ## 7.1.1 (from 7.1.0)
 
 ### EN

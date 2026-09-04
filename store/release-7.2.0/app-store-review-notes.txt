@@ -1,0 +1,9 @@
+Hello App Review Team,
+
+Almost does not require an account or sign-in. Users can optionally enter a name locally for personalization; no account is created.
+
+The app offers optional auto-renewable subscriptions. Restore Purchases is available from the purchase and settings flows. Almost does not display banner, interstitial, rewarded, or native ads. Analytics and attribution SDKs are used only for product performance and campaign attribution, not to display ads inside the app.
+
+Version 7.2.0 introduces a redesigned onboarding experience and general stability, responsiveness, and usability improvements.
+
+Thank you.

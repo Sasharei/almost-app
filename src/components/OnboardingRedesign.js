@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import {
   Animated,
+  Dimensions,
   Easing,
   Image,
   Keyboard,
@@ -59,6 +60,11 @@ const FONT = Object.freeze({
   bold: Platform.OS === "ios" ? "Inter_700Bold" : undefined,
   extraBold: Platform.OS === "ios" ? "Inter_800ExtraBold" : undefined,
 });
+
+const resolveAndroidGoalKeyboardClearance = (viewportHeight) =>
+  Math.min(132, Math.max(96, Math.round((Number(viewportHeight) || 0) * 0.14)));
+
+const ANDROID_GOAL_KEYBOARD_TAIL = 80;
 
 const HERO_LANGUAGE = require("../../assets/onboarding/hero-language.webp");
 const HERO_PRIVACY = require("../../assets/onboarding/hero-privacy.webp");
@@ -407,9 +413,19 @@ function ActionDock({ language, primaryLabel, onPrimary, secondaryLabel, onSecon
 }
 
 const ScreenScroll = forwardRef(function ScreenScroll(
-  { children, compact, doubleDock = false, onScroll, contentStyle, keyboardAware = false },
+  {
+    children,
+    compact,
+    doubleDock = false,
+    onScroll,
+    onContentSizeChange,
+    contentStyle,
+    keyboardAware = false,
+    keyboardInset = 0,
+  },
   ref
 ) {
+  const baseBottomPadding = doubleDock ? 164 : 102;
   return (
     <ScrollView
       ref={ref}
@@ -417,7 +433,7 @@ const ScreenScroll = forwardRef(function ScreenScroll(
       contentContainerStyle={[
         styles.screenContent,
         compact && styles.screenContentCompact,
-        { paddingBottom: doubleDock ? 164 : 102 },
+        { paddingBottom: baseBottomPadding + Math.max(0, Number(keyboardInset) || 0) },
         contentStyle,
       ]}
       showsVerticalScrollIndicator={false}
@@ -425,6 +441,7 @@ const ScreenScroll = forwardRef(function ScreenScroll(
       keyboardShouldPersistTaps={keyboardAware ? "always" : "handled"}
       keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       onScroll={onScroll}
+      onContentSizeChange={onContentSizeChange}
       scrollEventThrottle={16}
       bounces={false}
       overScrollMode="never"
@@ -1072,11 +1089,16 @@ function GoalAmountRow({
   inputRef,
   isFirst,
   onActivate,
+  onFocus,
+  rowRef,
 }) {
   const copy = useRedesignCopy(language);
   const rtl = isRtlLanguage(language);
   return (
-    <View style={[styles.goalAmountRow, !isFirst && styles.goalAmountRowBorder, rtl && styles.rowReverse]}>
+    <View
+      ref={rowRef}
+      style={[styles.goalAmountRow, !isFirst && styles.goalAmountRowBorder, rtl && styles.rowReverse]}
+    >
       <View style={styles.goalAmountCopy}>
         <AutoFitText style={[styles.goalAmountTitle, rtl && styles.textRight]} minimumFontScale={0.62}>
           {title}
@@ -1104,6 +1126,7 @@ function GoalAmountRow({
           keyboardType="decimal-pad"
           returnKeyType="done"
           onSubmitEditing={Keyboard.dismiss}
+          onFocus={onFocus}
           selectTextOnFocus
           accessibilityLabel={`${copy("goal.target")}: ${title}`}
           maxFontSizeMultiplier={1.15}
@@ -1134,9 +1157,18 @@ export function GoalScreen({
   const copy = useRedesignCopy(language);
   const scrollRef = useRef(null);
   const inputRefs = useRef({});
+  const amountRowRefs = useRef({});
   const amountPanelY = useRef(0);
   const shouldScrollToAmounts = useRef(false);
+  const focusedGoalId = useRef(null);
+  const keyboardVisibleRef = useRef(false);
+  const androidRevealFrameRef = useRef(null);
+  const viewportHeightRef = useRef(height);
+  const viewportWidthRef = useRef(width);
+  const androidKeyboardTopRef = useRef(height);
+  const androidKeyboardInsetRef = useRef(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [androidKeyboardInset, setAndroidKeyboardInset] = useState(0);
   const selectedSet = useMemo(() => new Set(selectedGoals || []), [selectedGoals]);
   const contentWidth = Math.min(Math.max(320, width) - 36, 560);
   const cardWidth = Math.floor((contentWidth - 9) / 2);
@@ -1163,28 +1195,183 @@ export function GoalScreen({
       scrollRef.current?.scrollTo({ y: Math.max(0, amountPanelY.current - 14), animated: true });
     });
   }, []);
+  const revealAndroidTarget = useCallback((goalId) => {
+    if (Platform.OS !== "android" || !goalId) return;
+    const input = inputRefs.current?.[goalId];
+    const target = amountRowRefs.current?.[goalId] || input;
+    const scroll = scrollRef.current;
+    const innerView = scroll?.getInnerViewRef?.();
+    const keyboardClearance = resolveAndroidGoalKeyboardClearance(viewportHeightRef.current);
+    const fallbackReveal = () => {
+      if (!target || !scroll || focusedGoalId.current !== goalId) return;
+      scroll?.scrollResponderScrollNativeHandleToKeyboard?.(
+        target,
+        keyboardClearance,
+        true
+      );
+    };
+    if (!target || !scroll) return;
+    if (
+      !innerView ||
+      typeof target.measureInWindow !== "function" ||
+      typeof target.measureLayout !== "function" ||
+      typeof scroll.measureInWindow !== "function"
+    ) {
+      fallbackReveal();
+      return;
+    }
+    target.measureInWindow((_targetX, targetY, _targetWidth, targetHeight) => {
+      const overlap =
+        targetY + targetHeight + keyboardClearance - androidKeyboardTopRef.current;
+      if (!Number.isFinite(overlap) || overlap <= 1) return;
+      scroll.measureInWindow((_scrollX, scrollY) => {
+        target.measureLayout(
+          innerView,
+          (_contentX, contentY, _contentWidth, contentHeight) => {
+            if (focusedGoalId.current !== goalId) return;
+            const visibleBottom = androidKeyboardTopRef.current - scrollY;
+            const targetScrollY =
+              contentY + contentHeight + keyboardClearance - visibleBottom;
+            if (!Number.isFinite(targetScrollY)) return;
+            scroll.scrollTo({ y: Math.max(0, targetScrollY), animated: true });
+          },
+          fallbackReveal
+        );
+      });
+    });
+  }, []);
+  const scheduleAndroidTargetReveal = useCallback(
+    (goalId) => {
+      if (Platform.OS !== "android" || !goalId) return;
+      if (androidRevealFrameRef.current !== null) {
+        cancelAnimationFrame(androidRevealFrameRef.current);
+      }
+      androidRevealFrameRef.current = requestAnimationFrame(() => {
+        androidRevealFrameRef.current = requestAnimationFrame(() => {
+          androidRevealFrameRef.current = null;
+          revealAndroidTarget(goalId);
+        });
+      });
+    },
+    [revealAndroidTarget]
+  );
   const focusTarget = useCallback((goalId) => {
     if (!goalId) return;
+    focusedGoalId.current = goalId;
     requestAnimationFrame(() => inputRefs.current?.[goalId]?.focus?.());
   }, []);
+  const handleGoalAmountFocus = useCallback(
+    (goalId) => {
+      focusedGoalId.current = goalId;
+      if (Platform.OS === "android" && keyboardVisibleRef.current) {
+        scheduleAndroidTargetReveal(goalId);
+      }
+    },
+    [scheduleAndroidTargetReveal]
+  );
+  const handleGoalContentSizeChange = useCallback(() => {
+    if (Platform.OS !== "android" || !keyboardVisibleRef.current) return;
+    scheduleAndroidTargetReveal(focusedGoalId.current);
+  }, [scheduleAndroidTargetReveal]);
   useEffect(() => {
     onRegisterGoalTargetFocus?.(focusTarget);
     return () => onRegisterGoalTargetFocus?.(null);
   }, [focusTarget, onRegisterGoalTargetFocus]);
   useEffect(() => {
+    if (!keyboardVisibleRef.current) {
+      const orientationChanged = Math.abs(viewportWidthRef.current - width) > 40;
+      viewportWidthRef.current = width;
+      viewportHeightRef.current = orientationChanged
+        ? height
+        : Math.max(viewportHeightRef.current, height);
+      androidKeyboardTopRef.current = viewportHeightRef.current;
+      return;
+    }
+    if (Platform.OS !== "android") return;
+    const baselineHeight = viewportHeightRef.current;
+    if (!Number.isFinite(height) || height <= 0 || height >= baselineHeight - 40) return;
+    const resizedWindowTop = Math.max(0, height);
+    androidKeyboardTopRef.current = Math.min(
+      androidKeyboardTopRef.current,
+      resizedWindowTop
+    );
+    const requiredInset = Math.max(
+      androidKeyboardInsetRef.current,
+      baselineHeight - androidKeyboardTopRef.current
+    );
+    const insetChanged = Math.abs(requiredInset - androidKeyboardInsetRef.current) > 1;
+    androidKeyboardInsetRef.current = requiredInset;
+    if (insetChanged) {
+      setAndroidKeyboardInset(requiredInset);
+    }
+    scheduleAndroidTargetReveal(focusedGoalId.current);
+  }, [height, scheduleAndroidTargetReveal, width]);
+  useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, () => {
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      keyboardVisibleRef.current = true;
       setKeyboardVisible(true);
+      if (Platform.OS === "android") {
+        const baselineHeight = viewportHeightRef.current;
+        const keyboardMetrics = Keyboard.metrics?.();
+        const previousInset = androidKeyboardInsetRef.current;
+        const reportedHeight = Math.max(
+          0,
+          Number(event?.endCoordinates?.height) || 0,
+          Number(keyboardMetrics?.height) || 0
+        );
+        const fallbackHeight = Math.min(
+          360,
+          Math.max(240, Math.round(baselineHeight * 0.38))
+        );
+        const minimumPlausibleHeight = Math.max(180, Math.round(baselineHeight * 0.22));
+        const resolvedHeight =
+          reportedHeight >= minimumPlausibleHeight
+            ? Math.min(reportedHeight, Math.round(baselineHeight * 0.72))
+            : fallbackHeight;
+        const currentWindowHeight = Number(Dimensions.get("window")?.height) || baselineHeight;
+        const keyboardTopCandidates = [
+          Number(event?.endCoordinates?.screenY),
+          Number(keyboardMetrics?.screenY),
+          baselineHeight - resolvedHeight,
+        ].filter((value) => Number.isFinite(value) && value > 0 && value <= baselineHeight);
+        if (currentWindowHeight < baselineHeight - 40) {
+          keyboardTopCandidates.push(currentWindowHeight);
+        }
+        const keyboardTop = keyboardTopCandidates.length
+          ? Math.max(0, Math.min(...keyboardTopCandidates))
+          : Math.max(0, baselineHeight - resolvedHeight);
+        const requiredInset = Math.max(resolvedHeight, baselineHeight - keyboardTop);
+        androidKeyboardTopRef.current = keyboardTop;
+        androidKeyboardInsetRef.current = requiredInset;
+        if (Math.abs(requiredInset - previousInset) > 1) {
+          setAndroidKeyboardInset(requiredInset);
+        }
+        scheduleAndroidTargetReveal(focusedGoalId.current);
+      }
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      keyboardVisibleRef.current = false;
+      focusedGoalId.current = null;
+      androidKeyboardTopRef.current = viewportHeightRef.current;
+      androidKeyboardInsetRef.current = 0;
+      if (androidRevealFrameRef.current !== null) {
+        cancelAnimationFrame(androidRevealFrameRef.current);
+        androidRevealFrameRef.current = null;
+      }
       setKeyboardVisible(false);
+      setAndroidKeyboardInset(0);
     });
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
+      if (androidRevealFrameRef.current !== null) {
+        cancelAnimationFrame(androidRevealFrameRef.current);
+        androidRevealFrameRef.current = null;
+      }
     };
-  }, []);
+  }, [scheduleAndroidTargetReveal]);
   const handleGoalPress = useCallback(
     (goal) => {
       const wasSelected = selectedSet.has(goal.id);
@@ -1199,6 +1386,11 @@ export function GoalScreen({
     [goalTargets, onGoalTargetChange, onToggle, selectedSet]
   );
   const selected = selectedEntries.length > 0;
+  const androidKeyboardScrollTail = androidKeyboardInset
+    ? androidKeyboardInset +
+      resolveAndroidGoalKeyboardClearance(viewportHeightRef.current) +
+      ANDROID_GOAL_KEYBOARD_TAIL
+    : 0;
   return (
     <ScreenFrame
       step={4}
@@ -1215,6 +1407,8 @@ export function GoalScreen({
             compact={compact}
             contentStyle={compact ? styles.goalCompactContent : null}
             keyboardAware
+            keyboardInset={androidKeyboardScrollTail}
+            onContentSizeChange={handleGoalContentSizeChange}
           >
             <HeroArt source={HERO_GOALS} variant="goals" compact={compact} />
             <ScreenCopy
@@ -1275,7 +1469,12 @@ export function GoalScreen({
                       if (node) inputRefs.current[entry.id] = node;
                       else delete inputRefs.current[entry.id];
                     }}
-                    onActivate={() => inputRefs.current?.[entry.id]?.focus?.()}
+                    rowRef={(node) => {
+                      if (node) amountRowRefs.current[entry.id] = node;
+                      else delete amountRowRefs.current[entry.id];
+                    }}
+                    onActivate={() => focusTarget(entry.id)}
+                    onFocus={() => handleGoalAmountFocus(entry.id)}
                     isFirst={index === 0}
                   />
                 ))}
