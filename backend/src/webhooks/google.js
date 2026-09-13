@@ -1,4 +1,4 @@
-import { getSeenTransaction } from "../store/entitlementsStore.js";
+import { getSeenTransaction, getEntitlementByUser } from "../store/entitlementsStore.js";
 import { validateGooglePurchase } from "../validators/google.js";
 
 const normalizeString = (value, maxLength = 500) => {
@@ -22,14 +22,10 @@ const decodeBase64Json = (value = "") => {
   }
 };
 
-const resolveMappedUserId = ({ validation, appUserIdHint, transactionId, purchaseToken }) => {
-  const validationCandidate = normalizeString(validation?.originalTransactionId, 200);
-  if (validationCandidate) return validationCandidate;
-  const txSeen = normalizeString(transactionId, 500) ? getSeenTransaction(transactionId) : null;
-  if (txSeen?.appUserId) return txSeen.appUserId;
-  const tokenSeen = normalizeString(purchaseToken, 500) ? getSeenTransaction(purchaseToken) : null;
-  if (tokenSeen?.appUserId) return tokenSeen.appUserId;
-  return normalizeString(appUserIdHint, 200);
+const resolveMappedUserId = ({ transactionId, purchaseToken }) => {
+  const transaction = transactionId ? getSeenTransaction(transactionId) : null;
+  const token = purchaseToken ? getSeenTransaction(purchaseToken) : null;
+  return transaction?.appUserId || token?.appUserId || null;
 };
 
 const parseEnvelopePayload = (payload = {}) => {
@@ -45,7 +41,7 @@ const parseEnvelopePayload = (payload = {}) => {
   return null;
 };
 
-export const parseGoogleRtdnMessage = async ({ payload, appUserIdHint = null }) => {
+export const parseGoogleRtdnMessage = async ({ payload }) => {
   const decoded = parseEnvelopePayload(payload || {});
   if (!decoded) {
     return {
@@ -79,9 +75,11 @@ export const parseGoogleRtdnMessage = async ({ payload, appUserIdHint = null }) 
     normalizeString(oneTime?.purchaseToken, 500) ||
     normalizeString(voided?.purchaseToken, 500) ||
     null;
+  const rememberedOwner = getSeenTransaction(purchaseToken)?.appUserId;
   const productId =
     normalizeString(subscription?.subscriptionId, 200) ||
     normalizeString(oneTime?.sku, 200) ||
+    getEntitlementByUser(rememberedOwner)?.productId ||
     null;
   const eventType = subscription
     ? `subscription_${subscription.notificationType ?? "unknown"}`
@@ -104,7 +102,7 @@ export const parseGoogleRtdnMessage = async ({ payload, appUserIdHint = null }) 
     productId,
   });
 
-  if (!validation.ok && !voided) {
+  if (!validation.ok || !validation.trusted) {
     return {
       ok: false,
       reason: validation.reason || "google_validation_failed",
@@ -118,8 +116,6 @@ export const parseGoogleRtdnMessage = async ({ payload, appUserIdHint = null }) 
     normalizeString(voided?.orderId, 500) ||
     purchaseToken;
   const appUserId = resolveMappedUserId({
-    validation,
-    appUserIdHint,
     transactionId,
     purchaseToken,
   });
@@ -134,7 +130,7 @@ export const parseGoogleRtdnMessage = async ({ payload, appUserIdHint = null }) 
     purchaseToken,
     originalTransactionId: normalizeString(validation?.originalTransactionId, 500) || null,
     expiresDate: normalizeString(validation?.expiresDate, 120) || null,
-    isActive: voided ? false : !!validation?.isActive,
+    isActive: !!validation?.isActive,
     eventType,
     raw: {
       rtdn: decoded,

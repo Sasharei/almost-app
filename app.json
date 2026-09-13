@@ -142,7 +142,13 @@
       ],
       "expo-localization",
       "@sentry/react-native",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

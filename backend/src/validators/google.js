@@ -43,14 +43,15 @@ const parseSubscriptionResult = (data = {}, fallbackToken = "") => {
     ? new Date(latestLineItem.expiryTime).toISOString()
     : null;
   const subscriptionState = data?.subscriptionState || "";
-  const isActive = subscriptionState === "SUBSCRIPTION_STATE_ACTIVE";
+  const isActive = ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"].includes(subscriptionState) && !!expiryTime && Date.parse(expiryTime) > Date.now();
   return {
     ok: true,
     trusted: true,
     platform: "android",
     productId: latestLineItem?.productId || null,
     transactionId: data?.latestOrderId || fallbackToken || null,
-    originalTransactionId: data?.externalAccountIdentifiers?.obfuscatedExternalAccountId || null,
+    originalTransactionId: null,
+    accountId: data?.externalAccountIdentifiers?.obfuscatedExternalAccountId || null,
     isSubscription: true,
     expiresDate: expiryTime,
     revocationDate: null,
@@ -63,16 +64,17 @@ const parseSubscriptionResult = (data = {}, fallbackToken = "") => {
 };
 
 const parseInappResult = (data = {}, fallbackProductId = "", fallbackToken = "") => {
-  const purchaseState = Number(data?.purchaseState);
+  const purchaseState = typeof data?.purchaseState === "number" ? data.purchaseState : NaN;
   const consumedState = Number(data?.consumptionState);
-  const isActive = purchaseState === 0 || consumedState === 0;
+  const isActive = purchaseState === 0;
   return {
     ok: true,
     trusted: true,
     platform: "android",
     productId: data?.productId || fallbackProductId || null,
     transactionId: data?.orderId || fallbackToken || null,
-    originalTransactionId: data?.obfuscatedExternalAccountId || null,
+    originalTransactionId: null,
+    accountId: data?.obfuscatedExternalAccountId || null,
     isSubscription: false,
     expiresDate: null,
     revocationDate: data?.purchaseState === 1 ? toIsoOrNull(data?.purchaseTimeMillis) : null,

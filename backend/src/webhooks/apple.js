@@ -73,20 +73,14 @@ const initVerifier = () => {
   }
 };
 
-const resolveMappedUserId = ({ appUserIdHint, appAccountToken, transactionId, originalTransactionId }) => {
-  const tokenCandidate = normalizeString(appAccountToken, 200);
-  if (tokenCandidate) return tokenCandidate;
-  const txSeen = normalizeString(transactionId, 500) ? getSeenTransaction(transactionId) : null;
-  if (txSeen?.appUserId) return txSeen.appUserId;
-  const originalSeen = normalizeString(originalTransactionId, 500)
-    ? getSeenTransaction(originalTransactionId)
-    : null;
-  if (originalSeen?.appUserId) return originalSeen.appUserId;
-  return normalizeString(appUserIdHint, 200);
+const resolveMappedUserId = ({ transactionId, originalTransactionId }) => {
+  const transaction = transactionId ? getSeenTransaction(transactionId) : null;
+  const original = originalTransactionId ? getSeenTransaction(originalTransactionId) : null;
+  return transaction?.appUserId || original?.appUserId || null;
 };
 
 const resolveIsActive = ({ notificationType, revocationDate, expiresDate }) => {
-  if (revocationDate) return false;
+  if (revocationDate || INACTIVE_NOTIFICATION_TYPES.has(notificationType || "")) return false;
   if (expiresDate) {
     return new Date(expiresDate).getTime() > Date.now();
   }
@@ -96,7 +90,7 @@ const resolveIsActive = ({ notificationType, revocationDate, expiresDate }) => {
   return true;
 };
 
-export const parseAppleServerNotification = async ({ signedPayload, appUserIdHint = null }) => {
+export const parseAppleServerNotification = async ({ signedPayload }) => {
   const signed = normalizeString(signedPayload, 200000);
   if (!signed) {
     return { ok: false, reason: "missing_signed_payload" };
@@ -169,10 +163,6 @@ export const parseAppleServerNotification = async ({ signedPayload, appUserIdHin
     normalizeString(decodedRenewal?.autoRenewProductId, 200) ||
     normalizeString(decodedRenewal?.productId, 200) ||
     null;
-  const appAccountToken =
-    normalizeString(decodedTransaction?.appAccountToken, 200) ||
-    normalizeString(decodedRenewal?.appAccountToken, 200) ||
-    null;
   const expiresDate =
     toIsoOrNull(decodedTransaction?.expiresDate) ||
     toIsoOrNull(decodedRenewal?.renewalDate) ||
@@ -180,8 +170,6 @@ export const parseAppleServerNotification = async ({ signedPayload, appUserIdHin
     null;
   const revocationDate = toIsoOrNull(decodedTransaction?.revocationDate);
   const appUserId = resolveMappedUserId({
-    appUserIdHint,
-    appAccountToken,
     transactionId,
     originalTransactionId,
   });

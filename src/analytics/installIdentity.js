@@ -19,7 +19,8 @@ export const createPremiumInstallId = () => {
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
 };
 
-export const ensurePremiumInstallId = async () => {
+let installIdInFlight = null;
+const loadPremiumInstallId = async () => {
   const storedValue = await AsyncStorage.getItem(STORAGE_KEYS.PREMIUM_INSTALL_ID);
   const normalizedStoredValue =
     typeof storedValue === "string" ? storedValue.trim() : "";
@@ -27,4 +28,11 @@ export const ensurePremiumInstallId = async () => {
   const createdValue = createPremiumInstallId();
   await AsyncStorage.setItem(STORAGE_KEYS.PREMIUM_INSTALL_ID, createdValue);
   return createdValue;
+};
+
+export const ensurePremiumInstallId = () => {
+  if (!installIdInFlight) {
+    installIdInFlight = loadPremiumInstallId().finally(() => { installIdInFlight = null; });
+  }
+  return installIdInFlight;
 };

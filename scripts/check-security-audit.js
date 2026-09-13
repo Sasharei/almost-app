@@ -11,22 +11,21 @@ const allowedAdvisories = new Set([
   'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
 ]);
 
-const audit = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
-  cwd: projectRoot,
-  encoding: 'utf8',
-  maxBuffer: 20 * 1024 * 1024,
-});
-
-if (audit.error) {
-  throw audit.error;
+const runAudit = cwd => {
+  const audit = spawnSync('npm', ['audit', '--json'], { cwd, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+  if (audit.error) throw audit.error;
+  const report = JSON.parse(audit.stdout);
+  if (report.error || !report.metadata?.vulnerabilities || !report.vulnerabilities) {
+    throw new Error('Dependency audit unavailable or incomplete');
+  }
+  return report;
+};
+const backendReport = runAudit(path.join(projectRoot, 'backend'));
+if (backendReport.metadata.vulnerabilities.total !== 0) {
+  throw new Error(`Backend dependency vulnerabilities: ${JSON.stringify(backendReport.metadata.vulnerabilities)}`);
 }
-
-let report;
-try {
-  report = JSON.parse(audit.stdout);
-} catch (error) {
-  throw new Error(`Could not parse npm audit output: ${error.message}`);
-}
+const report = runAudit(projectRoot);
+require('./check-signing-secrets.js');
 
 const reportedAdvisories = new Set();
 for (const vulnerability of Object.values(report.vulnerabilities || {})) {
@@ -96,5 +95,5 @@ if (missingAdvisories.length > 0 && reportedAdvisories.size > 0) {
 
 const rawCount = severity.total || 0;
 console.log(
-  `[OK] Dependency security gate passed (0 unmitigated; ${rawCount} transitive audit paths are limited to disabled image-size parsers).`,
+  `[OK] Both dependency trees passed (backend: 0; app: 0 unmitigated; ${rawCount} transitive audit paths are limited to disabled image-size parsers).`,
 );

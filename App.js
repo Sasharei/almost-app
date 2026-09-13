@@ -528,6 +528,8 @@ import {
   setPurchasesAttributesSafe,
   syncRevenueCatDeviceIdentifiersSafe,
 } from "./src/monetization/purchasesClient";
+import { ensurePremiumInstallSecret } from "./src/monetization/installSecret";
+import { ensurePremiumInstallId } from "./src/analytics/installIdentity";
 import { syncEntitlementSnapshot, validateStorePurchase } from "./src/monetization/backendSync";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -1657,22 +1659,6 @@ const createMonetizationInstallId = () => {
     } catch (error) {}
   }
   return `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
-};
-const createMonetizationInstallSecret = () => {
-  const cryptoApi = globalThis?.crypto;
-  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
-    return `${cryptoApi.randomUUID()}_${cryptoApi.randomUUID()}`;
-  }
-  if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
-    try {
-      const bytes = new Uint8Array(32);
-      cryptoApi.getRandomValues(bytes);
-      return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-    } catch (error) {}
-  }
-  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}_${Math.random()
-    .toString(36)
-    .slice(2, 14)}`;
 };
 const resolveNonEmptyString = (value = "") => {
   const normalized = String(value || "").trim();
@@ -63470,14 +63456,14 @@ function AppContent() {
         installSecret: premiumInstallSecret,
         platform,
         productId: resolveNonEmptyString(resolvedProductId || "") || null,
-        transactionId: platform === "ios" ? transactionToken || null : null,
-        purchaseToken: platform === "android" ? transactionToken || null : null,
+        transactionId: transactionToken || null,
+        purchaseToken: platform === "android" ? purchaseResult?.purchaseToken || null : null,
         obfuscatedAccountId: premiumInstallId,
       };
 
       if (
         (platform === "ios" && !validationPayload.transactionId) ||
-        (platform === "android" && !validationPayload.purchaseToken)
+        (platform === "android" && !validationPayload.purchaseToken && !validationPayload.transactionId)
       ) {
         logEvent("premium_backend_validation_result", {
           source: sourceToken,
@@ -69746,7 +69732,6 @@ function AppContent() {
         STORAGE_KEYS.REPORTS_LAST_AUTO_WEEK,
         STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION,
         STORAGE_KEYS.PREMIUM_INSTALL_ID,
-        STORAGE_KEYS.PREMIUM_INSTALL_SECRET,
         STORAGE_KEYS.INSTALL_DATE,
         STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET,
         STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN,
@@ -69907,7 +69892,6 @@ function AppContent() {
       const reportsWeeklyNotificationRaw =
         storedMap[STORAGE_KEYS.REPORTS_WEEKLY_NOTIFICATION] ?? null;
       const premiumInstallIdRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_ID] ?? null;
-      const premiumInstallSecretRaw = storedMap[STORAGE_KEYS.PREMIUM_INSTALL_SECRET] ?? null;
       const installDateRaw = storedMap[STORAGE_KEYS.INSTALL_DATE] ?? null;
       const firstSessionDurationBucketRaw =
         storedMap[STORAGE_KEYS.FIRST_SESSION_DURATION_BUCKET] ?? null;
@@ -70486,12 +70470,6 @@ function AppContent() {
           : createMonetizationInstallId();
       setPremiumInstallId(normalizedPremiumInstallId);
       setPremiumInstallIdHydrated(true);
-      const normalizedPremiumInstallSecret =
-        typeof premiumInstallSecretRaw === "string" && premiumInstallSecretRaw.trim().length >= 32
-          ? premiumInstallSecretRaw.trim()
-          : createMonetizationInstallSecret();
-      setPremiumInstallSecret(normalizedPremiumInstallSecret);
-      setPremiumInstallSecretHydrated(true);
       const normalizedInstallDateRaw =
         typeof installDateRaw === "string" ? installDateRaw.trim() : "";
       const parsedInstallDateFromNumber = Number(normalizedInstallDateRaw);
@@ -71670,10 +71648,14 @@ function AppContent() {
         return normalized || createMonetizationInstallId();
       });
       setPremiumInstallIdHydrated(true);
-      setPremiumInstallSecret((prev) => {
-        const normalized = resolveNonEmptyString(prev);
-        return normalized.length >= 32 ? normalized : createMonetizationInstallSecret();
-      });
+      try {
+        const installId = await ensurePremiumInstallId();
+        setPremiumInstallId(installId);
+        setPremiumInstallSecret(await ensurePremiumInstallSecret(installId));
+      } catch (_error) {
+        // Keep RevenueCat/attribution available while protected storage is locked or unavailable.
+        console.warn("Secure backend credential hydration deferred");
+      }
       setPremiumInstallSecretHydrated(true);
       setFirstSaveGoalJarHydrated(true);
       setTemptationSeriesHydrated(true);
@@ -72935,17 +72917,20 @@ function AppContent() {
     queuePersist(STORAGE_KEYS.PREMIUM_INSTALL_ID, normalized);
   }, [premiumInstallId, premiumInstallIdHydrated, queuePersist]);
   useEffect(() => {
-    if (!premiumInstallSecretHydrated) return;
-    const normalized =
-      resolveNonEmptyString(premiumInstallSecret).length >= 32
-        ? resolveNonEmptyString(premiumInstallSecret)
-        : createMonetizationInstallSecret();
-    if (normalized !== premiumInstallSecret) {
-      setPremiumInstallSecret(normalized);
-      return;
-    }
-    queuePersist(STORAGE_KEYS.PREMIUM_INSTALL_SECRET, normalized);
-  }, [premiumInstallSecret, premiumInstallSecretHydrated, queuePersist]);
+    if (!premiumInstallIdHydrated || !premiumInstallSecretHydrated || premiumInstallSecret || !premiumInstallId) return;
+    let cancelled = false;
+    const retry = async () => {
+      try {
+        const secret = await ensurePremiumInstallSecret(premiumInstallId);
+        if (!cancelled) setPremiumInstallSecret(secret);
+      } catch (_error) {}
+    };
+    void retry();
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") void retry();
+    });
+    return () => { cancelled = true; subscription.remove(); };
+  }, [premiumInstallId, premiumInstallIdHydrated, premiumInstallSecret, premiumInstallSecretHydrated]);
   useEffect(() => {
     if (!premiumSoftPaywallHydrated) return;
     queuePersist(STORAGE_KEYS.PREMIUM_SOFT_PAYWALL_SHOWN, premiumSoftPaywallShown ? "1" : "0");

@@ -28,9 +28,10 @@
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:ui-session && npm run test:engagement && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run backend:test && npm run check:release",
+    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:ui-session && npm run test:engagement && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run test:security && npm run backend:test && npm run check:release",
     "release:gate": "npm run verify && npm run check:applovin-cost",
-    "version:bump": "node scripts/bump-version.js"
+    "version:bump": "node scripts/bump-version.js",
+    "test:security": "node --test scripts/tests/install-secret.test.js"
   },
   "dependencies": {
     "@amplitude/analytics-core": "2.41.1",
@@ -81,7 +82,9 @@
     "react-native-safe-area-context": "^5.6.2",
     "react-native-svg": "15.12.1",
     "react-native-view-shot": "4.0.3",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "expo-crypto": "~15.0.9",
+    "expo-secure-store": "~15.0.8"
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
@@ -126,7 +129,10 @@
     "image-size": "2.0.2",
     "postcss": "8.5.26",
     "qs": "6.16.0",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "joi": "17.13.6",
+    "js-yaml@<4": "3.15.2",
+    "js-yaml@>=4": "4.3.2"
   },
   "private": true
 }

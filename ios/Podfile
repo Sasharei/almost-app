@@ -67,6 +67,22 @@ $AppsFlyerPurchaseConnector=false
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
+    # RN's pinned fmt 11 does not compile its consteval checks with Apple Clang 17+.
+    # Keep runtime formatting and C++20 intact; disable only the broken compile-time path.
+    # Upstream: https://github.com/react/react-native/issues/55601
+    fmt_base_header = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_header)
+      fmt_source = File.read(fmt_base_header)
+      unless fmt_source.include?('// Almost: Apple Clang consteval compatibility')
+        fmt_source = fmt_source.sub(
+          '#if !defined(__cpp_lib_is_constant_evaluated)',
+          "// Almost: Apple Clang consteval compatibility\n#if defined(__apple_build_version__) && __clang_major__ >= 17\n#  define FMT_USE_CONSTEVAL 0\n#elif !defined(__cpp_lib_is_constant_evaluated)"
+        )
+        FileUtils.chmod('u+w', fmt_base_header)
+        File.write(fmt_base_header, fmt_source)
+      end
+    end
+
     sentry_profiling_header = File.join(
       installer.sandbox.root,
       'Sentry',

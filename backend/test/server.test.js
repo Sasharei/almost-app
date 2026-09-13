@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+process.env.DOTENV_CONFIG_PATH = "/dev/null";
+
 const { app, buildHealthPayload, resolveTamagotchiSkinAssetDir } = await import("../src/server.js");
 
 const getRegisteredRoutes = () =>

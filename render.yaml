@@ -24,20 +24,22 @@ services:
         value: "6756276744"
       - key: REQUEST_TTL_MS
         value: "900000"
-      - key: REPLAY_WINDOW_MS
-        value: "86400000"
-      - key: STORE_FLUSH_MS
-        value: "2000"
       - key: STORE_PATH
         value: /var/data/almost-store.json
+      - key: STORE_DATABASE_PATH
+        value: /var/data/almost-store.sqlite
+      - key: NODE_VERSION
+        value: "24"
+      - key: REVENUECAT_API_KEY
+        sync: false
       - key: APP_SESSION_SECRET
         generateValue: true
       - key: APP_SESSION_TTL_MS
         value: "300000"
       - key: REQUIRE_INSTALL_SECRET_PROOF
-        value: "0"
-      - key: ALLOW_LEGACY_INSTALL_SECRET_GRACE
         value: "1"
+      - key: ALLOW_LEGACY_INSTALL_SECRET_GRACE
+        value: "0"
       - key: APPLE_WEBHOOK_SECRET
         generateValue: true
       - key: WEBHOOK_SHARED_SECRET

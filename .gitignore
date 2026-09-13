@@ -84,3 +84,11 @@ tmp/
 /.tmp_symbolicate/
 /.tmp-video-venv/
 /tmp_device_logs/
+
+# Private release signing material and server databases
+/android/keystore.properties
+/android/app/release.keystore
+/backend/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

@@ -35,10 +35,10 @@ if [[ ! -f "${BACKEND_DIR}/.env" ]]; then
 PORT=${PORT}
 NODE_ENV=production
 STRICT_STARTUP_VALIDATION=1
-HEALTH_EXPOSE_DETAILS=1
+HEALTH_EXPOSE_DETAILS=0
 ENFORCE_INSTALL_ID_BINDING=1
-REQUIRE_INSTALL_SECRET_PROOF=0
-ALLOW_LEGACY_INSTALL_SECRET_GRACE=1
+REQUIRE_INSTALL_SECRET_PROOF=1
+ALLOW_LEGACY_INSTALL_SECRET_GRACE=0
 INSTALL_SECRET_MIN_LENGTH=32
 APP_SHARED_SECRET=
 APP_SESSION_SECRET=${APP_SESSION_SECRET}
@@ -89,10 +89,10 @@ ensure_env_var() {
 }
 
 ensure_env_var "STRICT_STARTUP_VALIDATION" "1"
-ensure_env_var "HEALTH_EXPOSE_DETAILS" "1"
+ensure_env_var "HEALTH_EXPOSE_DETAILS" "0"
 ensure_env_var "ENFORCE_INSTALL_ID_BINDING" "1"
-ensure_env_var "REQUIRE_INSTALL_SECRET_PROOF" "0"
-ensure_env_var "ALLOW_LEGACY_INSTALL_SECRET_GRACE" "1"
+ensure_env_var "REQUIRE_INSTALL_SECRET_PROOF" "1"
+ensure_env_var "ALLOW_LEGACY_INSTALL_SECRET_GRACE" "0"
 ensure_env_var "INSTALL_SECRET_MIN_LENGTH" "32"
 
 if [[ -z "${APPLE_WEBHOOK_SECRET}" ]]; then
@@ -128,7 +128,7 @@ if ! curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R "80:localhost:${PORT}" nokey@localhost.run >"${TUNNEL_LOG}" 2>&1 &
+ssh -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -R "80:localhost:${PORT}" nokey@localhost.run >"${TUNNEL_LOG}" 2>&1 &
 TUNNEL_PID=$!
 
 TUNNEL_URL=""
@@ -153,7 +153,7 @@ fi
 
 echo "Backend health URL: ${TUNNEL_URL}/health"
 echo "Apple webhook URL: ${TUNNEL_URL}/v1/webhooks/apple"
-echo "Apple webhook header: x-apple-webhook-secret: ${APPLE_WEBHOOK_SECRET}"
+echo "Apple webhook credentials are stored in backend/.env (not printed)."
 echo "Google RTDN webhook URL: ${TUNNEL_URL}/v1/webhooks/google/rtdn"
 echo
 echo "Keep this terminal open while testing."

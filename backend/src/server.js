@@ -5,7 +5,6 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { LRUCache } from "lru-cache";
 import { z } from "zod";
 import { config, getBackendReadiness, isProduction } from "./config.js";
 import {
@@ -18,13 +17,12 @@ import {
 import { scoreFraudRisk } from "./risk.js";
 import {
   bootstrapStore,
+  commitPurchase,
+  consumeRateLimit,
   cacheIdempotentResponse,
   flushStore,
-  getCachedIdempotentResponse,
+  reserveIdempotency,
   getEntitlementByUser,
-  getSeenTransaction,
-  markTransactionSeen,
-  upsertEntitlement,
   verifyOrRegisterInstallSecret,
 } from "./store/entitlementsStore.js";
 import { validateApplePurchase } from "./validators/apple.js";
@@ -32,7 +30,12 @@ import { validateGooglePurchase } from "./validators/google.js";
 import { parseAppleServerNotification } from "./webhooks/apple.js";
 import { parseGoogleRtdnMessage } from "./webhooks/google.js";
 
+import { isPremiumProduct, verifyPurchaseOwner, verifyRevenueCatOwnership } from "./validators/ownership.js";
+import { verifyGooglePush } from "./auth/googlePush.js";
+
 const app = express();
+app.set("trust proxy", config.trustProxy.length ? config.trustProxy : false);
+const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const resolveTamagotchiSkinAssetDir = () =>
@@ -83,78 +86,34 @@ const timingSafeEquals = (left = "", right = "") => {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 };
 
-const getClientIp = (req) => {
-  const forwardedFor = String(req.header("x-forwarded-for") || "")
-    .split(",")[0]
-    ?.trim();
-  return forwardedFor || req.ip || req.socket?.remoteAddress || "unknown";
+const getClientIp = req => req.ip || req.socket?.remoteAddress || "unknown";
+const createRateLimiter = ({ maxRequests, windowMs, buildKey, errorCode }) => (req, res, next) => {
+  const result = consumeRateLimit(buildKey(req), maxRequests, windowMs);
+  if (!result.allowed) {
+    res.set("Retry-After", String(Math.ceil(result.retryAfterMs / 1000)));
+    res.status(429).json({ error: errorCode, retryAfterMs: result.retryAfterMs });
+    return;
+  }
+  next();
 };
-
-const createRateLimiter = ({ maxRequests, windowMs, buildKey, errorCode }) => {
-  const hits = new LRUCache({
-    max: 100_000,
-    ttl: windowMs,
-    allowStale: false,
-  });
-  const max = Math.max(1, Number(maxRequests) || 1);
-  const windowDuration = Math.max(1_000, Number(windowMs) || 60_000);
-  return (req, res, next) => {
-    const key = typeof buildKey === "function" ? String(buildKey(req) || "") : "";
-    if (!key) {
-      next();
-      return;
-    }
-    const now = Date.now();
-    const current = hits.get(key);
-    const startedAt = Number(current?.startedAt || 0);
-    const stillInWindow = startedAt > 0 && now - startedAt < windowDuration;
-    const baseCount = stillInWindow ? Number(current?.count || 0) : 0;
-    const nextHits = baseCount + 1;
-    const effectiveStartedAt = stillInWindow ? startedAt : now;
-    const elapsedMs = Math.max(0, now - effectiveStartedAt);
-    const ttlMs = Math.max(1, windowDuration - elapsedMs);
-    hits.set(
-      key,
-      {
-        count: nextHits,
-        startedAt: effectiveStartedAt,
-      },
-      {
-        ttl: ttlMs,
-      }
-    );
-    if (nextHits > max) {
-      const retryAfterMs = Math.max(1, windowDuration - elapsedMs);
-      res.status(429).json({
-        error: errorCode || "rate_limited",
-        retryAfterMs,
-      });
-      return;
-    }
-    next();
-  };
-};
-
 const authSessionRateLimiter = createRateLimiter({
-  maxRequests: config.security.rateLimit.authSessionPerMinute,
-  windowMs: 60 * 1000,
-  buildKey: (req) => {
-    const installId = String(req.body?.installId || "").trim().slice(0, 200) || "none";
-    return `auth_session:${getClientIp(req)}:${installId}`;
-  },
-  errorCode: "auth_rate_limited",
+  maxRequests: config.security.rateLimit.authSessionPerMinute, windowMs: 60000,
+  buildKey: req => `auth_session:${getClientIp(req)}`, errorCode: "auth_rate_limited",
 });
-
 const appEndpointRateLimiter = createRateLimiter({
-  maxRequests: config.security.rateLimit.appPerMinute,
-  windowMs: 60 * 1000,
-  buildKey: (req) => `app_endpoint:${getClientIp(req)}`,
-  errorCode: "app_rate_limited",
+  maxRequests: config.security.rateLimit.appPerMinute, windowMs: 60000,
+  buildKey: req => `app_endpoint:${getClientIp(req)}`, errorCode: "app_rate_limited",
 });
 
 const assertSecureStartupConfig = () => {
-  if (!config.security.strictStartupValidation) return;
+  if (!isProduction && !config.security.strictStartupValidation) return;
   const issues = [];
+  if (isProduction) {
+    if (!isSessionAuthEnabled() || config.session.secret.length < 32) issues.push("APP_SESSION_SECRET must contain at least 32 characters");
+    if (!config.security.requireInstallSecret || !config.security.enforceInstallIdBinding) issues.push("install secret proof and install binding are mandatory");
+    if (!config.databasePath || config.databasePath === ":memory:") issues.push("persistent STORE_DATABASE_PATH is required");
+    if (config.google.enabled && !config.google.webhook.secret && !(config.google.webhook.audience && config.google.webhook.serviceAccountEmail)) issues.push("Google RTDN authentication is required");
+  }
   if (isProduction && !isSessionAuthEnabled() && !String(config.appSharedSecret || "").trim()) {
     issues.push("missing APP_SESSION_SECRET or APP_SHARED_SECRET");
   }
@@ -171,21 +130,14 @@ const assertSecureStartupConfig = () => {
   if (isProduction && config.webhookAllowQuerySecret) {
     issues.push("WEBHOOK_QUERY_SECRET_ENABLED must be disabled in production");
   }
-  if (
-    isProduction &&
-    config.apple.webhook.verifySignature &&
-    !String(config.apple.webhook.secret || "").trim()
-  ) {
-    issues.push("missing APPLE_WEBHOOK_SECRET while signature verification is enabled");
-  }
   if (issues.length) {
     throw new Error(`insecure_startup_config: ${issues.join("; ")}`);
   }
 };
 
 const requireSharedSecret = (req, res, next) => {
-  if (!config.appSharedSecret) {
-    next();
+  if (isProduction || !config.appSharedSecret) {
+    res.status(503).json({ error: "session_auth_required" });
     return;
   }
   const headerSecret = req.header("x-app-secret") || "";
@@ -229,7 +181,7 @@ const requireWebhookSecret = (getSecret) => (req, res, next) => {
   const expectedSecret =
     typeof getSecret === "function" ? String(getSecret() || "").trim() : String(getSecret || "").trim();
   if (!expectedSecret) {
-    next();
+    res.status(503).json({ error: "webhook_auth_not_configured" });
     return;
   }
   const headerSecret =
@@ -411,6 +363,11 @@ app.post("/v1/auth/session", authSessionRateLimiter, (req, res) => {
     res.status(400).json({ error: "invalid_install_id_format" });
     return;
   }
+  const appUserId = String(parsed.data.appUserId || "").trim();
+  if (config.security.enforceInstallIdBinding && appUserId && appUserId !== installId) {
+    res.status(400).json({ error: "app_user_install_mismatch" });
+    return;
+  }
   const installSecret = String(parsed.data.installSecret || "").trim();
   if (config.security.requireInstallSecret) {
     if (!installSecret || installSecret.length < config.security.installSecretMinLength) {
@@ -422,11 +379,6 @@ app.post("/v1/auth/session", authSessionRateLimiter, (req, res) => {
       res.status(401).json({ error: "invalid_install_secret" });
       return;
     }
-  }
-  const appUserId = String(parsed.data.appUserId || "").trim();
-  if (config.security.enforceInstallIdBinding && appUserId && appUserId !== installId) {
-    res.status(400).json({ error: "app_user_install_mismatch" });
-    return;
   }
   const tokenClaims = config.security.enforceInstallIdBinding
     ? {
@@ -481,135 +433,63 @@ app.post("/v1/entitlements/sync", appEndpointRateLimiter, requireAppAuth, (req, 
   });
 });
 
-app.post("/v1/iap/validate", appEndpointRateLimiter, requireAppAuth, async (req, res) => {
-  const idempotencyKey = req.header("idempotency-key") || "";
-  if (idempotencyKey) {
-    const cached = getCachedIdempotentResponse(idempotencyKey);
-    if (cached) {
-      res.json({ ...cached, idempotent: true });
-      return;
-    }
-  }
-
+app.post("/v1/iap/validate", appEndpointRateLimiter, requireAppAuth, asyncRoute(async (req, res) => {
   const parsed = parseBody(validationSchema, req.body || {});
-  if (!parsed.ok) {
-    res.status(400).json({ error: "invalid_payload", details: parsed.errors });
-    return;
-  }
-
+  if (!parsed.ok) return res.status(400).json({ error: "invalid_payload", details: parsed.errors });
   const payload = parsed.data;
-  const initialRisk = scoreFraudRisk({
-    payload,
-    trustedValidation: false,
-  });
-  if (initialRisk.reasons.includes("reused_transaction_other_user")) {
-    const failurePayload = {
-      ok: false,
-      error: "reused_transaction_other_user",
-      risk: initialRisk,
-    };
-    if (idempotencyKey) {
-      cacheIdempotentResponse(idempotencyKey, failurePayload);
+  if (!isPremiumProduct(payload.productId)) return res.status(400).json({ error: "unsupported_product" });
+  const rawKey = req.header("idempotency-key") || "";
+  if (rawKey.length > 200) return res.status(400).json({ error: "invalid_idempotency_key" });
+  const key = rawKey ? JSON.stringify([payload.appUserId, "/v1/iap/validate", rawKey]) : "";
+  const fingerprint = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  if (key) {
+    const cached = reserveIdempotency(key, fingerprint);
+    if (cached) {
+      if (cached.fingerprint !== fingerprint) return res.status(409).json({ error: "idempotency_payload_mismatch" });
+      if (cached.pending) return res.status(409).json({ error: "idempotency_in_progress" });
+      return res.status(cached.status).json({ ...cached.body, idempotent: true });
     }
-    res.status(409).json(failurePayload);
-    return;
   }
-  const validate = payload.platform === "ios" ? validateApplePurchase : validateGooglePurchase;
-  const validation = await validate(payload);
-
-  const risk = scoreFraudRisk({
-    payload,
-    trustedValidation: !!validation.ok && !!validation.trusted,
-  });
-
-  if (risk.score >= 0.95) {
-    res.status(403).json({
-      ok: false,
-      error: "fraud_risk_too_high",
-      risk,
-    });
-    return;
-  }
-
-  if (!validation.ok) {
-    const failurePayload = {
-      ok: false,
-      error: validation.reason || "validation_failed",
-      validation,
-      risk,
-    };
-    if (idempotencyKey) {
-      cacheIdempotentResponse(idempotencyKey, failurePayload);
-    }
-    res.status(422).json(failurePayload);
-    return;
-  }
-
-  const transactionReferences = [
-    validation.transactionId,
-    validation.originalTransactionId,
-    payload.transactionId,
-    payload.purchaseToken,
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  const uniqueTransactionReferences = Array.from(new Set(transactionReferences));
-  const reusedReference = uniqueTransactionReferences.find((reference) => {
-    const previous = getSeenTransaction(reference);
-    return previous?.appUserId && previous.appUserId !== payload.appUserId;
-  });
-  if (reusedReference) {
-    const failurePayload = {
-      ok: false,
-      error: "reused_transaction_other_user",
-      risk: {
-        ...risk,
-        reasons: Array.from(new Set([...(risk.reasons || []), "reused_transaction_other_user"])),
-      },
-    };
-    if (idempotencyKey) {
-      cacheIdempotentResponse(idempotencyKey, failurePayload);
-    }
-    res.status(409).json(failurePayload);
-    return;
-  }
-  uniqueTransactionReferences.forEach((reference) => {
-    markTransactionSeen(reference, payload.appUserId);
-  });
-
-  const entitlement = upsertEntitlement(payload.appUserId, {
-    source: "store_validation",
-    platform: validation.platform || payload.platform,
-    installId: payload.installId || null,
-    isPremium: !!validation.isActive,
-    productId: validation.productId || payload.productId || null,
-    transactionId: validation.transactionId || payload.transactionId || null,
-    originalTransactionId: validation.originalTransactionId || null,
-    expiresDate: validation.expiresDate || null,
-    raw: {
-      validation,
-      risk,
-    },
-  });
-
-  const responsePayload = {
-    ok: true,
-    trusted: !!validation.trusted,
-    risk,
-    entitlement,
+  const reply = (status, body) => {
+    if (key) cacheIdempotentResponse(key, { fingerprint, status, body });
+    return res.status(status).json(body);
   };
-
-  if (idempotencyKey) {
-    cacheIdempotentResponse(idempotencyKey, responsePayload);
+  let validation;
+  let owner;
+  if (payload.platform === "android" && !payload.purchaseToken && payload.transactionId) {
+    // RevenueCat exposes store order IDs, not Google purchase tokens, to this client.
+    owner = await verifyRevenueCatOwnership({ ...payload, transactionIds: [payload.transactionId] });
+    if (!owner.ok) return reply(owner.status, { ok: false, error: owner.reason });
+    validation = owner.validation;
+  } else {
+    const validate = payload.platform === "ios" ? validateApplePurchase : validateGooglePurchase;
+    validation = await validate(payload);
+    if (!validation.ok || !validation.trusted) return reply(422, { ok: false, error: validation.reason || "validation_failed" });
+    if (!isPremiumProduct(validation.productId)) return reply(403, { ok: false, error: "unsupported_product" });
+    owner = await verifyPurchaseOwner(payload, validation);
+    if (!owner.ok) return reply(owner.status, { ok: false, error: owner.reason });
   }
-
-  res.json(responsePayload);
-});
+  const references = [validation.transactionId, validation.originalTransactionId, payload.purchaseToken].filter(Boolean);
+  const risk = scoreFraudRisk({ payload, trustedValidation: true });
+  try {
+    const entitlement = commitPurchase(payload.appUserId, references, {
+      source: "store_validation", platform: payload.platform, installId: payload.installId || null,
+      isPremium: !!validation.isActive && (owner.source !== "revenuecat" || !!owner.validation.isActive), productId: validation.productId,
+      transactionId: validation.transactionId, originalTransactionId: validation.originalTransactionId || null,
+      expiresDate: validation.expiresDate || null,
+      raw: { validation, risk },
+    }, { allowTransfer: owner.source === "revenuecat" && !!owner.validation.isActive });
+    return reply(200, { ok: true, trusted: true, entitlement, risk });
+  } catch (error) {
+    if (error.message === "reused_transaction_other_user") return reply(409, { ok: false, error: error.message });
+    throw error;
+  }
+}));
 
 app.post(
   "/v1/webhooks/apple",
-  requireWebhookSecret(() => config.apple.webhook.secret),
-  async (req, res) => {
+  appEndpointRateLimiter,
+  asyncRoute(async (req, res) => {
     const parsed = parseBody(appleWebhookSchema, req.body || {});
     if (!parsed.ok) {
       res.status(400).json({ error: "invalid_payload", details: parsed.errors });
@@ -634,13 +514,7 @@ app.post(
       return;
     }
 
-    if (event.transactionId) {
-      markTransactionSeen(event.transactionId, event.appUserId || "");
-    }
-    if (event.originalTransactionId) {
-      markTransactionSeen(event.originalTransactionId, event.appUserId || "");
-    }
-
+    if (!event.trusted) return res.status(401).json({ error: "untrusted_webhook" });
     if (!event.mapped || !event.appUserId) {
       res.status(202).json({
         ok: true,
@@ -657,7 +531,7 @@ app.post(
       return;
     }
 
-    const entitlement = upsertEntitlement(event.appUserId, {
+    const entitlement = commitPurchase(event.appUserId, [event.transactionId, event.originalTransactionId, event.purchaseToken].filter(Boolean), {
       source: "apple_webhook",
       platform: "ios",
       installId: null,
@@ -685,13 +559,19 @@ app.post(
         subtype: event.subtype,
       },
     });
-  }
+  })
 );
 
 app.post(
   "/v1/webhooks/google/rtdn",
-  requireWebhookSecret(() => config.google.webhook.secret),
-  async (req, res) => {
+  asyncRoute(async (req, res, next) => {
+    if (config.google.webhook.audience && config.google.webhook.serviceAccountEmail) {
+      if (!await verifyGooglePush(req.header("authorization") || "")) return res.status(401).json({ error: "unauthorized_webhook" });
+      return next();
+    }
+    return requireWebhookSecret(() => config.google.webhook.secret)(req, res, next);
+  }),
+  asyncRoute(async (req, res) => {
     const parsed = parseBody(googleWebhookSchema, req.body || {});
     if (!parsed.ok) {
       // Acknowledge malformed RTDN pushes to avoid endless retries.
@@ -705,20 +585,13 @@ app.post(
     });
 
     if (!event.ok) {
-      res.status(200).json({
+      res.status(event.reason?.includes("validation") ? 503 : 422).json({
         ok: false,
-        accepted: true,
+        accepted: false,
         error: event.reason || "google_rtdn_failed",
         eventType: event.eventType || null,
       });
       return;
-    }
-
-    if (event.transactionId) {
-      markTransactionSeen(event.transactionId, event.appUserId || "");
-    }
-    if (event.purchaseToken) {
-      markTransactionSeen(event.purchaseToken, event.appUserId || "");
     }
 
     if (!event.mapped || !event.appUserId || event.test) {
@@ -732,7 +605,7 @@ app.post(
       return;
     }
 
-    const entitlement = upsertEntitlement(event.appUserId, {
+    const entitlement = commitPurchase(event.appUserId, [event.transactionId, event.originalTransactionId, event.purchaseToken].filter(Boolean), {
       source: "google_rtdn",
       platform: "android",
       installId: null,
@@ -755,8 +628,14 @@ app.post(
       entitlement,
       eventType: event.eventType || null,
     });
-  }
+  })
 );
+
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.type === "entity.too.large" ? 413 : error instanceof SyntaxError ? 400 : error.message === "reused_transaction_other_user" ? 409 : 503;
+  res.status(status).json({ ok: false, error: status === 400 ? "invalid_json" : status === 413 ? "payload_too_large" : "request_failed" });
+});
 
 const start = async () => {
   assertSecureStartupConfig();

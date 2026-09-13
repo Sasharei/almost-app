@@ -75,9 +75,14 @@ export const validateApplePurchase = async ({ transactionId }) => {
     const client = getAppleClient();
     const transactionResponse = await client.getTransactionInfo(transactionId);
     const payload = decodeJwsPayload(transactionResponse?.signedTransactionInfo || "");
+    if (!payload || !payload.transactionId || !payload.productId || payload.bundleId !== config.apple.bundleId ||
+        payload.environment?.toLowerCase() !== config.apple.environment) {
+      return { ok: false, trusted: false, reason: "apple_invalid_transaction_payload" };
+    }
     const expiresDate = normalizeDate(payload?.expiresDate);
     const revocationDate = normalizeDate(payload?.revocationDate);
     const isSubscription = payload?.type === "Auto-Renewable Subscription" || !!payload?.expiresDate;
+    if (isSubscription && !expiresDate) return { ok: false, trusted: false, reason: "apple_invalid_subscription_expiry" };
     const isActive = revocationDate
       ? false
       : expiresDate
@@ -91,6 +96,7 @@ export const validateApplePurchase = async ({ transactionId }) => {
       productId: payload?.productId || null,
       transactionId: payload?.transactionId || transactionId,
       originalTransactionId: payload?.originalTransactionId || null,
+      accountId: payload?.appAccountToken || null,
       isSubscription,
       expiresDate,
       revocationDate,

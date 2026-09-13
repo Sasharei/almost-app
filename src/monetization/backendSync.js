@@ -4,6 +4,8 @@ const AUTH_TOKEN_FALLBACK_TTL_MS = 4 * 60 * 1000;
 
 let cachedSessionToken = "";
 let cachedSessionExpiresAt = 0;
+let cachedSessionIdentity = "";
+let pendingSessionIdentity = "";
 let sessionTokenInFlight = null;
 
 const fetchWithTimeout = async (url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) => {
@@ -33,7 +35,9 @@ const normalizeUrl = (url = "") => {
 
 const getBackendBaseUrl = () => {
   const raw = process.env.EXPO_PUBLIC_MONETIZATION_BACKEND_URL || "";
-  return normalizeUrl(raw);
+  const normalized = normalizeUrl(raw);
+  if (!/^https:\/\//i.test(normalized) && !(__DEV__ && /^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(normalized))) return "";
+  return normalized;
 };
 
 const parseResponseJson = (responseBody = "") => {
@@ -132,7 +136,8 @@ const requestSessionToken = async ({
 };
 
 const resolveSessionToken = async (context = {}, { forceRefresh = false } = {}) => {
-  if (!forceRefresh && hasFreshSessionToken()) {
+  const identity = JSON.stringify([context.appUserId, context.installId, context.platform]);
+  if (!forceRefresh && cachedSessionIdentity === identity && hasFreshSessionToken()) {
     return {
       ok: true,
       token: cachedSessionToken,
@@ -140,10 +145,16 @@ const resolveSessionToken = async (context = {}, { forceRefresh = false } = {}) 
       cached: true,
     };
   }
-  if (sessionTokenInFlight) return sessionTokenInFlight;
+  if (sessionTokenInFlight) {
+    if (pendingSessionIdentity === identity) return sessionTokenInFlight;
+    await sessionTokenInFlight;
+    return resolveSessionToken(context, { forceRefresh });
+  }
+  pendingSessionIdentity = identity;
   sessionTokenInFlight = requestSessionToken(context)
     .then((result) => {
       if (result?.ok && result.token) {
+        cachedSessionIdentity = identity;
         cachedSessionToken = result.token;
         cachedSessionExpiresAt = Number(result.expiresAt) || Date.now() + AUTH_TOKEN_FALLBACK_TTL_MS;
       } else if (!result?.skipped) {
@@ -172,16 +183,18 @@ const postJSON = async (path, payload) => {
     platform: payload?.platform || null,
   };
   const session = await resolveSessionToken(authContext);
+  if (!session?.ok || !session.token) return session;
   if (session?.ok && session.token) {
     headers.authorization = `Bearer ${session.token}`;
   }
+  const { installSecret: _installSecret, ...requestPayload } = payload || {};
   const makeRequest = async (requestHeaders) =>
     fetchWithTimeout(
       `${baseUrl}${path}`,
       {
         method: "POST",
         headers: requestHeaders,
-        body: JSON.stringify(payload || {}),
+        body: JSON.stringify(requestPayload),
       },
       REQUEST_TIMEOUT_MS
     );

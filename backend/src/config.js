@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ path: process.env.DOTENV_CONFIG_PATH || ".env" });
 
 const parseIntOrDefault = (value, fallback) => {
   const parsed = Number.parseInt(String(value || ""), 10);
@@ -37,7 +37,7 @@ const isNonEmptyString = (value) => typeof value === "string" && value.trim().le
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProductionEnv = nodeEnv === "production";
 const forceAppleWebhookVerificationInProd =
-  isProductionEnv && process.env.ALLOW_INSECURE_APPLE_WEBHOOKS !== "1";
+  isProductionEnv;
 const sessionSecret = process.env.APP_SESSION_SECRET || "";
 const strictStartupValidationDefault = isProductionEnv;
 const healthExposeDetailsDefault = !isProductionEnv;
@@ -65,6 +65,15 @@ export const config = {
   requestTtlMs: parseIntOrDefault(process.env.REQUEST_TTL_MS, 15 * 60 * 1000),
   replayWindowMs: parseIntOrDefault(process.env.REPLAY_WINDOW_MS, 24 * 60 * 60 * 1000),
   storePath: process.env.STORE_PATH || "",
+  databasePath: process.env.STORE_DATABASE_PATH || (process.env.STORE_PATH ? `${process.env.STORE_PATH}.sqlite` : nodeEnv === "test" ? ":memory:" : "./data/entitlements.sqlite"),
+  trustProxy: parseCsvEnv(process.env.TRUSTED_PROXY_CIDRS || ""),
+  revenuecat: {
+    apiKey: process.env.REVENUECAT_API_KEY || "",
+    iosApiKey: process.env.REVENUECAT_IOS_API_KEY || "",
+    androidApiKey: process.env.REVENUECAT_ANDROID_API_KEY || "",
+    entitlementId: "premium",
+  },
+  premiumProductIds: parseCsvEnv(process.env.PREMIUM_PRODUCT_IDS || "almost_premium_weekly,almost_premium_monthly,almost_premium_yearly,almost_premium_lifetime"),
   storeFlushMs: parseIntOrDefault(process.env.STORE_FLUSH_MS, 2000),
   security: {
     strictStartupValidation: parseBooleanEnv(
@@ -131,6 +140,8 @@ export const config = {
       parseJsonEnv(process.env.GOOGLE_SERVICE_ACCOUNT || ""),
     webhook: {
       secret: process.env.GOOGLE_RTDN_SECRET || process.env.WEBHOOK_SHARED_SECRET || "",
+      audience: process.env.GOOGLE_RTDN_AUDIENCE || "",
+      serviceAccountEmail: process.env.GOOGLE_RTDN_SERVICE_ACCOUNT_EMAIL || "",
     },
   },
 };
@@ -161,9 +172,6 @@ const getAppleWebhookVerificationMissing = () => {
   if (!config.apple.webhook.verifySignature) return missing;
   if (!Array.isArray(config.apple.webhook.rootCaPaths) || !config.apple.webhook.rootCaPaths.length) {
     missing.push("APPLE_ROOT_CA_PATHS");
-  }
-  if (isProduction && !isNonEmptyString(config.apple.webhook.secret)) {
-    missing.push("APPLE_WEBHOOK_SECRET");
   }
   return missing;
 };

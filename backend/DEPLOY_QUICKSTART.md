@@ -1,77 +1,16 @@
-# Backend Quickstart
+# Secure deployment checklist
 
-## Fast test mode (public URL in 1 command)
+1. Back up the existing server store and environment secrets. Use the current Node 24 LTS patch release.
+2. Deploy one Render service with the persistent `/var/data` disk described by `render.yaml`. Keep `STORE_PATH=/var/data/almost-store.json` for one-time legacy import and `STORE_DATABASE_PATH=/var/data/almost-store.sqlite` for new storage.
+3. Supply `APP_SESSION_SECRET` (at least 32 random characters), enable `REQUIRE_INSTALL_SECRET_PROOF=1` and `ENFORCE_INSTALL_ID_BINDING=1`, disable legacy grace, and keep health details private. Never publish server secrets in Expo public environment variables.
+4. Configure read-only RevenueCat customer lookup with `REVENUECAT_API_KEY`, or both platform-specific V1 keys. Use the same RevenueCat project as the app. Check the premium product allowlist against configured products.
+5. Supply Apple/Google credentials before enabling their validation. For Apple notifications configure V2 JWS verification, root CAs, bundle ID, environment and numeric app ID. For Google direct delivery use authenticated Pub/Sub push with expected audience and service-account email; custom secret headers are for a trusted relay only.
+6. Configure trusted proxy CIDRs only from the hosting provider's verified ingress configuration. The default trusts no forwarding headers. Check rate limits using real ingress before expanding traffic.
+7. Run `npm run verify`. Validate fresh install, migration from the previous version, purchase, pending/cancel/refund, restore/transfer, offline startup and webhook retry in **release builds** on iOS and Android. Confirm AppsFlyer install/SKAN and RevenueCat-owned lifecycle postbacks.
+8. Deploy only after those checks. Monitor session rejection, store-validation failures and migration errors. Do not disable identity proof to address errors; retain the protected pre-migration backup for investigation/recovery.
 
-From project root:
+`npm run backend:tunnel` starts a temporary backend and public SSH tunnel. It does not weaken session proof or print webhook secrets. It is a manual integration-testing tool, not a production deployment.
 
-```bash
-npm run backend:tunnel
-```
+The mobile app needs only `EXPO_PUBLIC_MONETIZATION_BACKEND_URL=https://<backend-domain>` plus its RevenueCat public SDK keys. The legacy `EXPO_PUBLIC_MONETIZATION_SHARED_SECRET` is no longer used.
 
-This command:
-
-1. Starts the monetization backend on `localhost:8787`.
-2. Ensures Apple Root CA certs exist in `backend/certs/`.
-3. Creates `backend/.env` with generated secrets if missing.
-4. Opens a temporary HTTPS public URL via `localhost.run`.
-
-It prints:
-
-- Health URL: `https://.../health`
-- Apple webhook URL: `https://.../v1/webhooks/apple`
-- Google RTDN webhook URL: `https://.../v1/webhooks/google/rtdn`
-- Apple webhook secret header value for `x-apple-webhook-secret`
-
-Keep that terminal open while testing.
-
-## Permanent deploy (Render, recommended)
-
-Prerequisite: push current `main` branch to GitHub (`git push origin main`).
-
-1. Open Render dashboard and click `New` -> `Blueprint`.
-2. Select repository `sasharei/almost-app`.
-3. Render will detect [render.yaml](/Users/sasarei/Downloads/almost_clean/render.yaml).
-4. Create service.
-5. In Render service `Environment`, fill real provider credentials:
-   - `APPLE_ISSUER_ID`
-   - `APPLE_KEY_ID`
-   - `APPLE_PRIVATE_KEY` (full `.p8` content, including header/footer)
-   - `APPLE_APPLE_ID` (numeric app id from App Store Connect)
-   - `GOOGLE_SERVICE_ACCOUNT_JSON` (when Android validation is enabled)
-6. In Render service `Environment`, ensure:
-   - `APPLE_VALIDATION_ENABLED=1` only after Apple credentials are filled (otherwise keep `0`)
-   - `GOOGLE_VALIDATION_ENABLED=1` only after Google credentials are filled (otherwise keep `0`)
-   - `APP_SESSION_SECRET` is set (required for app session auth)
-   - During old-client grace period: `REQUIRE_INSTALL_SECRET_PROOF=0` and `ALLOW_LEGACY_INSTALL_SECRET_GRACE=1`
-   - After rollout: switch to `REQUIRE_INSTALL_SECRET_PROOF=1` and `ALLOW_LEGACY_INSTALL_SECRET_GRACE=0`
-   - `ENFORCE_INSTALL_ID_BINDING=1` is set
-   - `STRICT_STARTUP_VALIDATION=1` is set
-7. Deploy.
-8. Copy backend URL from Render, for example:
-   - `https://almost-monetization-backend.onrender.com`
-9. Verify readiness:
-   - Open `https://<backend-domain>/health`
-   - Ensure `readiness.validation.apple.ready` and `readiness.validation.google.ready` are `true`
-   - If `HEALTH_EXPOSE_DETAILS=1`, check `readiness.validation.<provider>.missing` for exact missing env vars
-   - If `HEALTH_EXPOSE_DETAILS=0`, use deploy logs (`backend_readiness`) for missing config details
-
-## EAS env vars to set
-
-- `EXPO_PUBLIC_MONETIZATION_BACKEND_URL` = your backend base URL
-
-Commands:
-
-```bash
-cd /Users/sasarei/Downloads/almost_clean
-eas secret:create --scope project --name EXPO_PUBLIC_MONETIZATION_BACKEND_URL --type string --value "https://<backend-domain>" --non-interactive --force
-```
-
-## App Store Server Notifications URL
-
-Set in App Store Connect:
-
-`https://<backend-domain>/v1/webhooks/apple`
-
-Send header:
-
-`x-apple-webhook-secret: <APPLE_WEBHOOK_SECRET>`
+A backend rollout is separate from Android signing-key rotation. Removing a private key from Git does not replace the key registered in Google Play and does not erase old repository copies. See the security remediation report before signing a public release.
