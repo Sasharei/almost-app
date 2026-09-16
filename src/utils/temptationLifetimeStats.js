@@ -96,6 +96,74 @@ const reconcileTemptationLifetimeStats = (refuseStats = {}, interactionStats = {
   return changed ? next : source;
 };
 
+const reconcileTemptationLifetimeInteractionAmounts = (
+  interactionStats = {},
+  historyEntries = []
+) => {
+  const source =
+    interactionStats && typeof interactionStats === "object" ? interactionStats : {};
+  const historyByKey = new Map();
+
+  (Array.isArray(historyEntries) ? historyEntries : []).forEach((entry) => {
+    if (entry?.kind !== "spend") return;
+    const amountUSD = normalizeAmount(entry?.meta?.amountUSD);
+    if (amountUSD <= 0) return;
+    getHistoryEntryTemptationKeys(entry).forEach((key) => {
+      const current = historyByKey.get(key) || { count: 0, totalUSD: 0 };
+      historyByKey.set(key, {
+        count: current.count + 1,
+        totalUSD: current.totalUSD + amountUSD,
+      });
+    });
+  });
+
+  let changed = false;
+  const next = { ...source };
+  historyByKey.forEach((retained, key) => {
+    if (source[key] && typeof source[key] === "object") return;
+    next[key] = {
+      spendCount: retained.count,
+      spentAmountUSD: retained.totalUSD,
+    };
+    changed = true;
+  });
+  Object.entries(source).forEach(([rawKey, interaction]) => {
+    const key = normalizeKey(rawKey);
+    if (!key || !interaction || typeof interaction !== "object") return;
+    const spendCount = normalizeCount(interaction.spendCount);
+    const currentSpentAmountUSD = normalizeAmount(interaction.spentAmountUSD);
+    const retained = historyByKey.get(key) || { count: 0, totalUSD: 0 };
+    if (spendCount <= 0 && retained.totalUSD <= 0) return;
+
+    // Older builds persisted the lifetime spend count but derived the amount
+    // from a retained history window. Seed the new lifetime amount from the
+    // exact retained events and estimate any older missing events once.
+    const retainedAverageUSD =
+      retained.count > 0 ? retained.totalUSD / retained.count : 0;
+    const fallbackAmountUSD =
+      retainedAverageUSD ||
+      normalizeAmount(interaction.lastSpentAmountUSD) ||
+      normalizeAmount(interaction.lastAmountUSD) ||
+      normalizeAmount(interaction.averageAmountUSD);
+    const missingCount = Math.max(0, spendCount - retained.count);
+    const inferredLifetimeAmountUSD =
+      retained.totalUSD + missingCount * fallbackAmountUSD;
+    const nextSpentAmountUSD = Math.max(
+      currentSpentAmountUSD,
+      retained.totalUSD,
+      inferredLifetimeAmountUSD
+    );
+    if (nextSpentAmountUSD === currentSpentAmountUSD) return;
+    next[key] = {
+      ...interaction,
+      spentAmountUSD: nextSpentAmountUSD,
+    };
+    changed = true;
+  });
+
+  return changed ? next : source;
+};
+
 const decrementTemptationLifetimeRefuseStats = (refuseStats = {}, entry, extraKeys = []) => {
   if (entry?.kind !== "refuse_spend") return refuseStats;
   const source = refuseStats && typeof refuseStats === "object" ? refuseStats : {};
@@ -135,7 +203,9 @@ const decrementTemptationLifetimeInteractionStats = (
   entry,
   extraKeys = []
 ) => {
-  if (entry?.kind !== "refuse_spend") return interactionStats;
+  const isSave = entry?.kind === "refuse_spend";
+  const isSpend = entry?.kind === "spend";
+  if (!isSave && !isSpend) return interactionStats;
   const source =
     interactionStats && typeof interactionStats === "object" ? interactionStats : {};
   const keys = getHistoryEntryTemptationKeys(entry, extraKeys);
@@ -147,16 +217,18 @@ const decrementTemptationLifetimeInteractionStats = (
   keys.forEach((key) => {
     const current = source[key];
     if (!current || typeof current !== "object") return;
-    const currentCount = normalizeCount(current.saveCount);
+    const countKey = isSave ? "saveCount" : "spendCount";
+    const amountKey = isSave ? "savedAmountUSD" : "spentAmountUSD";
+    const currentCount = normalizeCount(current[countKey]);
     if (currentCount <= 0) return;
     const nextEntry = {
       ...current,
-      saveCount: currentCount - 1,
+      [countKey]: currentCount - 1,
     };
-    if (Object.prototype.hasOwnProperty.call(current, "savedAmountUSD")) {
-      nextEntry.savedAmountUSD = Math.max(
+    if (Object.prototype.hasOwnProperty.call(current, amountKey)) {
+      nextEntry[amountKey] = Math.max(
         0,
-        normalizeAmount(current.savedAmountUSD) - removedAmountUSD
+        normalizeAmount(current[amountKey]) - removedAmountUSD
       );
     }
     next[key] = nextEntry;
@@ -170,5 +242,6 @@ module.exports = {
   decrementTemptationLifetimeInteractionStats,
   decrementTemptationLifetimeRefuseStats,
   getHistoryEntryTemptationKeys,
+  reconcileTemptationLifetimeInteractionAmounts,
   reconcileTemptationLifetimeStats,
 };

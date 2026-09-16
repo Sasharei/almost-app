@@ -20,6 +20,7 @@ const IOS_NATIVE_LIQUID_MIN_VERSION = 26;
 const IOS_NATIVE_TAB_BAR_HORIZONTAL_PADDING = 0;
 const ANDROID_TAB_LABEL_MIN_FONT_SIZE = 12;
 const ANDROID_TAB_LABEL_MIN_LINE_HEIGHT = 14;
+const ATTENTION_BADGE_COLOR = "#D92D20";
 
 const TAB_ICON_PATHS = {
   feed: ["M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4.8v-5.2H9.8V21H5a1 1 0 0 1-1-1v-9.5z"],
@@ -114,6 +115,7 @@ const resolveTabBadge = ({
   challengesUnlocked,
   rewardsBadgeCount,
   rewardsUnlocked,
+  pendingBadgeCount,
   reportsBadgeVisible,
   reportsUnlocked,
 }) => {
@@ -121,6 +123,9 @@ const resolveTabBadge = ({
     const challengeCount = challengesUnlocked ? Math.max(0, Number(challengeRewardsBadgeCount) || 0) : 0;
     const rewardCount = rewardsUnlocked ? Math.max(0, Number(rewardsBadgeCount) || 0) : 0;
     return challengeCount + rewardCount;
+  }
+  if (tab === "pending") {
+    return Math.max(0, Number(pendingBadgeCount) || 0);
   }
   if (tab === "profile" && reportsUnlocked && reportsBadgeVisible) {
     return 1;
@@ -153,6 +158,7 @@ const LiquidGlassTabBar = ({
   challengesUnlocked = true,
   challengeRewardsBadgeCount = 0,
   rewardsBadgeCount = 0,
+  pendingBadgeCount = 0,
   reportsBadgeVisible = false,
   reportsUnlocked = true,
 }) => {
@@ -368,6 +374,7 @@ const LiquidGlassTabBar = ({
           challengesUnlocked,
           rewardsBadgeCount,
           rewardsUnlocked,
+          pendingBadgeCount,
           reportsBadgeVisible,
           reportsUnlocked,
         });
@@ -376,6 +383,7 @@ const LiquidGlassTabBar = ({
           title: typeof getLabel === "function" ? getLabel(tab) : tab,
           symbolName: TAB_SYMBOL_NAMES[tab] || "circle",
           badgeValue: badgeValue > 0 ? (badgeValue > 99 ? "99+" : String(badgeValue)) : null,
+          badgeColorHex: tab === "pending" && badgeValue > 0 ? ATTENTION_BADGE_COLOR : null,
         };
       }),
     [
@@ -383,6 +391,7 @@ const LiquidGlassTabBar = ({
       challengeRewardsBadgeCount,
       challengesUnlocked,
       getLabel,
+      pendingBadgeCount,
       reportsBadgeVisible,
       reportsUnlocked,
       rewardsBadgeCount,
@@ -591,6 +600,7 @@ const LiquidGlassTabBar = ({
               challengesUnlocked,
               rewardsBadgeCount,
               rewardsUnlocked,
+              pendingBadgeCount,
               reportsBadgeVisible,
               reportsUnlocked,
             });
@@ -611,13 +621,24 @@ const LiquidGlassTabBar = ({
                 <View style={styles.tabIconSlot}>
                   <TabGlyph tab={tab} color={tabTextColor} />
                   {badgeValue > 0 && (
-                    <View style={[styles.badge, { backgroundColor: badgeBackground }]}>
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor:
+                            tab === "pending" ? ATTENTION_BADGE_COLOR : badgeBackground,
+                        },
+                      ]}
+                    >
                       <Text
                         allowFontScaling
                         maxFontSizeMultiplier={1.2}
                         accessibilityElementsHidden
                         importantForAccessibility="no"
-                        style={[styles.badgeText, { color: badgeText }]}
+                        style={[
+                          styles.badgeText,
+                          { color: tab === "pending" ? "#FFFFFF" : badgeText },
+                        ]}
                       >
                         {badgeValue > 99 ? "99+" : `${badgeValue}`}
                       </Text>
@@ -778,6 +799,7 @@ export default React.memo(
     prevProps.challengesUnlocked === nextProps.challengesUnlocked &&
     prevProps.challengeRewardsBadgeCount === nextProps.challengeRewardsBadgeCount &&
     prevProps.rewardsBadgeCount === nextProps.rewardsBadgeCount &&
+    prevProps.pendingBadgeCount === nextProps.pendingBadgeCount &&
     prevProps.reportsBadgeVisible === nextProps.reportsBadgeVisible &&
     prevProps.reportsUnlocked === nextProps.reportsUnlocked
 );

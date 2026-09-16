@@ -143,9 +143,15 @@ export const TRANSLATIONS = {
       "Алми очень голодный и будет рад перекусу.",
     tamagotchiPartyNeedCoinsMessage: "Нужно {{amount}} синих монет на вечеринку.",
     tamagotchiPartyButtonLabel: "Вечеринка ×{{cost}}",
-    tamagotchiImmunityHintTitle: "иммунитет",
-    tamagotchiImmunityActiveLabel: "Иммунитет от голода активен",
+    tamagotchiPartyTitle: "Вечеринка",
+    tamagotchiPartyBenefit: "Защита сытости на {{hours}} ч",
+    tamagotchiImmunityHintTitle: "Защита сытости",
+    tamagotchiImmunityActiveLabel: "Сытость Алми защищена",
     tamagotchiImmunityTimeLeftLabel: "Осталось: {{time}}",
+    tamagotchiImmunityDescription: "Пока таймер идёт, сытость Алми не снижается.",
+    tamagotchiImmunityLearnMore: "Как это работает",
+    tamagotchiImmunityDetails:
+      "Эффект начинается сразу после вечеринки и действует {{hours}} ч.",
     tamagotchiFullHint: "Алми сыт, покорми позже.",
     tamagotchiSpeechGreetingFirst: [
       "Привет! Я Алми.",
@@ -1345,6 +1351,8 @@ export const TRANSLATIONS = {
     tycoonAutosaveLaterHint: "Покажем снова через 2 часа или до конца дня.",
     tycoonAutosaveClose: "Закрыть без подтверждения",
     tycoonAutosaveExclude: "Не учитывать эту карточку",
+    tycoonAutosaveUndecided: "Не знаю",
+    tycoonAutosaveUndecidedHint: "Без решения: карточка вернётся на проверку позже сегодня.",
     tycoonAutosaveHungryTitle: "Алми слишком голодный",
     tycoonAutosaveHungryBody:
       "Алми очень голодный и не смог собрать карточки для вас. Покормите его, чтобы автосбор снова следил за сохранениями и тратами.",
@@ -1411,7 +1419,7 @@ export const TRANSLATIONS = {
     subscriptionDueNotificationBodyMultiple:
       "Сегодня нужно проверить {{count}} подписок. Открой Almost и подтверди оплаты.",
     subscriptionDueModalTitle: "День оплаты подписки",
-    subscriptionDueModalSubtitle: "Сегодня наступила очередная оплата «{{title}}».",
+    subscriptionDueModalSubtitle: "Проверь списание и отметь, прошла оплата или нет.",
     subscriptionDueAmount: "Сумма",
     subscriptionDueFirstRecorded: "Записана",
     subscriptionDueTotalSpent: "Уже съела",
@@ -1423,7 +1431,6 @@ export const TRANSLATIONS = {
     subscriptionDuePaidQuestion: "Ты оплатил(а) эту подписку?",
     subscriptionDuePaidButton: "Оплатил(а)",
     subscriptionDueNotPaidButton: "Не оплатил(а)",
-    subscriptionDueLater: "Напомнить позже",
     budgetAllocationNotificationTitle: "{{amount}} ждут распределения",
     budgetAllocationNotificationBodyWithDebt:
       "На балансе накопилось {{amount}}. Переведи их в накопления или закрытие долгов.",
@@ -2398,9 +2405,15 @@ export const TRANSLATIONS = {
       "Almi is very hungry and would love a snack.",
     tamagotchiPartyNeedCoinsMessage: "You need {{amount}} blue coins to start a party.",
     tamagotchiPartyButtonLabel: "Party ×{{cost}}",
-    tamagotchiImmunityHintTitle: "immunity",
-    tamagotchiImmunityActiveLabel: "Hunger immunity is active",
+    tamagotchiPartyTitle: "Party",
+    tamagotchiPartyBenefit: "Protects fullness for {{hours}} h",
+    tamagotchiImmunityHintTitle: "Fullness protection",
+    tamagotchiImmunityActiveLabel: "Almi’s fullness is protected",
     tamagotchiImmunityTimeLeftLabel: "Time left: {{time}}",
+    tamagotchiImmunityDescription: "Almi’s fullness will not drop while the timer is running.",
+    tamagotchiImmunityLearnMore: "How it works",
+    tamagotchiImmunityDetails:
+      "The effect starts right after a party and lasts for {{hours}} h.",
     tamagotchiFullHint: "He is full, try again later.",
     tamagotchiSpeechGreetingFirst: [
       "Hi! I'm Almi.",
@@ -3546,6 +3559,8 @@ export const TRANSLATIONS = {
     tycoonAutosaveLaterHint: "We'll show this again in two hours, or before today ends.",
     tycoonAutosaveClose: "Close without confirming",
     tycoonAutosaveExclude: "Don't include this card",
+    tycoonAutosaveUndecided: "Not sure",
+    tycoonAutosaveUndecidedHint: "No decision: this card will return for review later today.",
     tycoonAutosaveHungryTitle: "Almi is too hungry",
     tycoonAutosaveHungryBody:
       "Almi is very hungry and could not collect cards for you. Feed Almi so auto-collect can watch your savings and spending again.",
@@ -3612,7 +3627,7 @@ export const TRANSLATIONS = {
     subscriptionDueNotificationBodyMultiple:
       "{{count}} subscriptions need review today. Open Almost and confirm the payments.",
     subscriptionDueModalTitle: "Subscription payment day",
-    subscriptionDueModalSubtitle: "The next payment for “{{title}}” is due today.",
+    subscriptionDueModalSubtitle: "Check the charge and confirm whether the payment went through.",
     subscriptionDueAmount: "Amount",
     subscriptionDueFirstRecorded: "Recorded",
     subscriptionDueTotalSpent: "Already spent",
@@ -3624,7 +3639,6 @@ export const TRANSLATIONS = {
     subscriptionDuePaidQuestion: "Did you pay this subscription?",
     subscriptionDuePaidButton: "Paid",
     subscriptionDueNotPaidButton: "Not paid",
-    subscriptionDueLater: "Remind me later",
     budgetAllocationNotificationTitle: "{{amount}} is waiting to be allocated",
     budgetAllocationNotificationBodyWithDebt:
       "{{amount}} has built up on your balance. Move it to savings or debt payoff.",
@@ -4575,9 +4589,16 @@ export const TRANSLATIONS = {
       "Almi a très faim et aimerait une petite collation.",
     tamagotchiPartyNeedCoinsMessage: "Il faut {{amount}} pièces bleues pour lancer la fête.",
     tamagotchiPartyButtonLabel: "Fête ×{{cost}}",
-    tamagotchiImmunityHintTitle: "immunité",
-    tamagotchiImmunityActiveLabel: "Immunité contre la faim active",
+    tamagotchiPartyTitle: "Fête",
+    tamagotchiPartyBenefit: "Protège la satiété pendant {{hours}} h",
+    tamagotchiImmunityHintTitle: "Protection de la satiété",
+    tamagotchiImmunityActiveLabel: "La satiété d’Almi est protégée",
     tamagotchiImmunityTimeLeftLabel: "Temps restant : {{time}}",
+    tamagotchiImmunityDescription:
+      "Tant que le minuteur tourne, la satiété d’Almi ne baisse pas.",
+    tamagotchiImmunityLearnMore: "Comment ça marche",
+    tamagotchiImmunityDetails:
+      "L’effet commence juste après la fête et dure {{hours}} h.",
     tamagotchiFullHint: "Elle est rassasiée, réessaie plus tard.",
     tamagotchiSpeechGreetingFirst: [
       "Salut ! Je suis Almi.",
@@ -5726,6 +5747,8 @@ export const TRANSLATIONS = {
     tycoonAutosaveLaterHint: "Nous la réafficherons dans 2 heures ou avant la fin de la journée.",
     tycoonAutosaveClose: "Fermer sans confirmer",
     tycoonAutosaveExclude: "Ne pas inclure cette carte",
+    tycoonAutosaveUndecided: "Je ne sais pas",
+    tycoonAutosaveUndecidedHint: "Sans décision : cette carte reviendra pour vérification plus tard aujourd’hui.",
     tycoonAutosaveHungryTitle: "Almi a trop faim",
     tycoonAutosaveHungryBody:
       "Almi a très faim et n’a pas pu collecter les cartes pour toi. Nourris Almi pour que la collecte auto surveille de nouveau tes économies et tes dépenses.",
@@ -5792,7 +5815,7 @@ export const TRANSLATIONS = {
     subscriptionDueNotificationBodyMultiple:
       "{{count}} abonnements sont à vérifier aujourd’hui. Ouvre Almost et confirme les paiements.",
     subscriptionDueModalTitle: "Jour de paiement",
-    subscriptionDueModalSubtitle: "Le prochain paiement de « {{title}} » est dû aujourd’hui.",
+    subscriptionDueModalSubtitle: "Vérifie le prélèvement et indique si le paiement a été effectué.",
     subscriptionDueAmount: "Montant",
     subscriptionDueFirstRecorded: "Enregistré",
     subscriptionDueTotalSpent: "Déjà dépensé",
@@ -5804,7 +5827,6 @@ export const TRANSLATIONS = {
     subscriptionDuePaidQuestion: "As-tu payé cet abonnement ?",
     subscriptionDuePaidButton: "Payé",
     subscriptionDueNotPaidButton: "Non payé",
-    subscriptionDueLater: "Me le rappeler plus tard",
     budgetAllocationNotificationTitle: "{{amount}} attendent d’être répartis",
     budgetAllocationNotificationBodyWithDebt:
       "{{amount}} se sont accumulés sur ton solde. Déplace-les vers l’épargne ou le remboursement de dettes.",
@@ -6744,9 +6766,16 @@ export const TRANSLATIONS = {
       "Almi tiene mucha hambre y agradecería un tentempié.",
     tamagotchiPartyNeedCoinsMessage: "Necesitas {{amount}} monedas azules para iniciar una fiesta.",
     tamagotchiPartyButtonLabel: "Fiesta ×{{cost}}",
-    tamagotchiImmunityHintTitle: "inmunidad",
-    tamagotchiImmunityActiveLabel: "Inmunidad al hambre activa",
+    tamagotchiPartyTitle: "Fiesta",
+    tamagotchiPartyBenefit: "Protege la saciedad durante {{hours}} h",
+    tamagotchiImmunityHintTitle: "Protección de la saciedad",
+    tamagotchiImmunityActiveLabel: "La saciedad de Almi está protegida",
     tamagotchiImmunityTimeLeftLabel: "Tiempo restante: {{time}}",
+    tamagotchiImmunityDescription:
+      "Mientras el temporizador esté activo, la saciedad de Almi no disminuye.",
+    tamagotchiImmunityLearnMore: "Cómo funciona",
+    tamagotchiImmunityDetails:
+      "El efecto comienza justo después de la fiesta y dura {{hours}} h.",
     tamagotchiFullHint: "Está lleno, inténtalo más tarde.",
     tamagotchiSpeechGreetingFirst: [
       "¡Hola! Soy Almi.",
@@ -7893,6 +7922,8 @@ export const TRANSLATIONS = {
     tycoonAutosaveLaterHint: "Lo mostraremos de nuevo en 2 horas o antes de que termine el día.",
     tycoonAutosaveClose: "Cerrar sin confirmar",
     tycoonAutosaveExclude: "No incluir esta tarjeta",
+    tycoonAutosaveUndecided: "No sé",
+    tycoonAutosaveUndecidedHint: "Sin decisión: esta tarjeta volverá a revisión más tarde hoy.",
     tycoonAutosaveHungryTitle: "Almi tiene demasiada hambre",
     tycoonAutosaveHungryBody:
       "Almi tiene mucha hambre y no pudo recoger las tarjetas por ti. Alimenta a Almi para que la auto-recolección vuelva a vigilar tus ahorros y gastos.",
@@ -7959,7 +7990,7 @@ export const TRANSLATIONS = {
     subscriptionDueNotificationBodyMultiple:
       "{{count}} suscripciones necesitan revisión hoy. Abre Almost y confirma los pagos.",
     subscriptionDueModalTitle: "Día de pago",
-    subscriptionDueModalSubtitle: "El próximo pago de «{{title}}» vence hoy.",
+    subscriptionDueModalSubtitle: "Revisa el cargo y confirma si el pago se realizó.",
     subscriptionDueAmount: "Importe",
     subscriptionDueFirstRecorded: "Registrada",
     subscriptionDueTotalSpent: "Ya gastado",
@@ -7971,7 +8002,6 @@ export const TRANSLATIONS = {
     subscriptionDuePaidQuestion: "¿Pagaste esta suscripción?",
     subscriptionDuePaidButton: "Pagada",
     subscriptionDueNotPaidButton: "No pagada",
-    subscriptionDueLater: "Recordarme después",
     budgetAllocationNotificationTitle: "{{amount}} esperan asignación",
     budgetAllocationNotificationBodyWithDebt:
       "{{amount}} se acumularon en tu balance. Muévelos a ahorros o pago de deuda.",

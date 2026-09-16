@@ -34,6 +34,23 @@ const getTycoonAutosaveEventDayKey = (entry) => {
 const isTycoonAutosaveTimestampInDay = (timestamp, dayKey) =>
   getLocalDayKey(timestamp) === normalizeDayKey(dayKey);
 
+const setTycoonAutosaveUndecided = (entries = [], eventId, undecided) =>
+  (Array.isArray(entries) ? entries : []).map((entry) =>
+    entry?.id === eventId && entry.status === "pending"
+      ? { ...entry, reviewUndecided: undecided === true }
+      : entry
+  );
+
+const partitionTycoonAutosaveReview = (entries = []) => {
+  const ready = [];
+  const undecided = [];
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    if (!entry?.id || entry.status !== "pending") return;
+    (entry.reviewUndecided === true ? undecided : ready).push(entry);
+  });
+  return { ready, undecided };
+};
+
 const getManualTycoonInteractionDayKey = (entry) => {
   if (!entry || Object(entry) !== entry) return "";
   const storedDayKey = normalizeDayKey(entry.manualAutosaveSkipDayKey);
@@ -279,8 +296,10 @@ module.exports = {
   isTycoonAutosaveEnabled,
   isTycoonAutosaveTimestampInDay,
   normalizeTycoonSettings,
+  partitionTycoonAutosaveReview,
   retireLegacyTycoonRewards,
   resetLegacyTycoonPendingEvents,
+  setTycoonAutosaveUndecided,
   skipPendingTycoonAutosaveForCards,
   skipPendingTycoonAutosavesForManualInteractions,
   summarizeTycoonAutosaveSaveResults,

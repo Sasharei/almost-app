@@ -274,14 +274,14 @@
         "cancelScheduledTycoonAutosaveNotifications({ dismissDelivered: true })",
         "onToggleSpent={handleTycoonToggleSpent}",
         "onAmountChange={handleTycoonAutosaveAmountChange}",
-        "onExclude={handleTycoonAutosaveExclude}",
+        "onToggleUndecided={handleTycoonAutosaveToggleUndecided}",
         "onSnooze={handleTycoonAutosaveSnooze}",
         "onConfirm={handleTycoonAutosaveConfirm}",
         "onClose={handleTycoonAutosaveClose}",
         "onRequestClose={onClose}",
         "if (spent) onToggleSpent?.(entry.id);",
         "if (!spent) onToggleSpent?.(entry.id);",
-        "onPress={() => onExclude?.(entry.id)}",
+        "onPress={() => onToggleUndecided?.(entry.id)}",
         "{t(\"tycoonAutosaveConfirm\")}",
         "{t(\"tycoonAutosaveLater\")}",
         "{t(\"tycoonAutosaveClose\")}",
@@ -301,6 +301,25 @@
         "handleTemptationAction\\(\"save\", card,[\\s\\S]*?suppressSaveOverlay: true",
         "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{(?:(?!setTycoonRewardModal|QUEUED_MODAL_TYPES\\.TYCOON_REWARD|rewardByEventId).)*?rewardRoute: \"temptation_series\"",
         "const handleTycoonAutosaveConfirm = useCallback\\(async \\(\\) => \\{[\\s\\S]*?summarizeTycoonAutosaveSaveResults\\(autosaveSaveResults\\)[\\s\\S]*?triggerOverlayState\\(\"save\", autosaveSummaryPayload\\);"
+      ]
+    },
+    {
+      "id": "tycoon-autocollect-slider-scroll-lock",
+      "description": "Auto-collect amount sliders keep exclusive touch ownership while adjusting a card, lock the containing list until release or cancellation, and clear the lock when the slider unmounts or the modal closes. Manual amount entry, accessible increments/decrements, save/spend selection, exclusion, snooze, confirmation and close remain reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "scrollEnabled={!sliderInteracting}",
+        "listRef.current?.setNativeProps?.({ scrollEnabled: !isInteracting });",
+        "onInteractionChange={handleSliderInteractionChange}",
+        "setSliderInteracting(isInteracting);",
+        "setExpandedEventId((current) => (current === entry.id ? null : entry.id));",
+        "if (normalizedUSD > 0) onAmountChange?.(entry.id, normalizedUSD);"
+      ],
+      "requiredPatterns": [
+        "const TycoonAutosaveAmountSlider = React\\.memo\\(function TycoonAutosaveAmountSlider\\([\\s\\S]*?onInteractionChange[\\s\\S]*?onInteractionChange\\?\\.\\(isInteracting\\);[\\s\\S]*?useEffect\\(\\(\\) => \\(\\) => setInteractionState\\(false\\), \\[setInteractionState\\]\\);",
+        "const TycoonAutosaveAmountSlider =[\\s\\S]*?onPanResponderGrant: \\(event\\) => \\{\\s*setInteractionState\\(true\\);[\\s\\S]*?onPanResponderRelease: \\(event\\) => \\{\\s*updateFromPageX\\(Number\\(event\\?\\.nativeEvent\\?\\.pageX\\)\\);\\s*setInteractionState\\(false\\);[\\s\\S]*?onPanResponderTerminate: \\(\\) => setInteractionState\\(false\\),\\s*onPanResponderTerminationRequest: \\(\\) => false,\\s*onShouldBlockNativeResponder: \\(\\) => true,",
+        "const TycoonAutosaveAmountSlider =[\\s\\S]*?accessibilityRole=\"adjustable\"[\\s\\S]*?onAccessibilityAction=[\\s\\S]*?updateByStep\\(1\\);[\\s\\S]*?updateByStep\\(-1\\);",
+        "function TycoonAutosaveModal\\([\\s\\S]*?if \\(!visible\\) \\{[\\s\\S]*?handleSliderInteractionChange\\(false\\);[\\s\\S]*?<ScrollView\\s+ref=\\{listRef\\}\\s+style=\\{styles\\.tycoonAutosaveList\\}"
       ]
     },
     {
@@ -344,11 +363,13 @@
     },
     {
       "id": "temptation-card-lifetime-savings-totals",
-      "description": "Each temptation card keeps a lifetime save count and amount independently of the rolling history-retention window. New saves only increase it, and manually deleting a save from History decrements the matching card total.",
+      "description": "Each temptation card keeps independent lifetime save and spend counts and amounts outside the rolling history-retention window. New actions increase the matching total, while manually deleting an action from History decrements only that card and action total.",
       "file": "App.js",
       "requiredFragments": [
         "reconcileTemptationLifetimeStats(prev, temptationInteractions)",
+        "reconcileTemptationLifetimeInteractionAmounts(prev, resolvedHistoryEvents)",
         "savedAmountUSD:",
+        "spentAmountUSD:",
         "decrementTemptationLifetimeRefuseStats(prev, entry, lifetimeStatKeys)",
         "decrementTemptationLifetimeInteractionStats(prev, entry, lifetimeStatKeys)",
         "setDeclineCount((prev) => Math.max(0, Number(prev) - 1));"
@@ -445,7 +466,7 @@
     },
     {
       "id": "temptation-daily-series-experience",
-      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. Today's series progress is visible before the first card decision without starting persisted series state; the first due decision still starts that state, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation, and releases the automatic soft paywall only after completion and Continue.",
+      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. Today's series progress is visible before the first card decision without starting persisted series state; the first due decision still starts that state, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation. Automatic soft paywall timing is independent of card decisions and series completion.",
       "file": "App.js",
       "requiredFragments": [
         "registerTemptationSeriesAction(item,",
@@ -502,9 +523,7 @@
         "nextCheckAt: nextCheckAt ?? prevEntry.nextCheckAt ?? null,",
         "onSeriesSkip={handleSeriesSkip}",
         "onSeriesNotMine={handleSeriesNotMine}",
-        "onTemptationSeriesAction?.(item, \"archive\");",
-        "resolveGroupCSoftPaywallTrigger(",
-        "\"series_complete_after_reward\""
+        "onTemptationSeriesAction?.(item, \"archive\");"
       ]
     },
     {
@@ -829,6 +848,10 @@
         "onPress={handleTamagotchiDailySummaryPress}",
         "onPress={openSkinPicker}",
         "onPress={showTamagotchiImmunityHint}",
+        "testID=\"tamagotchi-immunity-card\"",
+        "tamagotchiImmunityProgress * 100",
+        "t(\"tamagotchiImmunityDescription\")",
+        "t(\"tamagotchiPartyBenefit\", {",
         "tamagotchiCleanPanResponder.panHandlers",
         "onPress={handleTamagotchiHourlyRewardClaim}",
         "onPress={() => handleTamagotchiTabPress(tab.id)}",
@@ -859,6 +882,8 @@
         "accessibilityLabel={t(\"tamagotchiOutfitsLabel\")}",
         "accessibilityLabel={t(\"dailySummaryBadgeCTA\")}",
         "accessibilityLabel={t(\"tamagotchiImmunityHintTitle\")}",
+        "accessibilityState={{ expanded: tamagotchiImmunityHintVisible }}",
+        "accessibilityValue={{",
         "accessibilityLabel={t(\"tamagotchiHourlyRewardClaim\")}",
         "accessibilityRole=\"tab\"",
         "accessibilityState={{ selected: active }}",
@@ -1313,16 +1338,22 @@
     },
     {
       "id": "subscription-due-decision-lifecycle",
-      "description": "An overdue subscription decision is queued globally from every screen, Later defers only the current app session, the next full app entry asks again, notification taps reopen the decision, and Paid/Not paid keep their spend/save handlers connected.",
+      "description": "An overdue subscription decision is queued globally from every screen, makes the exact subscription name the primary modal heading, cannot be dismissed without Paid/Not paid, keeps the current cycle frozen until the selected handler completes, wakes at the exact timer deadline, and notification taps reopen the decision.",
       "file": "App.js",
       "requiredFragments": [
         "QUEUED_MODAL_TYPES.SUBSCRIPTION_DUE",
         "findPendingSubscriptionDueEntry(subscriptionDueEntries",
-        "subscriptionDueDismissedSessionRef.current.clear();",
+        "findNextSubscriptionDeadline(",
+        "subscriptionCardIds.has(String(templateId))",
+        "if (!entry || subscriptionDueDecisionPendingRef.current) return;",
+        "await handleSubscriptionPaymentAction(entry.item, action",
         "setSubscriptionDueSessionVersion((version) => version + 1);",
-        "onRequestClose={dismissSubscriptionDuePrompt}",
+        "onRequestClose={ignoreSubscriptionDueCloseRequest}",
+        "decisionPending={subscriptionDueDecisionPending}",
         "onDecision={handleSubscriptionDuePromptDecision}",
-        "handleSubscriptionPaymentAction(entry.item, action",
+        "styles.subscriptionDueEyebrow",
+        "accessibilityRole=\"header\"",
+        "{entry.title}",
         "buildSubscriptionNotificationPlan({",
         "doesScheduledSubscriptionNotificationMatchPlan("
       ]
@@ -1337,6 +1368,49 @@
         "return challengeCount + rewardCount;",
         "badgeValue: badgeValue > 0 ? (badgeValue > 99 ? \"99+\" : String(badgeValue)) : null",
         "{badgeValue > 0 && ("
+      ]
+    },
+    {
+      "id": "fridge-overdue-attention-signals",
+      "description": "An expired Fridge card refreshes attention state on both platforms, schedules its dedicated notification for the actual due time, shows one in-app decision alert per due cycle, opens the matching card, and exposes the overdue count as a red bottom-tab badge in native and fallback navigation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const pendingOverdueAlertKeysRef = useRef(new Set());",
+        "const nextTickDelay = Number.isFinite(nearestFutureDue)",
+        "const appStateSubscription = AppState.addEventListener(\"change\"",
+        "const triggerAt = Math.max(dueTimestamp, now);",
+        "request: meta?.requestPermission === true",
+        "const reconcilePendingDeadlineNotifications = async () => {",
+        "if (!currentItemIds.has(entry?.content?.data?.pendingId)) return;",
+        "t(\"pendingNotificationBodyWithDuration\", { title, duration })",
+        "setPendingFocusId(unseenItem.id);",
+        "goToTab(\"pending\");",
+        "pendingBadgeCount={pendingActionCount}"
+      ]
+    },
+    {
+      "id": "fridge-bottom-tab-overdue-badge",
+      "description": "The React Native fallback tab bar keeps the Fridge overdue count and its high-contrast red attention treatment.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "const ATTENTION_BADGE_COLOR = \"#D92D20\";",
+        "if (tab === \"pending\") {",
+        "return Math.max(0, Number(pendingBadgeCount) || 0);",
+        "badgeColorHex: tab === \"pending\" && badgeValue > 0 ? ATTENTION_BADGE_COLOR : null",
+        "tab === \"pending\" ? ATTENTION_BADGE_COLOR : badgeBackground",
+        "tab === \"pending\" ? \"#FFFFFF\" : badgeText"
+      ]
+    },
+    {
+      "id": "fridge-native-bottom-tab-overdue-badge",
+      "description": "The native iOS tab bar reads each item's badge color and applies the Fridge red attention treatment without changing the other tab badges.",
+      "file": "ios/Almost/NativeLiquidTabBarManager.swift",
+      "requiredFragments": [
+        "let badgeColor: UIColor?",
+        "let badgeColor = Self.optionalColor(from: entry[\"badgeColorHex\"] as? String)",
+        "if let badgeColor = model.badgeColor {",
+        "item.badgeColor = badgeColor",
+        "private static func optionalColor(from rawValue: String?) -> UIColor?"
       ]
     },
     {
@@ -1844,7 +1918,7 @@
     },
     {
       "id": "first-save-recap-and-reward",
-      "description": "The first save still records the transaction and presents one recap. Its unchanged reward is credited to the durable balance exactly once before any visual recap or series chest can be dismissed, while monetization remains deferred until the series completion flow finishes.",
+      "description": "The first save still records the transaction and presents one recap. Its unchanged reward is credited to the durable balance exactly once before any visual recap or series chest can be dismissed, while automatic monetization waits for active modal and reward handoffs to settle.",
       "file": "App.js",
       "requiredFragments": [
         "triggerOverlayState(\"save\", saveOverlayPayloadWithReward);",
@@ -1868,9 +1942,7 @@
         "const seriesRewardPending = payload?.temptationSeriesRewardMode === \"pending\";",
         "pendingUsageStreakRef.current = null;",
         "saveOverlayRewardDeliveredKeyRef.current === saveOverlayKey",
-        "revealSaveOverlayRewardOnce();",
-        "const MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT = 2;",
-        "if (totalSaveActionCount < MONETIZATION_EXPERIMENT_GROUP_C_FIRST_ACTION_PAYWALL_ACTION_LIMIT) return;"
+        "revealSaveOverlayRewardOnce();"
       ]
     },
     {
@@ -2433,6 +2505,52 @@
         "onPress={onAccept}",
         "onRequestClose={onClose}",
         "accessibilityState={{ selected }}"
+      ]
+    },
+    {
+      "id": "automatic-first-card-decision-soft-paywall",
+      "description": "The first committed save or spend after onboarding queues one dismissible automatic soft paywall per app session after reward and modal handoffs. Neither opening the Feed, series completion, nor legacy persisted history controls eligibility. Feature gate callbacks remain repeatable; background state and active modal/reward handoffs defer presentation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const AUTOMATIC_SOFT_PAYWALL_TRIGGER = \"first_action_after_onboarding\";",
+        "const automaticSoftPaywallShownThisSessionRef = useRef(false);",
+        "if (!automaticSoftPaywallDecisionRecorded) return;",
+        "if (onboardingStep === \"done\" && (action === \"save\" || action === \"spend\")) {",
+        "setAutomaticSoftPaywallDecisionRecorded(true);",
+        "if (canShowSoftPaywallNow()) {",
+        "automaticSoftPaywallShownThisSessionRef.current = true;",
+        "if (appStateRef.current !== \"active\") return false;",
+        "trigger: \"feature_gate\","
+      ]
+    },
+    {
+      "id": "soft-paywall-five-second-dismissal",
+      "description": "The existing paywall waits five seconds before enabling dismissal, including the automatic soft paywall.",
+      "file": "src/components/PremiumPaywallModalV2.js",
+      "requiredFragments": [
+        "const PAYWALL_DISMISS_COOLDOWN_MS = 5000;",
+        "PAYWALL_DISMISS_COOLDOWN_MS",
+        "const canDismiss = dismissible && dismissCooldownComplete;",
+        "if (!canDismiss) return;"
+      ]
+    },
+    {
+      "id": "tycoon-autocollect-undecided-review",
+      "description": "The user-requested Not sure action replaces permanent same-day exclusion. It keeps the card pending across storage, excludes it from totals and confirmation, allows returning to saved/spent, and reuses the same-day two-hour snooze after partial or all-undecided confirmation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "partitionTycoonAutosaveReview(tycoonPendingEvents)",
+        "if (entry.reviewUndecided === true) return acc;",
+        "if (undecided.length) handleTycoonAutosaveSnooze(undecided);",
+        "setTycoonAutosaveUndecided(prev, eventId, false)",
+        "setTycoonAutosaveUndecided(prev, eventId, entry?.reviewUndecided !== true)",
+        "accessibilityState={{ selected: undecided }}",
+        "{t(\"tycoonAutosaveUndecided\")}",
+        "{t(\"tycoonAutosaveUndecidedHint\")}",
+        "queuePersist(STORAGE_KEYS.TYCOON_LEDGER, JSON.stringify(tycoonLedger));"
+      ],
+      "requiredPatterns": [
+        "if \\(undecided\\.length\\) \\{[\\s\\S]*?handleTycoonAutosaveSnooze\\(undecided\\);"
       ]
     }
   ]

@@ -48,6 +48,17 @@ const findPendingSubscriptionDueEntry = (
   );
 };
 
+const findNextSubscriptionDeadline = (entries = [], { now = Date.now() } = {}) => {
+  const referenceTimestamp = Number(now) || Date.now();
+  return (Array.isArray(entries) ? entries : []).reduce((nearest, entry) => {
+    const dueAt =
+      normalizePositiveTimestamp(entry?.nextCheckAt) ||
+      normalizePositiveTimestamp(entry?.dueAt);
+    if (!dueAt || dueAt <= referenceTimestamp) return nearest;
+    return nearest === null || dueAt < nearest ? dueAt : nearest;
+  }, null);
+};
+
 const buildSubscriptionNotificationPlan = ({
   subscriptions = [],
   now = Date.now(),
@@ -186,6 +197,7 @@ module.exports = {
   buildSubscriptionDuePromptKey,
   buildSubscriptionNotificationPlan,
   doesScheduledSubscriptionNotificationMatchPlan,
+  findNextSubscriptionDeadline,
   findPendingSubscriptionDueEntry,
   hashSubscriptionPlanKey,
   normalizeSubscriptionId,

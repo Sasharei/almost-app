@@ -17,6 +17,7 @@ private struct NativeTabItemModel {
   let key: String
   let title: String
   let badgeValue: String?
+  let badgeColor: UIColor?
   let symbolName: String
 }
 
@@ -178,10 +179,12 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
         badgeValue = nil
       }
       let symbolName = (entry["symbolName"] as? String) ?? Self.symbolName(for: key)
+      let badgeColor = Self.optionalColor(from: entry["badgeColorHex"] as? String)
       return NativeTabItemModel(
         key: key,
         title: title,
         badgeValue: badgeValue,
+        badgeColor: badgeColor,
         symbolName: symbolName
       )
     }
@@ -235,6 +238,9 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
         item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
         item.imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
         item.badgeValue = model.badgeValue
+        if let badgeColor = model.badgeColor {
+          item.badgeColor = badgeColor
+        }
       }
       item.tag = index
       item.accessibilityLabel = model.title
@@ -460,6 +466,19 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
     let value = String(rawValue).trimmingCharacters(in: .whitespacesAndNewlines)
     let hex = value.hasPrefix("#") ? String(value.dropFirst()) : value
     guard hex.count == 6, let packed = UInt64(hex, radix: 16) else { return fallback }
+    return UIColor(
+      red: CGFloat((packed >> 16) & 0xFF) / 255.0,
+      green: CGFloat((packed >> 8) & 0xFF) / 255.0,
+      blue: CGFloat(packed & 0xFF) / 255.0,
+      alpha: 1
+    )
+  }
+
+  private static func optionalColor(from rawValue: String?) -> UIColor? {
+    guard let rawValue = rawValue else { return nil }
+    let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    let hex = value.hasPrefix("#") ? String(value.dropFirst()) : value
+    guard hex.count == 6, let packed = UInt64(hex, radix: 16) else { return nil }
     return UIColor(
       red: CGFloat((packed >> 16) & 0xFF) / 255.0,
       green: CGFloat((packed >> 8) & 0xFF) / 255.0,

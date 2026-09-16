@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   decrementTemptationLifetimeInteractionStats,
   decrementTemptationLifetimeRefuseStats,
+  reconcileTemptationLifetimeInteractionAmounts,
   reconcileTemptationLifetimeStats,
 } = require("../../src/utils/temptationLifetimeStats");
 
@@ -78,11 +79,11 @@ test("manual history deletion decrements the matching lifetime count and amount"
   assert.equal(interactionStats.coffee.savedAmountUSD, 55);
 });
 
-test("non-save history deletion leaves lifetime card totals unchanged", () => {
+test("non-decision history deletion leaves lifetime card totals unchanged", () => {
   const refuseStats = { coffee: { count: 12, totalUSD: 60 } };
   const interactionStats = { coffee: { saveCount: 12, spendCount: 2 } };
   const entry = {
-    kind: "spend",
+    kind: "pending_added",
     meta: { templateId: "coffee", amountUSD: 5 },
   };
 
@@ -94,4 +95,58 @@ test("non-save history deletion leaves lifetime card totals unchanged", () => {
     decrementTemptationLifetimeInteractionStats(interactionStats, entry),
     interactionStats
   );
+});
+
+test("lifetime spend amount is recovered once from retained per-card history", () => {
+  const result = reconcileTemptationLifetimeInteractionAmounts(
+    {
+      coffee: { spendCount: 4, lastAmountUSD: 5 },
+      taxi: { spendCount: 1, lastAmountUSD: 40 },
+    },
+    [
+      { kind: "spend", meta: { templateId: "coffee", amountUSD: 5 } },
+      { kind: "spend", meta: { templateId: "coffee", amountUSD: 7 } },
+      { kind: "spend", meta: { templateId: "taxi", amountUSD: 40 } },
+    ]
+  );
+
+  assert.equal(result.coffee.spentAmountUSD, 24);
+  assert.equal(result.taxi.spentAmountUSD, 40);
+});
+
+test("existing lifetime spend amount never falls with a shorter history window", () => {
+  const source = {
+    coffee: { spendCount: 12, spentAmountUSD: 90, lastAmountUSD: 5 },
+  };
+  const result = reconcileTemptationLifetimeInteractionAmounts(source, [
+    { kind: "spend", meta: { templateId: "coffee", amountUSD: 5 } },
+  ]);
+
+  assert.equal(result, source);
+  assert.equal(result.coffee.spentAmountUSD, 90);
+});
+
+test("retained spend history seeds a missing per-card interaction record", () => {
+  const result = reconcileTemptationLifetimeInteractionAmounts({}, [
+    { kind: "spend", meta: { templateId: "coffee", amountUSD: 5 } },
+    { kind: "spend", meta: { templateId: "coffee", amountUSD: 7 } },
+  ]);
+
+  assert.equal(result.coffee.spendCount, 2);
+  assert.equal(result.coffee.spentAmountUSD, 12);
+});
+
+test("manual spend history deletion decrements only the matching card lifetime total", () => {
+  const result = decrementTemptationLifetimeInteractionStats(
+    {
+      coffee: { spendCount: 3, spentAmountUSD: 21 },
+      taxi: { spendCount: 2, spentAmountUSD: 80 },
+    },
+    { kind: "spend", meta: { templateId: "coffee", amountUSD: 7 } }
+  );
+
+  assert.equal(result.coffee.spendCount, 2);
+  assert.equal(result.coffee.spentAmountUSD, 14);
+  assert.equal(result.taxi.spendCount, 2);
+  assert.equal(result.taxi.spentAmountUSD, 80);
 });

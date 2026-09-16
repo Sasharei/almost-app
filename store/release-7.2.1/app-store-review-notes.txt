@@ -1,0 +1,11 @@
+Hello App Review Team,
+
+Almost does not require an account or sign-in. An optional name is stored locally for personalization.
+
+The purchase simulation described in the store listing is a decision-recording flow: users add a temptation and its price, choose not to buy it, and view the amount they did not spend. Almost does not place merchandise orders, process payments for those items, move money, or verify bank balances. Optional Almost Premium purchases are separate App Store purchases. Restore Purchases is available in the purchase and settings flows.
+
+Version 7.2.1 fixes savings/spending totals and subscription reminders, refines controls, and strengthens purchase verification and secure storage.
+
+The app does not display banner, interstitial, rewarded, or native ads. Analytics and attribution SDKs support product performance and campaign attribution.
+
+Thank you.
