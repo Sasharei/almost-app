@@ -8,6 +8,7 @@ module.exports = defineConfig([
       "backend/node_modules/**",
       "ios/**",
       "android/**",
+      "**/*.xcarchive/**",
       "patches/**",
       "src/constants/languageMapFallback.generated.js",
       "src/constants/translations.generated.js",
