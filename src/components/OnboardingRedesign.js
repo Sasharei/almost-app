@@ -836,8 +836,6 @@ function PersonaCard({ persona, label, selected, onPress, width, rtl }) {
       useNativeDriver: true,
     }).start();
   }, [reduceMotion, selected, selection]);
-  const lift = selection.interpolate({ inputRange: [0, 1], outputRange: [0, -4] });
-  const selectScale = selection.interpolate({ inputRange: [0, 1], outputRange: [1, 1.01] });
   const animatePress = useCallback(
     (toValue) => {
       Animated.timing(press, {
@@ -891,7 +889,7 @@ function PersonaCard({ persona, label, selected, onPress, width, rtl }) {
           {
             width,
             height: width,
-            transform: [{ translateY: lift }, { scale: Animated.multiply(selectScale, press) }],
+            transform: [{ scale: press }],
             shadowColor: selected ? persona.accent : "#273070",
             shadowOpacity: selected ? 0.12 : 0.05,
             shadowRadius: selected ? 12 : 8,
@@ -2059,14 +2057,13 @@ const styles = StyleSheet.create({
   personaCard: {
     position: "relative",
     zIndex: 1,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: PALETTE.border,
     borderRadius: 15,
     backgroundColor: PALETTE.surface,
     overflow: "hidden",
   },
   personaCardSelected: {
-    borderWidth: 2,
     borderColor: PALETTE.primary,
     backgroundColor: "#F1F2FD",
   },
