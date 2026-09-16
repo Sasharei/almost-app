@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { config } from "../config.js";
+import { importLegacySnapshot } from "./legacyMigration.js";
 
 // SQLite transactions protect identities across restarts and workers on the same host.
 // All replicas must use this same local persistent volume (not separate disks/NFS).
@@ -30,27 +31,12 @@ export const createEntitlementsStore = ({ databasePath = ":memory:", legacyPath 
     catch (error) { db.exec("ROLLBACK"); throw error; }
   };
   if (legacyPath && fs.existsSync(legacyPath)) {
-    atomic(() => {
+    try { atomic(() => {
       if (db.prepare("SELECT value FROM metadata WHERE id='legacy_import'").get()) return;
       const data = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
-      if (data.version !== 1) throw new Error("unsupported_legacy_store_version");
-      for (const [id, value] of Object.entries(data.entitlementByUser || {})) {
-        db.prepare("INSERT OR IGNORE INTO entitlements VALUES (?, ?)").run(id, JSON.stringify(value));
-      }
-      for (const [id, value] of data.installSecretBindings || []) {
-        if (id && value?.secretHash) db.prepare("INSERT OR IGNORE INTO identities VALUES (?, ?)").run(id, value.secretHash);
-      }
-      for (const [id, value] of data.seenTransactions || []) {
-        if (id && value?.appUserId) db.prepare("INSERT OR IGNORE INTO transactions VALUES (?, ?, ?)").run(id, value.appUserId, Number(value.seenAt) || Date.now());
-      }
-      // Preserve ownership references even if they had already aged out of the old replay cache.
-      for (const [user, value] of Object.entries(data.entitlementByUser || {})) {
-        for (const id of [value.transactionId, value.platform === "ios" ? value.originalTransactionId : null]) {
-          if (id) db.prepare("INSERT OR IGNORE INTO transactions VALUES (?, ?, ?)").run(String(id), user, Date.now());
-        }
-      }
+      importLegacySnapshot(db, data);
       db.prepare("INSERT INTO metadata VALUES ('legacy_import', '1')").run();
-    });
+    }); } catch (error) { db.close(); throw error; }
   }
   const getEntitlementByUser = id => {
     const row = db.prepare("SELECT payload FROM entitlements WHERE id=?").get(id || "");
