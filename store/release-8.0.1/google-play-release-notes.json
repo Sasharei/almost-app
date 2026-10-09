@@ -1,0 +1,58 @@
+[
+  {
+    "language": "en-US",
+    "text": "Almost 8.0 is here! A complete redesign: refreshed screens, clearer navigation and easier controls. New automatic expense imports from selected bank/payment-app notifications with Premium and notification access. Redesigned widgets, clearer reports, renewed onboarding and improved savings decisions. Shop less, follow your goals and enjoy the new Almost Savings!"
+  },
+  {
+    "language": "es-ES",
+    "text": "Mejoramos la programación de recordatorios y reducimos las notificaciones duplicadas."
+  },
+  {
+    "language": "es-419",
+    "text": "Mejoramos la programación de recordatorios y reducimos las notificaciones duplicadas."
+  },
+  {
+    "language": "fr-FR",
+    "text": "Amélioration de la programmation des rappels et réduction des notifications en double."
+  },
+  {
+    "language": "ru-RU",
+    "text": "Улучшено планирование напоминаний и уменьшено количество повторяющихся уведомлений."
+  },
+  {
+    "language": "de-DE",
+    "text": "Verbesserte Planung von Erinnerungen und weniger doppelte Benachrichtigungen."
+  },
+  {
+    "language": "ar",
+    "text": "تحسين جدولة التذكيرات وتقليل الإشعارات المكررة."
+  },
+  {
+    "language": "zh-CN",
+    "text": "优化了提醒安排，减少重复通知。"
+  },
+  {
+    "language": "zh-TW",
+    "text": "改善提醒安排，減少重複通知。"
+  },
+  {
+    "language": "it-IT",
+    "text": "Migliorata la programmazione dei promemoria e ridotte le notifiche duplicate."
+  },
+  {
+    "language": "ja-JP",
+    "text": "リマインダーのスケジュールを改善し、重複する通知を減らしました。"
+  },
+  {
+    "language": "ko-KR",
+    "text": "알림 일정을 개선하고 중복 알림을 줄였습니다."
+  },
+  {
+    "language": "pt-BR",
+    "text": "Melhoramos o agendamento de lembretes e reduzimos as notificações duplicadas."
+  },
+  {
+    "language": "pt-PT",
+    "text": "Melhorámos o agendamento de lembretes e reduzimos as notificações duplicadas."
+  }
+]
