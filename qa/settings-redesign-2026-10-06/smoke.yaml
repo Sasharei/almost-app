@@ -1,0 +1,21 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- takeScreenshot: profile
+- scrollUntilVisible:
+    element:
+      text: 'Настройки'
+    direction: DOWN
+- tapOn: 'Настройки'
+- assertVisible: '.*Приложение.*'
+- takeScreenshot: settings-top
+- tapOn: 'Язык'
+- assertVisible: English
+- takeScreenshot: language
+- tapOn:
+    id: settings-back
+- tapOn: 'Тема'
+- takeScreenshot: themes

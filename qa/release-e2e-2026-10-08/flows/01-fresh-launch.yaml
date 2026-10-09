@@ -1,0 +1,9 @@
+appId: com.sasarei.almostclean
+name: SMK-001 Fresh Release launch
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Continue
+    timeout: 90000
+- takeScreenshot: fresh-onboarding
+- assertVisible: English

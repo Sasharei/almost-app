@@ -1,0 +1,10 @@
+appId: com.sasarei.almostclean
+name: Open existing goal
+---
+- stopApp
+- launchApp
+- tapOn: Progress
+- tapOn:
+    id: progress-goal-open
+- waitForAnimationToEnd
+- takeScreenshot: goal-details

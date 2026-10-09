@@ -1,0 +1,26 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    point: 90%,10%
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 15000
+- tapOn:
+    id: header-help
+- tapOn:
+    id: help-replay-practice
+- assertVisible: 'Try it with your purchase'
+- takeScreenshot: replay
+- tapOn:
+    id: practice-skip
+- assertNotVisible:
+    id: practice-skip
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 60000
+- assertNotVisible:
+    id: practice-skip

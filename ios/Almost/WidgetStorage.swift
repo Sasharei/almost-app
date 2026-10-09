@@ -60,6 +60,9 @@ class WidgetStorage: NSObject {
       return
     }
 
+    if let context = data["almiContext"] as? String { defaults.set(context, forKey: "widget_almi_context") }
+    if let lastOpened = data["almiLastOpenedAt"] as? NSNumber { defaults.set(lastOpened.doubleValue, forKey: "widget_almi_last_opened") }
+
     if let savedLabel = data["savedMonthLabel"] as? String {
       defaults.set(savedLabel, forKey: keySavedMonthLabel)
     }

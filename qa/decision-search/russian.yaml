@@ -1,0 +1,27 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 90000
+- tapOn:
+    id: today-make-decision
+- takeScreenshot: russian-light-search-row
+- tapOn:
+    id: decision-wheel-search
+- inputText: 'QA Snack'
+- tapOn: '.*, QA Snack,.*'
+- takeScreenshot: russian-checked-card
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: '17.5'
+- tapOn:
+    id: decision-amount-done
+- tapOn:
+    id: decision-card-picker
+- tapOn: Готово
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- takeScreenshot: picker-cancel-preserves-input

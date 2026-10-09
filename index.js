@@ -1,6 +1,7 @@
 import "react-native-gesture-handler";
 import { registerRootComponent } from "expo";
 import App from "./App";
+import { configureCloudNotificationBackgroundHandler } from "./src/notifications/cloudNotifications";
 import { initAttribution, setAppScopedInstallIdentity } from "./analytics";
 import { ensurePremiumInstallId } from "./src/analytics/installIdentity";
 // Shared with executable attribution tests so consent/ATT can never gate startup order.
@@ -22,4 +23,5 @@ void bootstrapAttribution()
     console.warn("AppsFlyer attribution bootstrap failed", error);
   });
 
+configureCloudNotificationBackgroundHandler();
 registerRootComponent(App);

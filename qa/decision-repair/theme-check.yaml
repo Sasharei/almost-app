@@ -1,0 +1,27 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 90000
+- runFlow:
+    when:
+      visible: ".*Error reading persisted.*"
+    commands:
+      - tapOn:
+          point: 92%,93%
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: 92%,93%
+- takeScreenshot: theme-home
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: theme-decision
+- tapOn:
+    id: decision-card-picker
+- takeScreenshot: theme-picker

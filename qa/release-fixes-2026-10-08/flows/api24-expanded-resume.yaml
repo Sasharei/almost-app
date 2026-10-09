@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: API24 expanded personas scroll all rows and continue
+---
+- scrollUntilVisible:
+    element: Fashion lover
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: all-personas-bottom
+- scrollUntilVisible:
+    element: All temptations
+    direction: UP
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: all-personas-top
+- tapOn: Coffee lover
+- tapOn: Continue
+- assertVisible: What should your savings support\?
+- takeScreenshot: reached-goals

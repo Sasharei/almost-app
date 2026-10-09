@@ -1,0 +1,439 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-light
+    direction: LEFT
+    centerElement: true
+- tapOn:
+    id: qa-light
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-dark
+    direction: LEFT
+    centerElement: true
+- tapOn:
+    id: qa-dark
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-dark
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-dark
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-dark
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-dark
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-indigo
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-indigo
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-indigo
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-indigo
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-indigo
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-indigo
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-emerald
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-emerald
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-emerald
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-emerald
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-emerald
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-emerald
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-sunset
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-sunset
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-sunset
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-sunset
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-sunset
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-sunset
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-gold
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-gold
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-gold
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-gold
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-gold
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-gold
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-violet
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-violet
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-violet
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-violet
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-violet
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-violet
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: qa-aqua
+    direction: RIGHT
+    centerElement: true
+- tapOn:
+    id: qa-aqua
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-aqua
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-theme
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-theme-aqua
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-aqua
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-aqua
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close

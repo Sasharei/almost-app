@@ -1,0 +1,52 @@
+appId: com.sasarei.almostclean
+name: Settled native light theme review
+---
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- scrollUntilVisible:
+    element:
+      text: Light
+    direction: DOWN
+- tapOn: Light
+- takeScreenshot: profile-light
+- tapOn: Today
+- assertVisible:
+    id: today-savings-details
+- takeScreenshot: today-light
+- tapOn: How much?
+- assertVisible: Slide the coin and pick a category.
+- takeScreenshot: coin-light
+- tapOn: Cancel
+- tapOn: Profile
+- tapOn: Care for Almi
+- assertVisible:
+    id: tamagotchi-back-button
+- takeScreenshot: care-light
+- tapOn: Games
+- takeScreenshot: games-light
+- tapOn: Clean
+- takeScreenshot: clean-light
+- tapOn:
+    id: tamagotchi-back-button
+- tapOn:
+    text: Progress
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: You are closer
+    timeout: 30000
+- takeScreenshot: progress-light
+- tapOn:
+    text: Pause
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: All quiet for now
+    timeout: 30000
+- takeScreenshot: pause-light
+- tapOn:
+    text: Budget
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: Take the next step
+    timeout: 30000
+- takeScreenshot: budget-light

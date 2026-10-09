@@ -1,0 +1,10 @@
+appId: com.sasarei.almostclean
+name: iPad history visible row position
+---
+- tapOn:
+    point: '50%,76%'
+- assertVisible: .*Afternoon coffee refill.*
+- takeScreenshot: ipad-history-content
+- stopApp
+- launchApp
+- takeScreenshot: ipad-history-restart-state

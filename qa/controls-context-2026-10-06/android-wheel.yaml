@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+---
+- assertVisible: '10:00'
+- tapOn:
+    point: 38%,52%
+- assertVisible: '11:00'
+- tapOn:
+    point: 63%,52%
+- assertVisible: '11:01'
+- swipe:
+    start: 38%,47%
+    end: 38%,40%
+    duration: 350
+- copyTextFrom:
+    id: qa-time
+- tapOn:
+    id: qa-rerender
+- assertVisible: '${maestro.copiedText}'
+- takeScreenshot: android-wheel-after-rerender
+- swipe:
+    start: 63%,47%
+    end: 63%,54%
+    duration: 1200
+- copyTextFrom:
+    id: qa-time
+- tapOn:
+    id: qa-rerender
+- assertVisible: '${maestro.copiedText}'
+- takeScreenshot: android-minute-after-rerender
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: android-autocollect-before

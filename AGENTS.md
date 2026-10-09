@@ -51,3 +51,19 @@ These rules are mandatory for every Codex change in this repository.
 
 - For non-trivial changes, run `npm run verify` after the targeted checks.
 - In the final response, mention the functional parity check, localization check, theme check, and any visual theme review that was run or could not be run.
+
+## QA and Test Cleanup (Recommended)
+
+This section is a recommendation, not a mandatory completion gate.
+
+- Before finishing a task, clean up disposable artifacts created for its QA, tests or debugging: redundant screenshots and recordings, raw logs, temporary fixtures and workspaces, generated bundles, task-specific caches and build outputs. Check both the repository and temporary directories so these files do not accumulate on the Mac.
+- Keep a concise verification summary and only the evidence needed for review, reproduction of unresolved failures, or explicitly requested deliverables. Preserve files linked in the final report, or update the report before removing them.
+- Delete only files confirmed to belong to this task and no longer needed. Preserve user files, source changes, useful backups and artifacts belonging to other tasks. Do not indiscriminately clear shared caches, dependencies, simulator data or system directories.
+- Stop temporary servers, watchers and other background processes started solely for the completed checks when they are no longer needed. Preserve sessions the user requested to keep available.
+
+
+## Mandatory seven-law UX review (all application work)
+
+Read and follow [UX_RULES.md](UX_RULES.md) before planning, implementing or reviewing application UI/interaction changes. It contains the mandatory Fitts, Hick, Zeigarnik, Jakob, goal-gradient, Von Restorff and Miller rules, state/action contract and completion checklist. Apply it to every affected state; preserve useful functionality and result quality, verify localization and supported themes, and report evidence and unverified visual/runtime coverage. Include the policy in authorized agent handoffs. Existing project execution and release restrictions remain in force.
+
+The shared maintained source on this host is `/Users/sasarei/.codex/rules/UX_RULES.md`; the project copy preserves access when the repository is used elsewhere. For future policy updates, keep these copies synchronized.

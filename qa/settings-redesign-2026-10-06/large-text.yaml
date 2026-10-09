@@ -1,0 +1,54 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: light:gold:ru
+    timeout: 10000
+- takeScreenshot: settings-large-top
+- scrollUntilVisible:
+    element:
+      id: settings-payday
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: settings-large-personal
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1&modal=income
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: income-entry-amount
+- takeScreenshot: income-large-top
+- scrollUntilVisible:
+    element:
+      id: income-entry-skip
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: income-large-bottom
+- tapOn:
+    id: income-entry-skip
+- assertNotVisible:
+    id: income-entry-amount
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1&modal=accents
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: pro-accent-scroll
+- takeScreenshot: accents-large-top
+- scrollUntilVisible:
+    element:
+      text: "[оОoO][кКkK]"
+    direction: DOWN
+- takeScreenshot: accents-large-bottom
+- tapOn: "[оОoO][кКkK]"
+- assertNotVisible:
+    id: pro-accent-scroll

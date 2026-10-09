@@ -1,0 +1,53 @@
+appId: com.sasarei.almostclean
+name: German Arabic Russian layout
+---
+- stopApp
+- launchApp
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: settings-language
+    direction: UP
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-language
+- tapOn:
+    id: settings-choice-de
+- tapOn:
+    id: settings-back
+- takeScreenshot: german-settings
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-ar-sa
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-ar-sa
+- tapOn:
+    id: settings-back
+- takeScreenshot: arabic-settings
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-ru
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-ru
+- tapOn:
+    id: settings-back
+- takeScreenshot: russian-settings
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-en
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-en
+- tapOn:
+    id: settings-back

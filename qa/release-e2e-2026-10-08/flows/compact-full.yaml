@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Compact iPhone fresh onboarding tutorial
+---
+- runFlow: 01-fresh-launch.yaml
+- runFlow: compact-onboarding.yaml
+- runFlow: ios-tutorial-full.yaml

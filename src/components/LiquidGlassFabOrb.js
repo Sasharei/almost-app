@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
+import { BlurView as ExpoBlurView } from "expo-blur";
 import Svg, {
   Circle as SvgCircle,
   Defs,
@@ -284,6 +285,61 @@ const LiquidGlassFabOrb = ({
       ? 0.12
       : 0.22;
 
+  if (isAndroid) {
+    const showCoin = iconLabel !== "+";
+    const androidIconColor = isDarkTheme ? "#F3F6FF" : isProTheme ? proThemeAccentColor : "#243858";
+    return (
+      <View
+        pointerEvents="none"
+        style={[
+          styles.androidFab,
+          {
+            width: resolvedSize,
+            height: resolvedSize,
+            borderRadius: radius,
+            backgroundColor: isDarkTheme
+              ? "rgba(53,72,104,0.78)"
+              : isProTheme
+              ? colorWithAlpha(proThemeAccentColor, 0.22)
+              : "rgba(222,233,250,0.78)",
+            borderColor: isDarkTheme ? "rgba(232,241,255,0.32)" : "rgba(255,255,255,0.78)",
+          },
+        ]}
+      >
+        {!reduceTransparency && (
+          <ExpoBlurView
+            pointerEvents="none"
+            tint={isDarkTheme ? "dark" : "light"}
+            intensity={40}
+            blurReductionFactor={2}
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+        )}
+        {showCoin ? (
+          <View style={styles.androidCoin}>
+            <Text
+              allowFontScaling={false}
+              numberOfLines={1}
+              style={[
+                styles.icon,
+                styles.androidCoinLabel,
+                { fontSize: iconGlyphCount > 2 ? 10 : iconGlyphCount > 1 ? 13 : 18 },
+              ]}
+            >
+              {iconLabel}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.androidPlus}>
+            <View style={[styles.androidPlusHorizontal, { backgroundColor: androidIconColor }]} />
+            <View style={[styles.androidPlusVertical, { backgroundColor: androidIconColor }]} />
+          </View>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View
       pointerEvents="none"
@@ -331,7 +387,7 @@ const LiquidGlassFabOrb = ({
           styles.shell,
           {
             borderRadius: radius,
-            borderColor: shellBorderColor,
+            borderColor: shouldUseNativeLiquidGlass ? "transparent" : shellBorderColor,
             transform: [{ scaleX: dropletScaleX }, { scaleY: dropletScaleY }],
           },
         ]}
@@ -340,7 +396,7 @@ const LiquidGlassFabOrb = ({
           style={{ borderRadius: radius }}
           isDarkTheme={isDarkTheme}
           glassEffectStyle="regular"
-          tintColor={
+          tintColor={shouldUseNativeLiquidGlass ? undefined :
             isProTheme
               ? colorWithAlpha(accent, 0.14)
               : isDarkTheme
@@ -541,6 +597,50 @@ const LiquidGlassFabOrb = ({
 };
 
 const styles = StyleSheet.create({
+  androidFab: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    overflow: "hidden",
+    elevation: 8,
+    shadowColor: "#18243A",
+  },
+  androidCoin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: "#C59235",
+    backgroundColor: "#F0CC76",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#74591D",
+    elevation: 2,
+  },
+  androidCoinLabel: {
+    color: "#7D551A",
+    fontWeight: "800",
+    lineHeight: 24,
+    includeFontPadding: false,
+  },
+  androidPlus: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  androidPlusHorizontal: {
+    position: "absolute",
+    width: 26,
+    height: 3,
+    borderRadius: 2,
+  },
+  androidPlusVertical: {
+    position: "absolute",
+    width: 3,
+    height: 26,
+    borderRadius: 2,
+  },
   root: {
     alignItems: "center",
     justifyContent: "center",

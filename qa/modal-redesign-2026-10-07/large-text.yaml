@@ -1,0 +1,48 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- assertVisible:
+    id: qa-ready
+- scrollUntilVisible:
+    element:
+      id: qa-de
+    direction: DOWN
+- tapOn:
+    id: qa-de
+- scrollUntilVisible:
+    element:
+      id: qa-level
+    direction: DOWN
+- tapOn:
+    id: qa-level
+- takeScreenshot: de-large-level-top
+- scrollUntilVisible:
+    element:
+      id: level-result-share
+    direction: DOWN
+- takeScreenshot: de-large-level-actions
+- tapOn:
+    id: level-result-share
+- scrollUntilVisible:
+    element:
+      id: qa-feature
+    direction: DOWN
+- tapOn:
+    id: qa-feature
+- takeScreenshot: de-large-feature-top
+- scrollUntilVisible:
+    element: '(?i)ok'
+    direction: DOWN
+- takeScreenshot: de-large-feature-action
+- tapOn: '(?i)ok'
+- scrollUntilVisible:
+    element:
+      id: qa-goal
+    direction: DOWN
+- tapOn:
+    id: qa-goal
+- takeScreenshot: de-large-goal
+- scrollUntilVisible:
+    element: Stornieren
+    direction: DOWN
+- tapOn: Stornieren

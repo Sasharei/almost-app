@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: Contextual Today and pause details
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 120000
+- takeScreenshot: today-extreme
+- tapOn:
+    id: shopping-pause-details
+- assertVisible: Shopping Pause
+- takeScreenshot: pause-details
+- tapOn: Close
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-amount-input
+- takeScreenshot: decision-long-title
+

@@ -1,0 +1,5 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: 'Reload.*'
+- assertVisible:
+    text: '.*Continue.*|.*English.*|.*Today.*|.*Русский.*'

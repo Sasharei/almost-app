@@ -1,0 +1,44 @@
+appId: com.sasarei.almostclean
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: qa-decision
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: today-awaiting-decisions
+    direction: DOWN
+- assertVisible: 'Проверить карточки · 8'
+- takeScreenshot: zero-decisions-eight-pending
+- scrollUntilVisible:
+    element:
+      id: qa-decision
+    direction: UP
+- repeat:
+    times: 6
+    commands:
+      - tapOn:
+          id: qa-decision
+- scrollUntilVisible:
+    element:
+      id: today-awaiting-decisions
+    direction: DOWN
+- assertVisible: 'Почти готово · ещё 2'
+- takeScreenshot: six-decisions-two-pending
+- scrollUntilVisible:
+    element:
+      id: qa-next-day
+    direction: UP
+- waitForAnimationToEnd
+- tapOn:
+    id: qa-next-day
+- tapOn:
+    id: qa-next-day
+- scrollUntilVisible:
+    element:
+      id: today-awaiting-decisions
+    direction: DOWN
+- assertVisible: 'Проверить карточки · 8'
+- takeScreenshot: next-day-eight-pending

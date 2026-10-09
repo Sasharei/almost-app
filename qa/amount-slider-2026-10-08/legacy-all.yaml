@@ -1,0 +1,71 @@
+appId: com.sasarei.almost.sliderqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-legacy
+    timeout: 30000
+- tapOn:
+    id: qa-legacy
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-light
+- tapOn:
+    point: 50%,68%
+- assertVisible: '\$15'
+- swipe:
+    start: 50%,68%
+    end: 85%,68%
+    duration: 1200
+- assertVisible: '\$28.50'
+- takeScreenshot: legacy-drag
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-dark
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-dark
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-indigo
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-indigo
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-emerald
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-emerald
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-sunset
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-sunset
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-gold
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-gold
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-violet
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-violet
+- tapOn:
+    point: 90%,11%
+- tapOn:
+    id: qa-aqua
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- takeScreenshot: legacy-aqua
+- tapOn:
+    point: 90%,11%

@@ -1,0 +1,8 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: Today
+    timeout: 180000
+- tapOn: Profile
+- tapOn: 'Settings.*'
+- takeScreenshot: settings

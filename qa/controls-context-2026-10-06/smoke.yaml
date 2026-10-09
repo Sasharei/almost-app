@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-time
+    timeout: 60000
+- assertVisible: '10:00'
+- takeScreenshot: initial-controls
+- tapOn:
+    id: qa-autosave
+- assertVisible: 'Кофе'
+- takeScreenshot: autocollect-before

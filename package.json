@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "7.2.1",
+  "version": "8.0.0",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -18,20 +18,24 @@
     "check:analytics-contract": "node scripts/check-analytics-contract.js",
     "check:native-analytics-config": "node scripts/check-native-analytics-config.js",
     "test:attribution": "node --test scripts/tests/attribution-state-machine.test.js",
-    "test:ui-session": "node --test scripts/tests/ui-session-state.test.js scripts/tests/fab-tutorial-geometry.test.js scripts/tests/goal-progress.test.js scripts/tests/history-presentation.test.js scripts/tests/monthly-budget.test.js",
-    "test:engagement": "node --test scripts/tests/automatic-soft-paywall.test.js scripts/tests/coin-balance.test.js scripts/tests/daily-challenge.test.js scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/temptation-price-override-storage.test.js scripts/tests/temptation-lifetime-stats.test.js scripts/tests/subscription-watch.test.js scripts/tests/temptation-card-access.test.js scripts/tests/today-temptations.test.js scripts/tests/next-decision-coach.test.js scripts/tests/action-reward-overlay.test.js scripts/tests/rating-prompt.test.js scripts/tests/tycoon-access.test.js",
+    "test:ui-session": "node --test scripts/tests/report-insights.test.js scripts/tests/amount-slider.test.js scripts/tests/ui-session-state.test.js scripts/tests/practice-tutorial.test.js scripts/tests/fab-tutorial-geometry.test.js scripts/tests/goal-progress.test.js scripts/tests/history-presentation.test.js scripts/tests/monthly-budget.test.js scripts/tests/control-geometry.test.js scripts/tests/almost-pay-sequence.test.js scripts/tests/almost-pay-title.test.js scripts/tests/decision-countdown.test.js scripts/tests/traditional-chinese.test.js scripts/tests/contextual-fixes.test.js scripts/tests/savings-spend-balance.test.js scripts/tests/currency-coverage.test.js scripts/tests/device-language.test.js scripts/tests/currency-selector.test.js scripts/tests/controls-context-regression.test.js",
+    "test:engagement": "node --test scripts/tests/automatic-soft-paywall.test.js scripts/tests/coin-balance.test.js scripts/tests/daily-challenge.test.js scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/temptation-price-override-storage.test.js scripts/tests/decision-amount-memory.test.js scripts/tests/temptation-lifetime-stats.test.js scripts/tests/subscription-watch.test.js scripts/tests/temptation-card-access.test.js scripts/tests/today-temptations.test.js scripts/tests/today-overview.test.js scripts/tests/next-decision-coach.test.js scripts/tests/action-reward-overlay.test.js scripts/tests/rating-prompt.test.js scripts/tests/tycoon-access.test.js scripts/tests/trial-and-review.test.js",
     "check:security-audit": "node scripts/check-security-audit.js",
     "check:applovin-cost": "node scripts/check-applovin-cost-import.js",
-    "check:localization": "node scripts/check-localization.js",
+    "check:localization": "node scripts/check-localization.js && node scripts/check-native-permission-localization.js && node scripts/generate-app-shortcuts-strings.js --check",
     "check:themes": "node scripts/check-themes.js",
     "lint": "eslint .",
     "postinstall": "node scripts/apply-patches.js",
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
-    "verify": "npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:ui-session && npm run test:engagement && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run test:security && npm run backend:test && npm run check:release",
+    "test:bank-expenses": "node --test scripts/tests/bank-expenses.test.js",
+    "verify": "npm run test:widgets && npm run test:bank-expenses && npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:cloud-notifications && npm run test:ui-session && npm run test:engagement && npm run test:shopping-blocker && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run test:security && npm run backend:test && npm run check:release",
     "release:gate": "npm run verify && npm run check:applovin-cost",
     "version:bump": "node scripts/bump-version.js",
-    "test:security": "node --test scripts/tests/install-secret.test.js"
+    "test:security": "node --test scripts/tests/install-secret.test.js",
+    "test:cloud-notifications": "node --test scripts/tests/cloud-notifications.test.js scripts/tests/push-copy-refresh.test.js scripts/tests/cat-notification-regressions.test.js",
+    "test:shopping-blocker": "node --test scripts/tests/shopping-blocker.test.js",
+    "test:widgets": "node --test scripts/tests/almi-widget.test.js"
   },
   "dependencies": {
     "@amplitude/analytics-core": "2.41.1",
@@ -44,6 +48,7 @@
     "@react-native-firebase/analytics": "^23.5.0",
     "@react-native-firebase/app": "^23.5.0",
     "@react-native-firebase/crashlytics": "23.5.0",
+    "@react-native-firebase/messaging": "23.5.0",
     "@react-native-firebase/perf": "^23.5.0",
     "@react-native-firebase/remote-config": "23.5.0",
     "@react-native-ml-kit/text-recognition": "^2.0.0",
@@ -53,15 +58,18 @@
     "expo-application": "~7.0.8",
     "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
+    "expo-crypto": "~15.0.9",
     "expo-device": "~8.0.10",
     "expo-file-system": "~19.0.23",
     "expo-font": "~14.0.12",
     "expo-glass-effect": "~0.1.10",
     "expo-haptics": "^15.0.7",
     "expo-image-picker": "~17.0.11",
+    "expo-local-authentication": "~17.0.9",
     "expo-localization": "~17.0.9",
     "expo-navigation-bar": "^5.0.9",
     "expo-notifications": "~0.32.17",
+    "expo-secure-store": "~15.0.8",
     "expo-sensors": "~15.0.8",
     "expo-sharing": "~14.0.7",
     "expo-splash-screen": "~31.0.13",
@@ -82,9 +90,7 @@
     "react-native-safe-area-context": "^5.6.2",
     "react-native-svg": "15.12.1",
     "react-native-view-shot": "4.0.3",
-    "react-native-worklets": "0.5.1",
-    "expo-crypto": "~15.0.9",
-    "expo-secure-store": "~15.0.8"
+    "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
@@ -94,7 +100,8 @@
     "babel-preset-expo": "~54.0.10",
     "eslint": "^9.39.4",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "fill-range": "7.1.1"
   },
   "expo": {
     "install": {
@@ -124,15 +131,21 @@
   "overrides": {
     "@xmldom/xmldom": "0.8.15",
     "@react-native-async-storage/async-storage": "$@react-native-async-storage/async-storage",
-    "brace-expansion": "2.1.4",
+    "brace-expansion": "2.1.7",
     "browserslist": "4.28.7",
     "image-size": "2.0.2",
     "postcss": "8.5.26",
     "qs": "6.16.0",
     "uuid": "11.1.1",
-    "joi": "17.13.6",
-    "js-yaml@<4": "3.15.2",
-    "js-yaml@>=4": "4.3.2"
+    "joi": "17.13.8",
+    "@grpc/grpc-js": "1.14.6",
+    "compression": "1.8.2",
+    "shell-quote": "1.12.0",
+    "source-map-js": "1.2.2",
+    "undici@6": "6.29.0",
+    "braces": "file:./vendor/security/braces",
+    "node-forge": "file:./vendor/security/node-forge",
+    "js-yaml": "4.3.2"
   },
   "private": true
 }

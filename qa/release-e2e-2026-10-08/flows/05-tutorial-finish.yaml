@@ -1,0 +1,8 @@
+appId: com.sasarei.almostclean
+name: E2E-003 Finish tutorial and inspect saved balance
+---
+- assertVisible: You made your first decision
+- tapOn: Use the app
+- assertNotVisible: You made your first decision
+- waitForAnimationToEnd
+- takeScreenshot: after-tutorial

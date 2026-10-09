@@ -79,6 +79,64 @@ private struct WidgetThemePalette {
     let emptyState: Color
 }
 
+private struct AlmiWidgetState {
+    var scene = "balance"
+    var caption = ""
+    var openLabel = ""
+    var rtl = false
+    var next: Double? = nil
+}
+
+private func almiWidgetState(_ defaults: UserDefaults?, at date: Date) -> AlmiWidgetState {
+    let now = date.timeIntervalSince1970 * 1000
+    let hour = 3600000.0
+    var state = AlmiWidgetState()
+    guard defaults?.bool(forKey: keyHasData) == true,
+          let raw = defaults?.string(forKey: "widget_almi_context"),
+          let data = raw.data(using: .utf8),
+          let context = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          (context["version"] as? Int) == 1,
+          let copy = context["copy"] as? [String: String] else { return state }
+    state.rtl = context["rtl"] as? Bool ?? false
+    state.openLabel = copy["open"] ?? ""
+    let financial = (context["financialUpdatedAt"] as? NSNumber)?.doubleValue ?? 0
+    let event = (context["eventAt"] as? NSNumber)?.doubleValue ?? 0
+    let scene = context["eventScene"] as? String ?? "balance"
+    let ttl = ["empty_treasury": 6.0, "spending_fire": 4.0, "savings_guard": 6.0][scene]
+    if financial.isFinite, financial > 0, financial <= now, now - financial < 24 * hour,
+       event.isFinite, event > 0, event <= now, let ttl {
+        let expires = min(event + ttl * hour, financial + 24 * hour)
+        if now < expires, let caption = copy[scene], !caption.isEmpty {
+            state.scene = scene; state.caption = caption; state.next = expires
+            return state
+        }
+    }
+    let last = defaults?.double(forKey: "widget_almi_last_opened") ?? 0
+    guard last.isFinite, last > 0, last <= now else { return state }
+    let away = now - last
+    if away < 24 * hour { state.next = last + 24 * hour; return state }
+    let day = floor(away / (24 * hour))
+    let start = last + day * 24 * hour
+    if now < start + 6 * hour {
+        let key = Int(day.truncatingRemainder(dividingBy: 2)) == 1 ? "neglected" : "neglected_long"
+        if let caption = copy[key], !caption.isEmpty { state.scene = "neglected"; state.caption = caption }
+        state.next = start + 6 * hour
+    } else { state.next = start + 24 * hour }
+    return state
+}
+
+private struct AlmiSpeechBubble: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addRoundedRect(in: CGRect(x: 0, y: 0, width: max(0, rect.width - 8), height: rect.height), cornerSize: CGSize(width: 18, height: 18))
+        path.move(to: CGPoint(x: rect.width - 11, y: rect.height * 0.55))
+        path.addLine(to: CGPoint(x: rect.width, y: rect.height * 0.7))
+        path.addLine(to: CGPoint(x: rect.width - 11, y: rect.height * 0.8))
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct AlmostWidgetEntry: TimelineEntry {
     let date: Date
     let savedMonthLabel: String
@@ -116,6 +174,10 @@ struct AlmostWidgetEntry: TimelineEntry {
     let dailySummaryAvailable: Bool
     let dailySummaryExpiresAt: Double
     let dailySummaryLabel: String
+    var almiScene: String = "balance"
+    var almiCaption: String = ""
+    var almiOpenLabel: String = ""
+    var almiRTL: Bool = false
 }
 
 struct AlmostWidgetProvider: TimelineProvider {
@@ -165,14 +227,27 @@ struct AlmostWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AlmostWidgetEntry>) -> Void) {
-        let entry = loadEntry()
-        let timeline = Timeline(entries: [entry], policy: .never)
-        completion(timeline)
+        let now = Date()
+        let end = now.addingTimeInterval(7 * 24 * 3600)
+        let defaults = UserDefaults(suiteName: appGroupId)
+        var dates = [now]
+        var cursor = now
+        while dates.count < 64 {
+            guard let next = almiWidgetState(defaults, at: cursor).next else { break }
+            let boundary = Date(timeIntervalSince1970: next / 1000)
+            guard boundary > cursor, boundary < end else { break }
+            dates.append(boundary); cursor = boundary
+        }
+        var entries = dates.map { loadEntry(at: $0) }
+        // Last prepared entry is always the normal balance, even if reload is delayed.
+        entries.append(loadEntry(at: end, forceBalance: true))
+        completion(Timeline(entries: entries, policy: .after(end.addingTimeInterval(-12 * 3600))))
     }
 
-    private func loadEntry() -> AlmostWidgetEntry {
+    private func loadEntry(at date: Date = Date(), forceBalance: Bool = false) -> AlmostWidgetEntry {
         let defaults = UserDefaults(suiteName: appGroupId)
         defaults?.set(true, forKey: keyWidgetInstalledMarker)
+        let almi = forceBalance ? AlmiWidgetState() : almiWidgetState(defaults, at: date)
         let savedMonthLabel = defaults?.string(forKey: keySavedMonthLabel) ?? "--"
         let savedTotalLabel = defaults?.string(forKey: keySavedTotalLabel) ?? "--"
         let savedTodayLabel = defaults?.string(forKey: keySavedTodayLabel) ?? "--"
@@ -223,7 +298,7 @@ struct AlmostWidgetProvider: TimelineProvider {
         let dailySummaryLabel = defaults?.string(forKey: keyWidgetDailySummaryLabel)
             ?? widgetLocalized("widget.summary", fallback: "Summary")
         return AlmostWidgetEntry(
-            date: Date(),
+            date: date,
             savedMonthLabel: savedMonthLabel,
             savedTotalLabel: savedTotalLabel,
             savedTodayLabel: savedTodayLabel,
@@ -258,7 +333,9 @@ struct AlmostWidgetProvider: TimelineProvider {
             widgetThemeBackgroundColor: widgetThemeBackgroundColor,
             dailySummaryAvailable: dailySummaryAvailable,
             dailySummaryExpiresAt: dailySummaryExpiresAt,
-            dailySummaryLabel: dailySummaryLabel
+            dailySummaryLabel: dailySummaryLabel,
+            almiScene: almi.scene, almiCaption: almi.caption,
+            almiOpenLabel: almi.openLabel, almiRTL: almi.rtl
         )
     }
 }
@@ -277,10 +354,10 @@ struct Almost_WidgetEntryView: View {
     }
 
     var body: some View {
-        let edgePadding: CGFloat = family == .systemSmall ? 7 : (family == .systemLarge ? 12 : 8)
+        let edgePadding: CGFloat = entry.almiScene != "balance" ? 0 : family == .systemSmall ? 7 : (family == .systemLarge ? 12 : 8)
         let content = ZStack(alignment: .topTrailing) {
             contentView
-            if dailySummaryReady {
+            if entry.almiScene == "balance" && dailySummaryReady {
                 dailySummaryBadge
             }
         }
@@ -297,24 +374,44 @@ struct Almost_WidgetEntryView: View {
         }
     }
 
-    private var widgetBackground: some View {
-        ZStack {
-            LinearGradient(
-                colors: [palette.backgroundTop, palette.backgroundBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Circle()
-                .fill(palette.backgroundAccent.opacity(0.2))
-                .frame(width: family == .systemSmall ? 104 : 180)
-                .blur(radius: family == .systemSmall ? 2 : 8)
-                .offset(x: family == .systemSmall ? 58 : 130, y: -58)
-            Circle()
-                .fill(palette.spendButtonBackground.opacity(0.1))
-                .frame(width: family == .systemLarge ? 180 : 120)
-                .blur(radius: 10)
-                .offset(x: family == .systemSmall ? -72 : -150, y: family == .systemLarge ? 150 : 86)
+    private var almiSceneView: some View {
+        GeometryReader { geometry in
+            let small = family == .systemSmall
+            let large = family == .systemLarge
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let asset = ["neglected": "AlmiNeglected", "empty_treasury": "AlmiTreasury", "spending_fire": "AlmiFire", "savings_guard": "AlmiSavings"][entry.almiScene] ?? "AlmiNeglected"
+            ZStack(alignment: entry.almiRTL ? .topTrailing : .topLeading) {
+                palette.catBackground
+                Image(asset)
+                    .resizable().scaledToFit()
+                    .frame(width: small ? width * 1.05 : (large ? width * 0.95 : min(width * 0.72, height * 1.1)), height: height * 1.12)
+                    .scaleEffect(x: entry.almiRTL ? -1 : 1, y: 1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: entry.almiRTL ? .bottomLeading : .bottomTrailing)
+                    .offset(x: entry.almiRTL ? 8 : -8, y: small ? height * 0.18 : height * 0.04)
+                    .accessibilityHidden(true)
+                Text(entry.almiCaption)
+                    .font(.system(size: small ? 12 : (large ? 22 : 16), weight: .bold, design: .rounded))
+                    .foregroundColor(palette.title)
+                    .multilineTextAlignment(entry.almiRTL ? .trailing : .leading)
+                    .lineLimit(small ? 4 : 6).minimumScaleFactor(0.8)
+                    .padding(12)
+                    .frame(width: small ? width - 16 : width * 0.54, alignment: entry.almiRTL ? .trailing : .leading)
+                    .background(AlmiSpeechBubble().fill(palette.heroSurface).scaleEffect(x: entry.almiRTL ? -1 : 1, y: 1))
+                    .padding(8)
+            }
+            .clipped()
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(entry.almiCaption + ". " + entry.almiOpenLabel)
+    }
+
+    private var widgetBackground: some View {
+        LinearGradient(
+            colors: [palette.backgroundTop, palette.backgroundBottom],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     @ViewBuilder
@@ -343,7 +440,9 @@ struct Almost_WidgetEntryView: View {
         let budgetMetricColor = budgetIsNegative ? palette.budgetNegative : palette.budgetDefault
         let recentEvents = entry.recentEvents
 
-        if !entry.hasData {
+        if entry.almiScene != "balance" {
+            almiSceneView
+        } else if !entry.hasData {
             VStack(spacing: 8) {
                 Spacer(minLength: 0)
                 catImage
@@ -521,7 +620,7 @@ struct Almost_WidgetEntryView: View {
 
     private var dailySummaryReady: Bool {
         entry.dailySummaryAvailable &&
-            entry.dailySummaryExpiresAt > Date().timeIntervalSince1970 * 1000
+            entry.dailySummaryExpiresAt > entry.date.timeIntervalSince1970 * 1000
     }
 
     private var dailySummaryBadge: some View {
@@ -763,7 +862,7 @@ struct Almost_WidgetEntryView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                 }
-                    .font(.system(size: buttonFontSize, weight: .bold, design: .rounded))
+                    .font(.system(size: buttonFontSize, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, verticalPadding)
                     .background(palette.saveButtonBackground)
@@ -790,7 +889,7 @@ struct Almost_WidgetEntryView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            .stroke(palette.spendButtonText.opacity(0.36), lineWidth: 1)
                     )
             }
         }
@@ -827,9 +926,9 @@ struct Almost_WidgetEntryView: View {
                 badgeBackground: Color(uiColor: UIColor(red: 0.16, green: 0.22, blue: 0.36, alpha: 1)),
                 badgeBorder: Color(uiColor: UIColor(red: 0.28, green: 0.37, blue: 0.57, alpha: 1)),
                 saveButtonBackground: Color(uiColor: UIColor(red: 0.02, green: 0.48, blue: 0.27, alpha: 1)),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                spendButtonBackground: Color(uiColor: UIColor(red: 0.19, green: 0.24, blue: 0.34, alpha: 1)),
                 saveButtonText: .white,
-                spendButtonText: .white,
+                spendButtonText: Color(uiColor: UIColor(red: 1.0, green: 0.68, blue: 0.72, alpha: 1)),
                 budgetDefault: Color(uiColor: UIColor(red: 0.97, green: 0.98, blue: 1.0, alpha: 1)),
                 budgetSecondary: Color(uiColor: UIColor(red: 0.77, green: 0.81, blue: 0.91, alpha: 1)),
                 budgetNegative: Color(uiColor: UIColor(red: 1.0, green: 0.56, blue: 0.62, alpha: 1)),
@@ -865,9 +964,9 @@ struct Almost_WidgetEntryView: View {
                 badgeBackground: Color(uiColor: blend(UIColor(red: 0.88, green: 0.91, blue: 1.0, alpha: 1), accent, ratio: 0.24)),
                 badgeBorder: Color(uiColor: blend(UIColor(red: 0.78, green: 0.83, blue: 0.97, alpha: 1), accent, ratio: 0.32)),
                 saveButtonBackground: Color(uiColor: accent),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                spendButtonBackground: Color.white.opacity(0.58),
                 saveButtonText: Color(uiColor: contrastingTextColor(for: accent)),
-                spendButtonText: .white,
+                spendButtonText: Color(uiColor: UIColor(red: 0.66, green: 0.19, blue: 0.27, alpha: 1)),
                 budgetDefault: Color(uiColor: blend(titleBase, accent, ratio: 0.1)),
                 budgetSecondary: Color(uiColor: blend(labelBase, accent, ratio: 0.2)),
                 budgetNegative: Color(uiColor: UIColor(red: 0.85, green: 0.32, blue: 0.38, alpha: 1)),
@@ -878,8 +977,8 @@ struct Almost_WidgetEntryView: View {
         default:
             let emerald = UIColor(red: 0.03, green: 0.48, blue: 0.26, alpha: 1)
             return WidgetThemePalette(
-                backgroundTop: Color(uiColor: UIColor(red: 0.88, green: 1.0, blue: 0.94, alpha: 1)),
-                backgroundBottom: Color(uiColor: UIColor(red: 0.82, green: 0.93, blue: 1.0, alpha: 1)),
+                backgroundTop: Color(uiColor: UIColor(red: 0.92, green: 0.93, blue: 0.99, alpha: 1)),
+                backgroundBottom: Color(uiColor: UIColor(red: 0.87, green: 0.96, blue: 0.93, alpha: 1)),
                 backgroundAccent: Color(uiColor: emerald),
                 title: Color(uiColor: UIColor(red: 0.04, green: 0.14, blue: 0.11, alpha: 1)),
                 label: Color(uiColor: UIColor(red: 0.23, green: 0.36, blue: 0.31, alpha: 1)),
@@ -894,9 +993,9 @@ struct Almost_WidgetEntryView: View {
                 badgeBackground: Color.white.opacity(0.62),
                 badgeBorder: Color.white.opacity(0.78),
                 saveButtonBackground: Color(uiColor: emerald),
-                spendButtonBackground: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),
+                spendButtonBackground: Color.white.opacity(0.7),
                 saveButtonText: .white,
-                spendButtonText: .white,
+                spendButtonText: Color(uiColor: UIColor(red: 0.66, green: 0.19, blue: 0.27, alpha: 1)),
                 budgetDefault: Color(uiColor: UIColor(red: 0.04, green: 0.14, blue: 0.11, alpha: 1)),
                 budgetSecondary: Color(uiColor: UIColor(red: 0.18, green: 0.37, blue: 0.33, alpha: 1)),
                 budgetNegative: Color(uiColor: UIColor(red: 0.75, green: 0.18, blue: 0.25, alpha: 1)),

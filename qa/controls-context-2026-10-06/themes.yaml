@@ -1,0 +1,34 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: light
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: dark
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: indigo
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: emerald
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: sunset
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: gold
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: violet
+- runFlow:
+    file: palette.yaml
+    env:
+      PALETTE: aqua

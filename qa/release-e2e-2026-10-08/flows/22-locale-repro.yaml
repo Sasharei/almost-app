@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: iOS Arabic selection reproduction
+---
+- tapOn: Profil
+- scrollUntilVisible:
+    element:
+      id: settings-language
+    direction: UP
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-ar-sa
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-ar-sa
+- takeScreenshot: after-arabic-selection

@@ -1,0 +1,3 @@
+"NSFaceIDUsageDescription" = "Almost는 Almost Pay에서 선택을 확인하기 위해서만 Face ID를 사용합니다. 실제 결제는 이루어지지 않습니다.";
+
+"CFBundleDisplayName" = "Almost Savings";

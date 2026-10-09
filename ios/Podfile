@@ -4,6 +4,7 @@ require File.join(File.dirname(`node --print "require.resolve('react-native/pack
 require 'json'
 require 'fileutils'
 require 'xcodeproj'
+require_relative 'patches/revenuecat-xcode27'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
 
 # CocoaPods 1.16 + xcodeproj 1.27 misses compatibility for objectVersion 70.
@@ -66,6 +67,24 @@ $AppsFlyerPurchaseConnector=false
       :mac_catalyst_enabled => false,
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
+
+    # Xcode 27 rejects legacy pod/resource deployment targets below iOS 15.
+    # Match the app's minimum while preserving dependencies with higher requirements.
+    minimum_ios = Gem::Version.new(podfile_properties['ios.deploymentTarget'] || '15.1')
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        pod_minimum = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        next unless pod_minimum && Gem::Version.correct?(pod_minimum.to_s)
+        if Gem::Version.new(pod_minimum.to_s) < minimum_ios
+          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = minimum_ios.to_s
+        end
+      end
+    end
+
+    # Backport RevenueCat's Xcode 27 compilation fix without changing SDK behavior.
+    AlmostRevenueCatXcode27.apply(File.join(
+      installer.sandbox.root, 'RevenueCat', 'Sources', 'Paywalls', 'PaywallColor.swift'
+    ))
 
     # RN's pinned fmt 11 does not compile its consteval checks with Apple Clang 17+.
     # Keep runtime formatting and C++20 intact; disable only the broken compile-time path.

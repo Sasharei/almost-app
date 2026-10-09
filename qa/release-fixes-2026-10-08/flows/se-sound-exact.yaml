@@ -1,0 +1,62 @@
+appId: com.sasarei.almostclean
+name: SE Sound ON exact spend cancel retry
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Today
+    timeout: 60000
+- tapOn: Today
+- runFlow:
+    when:
+      visible: Almost done.*
+    commands:
+      - tapOn: Almost done.*
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- runFlow:
+    when:
+      visible: Check temptation
+    commands:
+      - tapOn:
+          text: Check temptation
+          index: 0
+- assertVisible:
+    id: decision-amount-input
+- tapOn:
+    id: decision-amount-input
+- eraseText: 20
+- inputText: '3.50'
+- tapOn:
+    id: decision-amount-done
+- scrollUntilVisible:
+    element:
+      id: decision-spend
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: decision-spend
+- extendedWaitUntil:
+    visible:
+      id: almost-pay-confirm
+    timeout: 15000
+- assertVisible: .*3\.50.*
+- takeScreenshot: se-sound-confirm-350
+- tapOn:
+    id: almost-pay-cancel
+- tapOn:
+    id: decision-spend
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible: Back to today
+    timeout: 15000
+- assertVisible: .*3\.50.*
+- takeScreenshot: se-sound-on-exact-result
+- tapOn: Back to today

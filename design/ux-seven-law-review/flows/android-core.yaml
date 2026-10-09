@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Today
+- tapOn: Add a temptation
+- assertVisible: Cancel
+- takeScreenshot: add-form
+- tapOn: Cancel
+- tapOn: Make a decision
+- takeScreenshot: decision-focus
+- tapOn: '‹  Today'
+- tapOn: Progress
+- takeScreenshot: progress-final
+- tapOn: Pause
+- takeScreenshot: pause-final
+- tapOn: Budget
+- takeScreenshot: budget-final
+- tapOn: View Premium
+- takeScreenshot: premium

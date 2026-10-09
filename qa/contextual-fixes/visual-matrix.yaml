@@ -1,0 +1,77 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-light
+    timeout: 60000
+- takeScreenshot: light-extreme-hero
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: light-pause-details
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: light-next-charge
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- tapOn:
+    id: qa-pay
+- assertVisible:
+    id: almost-pay-confirm
+- takeScreenshot: light-extreme-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- scrollUntilVisible:
+    element:
+      id: qa-dark
+    direction: UP
+- tapOn:
+    id: qa-dark
+- takeScreenshot: dark-extreme-hero
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- tapOn:
+    id: qa-pay
+- takeScreenshot: dark-extreme-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- scrollUntilVisible:
+    element:
+      id: qa-indigo
+    direction: UP
+- tapOn:
+    id: qa-indigo
+- takeScreenshot: pro-indigo-hero
+- tapOn:
+    id: qa-aqua
+- takeScreenshot: pro-aqua-hero
+- tapOn:
+    id: qa-violet
+- takeScreenshot: pro-violet-hero
+- tapOn:
+    id: qa-sunset
+- takeScreenshot: pro-sunset-hero
+- tapOn:
+    id: qa-emerald
+- takeScreenshot: pro-emerald-hero
+- tapOn:
+    id: qa-gold
+- takeScreenshot: pro-gold-hero
+- tapOn:
+    id: qa-ar
+- takeScreenshot: pro-arabic-hero
+- scrollUntilVisible:
+    element:
+      id: qa-ready
+    direction: DOWN
+- tapOn:
+    id: qa-ready
+- takeScreenshot: pro-arabic-earned

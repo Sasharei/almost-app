@@ -1,6 +1,128 @@
 import Foundation
 import UIKit
 import React
+import SwiftUI
+
+// SwiftUI owns the material; React Native retains the content and all existing actions.
+// This keeps long lists and business state shared between the two platforms.
+private struct AlmostSurfaceMaterial: View {
+  var cornerRadius: CGFloat
+  var tint: UIColor
+  var density: Double
+  var dark: Bool
+
+  var body: some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    Group {
+      if #available(iOS 26.0, *) {
+        Color.clear
+          .glassEffect(.regular, in: shape)
+          .overlay(shape.fill(Color(uiColor: tint).opacity(density)))
+      } else {
+        shape.fill(.regularMaterial)
+          .overlay(shape.fill(Color(uiColor: tint).opacity(density)))
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .environment(\.colorScheme, dark ? .dark : .light)
+    .allowsHitTesting(false)
+    .accessibilityHidden(true)
+  }
+}
+
+@objc(NativeSwiftUISurfaceManager)
+class NativeSwiftUISurfaceManager: RCTViewManager {
+  override static func requiresMainQueueSetup() -> Bool { true }
+  override func view() -> UIView! { NativeSwiftUISurface() }
+}
+
+@objc(NativeSwiftUISurface)
+class NativeSwiftUISurface: UIView {
+  private var host: UIHostingController<AlmostSurfaceMaterial>?
+  private var materialUpdatePending = false
+  @objc var cornerRadius: NSNumber = 18 { didSet { scheduleMaterialUpdate() } }
+  @objc var tintColorHex: NSString = "" { didSet { scheduleMaterialUpdate() } }
+  @objc var darkAppearance: Bool = false { didSet { scheduleMaterialUpdate() } }
+  @objc var tintOpacity: NSNumber = 0.8 { didSet { scheduleMaterialUpdate() } }
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    backgroundColor = .clear
+    isOpaque = false
+    isUserInteractionEnabled = false
+    accessibilityElementsHidden = true
+    scheduleMaterialUpdate()
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    host?.view.frame = bounds
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    guard let host else { return }
+    if window == nil {
+      host.willMove(toParent: nil)
+      host.removeFromParent()
+    } else if host.parent == nil {
+      var responder: UIResponder? = next
+      while let current = responder {
+        if let parent = current as? UIViewController {
+          parent.addChild(host)
+          host.didMove(toParent: parent)
+          break
+        }
+        responder = current.next
+      }
+    }
+  }
+
+  // React supplies theme and tint separately. Build one material from the completed
+  // property batch instead of displaying intermediate system colors on first mount.
+  private func scheduleMaterialUpdate() {
+    guard !materialUpdatePending else { return }
+    materialUpdatePending = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.materialUpdatePending = false
+      self.updateMaterial()
+    }
+  }
+
+  private func updateMaterial() {
+    let hex = String(tintColorHex).replacingOccurrences(of: "#", with: "")
+    var rgb: UInt64 = 0
+    let tint: UIColor
+    if hex.count == 6, Scanner(string: hex).scanHexInt64(&rgb) {
+      tint = UIColor(red: CGFloat((rgb >> 16) & 255) / 255,
+                     green: CGFloat((rgb >> 8) & 255) / 255,
+                     blue: CGFloat(rgb & 255) / 255, alpha: 1)
+    } else {
+      tint = darkAppearance ? UIColor.secondarySystemBackground : UIColor.systemBackground
+    }
+    let material = AlmostSurfaceMaterial(cornerRadius: max(0, cornerRadius.doubleValue),
+      tint: tint, density: max(0, min(1, tintOpacity.doubleValue)), dark: darkAppearance)
+    if let host {
+      host.overrideUserInterfaceStyle = darkAppearance ? .dark : .light
+      host.rootView = material
+    } else {
+      let controller = UIHostingController(rootView: material)
+      controller.overrideUserInterfaceStyle = darkAppearance ? .dark : .light
+      controller.view.backgroundColor = .clear
+      controller.view.isOpaque = false
+      controller.view.isUserInteractionEnabled = false
+      controller.view.accessibilityElementsHidden = true
+      if #available(iOS 16.4, *) { controller.safeAreaRegions = [] }
+      host = controller
+      addSubview(controller.view)
+      // The deferred first update can run after this view has already joined a window.
+      if window != nil { didMoveToWindow() }
+    }
+    setNeedsLayout()
+  }
+}
 
 @objc(LiquidGlassNativeViewManager)
 class LiquidGlassNativeViewManager: RCTViewManager {
@@ -261,5 +383,29 @@ class LiquidGlassNativeView: UIView {
       return effect
     }
     return nil
+  }
+}
+
+@objc(NativeEdgeBackGestureManager)
+class NativeEdgeBackGestureManager: RCTViewManager {
+  override static func requiresMainQueueSetup() -> Bool { true }
+  override func view() -> UIView! { NativeEdgeBackGesture() }
+}
+
+@objc(NativeEdgeBackGesture)
+class NativeEdgeBackGesture: UIView {
+  @objc var onBack: RCTBubblingEventBlock?
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    backgroundColor = .clear
+    let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdge(_:)))
+    edge.edges = .left
+    addGestureRecognizer(edge)
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+  @objc private func handleEdge(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    guard gesture.state == .ended else { return }
+    let translation = gesture.translation(in: self)
+    if translation.x >= 64 && abs(translation.y) < 80 { onBack?([:]) }
   }
 }

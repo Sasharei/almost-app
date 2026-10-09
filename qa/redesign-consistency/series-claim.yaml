@@ -1,0 +1,38 @@
+appId: com.sasarei.almostclean
+name: Claim series without leaving Today
+---
+- extendedWaitUntil:
+    visible: Open chest
+    timeout: 15000
+- tapOn:
+    point: "92%,87%"
+- tapOn:
+    point: "92%,93%"
+- takeScreenshot: series-ritual
+- repeat:
+    times: 4
+    commands:
+      - tapOn: Open chest
+- extendedWaitUntil:
+    visible: Added to your balance
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: series-claimed
+- tapOn:
+    text: Continue
+    index: 1
+    optional: true
+- tapOn:
+    text: Continue
+    optional: true
+- waitForAnimationToEnd
+- assertVisible: Choose what to spend and what to save.
+- takeScreenshot: series-return-today
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 60000
+- takeScreenshot: series-relaunch

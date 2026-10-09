@@ -1,0 +1,219 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-light
+    timeout: 60000
+- tapOn:
+    id: qa-en
+- scrollUntilVisible:
+    element:
+      id: qa-light
+    direction: UP
+- tapOn:
+    id: qa-light
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: light-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: light-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: light-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-dark
+    direction: UP
+- tapOn:
+    id: qa-dark
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: dark-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: dark-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: dark-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-indigo
+    direction: UP
+- tapOn:
+    id: qa-indigo
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: indigo-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: indigo-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: indigo-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-emerald
+    direction: UP
+- tapOn:
+    id: qa-emerald
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: emerald-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: emerald-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: emerald-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-sunset
+    direction: UP
+- tapOn:
+    id: qa-sunset
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: sunset-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: sunset-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: sunset-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-gold
+    direction: UP
+- tapOn:
+    id: qa-gold
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: gold-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: gold-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: gold-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-violet
+    direction: UP
+- tapOn:
+    id: qa-violet
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: violet-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: violet-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: violet-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- scrollUntilVisible:
+    element:
+      id: qa-aqua
+    direction: UP
+- tapOn:
+    id: qa-aqua
+- tapOn:
+    id: shopping-pause-details
+- takeScreenshot: aqua-pause-art
+- tapOn: Continue
+- assertVisible:
+    id: today-make-decision
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: aqua-subscription-extreme
+- tapOn:
+    id: qa-pay
+- takeScreenshot: aqua-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: qa-pay
+- tapOn:
+    id: almost-pay-confirm
+- assertVisible: Press again to confirm
+- tapOn:
+    id: almost-pay-cancel
+- assertNotVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: qa-pay
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    notVisible:
+      id: almost-pay-confirm
+    timeout: 10000

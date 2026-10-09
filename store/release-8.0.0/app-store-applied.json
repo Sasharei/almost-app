@@ -1,0 +1,60 @@
+[
+  {
+    "locale": "ar-SA",
+    "label": "Arabic",
+    "readback": true
+  },
+  {
+    "locale": "zh-Hans",
+    "label": "Chinese (Simplified)",
+    "readback": true
+  },
+  {
+    "locale": "zh-Hant",
+    "readback": true
+  },
+  {
+    "locale": "fr-FR",
+    "readback": true
+  },
+  {
+    "locale": "de-DE",
+    "readback": true
+  },
+  {
+    "locale": "it",
+    "readback": true
+  },
+  {
+    "locale": "ja",
+    "readback": true
+  },
+  {
+    "locale": "ko",
+    "readback": true
+  },
+  {
+    "locale": "pt-BR",
+    "readback": true
+  },
+  {
+    "locale": "pt-PT",
+    "readback": true
+  },
+  {
+    "locale": "es-MX",
+    "readback": true
+  },
+  {
+    "locale": "es-ES",
+    "readback": true
+  },
+  {
+    "locale": "ru",
+    "readback": true
+  },
+  {
+    "locale": "en-US",
+    "readback": true
+  }
+]

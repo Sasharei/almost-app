@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: Settings income validation cancel
+---
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: settings-row-incomeEntryAmountLabel
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-row-incomeEntryAmountLabel
+- takeScreenshot: income-editor

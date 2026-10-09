@@ -1,0 +1,13 @@
+appId: com.sasarei.almostclean
+name: Dismiss rating and restart after collecting
+---
+- tapOn: Later
+- assertVisible: Choose what to spend and what to save.
+- takeScreenshot: series-return-today
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 60000
+- takeScreenshot: series-relaunch

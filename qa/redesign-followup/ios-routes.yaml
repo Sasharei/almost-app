@@ -1,0 +1,39 @@
+appId: com.sasarei.almostclean
+name: iOS redesigned routes
+---
+- tapOn: Today
+- assertVisible:
+    id: header-add-temptation
+- takeScreenshot: today-light
+- tapOn:
+    id: header-help
+- takeScreenshot: help
+- tapOn: Close
+- tapOn:
+    id: header-bug-report
+- assertVisible: Report a bug
+- tapOn: Cancel
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- takeScreenshot: profile-light
+- tapOn:
+    id: profile-edit-avatar
+- assertVisible:
+    id: profile-save
+- takeScreenshot: profile-edit-light
+- tapOn: Cancel
+- assertVisible:
+    id: profile-edit-avatar
+- tapOn: Progress
+- assertVisible:
+    id: header-help
+- takeScreenshot: progress-light
+- tapOn: Pause
+- assertVisible:
+    id: header-help
+- takeScreenshot: pause-light
+- tapOn: Budget
+- assertVisible:
+    id: header-help
+- takeScreenshot: budget-light

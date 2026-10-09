@@ -1,0 +1,37 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: "Make a decision|OK"
+    timeout: 60000
+- tapOn:
+    text: OK
+    optional: true
+- assertVisible: "Awaiting a decision: 1"
+- assertVisible: QA Ready
+- takeScreenshot: timer-before
+- extendedWaitUntil:
+    visible: "Awaiting a decision: 2"
+    timeout: 150000
+- takeScreenshot: timer-after
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- assertVisible: Today
+- takeScreenshot: wheel-today
+- tapOn:
+    id: decision-wheel-search
+- assertVisible:
+    id: decision-card-search-input
+- tapOn:
+    id: decision-card-search-input
+- inputText: QA Timer
+- tapOn: QA Timer
+- assertVisible:
+    id: decision-amount-input
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: "15"
+- hideKeyboard
+- takeScreenshot: decision-amount

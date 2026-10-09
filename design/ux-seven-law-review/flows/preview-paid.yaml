@@ -1,0 +1,21 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: Today
+    timeout: 180000
+- runFlow:
+    when:
+      visible: '.*Error reading persisted server.*'
+    commands:
+      - tapOn: '.*Error reading persisted server.*'
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- tapOn: Budget
+- takeScreenshot: budget-unlocked
+- tapOn: Profile
+- tapOn: Open reports
+- takeScreenshot: reports-unlocked

@@ -1,0 +1,22 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Cancel
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- assertVisible: '$12.34'
+- assertVisible: Simulated confirmation. No money is charged.
+- takeScreenshot: almost-pay-save
+- tapOn:
+    id: almost-pay-confirm
+- assertVisible: Press again to confirm
+- takeScreenshot: almost-pay-ready
+- tapOn:
+    id: almost-pay-cancel
+- extendedWaitUntil:
+    visible:
+      id: decision-amount-input
+    timeout: 10000
+- assertVisible: '12.34'
+- takeScreenshot: cancelled-decision

@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+name: E2E-003 Save fractional amount, cancel and retry
+---
+- tapOn: Afternoon coffee refill,.*
+- assertVisible: Check the price
+- tapOn:
+    id: decision-amount-input
+- takeScreenshot: amount-keyboard
+- eraseText: 20
+- inputText: '7.25'
+- tapOn:
+    id: decision-amount-done
+- assertVisible: What happened to the purchase\?
+- takeScreenshot: fractional-decision
+- tapOn: I decided not to buy
+- assertVisible:
+    id: almost-pay-confirm
+- takeScreenshot: save-confirmation
+- tapOn:
+    id: almost-pay-cancel
+- assertVisible: What happened to the purchase\?
+- tapOn: I decided not to buy
+- assertVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible: You made your first decision|Saved.*|Done|Finish
+    timeout: 15000
+- takeScreenshot: save-committed

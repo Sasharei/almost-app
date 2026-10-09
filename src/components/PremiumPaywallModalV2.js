@@ -1,21 +1,28 @@
+import { expenseCopy } from "../bankExpenses/useBankExpenses";
+import PlatformSurface, { PlatformTouchableOpacity } from "./PlatformSurface";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
-  TouchableOpacity,
   View,
   Platform,
   useWindowDimensions,
 } from "react-native";
+import { AccessiblePressable as Pressable, AccessibleTouchableOpacity as TouchableOpacity } from "./AccessibleControls";
 import AbandonedOfferWheel from "./AbandonedOfferWheel";
 import { resolveForegroundForColor } from "../utils/themeColors";
 
-const HERO_REFERENCE_VISUAL = require("../../assets/paywall/v2/hero_reference.jpg");
+import { PAYWALL_COMPACT_FEATURE_LABELS, PAYWALL_DESIGN_COPY } from "../constants/paywallCompactCopy";
+
+import PaywallOfferIcon from "./PaywallOfferIcon";
+
+const PAYWALL_HERO_BACKGROUND = require("../../assets/paywall/v3/sky-hills.png");
+const PREMIUM_MASCOT_VISUAL = require("../../assets/Cat_happy.webp");
 
 const ANDROID_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
 const DEFAULT_PRIMARY_PLAN_IDS = ["monthly", "yearly", "weekly"];
@@ -77,7 +84,13 @@ const FALLBACK_FEATURES_BY_LANGUAGE = {
     "الجمع التلقائي يجهز الإغراءات المتكررة لمراجعة سريعة",
     "رؤى أعمق تساعد على تحويل مقاومة الاندفاعات إلى عادات أفضل",
   ],
-  zh: [
+  "zh-Hant": [
+    "不受每日免費次數限制，持續記錄省下的錢",
+    "更多儲蓄目標，讓每次剋制消費都有去處",
+    "自動收集會整理重複出現的誘惑卡片，方便快速確認",
+    "更深入的進度洞察，把剋制衝動變成穩定習慣",
+  ],
+    zh: [
     "不受每日免费次数限制，持续记录省下的钱",
     "更多储蓄目标，让每次克制消费都有去处",
     "自动收集会整理重复出现的诱惑卡片，方便快速确认",
@@ -107,6 +120,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     pt: "Anual",
     it: "Annuale",
     ar: "سنوي",
+    "zh-Hant": "年付",
     zh: "年付",
     ko: "연간",
     ja: "年額",
@@ -120,6 +134,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     pt: "Mensal",
     it: "Mensile",
     ar: "شهري",
+    "zh-Hant": "月付",
     zh: "月付",
     ko: "월간",
     ja: "月額",
@@ -133,6 +148,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     pt: "Semanal",
     it: "Settimanale",
     ar: "أسبوعي",
+    "zh-Hant": "周付",
     zh: "周付",
     ko: "주간",
     ja: "週額",
@@ -146,6 +162,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     pt: "Vitalício",
     it: "A vita",
     ar: "مدى الحياة",
+    "zh-Hant": "終身",
     zh: "终身",
     ko: "평생",
     ja: "買い切り",
@@ -159,6 +176,7 @@ const PLAN_TITLES_BY_LANGUAGE = {
     pt: "Premium",
     it: "Premium",
     ar: "Premium",
+    "zh-Hant": "Premium",
     zh: "Premium",
     ko: "Premium",
     ja: "Premium",
@@ -320,7 +338,26 @@ const FALLBACK_UI_COPY_BY_LANGUAGE = {
     terms: "الشروط",
     privacy: "الخصوصية",
   },
-  zh: {
+  "zh-Hant": {
+    title: "選擇你的 Premium 方案",
+    trialHeadline: "我們希望你免費試用 Almost",
+    socialProof: "更清晰地掌控消費，減少衝動決定",
+    ctaPrimary: "解鎖 Premium",
+    freeTrialToggleTitle: "免費試用",
+    freeTrialToggleSubtitle: "開啟後選擇帶試用的方案。",
+    brandBadge: "Almost Premium",
+    bestValueBadge: "超值推薦",
+    freeTrialLabel: "免費試用",
+    tryForFree: "免費試用",
+    thenPriceTemplate: "然後 {{price}}",
+    yearlyPerMonthTemplate: "僅 {{price}}",
+    continueLimited: "繼續使用受限版本",
+    restore: "恢復購買",
+    manage: "管理訂閱",
+    terms: "條款",
+    privacy: "隱私",
+  },
+    zh: {
     title: "选择你的 Premium 方案",
     trialHeadline: "我们希望你免费试用 Almost",
     socialProof: "更清晰地掌控消费，减少冲动决定",
@@ -597,7 +634,7 @@ const resolveFeatureBullets = (copy = null, language = "en", maxItems = 4) => {
   const normalized = incoming
     .map((row) => {
       if (typeof row === "string") return normalizeText(row);
-      return normalizeText(row?.label || "");
+      return normalizeText(PAYWALL_COMPACT_FEATURE_LABELS[lang]?.[row?.id] || row?.label || "");
     })
     .filter(Boolean);
 
@@ -629,7 +666,7 @@ const resolvePlanTextScale = (language = "en") => {
   if (lang === "es") return 0.94;
   if (lang === "ru") return 0.93;
   if (lang === "ar") return 0.92;
-  if (lang === "zh") return 0.95;
+  if (lang === "zh" || lang === "zh-Hant") return 0.95;
   return 1;
 };
 
@@ -729,6 +766,8 @@ const PremiumPaywallModalV2 = ({
   statusBarOverlay = null,
 }) => {
   const { height: viewportHeight, fontScale } = useWindowDimensions();
+  const [benefitsExpanded, setBenefitsExpanded] = useState(false);
+  const designCopy = PAYWALL_DESIGN_COPY[resolveLanguageKey(language)] || PAYWALL_DESIGN_COPY.en;
   const [selectedPlanId, setSelectedPlanId] = useState(() => pickDefaultPlanId(planCardsProp));
   const [freeTrialEnabled, setFreeTrialEnabled] = useState(false);
   const [dismissCooldownComplete, setDismissCooldownComplete] = useState(false);
@@ -737,6 +776,7 @@ const PremiumPaywallModalV2 = ({
   const [stickyFooterHeight, setStickyFooterHeight] = useState(0);
   const mainScrollRef = useRef(null);
   const scrollThresholdReportedRef = useRef(false);
+  const trialSelectionInitializedRef = useRef(false);
   const planListOffsetYRef = useRef(0);
   const planCardOffsetsRef = useRef(new Map());
 
@@ -746,6 +786,8 @@ const PremiumPaywallModalV2 = ({
   }, [copyProp]);
 
   const rtl = isRtlLanguage(language);
+  const isTabletOffer = viewportHeight >= 900;
+  const isCompactOffer = viewportHeight < 720 && fontScale < PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE;
   const isAccessibilityText = fontScale >= PAYWALL_ACCESSIBILITY_LAYOUT_FONT_SCALE;
   const dynamicTypeLayoutKey = `${isAccessibilityText ? "accessibility" : "standard"}-${Number(
     fontScale || 1
@@ -757,7 +799,7 @@ const PremiumPaywallModalV2 = ({
   const compactTier = useMemo(() => {
     if (viewportHeight <= 730) {
       return {
-        heroHeight: 144,
+        heroHeight: 96,
         featureCount: 5,
         featureVerticalPad: 3,
         planVerticalPad: 3,
@@ -766,7 +808,7 @@ const PremiumPaywallModalV2 = ({
     }
     if (viewportHeight <= 820) {
       return {
-        heroHeight: 144,
+        heroHeight: 96,
         featureCount: 6,
         featureVerticalPad: 6,
         planVerticalPad: 6,
@@ -775,7 +817,7 @@ const PremiumPaywallModalV2 = ({
     }
     if (viewportHeight <= 900) {
       return {
-        heroHeight: 154,
+        heroHeight: 100,
         featureCount: 6,
         featureVerticalPad: 7,
         planVerticalPad: 7,
@@ -783,7 +825,7 @@ const PremiumPaywallModalV2 = ({
       };
     }
     return {
-      heroHeight: 166,
+      heroHeight: 108,
       featureCount: 6,
       featureVerticalPad: 8,
       planVerticalPad: 8,
@@ -801,7 +843,7 @@ const PremiumPaywallModalV2 = ({
     () => ({
       backdrop: "rgba(12,12,16,0.58)",
       sheetBg: colors?.background || (isDarkMode ? "#11141C" : "#F7F8FC"),
-      heroBg: "#FBF7F1",
+      heroBg: colors?.primarySurface || (isDarkMode ? "#252E60" : "#E8E9FF"),
       cardBg: colors?.card || (isDarkMode ? "#1A2030" : "#FFFFFF"),
       cardBorder: colors?.border || (isDarkMode ? "rgba(255,255,255,0.12)" : "rgba(16,24,40,0.11)"),
       cardSelectedBg: colors?.primarySurface || colors?.surfaceElevated || colors?.card || (isDarkMode ? "#222C40" : "#F1F3F8"),
@@ -810,10 +852,12 @@ const PremiumPaywallModalV2 = ({
       muted: colors?.muted || (isDarkMode ? "#B2BCD8" : "#62697C"),
       accent: colors?.primary || "#536DFE",
       accentText: colors?.primary || "#536DFE",
-      featureAccent: premiumAccent || (isDarkMode ? "#C084FC" : "#7C3AED"),
+      featureAccent: colors?.primary || premiumAccent || (isDarkMode ? "#AAB6FF" : "#485ED7"),
       success: colors?.success || "#1FA561",
-      ctaBg: colors?.success || "#247451",
-      ctaText: resolveForegroundForColor(colors?.success || "#247451"),
+      trialAccent: isDarkMode ? "#6CE3BC" : "#176747",
+      trialSurface: isDarkMode ? "#133D31" : "#E6F5ED",
+      ctaBg: colors?.primary || "#485ED7",
+      ctaText: resolveForegroundForColor(colors?.primary || "#485ED7"),
       ctaDisabledBg: colors?.disabled || (isDarkMode ? "#717A8C" : "#8B909C"),
       ctaDisabledText: resolveForegroundForColor(
         colors?.disabled || (isDarkMode ? "#717A8C" : "#8B909C")
@@ -830,12 +874,16 @@ const PremiumPaywallModalV2 = ({
   );
 
   const sortedPlans = useMemo(() => sortPlanCards(planCardsProp), [planCardsProp]);
-  const displayedPlans = useMemo(
-    () => sortedPlans.filter((plan) => isVisiblePaywallPlan(plan)),
-    [sortedPlans]
-  );
   const isTransactionAbandonedOffer =
     normalizePlanId(copy?.trigger) === TRANSACTION_ABANDONED_TRIGGER;
+  const displayedPlans = useMemo(
+    () => sortedPlans.filter((plan) =>
+      isTransactionAbandonedOffer
+        ? (resolvePlanKind(plan) || normalizePlanId(plan?.id)) === "monthly"
+        : isVisiblePaywallPlan(plan)
+    ),
+    [isTransactionAbandonedOffer, sortedPlans]
+  );
   const abandonedOfferPlan = useMemo(() => {
     const discountedPlans = displayedPlans
       .filter(
@@ -896,6 +944,8 @@ const PremiumPaywallModalV2 = ({
 
   useEffect(() => {
     if (!visible) {
+      setBenefitsExpanded(false);
+      trialSelectionInitializedRef.current = false;
       setSelectedPlanId(pickDefaultPlanId(displayedPlans));
       setFreeTrialEnabled(false);
       return;
@@ -906,6 +956,14 @@ const PremiumPaywallModalV2 = ({
       setSelectedPlanId(pickDefaultPlanId(displayedPlans));
     }
   }, [displayedPlans, selectedPlanId, visible]);
+  useEffect(() => {
+    if (!visible || isTransactionAbandonedOffer || trialSelectionInitializedRef.current) return;
+    if (!freeTrialDisplayPlan?.id) return;
+    trialSelectionInitializedRef.current = true;
+    setSelectedPlanId(freeTrialDisplayPlan.id);
+    setFreeTrialEnabled(true);
+    onPlanSelect(freeTrialDisplayPlan.id, { source: "eligible_trial_default", trialEnabled: true });
+  }, [freeTrialDisplayPlan?.id, isTransactionAbandonedOffer, onPlanSelect, visible]);
   useEffect(() => {
     if (!visible || !freeTrialEnabled || freeTrialDisplayPlan?.id) return;
     setFreeTrialEnabled(false);
@@ -1003,16 +1061,20 @@ const PremiumPaywallModalV2 = ({
     copy?.v2ContinueLimitedLabel || localizedUi.continueLimited
   );
   const freeTrialToggleTitle = sanitizeLabel(
+    freeTrialDisplayPlan?.trialDurationLabel ||
     copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle
   );
-  const freeTrialToggleSubtitle = sanitizeLabel(
-    copy?.v2FreeTrialToggleSubtitle || localizedUi.freeTrialToggleSubtitle
-  );
+  const freeTrialToggleSubtitle = freeTrialEnabled && freeTrialDisplayPlan?.postTrialPriceLabel
+    ? applyTemplate(copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate, { price: freeTrialDisplayPlan.postTrialPriceLabel })
+    : sanitizeLabel(copy?.v2FreeTrialToggleSubtitle || localizedUi.freeTrialToggleSubtitle);
+  const selectedTrialPriceLine = selectedPlanHasActiveTrial && selectedPlan?.postTrialPriceLabel
+    ? applyTemplate(copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate, { price: selectedPlan.postTrialPriceLabel })
+    : "";
   const shouldShowFreeTrialToggle = hasAnyTrialOffer && !!freeTrialDisplayPlan?.id;
   const canDismiss = dismissible && dismissCooldownComplete;
   const stickyFooterBottomInset = 6 + resolvedSafeBottomInset;
   const transparentScrollTail =
-    Math.max(compactTier.ctaHeight, stickyFooterHeight) + stickyFooterBottomInset + 18;
+    Math.max(compactTier.ctaHeight + stickyFooterBottomInset, stickyFooterHeight) + 18;
 
   const handleStickyFooterLayout = useCallback((event) => {
     const nextHeight = Math.max(0, Number(event?.nativeEvent?.layout?.height) || 0);
@@ -1085,6 +1147,7 @@ const PremiumPaywallModalV2 = ({
   const handlePlanSelect = useCallback(
     (plan) => {
       if (!plan?.id || plan?.available === false) return;
+      trialSelectionInitializedRef.current = true;
       const planKind = resolvePlanKind(plan) || normalizePlanId(plan?.id);
       const trialEnabled = freeTrialEnabled && planKind === FREE_TRIAL_DISPLAY_PLAN_ID;
       setSelectedPlanId(plan.id);
@@ -1134,6 +1197,7 @@ const PremiumPaywallModalV2 = ({
 
   const handleFreeTrialToggle = useCallback(() => {
     if (!freeTrialDisplayPlan?.id) return;
+    trialSelectionInitializedRef.current = true;
     setFreeTrialEnabled((prev) => {
       const next = !prev;
       const nextPlanId = freeTrialDisplayPlan.id;
@@ -1188,15 +1252,16 @@ const PremiumPaywallModalV2 = ({
         <View
           style={[
             styles.sheet,
-            {
+            { maxHeight: viewportHeight >= 900 ? 850 : undefined,
+
               backgroundColor: palette.sheetBg,
-              paddingTop: 2 + Math.min(8, resolvedSafeTopInset),
+              paddingTop: 0,
               paddingBottom: 0,
             },
           ]}
         >
           {dismissible ? (
-            <View style={styles.headerRow}>
+            <View style={[styles.headerRow, { top: resolvedSafeTopInset + 6 }]}>
               {canDismiss ? (
                 <TouchableOpacity
                   style={styles.headerDismissTouchTarget}
@@ -1206,7 +1271,7 @@ const PremiumPaywallModalV2 = ({
                   accessibilityRole="button"
                   accessibilityLabel={continueLimitedLabel}
                 >
-                  <View
+                  <PlatformSurface surfaceRole="card"
                     style={[
                       styles.headerDismissIconButton,
                       { backgroundColor: palette.subtleButtonBg },
@@ -1218,7 +1283,7 @@ const PremiumPaywallModalV2 = ({
                     >
                       ×
                     </Text>
-                  </View>
+                  </PlatformSurface>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1236,508 +1301,79 @@ const PremiumPaywallModalV2 = ({
             scrollEventThrottle={16}
             onScroll={handleMainScroll}
           >
-            <View
-              style={[
-                styles.hero,
-                {
-                  backgroundColor: palette.heroBg,
-                  height: compactTier.heroHeight,
-                  borderColor: palette.cardBorder,
-                },
-              ]}
-            >
-              <Image source={HERO_REFERENCE_VISUAL} style={styles.heroVisual} resizeMode="contain" />
+            <View style={[styles.offerHero, isTabletOffer ? styles.offerHeroTablet : null, isCompactOffer ? styles.offerHeroCompact : null, { paddingTop: Math.max(isCompactOffer ? 20 : 30, resolvedSafeTopInset + (isCompactOffer ? 4 : 12)) }, rtl ? styles.offerHeroRtl : null]}>
+              <Image source={PAYWALL_HERO_BACKGROUND} style={styles.offerSky} resizeMode="cover" accessible={false} />
+              <View style={[styles.offerHeadlineBlock, isCompactOffer ? styles.offerHeadlineBlockCompact : null, rtl ? styles.offerHeadlineBlockRtl : null]}>
+                <Text allowFontScaling maxFontSizeMultiplier={1.2} style={[styles.offerHeadline, isCompactOffer ? styles.offerHeadlineCompact : null, textAlignStyle]}>
+                  {contextTitle || designCopy.headline}
+                </Text>
+                {!contextTitle ? <Text allowFontScaling maxFontSizeMultiplier={1.2} style={[styles.offerHeadline, styles.offerHeadlineAccent, isCompactOffer ? styles.offerHeadlineCompact : null, textAlignStyle]}>{designCopy.headlineAccent}</Text> : null}
+              </View>
+              <Image source={PREMIUM_MASCOT_VISUAL} style={[styles.offerMascot, isCompactOffer ? styles.offerMascotCompact : null, rtl ? styles.offerMascotRtl : null]} resizeMode="contain" accessible={false} />
             </View>
-
-            <View style={styles.copyBlock}>
-              <AdaptivePaywallText
-                style={[
-                  styles.title,
-                  { color: contextTitle ? palette.featureAccent : palette.text },
-                  textAlignStyle,
-                ]}
-                numberOfLines={titleNumberOfLines}
-                minFontSize={14}
-                maxUnitsPerLine={22}
-              >
-                {title}
-              </AdaptivePaywallText>
-              {!!socialProof ? (
-                <View
-                  style={[
-                    styles.socialProofPill,
-                    { backgroundColor: palette.chipBg, borderColor: palette.accent },
-                  ]}
-                >
-                  <AdaptivePaywallText
-                    style={[styles.socialProofText, { color: palette.accentText }, textAlignStyle]}
-                    numberOfLines={1}
-                    minFontSize={10}
-                    maxUnitsPerLine={38}
-                  >
-                    {socialProof}
-                  </AdaptivePaywallText>
-                </View>
-              ) : null}
-              {!!normalizedStatusMessage ? (
-                <View
-                  style={[
-                    styles.statusBanner,
-                    {
-                      backgroundColor:
-                        statusKind === "warning" ? "rgba(248,185,83,0.18)" : "rgba(255,122,94,0.16)",
-                      borderColor:
-                        statusKind === "warning" ? "rgba(248,185,83,0.32)" : "rgba(255,122,94,0.28)",
-                    },
-                  ]}
-                >
-                  <AdaptivePaywallText
-                    style={[styles.statusBannerText, { color: palette.text }, textAlignStyle]}
-                    numberOfLines={2}
-                    minFontSize={10}
-                    maxUnitsPerLine={38}
-                  >
-                    {normalizedStatusMessage}
-                  </AdaptivePaywallText>
-                </View>
-              ) : null}
-            </View>
-
-            {!!benefitsTitle ? (
-              <Text
-                allowFontScaling
-                maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                style={[styles.featuresTitle, { color: palette.text }, textAlignStyle]}
-              >
-                {benefitsTitle}
-              </Text>
-            ) : null}
-            <View style={styles.featuresWrap}>
-              {features.map((label, index) => {
-                const sourceRow = Array.isArray(copy?.benefitBullets) ? copy.benefitBullets[index] : null;
-                const rowId = sanitizeLabel(sourceRow?.id || "");
-                const featureKey = sanitizeLabel(sourceRow?.featureKey || "");
-                const interactive = !!sourceRow?.interactive && !!featureKey;
-                const RowComponent = interactive ? TouchableOpacity : View;
-
-                return (
-                  <RowComponent
-                    key={`${label}_${index}`}
-                    style={[
-                      styles.featureRow,
-                      rtl ? styles.featureRowRtl : null,
-                      {
-                        backgroundColor: "transparent",
-                        paddingVertical: compactTier.featureVerticalPad,
-                      },
-                    ]}
-                    onPress={
-                      interactive
-                        ? () => onFeatureInsightPress(featureKey, { rowId: rowId || featureKey })
-                        : undefined
-                    }
-                    activeOpacity={0.86}
-                  >
-                    <View
-                      style={[
-                        styles.featureToken,
-                        rtl ? styles.featureTokenRtl : null,
-                        {
-                          borderColor: palette.accent,
-                          backgroundColor: palette.cardBg,
-                        },
-                      ]}
-                    >
-                      <Text
-                        allowFontScaling={false}
-                        style={[styles.featureTokenCheck, { color: palette.accent }]}
-                      >
-                        ✓
-                      </Text>
-                    </View>
-
-                    <Text
-                      allowFontScaling
-                      maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                      style={[styles.featureLabel, { color: palette.text }, textAlignStyle]}
-                      numberOfLines={isAccessibilityText ? 4 : 2}
-                    >
-                      {label}
-                    </Text>
-                  </RowComponent>
-                );
+            <View style={[styles.offerContent, isCompactOffer ? styles.offerContentCompact : null, { backgroundColor: palette.sheetBg }]}>
+              {!!normalizedStatusMessage ? <View style={[styles.statusBanner, { backgroundColor: palette.chipBg, borderColor: palette.cardBorder }]}><Text style={{ color: palette.text }}>{normalizedStatusMessage}</Text></View> : null}
+              <Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} style={[styles.offerSectionTitle, isCompactOffer ? styles.offerSectionTitleCompact : null, { color: palette.text }, textAlignStyle]}>{benefitsTitle}</Text>
+              {[
+                { id: "automaticExpenses", icon: "cards", label: expenseCopy(language).title, detail: expenseCopy(language).premiumDetail },
+                { id: "reports", icon: "insights", label: designCopy.insights, detail: designCopy.insightsDetail },
+                { id: "temptationAutoCollect", icon: "calendar", label: designCopy.autocollect, detail: designCopy.autocollectDetail },
+                { id: "customTemptationCards", icon: "cards", label: designCopy.cards, detail: designCopy.cardsDetail },
+              ].map((benefit) => {
+                const sourceRow = copy?.benefitBullets?.find((row) => row?.id === benefit.id);
+                const interactive = sourceRow?.interactive && sourceRow?.featureKey;
+                const Row = interactive ? TouchableOpacity : View;
+                return <Row key={benefit.id} style={[styles.offerBenefit, isCompactOffer ? styles.offerBenefitCompact : null, rtl ? styles.featureRowRtl : null]} onPress={interactive ? () => onFeatureInsightPress(sourceRow.featureKey, { rowId: sourceRow.id }) : undefined} accessibilityLabel={sourceRow?.label || benefit.label}>
+                  <View style={[styles.offerBenefitIcon, isCompactOffer ? styles.offerBenefitIconCompact : null, { backgroundColor: palette.heroBg }]}><PaywallOfferIcon name={benefit.icon} color={palette.accent} size={23} /></View>
+                  <View style={styles.offerBenefitCopy}><Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} style={[styles.offerBenefitTitle, { color: palette.text }, textAlignStyle]}>{benefit.label}</Text><Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} style={[styles.offerBenefitDetail, isCompactOffer ? styles.offerBenefitDetailCompact : null, { color: palette.muted }, textAlignStyle]}>{benefit.detail}</Text></View>
+                </Row>;
               })}
-            </View>
-
-            {shouldShowFreeTrialToggle ? (
-              <TouchableOpacity
-                style={[
-                  styles.freeTrialToggleCard,
-                  {
-                    backgroundColor: freeTrialEnabled ? palette.cardSelectedBg : palette.cardBg,
-                    borderColor: freeTrialEnabled ? palette.cardSelectedBorder : palette.cardBorder,
-                  },
-                ]}
-                onPress={handleFreeTrialToggle}
-                disabled={restoring || !!purchaseLoadingPlan}
-                activeOpacity={0.88}
-                accessibilityRole="switch"
-                accessibilityLabel={freeTrialToggleTitle}
-                accessibilityState={{ checked: freeTrialEnabled, disabled: restoring || !!purchaseLoadingPlan }}
-              >
-                <View style={[styles.freeTrialToggleTextBlock, rtl ? styles.freeTrialToggleTextBlockRtl : null]}>
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.freeTrialToggleTitle, { color: palette.text }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? 2 : 1}
-                  >
-                    {freeTrialToggleTitle}
-                  </Text>
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.freeTrialToggleSubtitle, { color: palette.muted }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? 3 : 2}
-                  >
-                    {freeTrialToggleSubtitle}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.freeTrialSwitchTrack,
-                    {
-                      backgroundColor: freeTrialEnabled ? palette.ctaBg : palette.chipBg,
-                      borderColor: freeTrialEnabled ? palette.cardSelectedBorder : palette.cardBorder,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.freeTrialSwitchThumb,
-                      freeTrialEnabled ? styles.freeTrialSwitchThumbOn : null,
-                    ]}
-                  />
-                </View>
+              <View style={[styles.offerOptionsRow, isAccessibilityText ? styles.offerOptionsAccessible : null]}>
+              <TouchableOpacity onPress={() => setBenefitsExpanded((value) => !value)} style={styles.offerDetailsToggle} accessibilityRole="button" accessibilityState={{ expanded: benefitsExpanded }} accessibilityLabel={benefitsExpanded ? designCopy.hideBenefits : designCopy.allBenefits}>
+                <Text style={[styles.offerDetailsLabel, { color: palette.accent }]}>{benefitsExpanded ? designCopy.hideBenefits : designCopy.allBenefits}</Text><PaywallOfferIcon name={benefitsExpanded ? "up" : "right"} color={palette.accent} size={16} />
               </TouchableOpacity>
-            ) : null}
-
-            <View
-              key={dynamicTypeLayoutKey}
-              style={styles.planList}
-              onLayout={(event) => {
-                planListOffsetYRef.current = event.nativeEvent.layout.y;
-              }}
-            >
-              {displayedPlans.map((plan, planIndex) => {
-                const planId = normalizePlanId(plan?.id);
-                const planKind = resolvePlanKind(plan, planIndex, displayedPlans);
-                const resolvedPlanId = planKind || planId;
-                const isYearly = resolvedPlanId === "yearly";
-                const isBestValuePlan = isYearly;
-                const planHasActiveTrial =
-                  freeTrialEnabled && isYearly && plan?.hasTrial === true;
-                const selected = planId === normalizePlanId(selectedPlan?.id);
-                const thenPriceTemplate = sanitizeLabel(
-                  copy?.v2ThenPriceTemplate || localizedUi.thenPriceTemplate
-                );
-                const yearlyPerMonthTemplate = sanitizeLabel(
-                  copy?.v2YearlyPerMonthTemplate || localizedUi.yearlyPerMonthTemplate
-                );
-                const display = resolvePlanDisplay(plan);
-                const titleLabel = resolvePlanTitle(plan, language, planKind);
-                const freeTrialLabel = sanitizeLabel(
-                  plan?.trialDurationLabel ||
-                    copy?.v2FreeTrialLabel ||
-                    localizedUi.freeTrialLabel ||
-                    copy?.v2TryForFreeLabel ||
-                    localizedUi.tryForFree
-                );
-                const yearlyPrice = pickFirstLabel([
-                  plan?.postTrialPriceLabel,
-                  plan?.ctaPriceLabel,
-                  plan?.priceLabel,
-                ]);
-                const postTrialPriceLine = yearlyPrice
-                  ? planHasActiveTrial
-                    ? applyTemplate(thenPriceTemplate, { price: yearlyPrice })
-                    : yearlyPrice
-                  : "";
-                const yearlyPerMonthPrice = stripLeadingApprox(
-                  pickFirstLabel([plan?.periodEquivalentLabel])
-                );
-                const yearlyPerMonthLine = yearlyPerMonthPrice
-                  ? applyTemplate(yearlyPerMonthTemplate, { price: yearlyPerMonthPrice })
-                  : "";
-                const planPriceLine = planHasActiveTrial
-                  ? freeTrialLabel
-                  : display.currentPrice || postTrialPriceLine;
-                const planDetailLine = planHasActiveTrial
-                  ? postTrialPriceLine
-                  : isYearly
-                  ? yearlyPerMonthLine
-                  : "";
-                const planBadgeLabel = isBestValuePlan
-                  ? copy?.v2BestValueBadge || localizedUi.bestValueBadge
-                  : "";
-
-                return (
-                  <TouchableOpacity
-                    key={String(plan?.id || "")}
-                    onLayout={(event) => {
-                      if (planId) {
-                        planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y);
-                      }
-                    }}
-                    style={[
-                      styles.planCard,
-                      {
-                        backgroundColor: selected ? palette.cardSelectedBg : palette.cardBg,
-                        borderColor: selected ? palette.cardSelectedBorder : palette.cardBorder,
-                        paddingVertical: compactTier.planVerticalPad + 5,
-                      },
-                      plan?.available === false ? styles.planCardDisabled : null,
-                    ]}
-                    activeOpacity={0.86}
-                    onPress={() => handlePlanSelect(plan)}
-                    disabled={plan?.available === false}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${titleLabel} ${planPriceLine || ""} ${planDetailLine || ""}`.trim()}
-                    accessibilityState={{ selected, disabled: plan?.available === false }}
-                  >
-                    <View
-                      style={[
-                        styles.planMainRow,
-                        rtl && !isAccessibilityText ? styles.planMainRowRtl : null,
-                        isAccessibilityText ? styles.planMainRowAccessibility : null,
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.planSelector,
-                          isAccessibilityText
-                            ? rtl
-                              ? styles.planSelectorAccessibilityRtl
-                              : styles.planSelectorAccessibility
-                            : null,
-                          {
-                            borderColor: selected ? palette.cardSelectedBorder : palette.cardBorder,
-                            backgroundColor: selected ? palette.cardSelectedBorder : "transparent",
-                          },
-                        ]}
-                      >
-                        {selected ? (
-                          <Text
-                            allowFontScaling={false}
-                            style={[styles.planSelectorTick, { color: palette.bestValueText }]}
-                          >
-                            ✓
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      <View
-                        style={[
-                          styles.planContent,
-                          rtl ? styles.planContentRtl : null,
-                          isAccessibilityText ? styles.planContentAccessibility : null,
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.planTitleRow,
-                            rtl && !isAccessibilityText ? styles.planTitleRowRtl : null,
-                            isAccessibilityText ? styles.planTitleRowAccessibility : null,
-                            isAccessibilityText && rtl ? styles.planTitleRowAccessibilityRtl : null,
-                          ]}
-                        >
-                          <AdaptivePaywallText
-                            style={[
-                              styles.planTitle,
-                              planTypography.planTitle,
-                              { color: palette.text },
-                              textAlignStyle,
-                            ]}
-                            numberOfLines={isAccessibilityText ? 2 : 1}
-                            minFontSize={12}
-                            maxUnitsPerLine={16}
-                          >
-                            {titleLabel}
-                          </AdaptivePaywallText>
-                          {!!planBadgeLabel ? (
-                            <View
-                              style={[
-                                styles.planValueBadge,
-                                isAccessibilityText ? styles.planValueBadgeAccessibility : null,
-                                isAccessibilityText && rtl
-                                  ? styles.planValueBadgeAccessibilityRtl
-                                  : null,
-                                {
-                                  backgroundColor: palette.bestValueBg,
-                                },
-                              ]}
-                            >
-                              <AdaptivePaywallText
-                                style={[styles.planValueBadgeText, { color: palette.bestValueText }]}
-                                numberOfLines={1}
-                                maxFontSizeMultiplier={1}
-                                adjustsFontSizeToFit
-                                minimumFontScale={0.9}
-                                ellipsizeMode="clip"
-                                minFontSize={8}
-                                maxUnitsPerLine={16}
-                              >
-                                {planBadgeLabel}
-                              </AdaptivePaywallText>
-                            </View>
-                          ) : null}
-                        </View>
-                        {!!planDetailLine ? (
-                          <AdaptivePaywallText
-                            style={[
-                              styles.planDetail,
-                              planTypography.planDetail,
-                              { color: palette.muted },
-                              textAlignStyle,
-                            ]}
-                            numberOfLines={isAccessibilityText ? 2 : 1}
-                            minFontSize={10}
-                            maxUnitsPerLine={24}
-                          >
-                            {planDetailLine}
-                          </AdaptivePaywallText>
-                        ) : null}
-                      </View>
-
-                      {!!planPriceLine ? (
-                        <View
-                          style={[
-                            styles.planPriceBlock,
-                            rtl ? styles.planPriceBlockRtl : null,
-                            isAccessibilityText ? styles.planPriceBlockAccessibility : null,
-                          ]}
-                        >
-                          <AdaptivePaywallText
-                            style={[
-                              styles.planPrice,
-                              planTypography.planPrice,
-                              {
-                                color: selected ? palette.accentText : palette.text,
-                                textAlign: rtl ? "left" : "right",
-                              },
-                            ]}
-                            numberOfLines={isAccessibilityText ? 2 : 1}
-                            minFontSize={12}
-                            maxUnitsPerLine={18}
-                          >
-                            {planPriceLine}
-                          </AdaptivePaywallText>
-                        </View>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.scrollFooter}>
-              {!!selectedPlanTrialNotice ? (
-                <View style={[styles.trialDisclosureBlock, { backgroundColor: palette.chipBg }]}>
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.trialDisclosureText, { color: palette.text }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? undefined : 4}
-                  >
-                    {selectedPlanTrialNotice}
-                  </Text>
-                </View>
-              ) : null}
-
-              {!!noCommitmentLine ? (
-                <View style={[styles.trustRow, rtl ? styles.trustRowRtl : null]}>
-                  <View style={[styles.trustIcon, { backgroundColor: palette.chipBg }]}>
-                    <Text
-                      allowFontScaling={false}
-                      style={[styles.trustIconText, { color: palette.success }]}
-                    >
-                      ✓
-                    </Text>
-                  </View>
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.trustText, { color: palette.text }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? undefined : 2}
-                  >
-                    {noCommitmentLine}
-                  </Text>
-                </View>
-              ) : null}
-
-              <View style={styles.offerDisclosureBlock}>
-                {!!billingNotice && !selectedPlanHasActiveTrial ? (
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? undefined : 2}
-                  >
-                    {billingNotice}
-                  </Text>
-                ) : null}
-                {!!legalNotice ? (
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.offerDisclosureText, { color: palette.muted }, textAlignStyle]}
-                    numberOfLines={isAccessibilityText ? undefined : 2}
-                  >
-                    {legalNotice}
-                  </Text>
-                ) : null}
+              {shouldShowFreeTrialToggle ? <View style={[styles.offerTrialControl, rtl ? styles.featureRowRtl : null]}><Text style={[styles.offerTrialControlLabel, { color: palette.text }]}>{designCopy.trialToggle}</Text><Switch value={freeTrialEnabled} onValueChange={handleFreeTrialToggle} disabled={restoring || !!purchaseLoadingPlan} accessibilityLabel={freeTrialToggleTitle} trackColor={{ false: palette.chipBg, true: palette.trialAccent }} thumbColor="#FFFFFF" ios_backgroundColor={palette.chipBg} /></View> : null}
+              </View>
+              {benefitsExpanded ? features.map((label, index) => {
+                const sourceRow = copy?.benefitBullets?.[index];
+                const featureKey = sourceRow?.featureKey;
+                const Row = sourceRow?.interactive && featureKey ? TouchableOpacity : View;
+                return <Row key={sourceRow?.id || index} style={[styles.offerExpandedBenefit, rtl ? styles.featureRowRtl : null]} onPress={sourceRow?.interactive && featureKey ? () => onFeatureInsightPress(featureKey, { rowId: sourceRow.id || featureKey }) : undefined} accessibilityLabel={sourceRow?.label || label}><PaywallOfferIcon name="check" color={palette.trialAccent} size={18} /><Text style={[styles.offerExpandedLabel, { color: palette.text }, textAlignStyle]}>{sourceRow?.label || label}</Text></Row>;
+              }) : null}
+              {!!noCommitmentLine ? <View style={[styles.offerTrust, isCompactOffer ? styles.offerTrustCompact : null, rtl ? styles.featureRowRtl : null]}><PaywallOfferIcon name="shield" color={palette.trialAccent} size={20} /><Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} style={[styles.offerTrustLabel, { color: palette.trialAccent }, textAlignStyle]}>{noCommitmentLine}</Text></View> : null}
+              <View key={dynamicTypeLayoutKey} style={[styles.planList, styles.offerPlans, rtl ? styles.offerPlansRtl : null, isAccessibilityText ? styles.offerPlansAccessible : null]} onLayout={(event) => { planListOffsetYRef.current = event.nativeEvent.layout.y; }}>
+                {displayedPlans.map((plan, planIndex) => {
+                  const planId = normalizePlanId(plan?.id);
+                  const kind = resolvePlanKind(plan, planIndex, displayedPlans) || planId;
+                  const selected = planId === normalizePlanId(selectedPlan?.id);
+                  const offerTrial = kind === "yearly" && plan?.hasTrial === true;
+                  const price = pickFirstLabel([plan?.postTrialPriceLabel, plan?.ctaPriceLabel, plan?.priceLabel]);
+                  const priceSlash = price.lastIndexOf("/");
+                  const amountLabel = priceSlash > 0 ? price.slice(0, priceSlash).trim() : price;
+                  const periodLabel = priceSlash > 0 ? price.slice(priceSlash).trim() : "";
+                  const equivalent = kind === "yearly" ? stripLeadingApprox(plan?.periodEquivalentLabel) : "";
+                  const label = designCopy[kind] || resolvePlanTitle(plan, language, kind);
+                  const trialLabel = plan?.trialDurationLabel || copy?.v2FreeTrialLabel || localizedUi.freeTrialLabel;
+                  return <PlatformTouchableOpacity surfaceRole="control" key={planId} onLayout={(event) => { if (planId) planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y); }} onPress={() => handlePlanSelect(plan)} disabled={plan?.available === false} accessibilityRole="radio" accessibilityLabel={[label, price, offerTrial ? trialLabel : "", equivalent].filter(Boolean).join(", ")} accessibilityState={{ selected, checked: selected, disabled: plan?.available === false }} style={[styles.offerPlan, isCompactOffer ? styles.offerPlanCompact : null, isAccessibilityText ? styles.offerPlanAccessible : null, { backgroundColor: selected && offerTrial ? palette.trialSurface : selected ? palette.cardSelectedBg : palette.cardBg, borderColor: selected && offerTrial ? palette.trialAccent : selected ? palette.accent : palette.cardBorder }, plan?.available === false ? styles.planCardDisabled : null]}>
+                    <View style={[styles.offerPlanRibbon, { backgroundColor: offerTrial ? palette.trialAccent : "transparent" }]}><Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER} numberOfLines={isAccessibilityText ? 2 : 1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.planTrialLabel, styles.offerRibbonText, { color: offerTrial ? resolveForegroundForColor(palette.trialAccent) : palette.muted }]}>{offerTrial ? trialLabel : kind === "yearly" ? copy?.v2BestValueBadge || localizedUi.bestValueBadge : ""}</Text></View>
+                    <Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.offerPlanName, isCompactOffer ? styles.offerPlanNameCompact : null, { color: palette.text }]}>{label}</Text>
+                    <AdaptivePaywallText style={[styles.offerPlanPrice, isCompactOffer ? styles.offerPlanPriceCompact : null, { color: palette.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} minFontSize={14} maxUnitsPerLine={12}>{amountLabel}<Text style={[styles.offerPlanPeriod, { color: palette.muted }]}>{periodLabel}</Text></AdaptivePaywallText>
+                    <View style={[styles.offerEquivalent, isCompactOffer ? styles.offerEquivalentCompact : null]}><Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.offerEquivalentText, { color: palette.muted }]}>{equivalent}</Text></View>
+                    <View style={[styles.offerRadio, isCompactOffer ? styles.offerRadioCompact : null, { borderColor: selected ? offerTrial ? palette.trialAccent : palette.accent : palette.cardBorder, backgroundColor: selected ? offerTrial ? palette.trialAccent : palette.accent : "transparent" }]}>{selected ? <PaywallOfferIcon name="check" color={resolveForegroundForColor(offerTrial ? palette.trialAccent : palette.accent)} size={17} /> : null}</View>
+                  </PlatformTouchableOpacity>;
+                })}
               </View>
 
+            </View>
+            <View style={styles.scrollFooter}>
+              {!!legalNotice ? <Text style={[styles.offerDisclosureText, { color: palette.muted }]}>{legalNotice}</Text> : null}
               <View
                 style={[
                   styles.secondaryButtonsRow,
                   isAccessibilityText ? styles.secondaryButtonsColumn : null,
                 ]}
               >
-                <TouchableOpacity
-                  style={[
-                    styles.secondaryButton,
-                    isAccessibilityText ? styles.secondaryButtonAccessibility : null,
-                    {
-                      backgroundColor: palette.subtleButtonBg,
-                      borderColor: palette.cardBorder,
-                    },
-                  ]}
-                  onPress={() => onRestorePress({ source: "restore_button" })}
-                  disabled={!!purchaseLoadingPlan || restoring}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={copy?.ctaRestore || localizedUi.restore}
-                >
-                  {restoring ? (
-                    <ActivityIndicator size="small" color={palette.subtleButtonText} />
-                  ) : (
-                    <Text
-                      allowFontScaling
-                      maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                      numberOfLines={2}
-                      style={[
-                        styles.secondaryButtonText,
-                        { color: palette.subtleButtonText },
-                        textAlignStyle,
-                      ]}
-                    >
-                      {copy?.ctaRestore || localizedUi.restore}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
+                <PlatformTouchableOpacity surfaceRole="control"
                   style={[
                     styles.secondaryButton,
                     isAccessibilityText ? styles.secondaryButtonAccessibility : null,
@@ -1764,53 +1400,9 @@ const PremiumPaywallModalV2 = ({
                   >
                     {copy?.ctaManage || localizedUi.manage}
                   </Text>
-                </TouchableOpacity>
+                </PlatformTouchableOpacity>
               </View>
 
-              <View
-                style={[
-                  styles.legalLinksRow,
-                  isAccessibilityText ? styles.legalLinksRowAccessibility : null,
-                  { borderTopColor: palette.divider },
-                ]}
-              >
-                <TouchableOpacity
-                  onPress={() => onTermsPress({ source: "terms_link" })}
-                  activeOpacity={0.82}
-                  accessibilityRole="link"
-                  accessibilityLabel={copy?.legalTermsLabel || localizedUi.terms}
-                >
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}
-                  >
-                    {copy?.legalTermsLabel || localizedUi.terms}
-                  </Text>
-                </TouchableOpacity>
-
-                <Text
-                  allowFontScaling={false}
-                  style={[styles.legalSeparator, { color: palette.muted }]}
-                >
-                  |
-                </Text>
-
-                <TouchableOpacity
-                  onPress={() => onPrivacyPress({ source: "privacy_link" })}
-                  activeOpacity={0.82}
-                  accessibilityRole="link"
-                  accessibilityLabel={copy?.legalPrivacyLabel || localizedUi.privacy}
-                >
-                  <Text
-                    allowFontScaling
-                    maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}
-                    style={[styles.legalLinkText, { color: palette.muted }, textAlignStyle]}
-                  >
-                    {copy?.legalPrivacyLabel || localizedUi.privacy}
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </ScrollView>
 
@@ -1818,9 +1410,9 @@ const PremiumPaywallModalV2 = ({
             pointerEvents="box-none"
             collapsable={false}
             onLayout={handleStickyFooterLayout}
-            style={[styles.footer, { bottom: stickyFooterBottomInset }]}
+            style={[styles.footer, { bottom: 0, paddingBottom: stickyFooterBottomInset, backgroundColor: palette.sheetBg, paddingTop: 8 }]}
           >
-            <TouchableOpacity
+            <PlatformTouchableOpacity surfaceRole="control"
               style={[
                 styles.primaryButton,
                 {
@@ -1857,7 +1449,15 @@ const PremiumPaywallModalV2 = ({
                   {primaryButtonLabel}
                 </Text>
               )}
-            </TouchableOpacity>
+            </PlatformTouchableOpacity>
+            <View style={styles.trialDisclosureBlock}>
+              <Text allowFontScaling maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER} style={[styles.trialDisclosureText, { color: palette.muted }, textAlignStyle]}>{selectedPlanTrialNotice || billingNotice}</Text>
+            </View>
+            <View style={[styles.offerDockLinks, isAccessibilityText ? styles.secondaryButtonsColumn : null]}>
+              <TouchableOpacity style={styles.offerDockLink} onPress={() => onRestorePress({ source: "restore_button" })} disabled={!!purchaseLoadingPlan || restoring} accessibilityRole="button" accessibilityLabel={copy?.ctaRestore || localizedUi.restore}>{restoring ? <ActivityIndicator size="small" color={palette.accent} /> : <Text style={[styles.offerDockLinkText, { color: palette.accent }]}>{copy?.ctaRestore || localizedUi.restore}</Text>}</TouchableOpacity>
+              <TouchableOpacity style={styles.offerDockLink} onPress={() => onTermsPress({ source: "terms_link" })} accessibilityRole="link" accessibilityLabel={copy?.legalTermsLabel || localizedUi.terms}><Text style={[styles.offerDockLinkText, { color: palette.accent }]}>{copy?.legalTermsLabel || localizedUi.terms}</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.offerDockLink} onPress={() => onPrivacyPress({ source: "privacy_link" })} accessibilityRole="link" accessibilityLabel={copy?.legalPrivacyLabel || localizedUi.privacy}><Text style={[styles.offerDockLinkText, { color: palette.accent }]}>{copy?.legalPrivacyLabel || localizedUi.privacy}</Text></TouchableOpacity>
+            </View>
           </View>
           {abandonedWheelActive ? (
             <View
@@ -1867,7 +1467,7 @@ const PremiumPaywallModalV2 = ({
               ]}
               onStartShouldSetResponder={() => true}
             >
-              <View
+              <PlatformSurface surfaceRole="sheet"
                 style={[
                   styles.abandonedWheelSheet,
                   {
@@ -1888,7 +1488,7 @@ const PremiumPaywallModalV2 = ({
                   onEvent={emitAbandonedWheelEvent}
                   onStageChange={setAbandonedWheelStage}
                 />
-              </View>
+              </PlatformSurface>
             </View>
           ) : null}
         </View>
@@ -1898,6 +1498,65 @@ const PremiumPaywallModalV2 = ({
 };
 
 const styles = StyleSheet.create({
+  offerHeroTablet: { minHeight: 176 },
+  offerHeroCompact: { minHeight: 88, paddingBottom: 16 },
+  offerHeadlineBlockCompact: { width: "72%", paddingLeft: 16 },
+  offerHeadlineCompact: { fontSize: 18, lineHeight: 21, letterSpacing: -0.3 },
+  offerMascotCompact: { width: "32%", height: 78, right: -8, bottom: 4 },
+  offerContentCompact: { marginTop: -12, paddingTop: 8, paddingHorizontal: 16, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  offerSectionTitleCompact: { fontSize: 16, lineHeight: 20, marginBottom: 4 },
+  offerBenefitCompact: { minHeight: Platform.OS === "android" ? 48 : 44, gap: 8, paddingVertical: 2 },
+  offerBenefitIconCompact: { width: 32, height: 32, borderRadius: 16 },
+  offerBenefitDetailCompact: { fontSize: 11, lineHeight: 13, marginTop: 0 },
+  offerTrustCompact: { minHeight: 28, marginBottom: 6, gap: 6 },
+  offerPlanCompact: { minHeight: 124, paddingHorizontal: 3, paddingBottom: 6 },
+  offerPlanNameCompact: { marginTop: 2, fontSize: 14, lineHeight: 17 },
+  offerPlanPriceCompact: { marginTop: 3, fontSize: 18, lineHeight: 24, minHeight: 24 },
+  offerEquivalentCompact: { minHeight: 18, marginBottom: 4 },
+  offerRadioCompact: { width: 21, height: 21 },
+  offerHero: { backgroundColor: "#E5F0FB", minHeight: 208, paddingTop: 30, paddingBottom: 28, justifyContent: "center", overflow: "hidden" },
+  offerHeroRtl: { flexDirection: "row-reverse" },
+  offerSky: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
+  offerHeadlineBlock: { width: "64%", paddingLeft: 20, paddingRight: 8, zIndex: 1 },
+  offerHeadlineBlockRtl: { marginLeft: "36%", paddingLeft: 8, paddingRight: 20 },
+  offerHeadline: { color: "#11182C", fontSize: 29, lineHeight: 32, fontWeight: "800", letterSpacing: -0.6 },
+  offerHeadlineAccent: { color: "#4054CE" },
+  offerMascot: { position: "absolute", right: -22, bottom: 8, width: "48%", height: 176 },
+  offerMascotRtl: { right: undefined, left: -22 },
+  offerContent: { marginTop: -20, paddingTop: 18, paddingHorizontal: 20, borderTopLeftRadius: 32, borderTopRightRadius: 32 },
+  offerSectionTitle: { fontSize: 19, lineHeight: 24, fontWeight: "800", marginBottom: 8 },
+  offerBenefit: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48, paddingVertical: 4 },
+  offerBenefitIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  offerBenefitCopy: { flex: 1, minWidth: 0 },
+  offerBenefitTitle: { fontSize: 14, lineHeight: 18, fontWeight: "700" },
+  offerBenefitDetail: { fontSize: 11, lineHeight: 14, marginTop: 2 },
+  offerOptionsRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  offerOptionsAccessible: { flexDirection: "column", alignItems: "stretch" },
+  offerDetailsToggle: { minHeight: Platform.OS === "android" ? 48 : 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  offerDetailsLabel: { fontSize: 12, fontWeight: "600" },
+  offerExpandedBenefit: { flexDirection: "row", gap: 10, alignItems: "center", minHeight: Platform.OS === "android" ? 48 : 44, paddingVertical: 6 },
+  offerExpandedLabel: { flex: 1, fontSize: 13, lineHeight: 18 },
+  offerTrust: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 },
+  offerTrustLabel: { flexShrink: 1, fontSize: 11, lineHeight: 15, fontWeight: "700" },
+  offerPlans: { flexDirection: "row", gap: 8, marginBottom: 0, alignItems: "stretch" },
+  offerPlansRtl: { flexDirection: "row-reverse" },
+  offerPlansAccessible: { flexDirection: "column" },
+  offerPlan: { flex: 1, minWidth: 0, minHeight: 158, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 7, paddingBottom: 10, alignItems: "center" },
+  offerPlanAccessible: { flex: 0, width: "100%" },
+  offerPlanRibbon: { marginTop: -8, minHeight: 34, alignSelf: "stretch", alignItems: "center", justifyContent: "center", borderRadius: 10, paddingHorizontal: 2, paddingVertical: 3 },
+  offerRibbonText: { width: "100%", textAlign: "center", fontSize: 11, lineHeight: 13, marginTop: 0 },
+  offerPlanName: { width: "100%", fontSize: 15, lineHeight: 19, fontWeight: "600", marginTop: 7, textAlign: "center" },
+  offerPlanPrice: { width: "100%", fontSize: 20, lineHeight: 27, fontWeight: "800", textAlign: "center", marginTop: 8, minHeight: 27 },
+  offerPlanPeriod: { fontSize: 12, fontWeight: "500" },
+  offerEquivalent: { alignSelf: "stretch", minHeight: 24, justifyContent: "center", marginBottom: 8 },
+  offerEquivalentText: { width: "100%", textAlign: "center", fontSize: 11, lineHeight: 14 },
+  offerRadio: { width: 25, height: 25, borderRadius: 13, borderWidth: 1.5, alignItems: "center", justifyContent: "center", marginTop: "auto" },
+  offerTrialControl: { minHeight: Platform.OS === "android" ? 48 : 44, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10 },
+  offerTrialControlLabel: { maxWidth: 82, fontSize: 11, lineHeight: 13, fontWeight: "500" },
+  offerDockLinks: { flexDirection: "row", justifyContent: "space-between", gap: 4 },
+  offerDockLink: { flex: 1, minHeight: Platform.OS === "android" ? 48 : 44, justifyContent: "center", alignItems: "center" },
+  offerDockLinkText: { fontSize: 11, lineHeight: 14, textAlign: "center" },
+
   backdrop: {
     position: "relative",
     flex: 1,
@@ -1908,8 +1567,12 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    height: "95%",
-    paddingHorizontal: 16,
+    height: "100%",
+    paddingHorizontal: 0,
+    width: "100%",
+    maxWidth: 620,
+    alignSelf: "center",
+    overflow: "hidden",
   },
   abandonedWheelOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1931,15 +1594,19 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
   },
   headerRow: {
+    position: "absolute",
+    top: 8,
+    right: 16,
+    zIndex: 5,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    height: 40,
+    minHeight: Platform.OS === "android" ? 48 : 44,
     marginBottom: 2,
   },
   headerDismissTouchTarget: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1960,21 +1627,52 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    marginBottom: 6,
+    marginBottom: 8,
+    justifyContent: "center",
+  },
+  heroCopy: {
+    width: "68%",
+    paddingHorizontal: 12,
+    zIndex: 1,
+  },
+  heroCopyRtl: {
+    alignSelf: "flex-end",
+  },
+  heroTextRtl: {
+    textAlign: "right",
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  heroHeadline: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
+    marginTop: 4,
   },
   heroVisual: {
-    width: "100%",
-    height: "100%",
+    position: "absolute",
+    right: -2,
+    bottom: -12,
+    width: "32%",
+    height: "92%",
+  },
+  heroVisualRtl: {
+    left: -2,
+    right: undefined,
   },
   copyBlock: {
-    alignItems: "center",
-    marginBottom: 6,
+    alignItems: "flex-start",
+    marginBottom: 8,
   },
   title: {
-    textAlign: "center",
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "900",
+    textAlign: "left",
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "800",
     letterSpacing: -0.2,
   },
   socialProofPill: {
@@ -2002,17 +1700,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   featuresTitle: {
-    marginBottom: 6,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: "900",
+    marginBottom: 4,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "700",
   },
   featuresWrap: {
-    marginBottom: 8,
-    gap: 2,
+    marginBottom: 4,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 0,
+    borderWidth: 0,
   },
+  featureGridRtl: { flexDirection: "row-reverse" },
+  featureGridAccessibility: { flexDirection: "column" },
+  featureRowAccessibility: { width: "100%" },
   featureRow: {
-    minHeight: 34,
+    width: "50%",
+    minHeight: 36,
     paddingHorizontal: 2,
     flexDirection: "row",
     alignItems: "center",
@@ -2021,9 +1726,9 @@ const styles = StyleSheet.create({
     flexDirection: "row-reverse",
   },
   featureToken: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -2042,14 +1747,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   freeTrialToggleCard: {
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
+    paddingVertical: 6,
+    marginBottom: 6,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
@@ -2099,10 +1804,10 @@ const styles = StyleSheet.create({
   },
   planCard: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 13,
     paddingHorizontal: 12,
     marginBottom: 6,
-    minHeight: 68,
+    minHeight: 80,
     justifyContent: "center",
   },
   planCardDisabled: {
@@ -2181,6 +1886,12 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: "700",
   },
+  planTrialLabel: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+  },
   planPriceBlock: {
     minWidth: 88,
     maxWidth: 138,
@@ -2221,8 +1932,9 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
     alignItems: "stretch",
     zIndex: 4,
     elevation: 4,
@@ -2251,7 +1963,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   trustRow: {
-    marginTop: 6,
+    marginTop: 2,
+    marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -2288,23 +2001,22 @@ const styles = StyleSheet.create({
   },
   offerDisclosureText: {
     textAlign: "center",
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: "600",
     width: "100%",
     flexShrink: 1,
   },
   trialDisclosureBlock: {
-    marginBottom: 8,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    marginTop: 7,
+    paddingHorizontal: 2,
+    paddingVertical: 0,
   },
   trialDisclosureText: {
     textAlign: "center",
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "400",
   },
   secondaryButtonsRow: {
     marginTop: 2,

@@ -1,0 +1,37 @@
+appId: com.sasarei.almostclean
+name: Theme routes and surfaces
+---
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 60000
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-today
+- tapOn: Progress
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-progress
+- scrollUntilVisible:
+    element: Subscription watch
+    direction: DOWN
+- takeScreenshot: ${LABEL}-subscriptions
+- scrollUntilVisible:
+    element:
+      id: progress-rewards
+    direction: UP
+- tapOn:
+    id: progress-rewards
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-rewards
+- tapOn:
+    text: ".*[Cc]hallenge.*"
+    index: 0
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-challenges
+- tapOn:
+    id: header-help
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-help
+- tapOn: Close
+- openLink: 'com.sasarei.almostclean://quick-entry?type=spend'
+- waitForAnimationToEnd
+- takeScreenshot: ${LABEL}-coin

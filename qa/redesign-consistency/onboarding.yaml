@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+name: Onboarding native controls
+---
+- extendedWaitUntil:
+    visible: Continue
+    timeout: 60000
+- tapOn:
+    point: "92%,87%"
+- tapOn:
+    point: "92%,93%"
+- takeScreenshot: onboarding-language
+- tapOn: Continue
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: onboarding-profile

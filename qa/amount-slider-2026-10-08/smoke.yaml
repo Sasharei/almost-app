@@ -1,0 +1,86 @@
+appId: com.sasarei.almost.sliderqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-slider
+    timeout: 30000
+- tapOn:
+    id: qa-reset
+- tapOn:
+    id: qa-slider
+- assertVisible: '15.00'
+- assertVisible: 'Dragging false · Changes 0'
+- takeScreenshot: slider-light
+- swipe:
+    start: 50%,35%
+    end: 85%,35%
+    duration: 1000
+- assertVisible: 'Dragging false.*'
+- assertNotVisible: '15.00'
+- takeScreenshot: slider-after
+- swipe:
+    start: 85%,35%
+    end: 97%,35%
+    duration: 500
+- assertVisible: '30.00'
+- swipe:
+    start: 91%,35%
+    end: 3%,35%
+    duration: 1000
+- assertVisible: '0.01'
+- assertVisible: 'Dragging false.*'
+- tapOn:
+    id: qa-reset
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-light
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-dark
+- takeScreenshot: slider-dark
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-dark
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-indigo
+- takeScreenshot: slider-pro-indigo
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-indigo
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-emerald
+- takeScreenshot: slider-pro-emerald
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-emerald
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-sunset
+- takeScreenshot: slider-pro-sunset
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-sunset
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-gold
+- takeScreenshot: slider-pro-gold
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-gold
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-violet
+- takeScreenshot: slider-pro-violet
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-violet
+- tapOn: 'Закрыть без подтверждения'
+- tapOn:
+    id: qa-aqua
+- takeScreenshot: slider-pro-aqua
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: autocollect-pro-aqua
+- tapOn: 'Закрыть без подтверждения'

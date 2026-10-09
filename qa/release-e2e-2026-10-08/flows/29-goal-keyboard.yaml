@@ -1,0 +1,11 @@
+appId: com.sasarei.almostclean
+name: Goal keyboard dismissal retains editor
+---
+- tapOn: Edit
+- tapOn: Rainy-day fund
+- eraseText: 60
+- inputText: QA unsaved goal
+- takeScreenshot: goal-focused-keyboard
+- hideKeyboard
+- takeScreenshot: goal-after-keyboard-dismiss
+- assertVisible: Edit goal

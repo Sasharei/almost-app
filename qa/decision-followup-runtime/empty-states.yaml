@@ -1,0 +1,26 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 60000
+- tapOn:
+    text: OK
+    optional: true
+- tapOn: Pause
+- assertNotVisible: '.*QA Pause Timer.*'
+- takeScreenshot: pause-empty
+- tapOn: Progress
+- tapOn:
+    text: Got it
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: Subscription watch
+    direction: DOWN
+    visibilityPercentage: 10
+    centerElement: true
+- takeScreenshot: subscription-empty
+- tapOn: Subscription watch
+- assertVisible: Subscriptions
+- takeScreenshot: subscription-empty-detail

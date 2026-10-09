@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: Navigate first-run help and persistent history
+---
+- takeScreenshot: progress
+- tapOn: Budget
+- runFlow:
+    when:
+      visible: Got it
+    commands:
+      - tapOn: Got it
+- takeScreenshot: budget
+- tapOn: Profile
+- takeScreenshot: profile
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- takeScreenshot: history
+- stopApp
+- launchApp
+- takeScreenshot: persistent-relaunch

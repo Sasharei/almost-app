@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+name: Goal IME Back preserves draft then cancels
+---
+- assertVisible: Edit goal
+- tapOn: QA unsaved gXoalgoalay fund
+- takeScreenshot: goal-keyboard-before
+- pressKey: Back
+- assertVisible: Edit goal
+- assertVisible: QA unsaved gXoalgoalay fund
+- takeScreenshot: goal-back-retained
+- pressKey: Back
+- assertNotVisible: Edit goal
+- assertVisible: QA release goalay fund
+- takeScreenshot: goal-second-back-cancelled

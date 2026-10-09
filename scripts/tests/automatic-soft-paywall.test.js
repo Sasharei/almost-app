@@ -44,6 +44,7 @@ const createSession = (overrides = {}) => {
     temptationSeriesModalVisible: false,
     firstSaveGoalJarStatusRef: { current: "idle" },
     firstSaveGoalJarVisible: false,
+    ratingPromptQueuedRef: { current: false },
     isStoreReviewHandoffPending: () => false,
     blockingModalVisiblePrevRef: { current: false },
     blockingModalVisible: false,
@@ -209,6 +210,8 @@ test("presentation retry timers are cancelled when the effect is cleaned up", ()
 
 test("the app's real presentation guard waits for every reward handoff and foreground state", () => {
   for (const blockers of [
+    { ratingPromptQueuedRef: { current: true } },
+    { isStoreReviewHandoffPending: () => true },
     { overlay: { type: "save" } },
     { blockingModalVisible: true },
     { firstSaveGoalJarStatusRef: { current: "pending" } },

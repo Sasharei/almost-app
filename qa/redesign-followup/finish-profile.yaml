@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+name: Final profile and identity review
+---
+- tapOn: Profile
+- tapOn:
+    text: ".*Profile.*"
+    index: 0
+    optional: true
+- assertVisible:
+    id: profile-edit-avatar
+- takeScreenshot: profile-final
+- tapOn:
+    id: profile-edit-avatar
+- assertVisible:
+    id: profile-save
+- tapOn: Cancel
+- assertVisible:
+    id: profile-edit-avatar

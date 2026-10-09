@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 60000
+- tapOn:
+    text: OK
+    optional: true
+- tapOn: التفكير
+- assertVisible: ".*QA Pause Timer.*"
+- takeScreenshot: pause-rtl
+- tapOn: الملف الشخصي
+- assertVisible: ".*QA Tester.*"
+- takeScreenshot: profile-rtl

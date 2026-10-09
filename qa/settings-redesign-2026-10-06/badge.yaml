@@ -1,0 +1,71 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- assertVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: free-settings-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- assertVisible:
+    id: expenses-premium-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-upgrade
+- assertNotVisible:
+    id: expenses-premium-badge
+- assertVisible:
+    id: expenses-enable
+- takeScreenshot: premium-panel-no-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-enable
+- assertVisible:
+    id: expenses-shortcuts
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- assertNotVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: premium-settings-no-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-error
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-retry
+- waitForAnimationToEnd: {}
+- tapOn: Повторить
+- assertVisible:
+    id: expenses-shortcuts
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close

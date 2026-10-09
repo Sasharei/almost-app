@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { AccessibleTouchableOpacity as TouchableOpacity } from "./AccessibleControls";
 import { BlurView as ExpoBlurView } from "expo-blur";
 import Svg, {
   Circle as SvgCircle,

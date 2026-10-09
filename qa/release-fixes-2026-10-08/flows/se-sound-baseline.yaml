@@ -1,0 +1,47 @@
+appId: com.sasarei.almostclean
+name: SE sound ON spend baseline
+---
+- launchApp
+- tapOn: Today
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- scrollUntilVisible:
+    element: Check temptation
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    text: Check temptation
+    index: 0
+- assertVisible:
+    id: decision-amount-input
+- tapOn:
+    id: decision-amount-input
+- eraseText: 20
+- inputText: '3.50'
+- tapOn:
+    id: decision-amount-done
+- scrollUntilVisible:
+    element:
+      id: decision-spend
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: decision-spend
+- extendedWaitUntil:
+    visible:
+      id: almost-pay-confirm
+    timeout: 15000
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible: Back to today
+    timeout: 15000
+- assertVisible: .*3\.50.*
+- takeScreenshot: se-sound-on-exact-result

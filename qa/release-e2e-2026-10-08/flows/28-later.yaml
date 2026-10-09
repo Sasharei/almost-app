@@ -1,0 +1,25 @@
+appId: com.sasarei.almostclean
+name: Later decision and pause queue
+---
+- stopApp
+- launchApp:
+    permissions:
+      notifications: deny
+- tapOn: Today
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- runFlow:
+    when:
+      visible: Check temptation
+    commands:
+      - tapOn:
+          text: Check temptation
+          index: 0
+- tapOn:
+    id: decision-later
+- takeScreenshot: later-selection

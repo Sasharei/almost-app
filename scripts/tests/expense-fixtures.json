@@ -1,0 +1,326 @@
+[
+  {
+    "text": "Purchase USD 20.50 at SHOP",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "USD"
+  },
+  {
+    "text": "Paid EUR 1.234,56",
+    "expense": true,
+    "amount": "1234.56",
+    "currency": "EUR"
+  },
+  {
+    "text": "Payment GBP 1,234.56",
+    "expense": true,
+    "amount": "1234.56",
+    "currency": "GBP"
+  },
+  {
+    "text": "Compra 20,50 EUR",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "EUR"
+  },
+  {
+    "text": "Paiement 20,50 €",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "EUR"
+  },
+  {
+    "text": "Kauf EUR 20,50",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "EUR"
+  },
+  {
+    "text": "Покупка 120,50 RUB",
+    "expense": true,
+    "amount": "120.5",
+    "currency": "RUB"
+  },
+  {
+    "text": "شراء SAR ٢٠٫٥٠",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "SAR"
+  },
+  {
+    "text": "دفع AED ۲۰٫۵۰",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "AED"
+  },
+  {
+    "text": "支付 CNY ２０.５０",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "CNY"
+  },
+  {
+    "text": "消費 TWD 100",
+    "expense": true,
+    "amount": "100",
+    "currency": "TWD"
+  },
+  {
+    "text": "支払い JPY 1500",
+    "expense": true,
+    "amount": "1500",
+    "currency": "JPY"
+  },
+  {
+    "text": "결제 KRW 1500",
+    "expense": true,
+    "amount": "1500",
+    "currency": "KRW"
+  },
+  {
+    "text": "Pagamento BRL 20,50",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "BRL"
+  },
+  {
+    "text": "Acquisto EUR 20,50",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "EUR"
+  },
+  {
+    "text": "Purchase KWD 1.234",
+    "expense": true,
+    "amount": "1.234",
+    "currency": "KWD"
+  },
+  {
+    "text": "Purchase BHD 1.234",
+    "expense": true,
+    "amount": "1.234",
+    "currency": "BHD"
+  },
+  {
+    "text": "Purchase OMR 1.234",
+    "expense": true,
+    "amount": "1.234",
+    "currency": "OMR"
+  },
+  {
+    "text": "Purchase USD 1 234,50",
+    "expense": true,
+    "amount": "1234.5",
+    "currency": "USD"
+  },
+  {
+    "text": "Purchase SAR 20.50\nBalance: SAR 900",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "SAR"
+  },
+  {
+    "text": "Payment declined USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Payment failed USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Payment pending USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Payment refunded USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Payment received USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "OTP for purchase USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Оплата отклонена 20 RUB",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Paiement refusé 20 EUR",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "شراء مرفوض SAR ٢٠",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "支付失败 CNY 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "消費退款 TWD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "支払い失敗 JPY 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "결제 취소 KRW 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Payment will be USD 20 tomorrow",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase limit USD 500",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Balance USD 20",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase $20",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 1.234",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20 EUR 18",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20 30",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 1.234.50",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 0",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD -20",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 1e3",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 9999999999",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20 and fee USD 1",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase -20 USD",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase +20 USD",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase 1e3 USD",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20abc",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx declined",
+    "expense": false,
+    "amount": null,
+    "currency": null
+  },
+  {
+    "text": "Purchase USD 20.50.",
+    "expense": true,
+    "amount": "20.5",
+    "currency": "USD"
+  },
+  {
+    "text": "Purchase USD 20..3",
+    "expense": true,
+    "amount": null,
+    "currency": null
+  }
+]

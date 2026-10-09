@@ -1,0 +1,43 @@
+appId: com.sasarei.almostclean
+name: Header routes, profile editor, settings and main tabs
+---
+- tapOn:
+    text: Close
+    optional: true
+- assertVisible:
+    id: header-help
+- assertVisible:
+    id: header-add-temptation
+- takeScreenshot: today-clean
+- tapOn:
+    id: header-bug-report
+- assertVisible: Report a bug
+- takeScreenshot: bug-report
+- tapOn: Cancel
+- assertVisible:
+    id: header-add-temptation
+- tapOn:
+    id: header-add-temptation
+- takeScreenshot: add-temptation
+- tapOn:
+    text: Cancel
+    optional: true
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- takeScreenshot: profile
+- tapOn:
+    id: profile-edit-avatar
+- assertVisible:
+    id: profile-save
+- assertVisible: First name \(optional\)
+- takeScreenshot: profile-edit
+- tapOn: Cancel
+- assertVisible:
+    id: profile-edit-avatar
+- scrollUntilVisible:
+    element:
+      text: Theme
+    direction: DOWN
+- tapOn: Theme
+- takeScreenshot: theme-choice

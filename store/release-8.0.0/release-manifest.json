@@ -1,0 +1,160 @@
+{
+  "version": "8.0.0",
+  "build": 128,
+  "app_store_app_id": "6756276744",
+  "google_package": "com.sasarei.almostclean",
+  "app_store_locales_prepared": 14,
+  "google_play_locales_prepared": 14,
+  "source_head": "160fd606bd2f9a41d8357d0bc014f166385ca6a8",
+  "android_snapshot_commit": "165ca6d22a7e95e573487314a3be4152a318b33f",
+  "application_source_changed_by_this_task": true,
+  "intended_operation": "User authorized cancellation of separate creative-asset submission and submission with version 8.0.0; no production release",
+  "claims": {
+    "complete_redesign": "Both platforms; existing current source",
+    "shopping_app_blocking": "iPhone iOS 16+; user-authorized Screen Time; savings entry target; one-app 30-minute visit",
+    "apple_pay": "iOS 17+; Premium; user-enabled Wallet/Shortcuts automation; supported trigger deliveries only",
+    "android_automatic_expenses": "Premium; notification access; selected bank/payment apps; supported future notifications"
+  },
+  "release_status": "NO-GO pending QA-003, remaining physical release attribution/purchase and Shopping Pause coverage, store privacy review",
+  "qa_sources": [
+    "qa/release-fixes-2026-10-08/REPORT.md",
+    "ATTRIBUTION_RELEASE_GATE.md"
+  ],
+  "unverified": [
+    "Current build native visuals across light/dark/PRO and six PRO accents",
+    "Physical Wallet delivery/locked-device/Live Activity",
+    "Screen Time authorization and unlock expiry on signed release iPhone",
+    "Fresh install and purchase postbacks on physical iOS and Android release builds",
+    "App Privacy/Data safety declarations against new native permissions and shipping backend",
+    "All current store screenshots against final release UI"
+  ],
+  "secrets_included": false,
+  "app_store_locales_saved": 14,
+  "google_play_locales_saved": 12,
+  "google_play_locales_pending": [
+    "es-419",
+    "zh-CN"
+  ],
+  "builds": {
+    "android": {
+      "file": "builds/Almost-8.0.0-128-store.aab",
+      "bytes": 86454131,
+      "native_symbols": "builds/Almost-8.0.0-128-native-debug-symbols.zip",
+      "signed": true,
+      "size_gate": "PASS",
+      "uploaded": true,
+      "artifact_id": "4860238820085307095",
+      "release_draft_saved": true,
+      "google_page_size_check": "Supports 16 KB",
+      "native_symbols_uploaded": true
+    },
+    "ios": {
+      "archive": "builds/Almost-8.0.0-129.xcarchive",
+      "archive_result": "PASS",
+      "ipa_export": "PASS",
+      "ipa": "builds/ios-export-129/Almost.ipa",
+      "signature_and_entitlements": "PASS: five exact targets; Family Controls main and three extensions",
+      "bytes": 98898486,
+      "sha256": "17cc3eb7585b4cc4af94a7c672f597ec7a5f6055fb730ab69aff0435411fbaf0",
+      "uploaded": true,
+      "upload": "SUCCESS",
+      "delivery_uuid": "17b69d6a-c760-440d-8ba4-f5dc486b5fee",
+      "processing_state": "VALID",
+      "attached_to_draft": true,
+      "draft_version_id": "672e197f-e7ed-46ee-be62-163737c736c8",
+      "build_id": "17b69d6a-c760-440d-8ba4-f5dc486b5fee"
+    },
+    "ios_128_superseded": {
+      "archive": "builds/Almost-8.0.0-128.xcarchive",
+      "archive_result": "PASS",
+      "ipa_export": "PASS",
+      "ipa": "builds/ios-export/Almost.ipa",
+      "signature_and_entitlements": "PASS: five targets; family-controls in main and three ShoppingBlocker extensions",
+      "bytes": 98898254,
+      "sha256": "8f7794503ccbfb0b8ede05fc8a239eeb9f6e8a42133da0cade3172ad2c871ccf",
+      "upload": "SUCCESS",
+      "uploaded": true,
+      "processing_state": "VALID",
+      "delivery_uuid": "9a3c9c6e-b6a9-4b1f-af15-66d17e324667",
+      "draft_version_id": "672e197f-e7ed-46ee-be62-163737c736c8",
+      "attached_to_draft": false
+    }
+  },
+  "family_controls": {
+    "team": "CGRYGJXPS2",
+    "portal_status": "Assigned",
+    "request_form": "https://developer.apple.com/contact/request/family-controls-distribution/",
+    "next_action": "Complete physical stop/permission/unlock/expiry coverage before rollout",
+    "bundle_ids": [
+      "com.sasarei.almostclean",
+      "com.sasarei.almostclean.ShoppingBlockerMonitor",
+      "com.sasarei.almostclean.ShoppingBlockerShield",
+      "com.sasarei.almostclean.ShoppingBlockerAction"
+    ],
+    "app_group": "group.com.sasarei.almostclean",
+    "terms_confirmation": "User explicitly confirmed Apple Family Controls terms and entitlement request in current conversation",
+    "request_submitted": true,
+    "request_approved": true,
+    "distribution_enabled_ids": [
+      "com.sasarei.almostclean",
+      "com.sasarei.almostclean.ShoppingBlockerMonitor",
+      "com.sasarei.almostclean.ShoppingBlockerShield",
+      "com.sasarei.almostclean.ShoppingBlockerAction"
+    ],
+    "profile_main_entitlements_verified": {
+      "family-controls": true,
+      "app-group": "group.com.sasarei.almostclean",
+      "push_environment": "production"
+    },
+    "distribution_profiles": "All four downloaded, cryptographic content decoded and family-controls/app-group verified; installed locally"
+  },
+  "physical_ios_test": {
+    "authorized": true,
+    "device": "iPhone Рей / iPhone Air",
+    "os": "27.2",
+    "build": "8.0.0 (129), same Release archive as uploaded IPA, Ad Hoc signing",
+    "installed": true,
+    "status": "Block, Close, persistence and contrast PASS; Stop pending user navigation",
+    "launch": "PASS",
+    "shopping_pause_setup": "PASS: Screen Time authorization retained; 10 selected apps shown; inactive session and empty goal",
+    "blocking": "PASS: Amazon shield after update and Almost restart",
+    "visual_scope": "Today and Shopping Pause setup in light theme, physical iPhone Air iOS 27.2",
+    "test_goal": "EUR 1",
+    "stop": "Pending user navigation; Mac locked and Device Hub unavailable",
+    "close": "PASS: returns Home",
+    "contrast": "PASS: white Close on blue, physically observed on iOS 27.2"
+  },
+  "source_changes": [
+    "ios/ShoppingBlockerShield/ShoppingBlockerShield.swift: explicit white-on-blue Close colors after physical contrast failure"
+  ],
+  "ios_build": 129,
+  "android_build": 128,
+  "app_store_submission": {
+    "id": "cf4154ff-af95-4850-aff5-f9d6191dfa46",
+    "state": "WAITING_FOR_REVIEW",
+    "submitted_at": "2026-10-09T14:48:12+03:00",
+    "build": 129,
+    "release_type": "MANUAL",
+    "separate_asset_submission_cancelled": "a9c27b64-e33c-4a3c-988a-3a1987101989",
+    "old_asset_items_state": "REMOVED",
+    "asset_scope": "Header and Search Results associated with 8.0.0; automatically included in app-version review",
+    "creative_assets": [
+      {
+        "id": "cd400019-2b49-8a08-8016-ac664286a4d7",
+        "name": "ASO 2026-10-09 savings-header",
+        "state": "Waiting for Review",
+        "verification": "Asset Library UI; recent usage version 8.0.0"
+      },
+      {
+        "id": "56400019-2b49-8a08-8002-364a73411f34",
+        "name": "ASO 2026-10-09 savings-search",
+        "state": "Waiting for Review",
+        "verification": "Asset Library UI; recent usage version 8.0.0"
+      }
+    ]
+  },
+  "google_play_submission": {
+    "state": "User reports submitted for review",
+    "verified_by_this_turn": false
+  }
+}

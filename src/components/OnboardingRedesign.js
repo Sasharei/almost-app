@@ -17,16 +17,15 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from "react-native";
+import { AccessiblePressable as Pressable, AccessibleTouchableOpacity as TouchableOpacity } from "./AccessibleControls";
 import Svg, {
   Defs,
   Path,
@@ -35,7 +34,9 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import PlatformSurface, { PlatformTouchableOpacity } from "./PlatformSurface";
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
+import { CurrencySelectorField } from "./CurrencyPicker";
 import { getOnboardingRedesignCopy } from "../constants/onboardingRedesignCopy";
 
 const PALETTE = Object.freeze({
@@ -54,11 +55,11 @@ const PALETTE = Object.freeze({
 });
 
 const FONT = Object.freeze({
-  regular: Platform.OS === "ios" ? "Inter_400Regular" : undefined,
-  medium: Platform.OS === "ios" ? "Inter_500Medium" : undefined,
-  semibold: Platform.OS === "ios" ? "Inter_600SemiBold" : undefined,
-  bold: Platform.OS === "ios" ? "Inter_700Bold" : undefined,
-  extraBold: Platform.OS === "ios" ? "Inter_800ExtraBold" : undefined,
+  regular: undefined,
+  medium: undefined,
+  semibold: undefined,
+  bold: undefined,
+  extraBold: undefined,
 });
 
 const resolveAndroidGoalKeyboardClearance = (viewportHeight) =>
@@ -156,9 +157,8 @@ const GOALS = Object.freeze([
 ]);
 
 const CUSTOM_GOAL_ICONS = Object.freeze(["⭐️", "💻", "🏠", "🎨"]);
-const PRIMARY_CURRENCIES = Object.freeze(["SAR", "USD", "EUR", "AED", "GBP"]);
 const OnboardingTapContext = createContext(null);
-const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(PlatformTouchableOpacity);
 
 const isRtlLanguage = (language = "en") =>
   String(language || "en").trim().toLowerCase().replace(/_/g, "-").startsWith("ar");
@@ -277,6 +277,7 @@ function AnimatedButton({
   hitSlop,
   scaleTo = 0.975,
   playsTap = true,
+  surfaceRole = "control",
 }) {
   const { reduceMotion } = useMotionPreferences();
   const playTap = useContext(OnboardingTapContext);
@@ -294,6 +295,7 @@ function AnimatedButton({
   );
   return (
     <AnimatedTouchableOpacity
+      surfaceRole={surfaceRole}
       style={[style, styles.animatedButtonTouch, { transform: [{ scale: press }] }]}
       activeOpacity={1}
       disabled={disabled}
@@ -322,6 +324,7 @@ function ProgressHeader({ step, language, onBack, onSkip, compact = false }) {
         <View style={styles.progressSide}>
           {onBack ? (
             <AnimatedButton
+              surfaceRole="chrome"
               style={styles.headerIconButton}
               onPress={onBack}
               accessibilityLabel={copy("common.back") || "Back"}
@@ -403,12 +406,12 @@ function SecondaryButton({ label, onPress }) {
 
 function ActionDock({ language, primaryLabel, onPrimary, secondaryLabel, onSecondary, bottomInset = 0 }) {
   return (
-    <View style={[styles.actionDock, { paddingBottom: Math.max(14, bottomInset + 10) }]}>
+    <PlatformSurface surfaceRole="sheet" style={[styles.actionDock, { paddingBottom: Math.max(14, bottomInset + 10) }]}>
       <View style={styles.actionDockContent}>
         <PrimaryButton label={primaryLabel} language={language} onPress={onPrimary} />
         {secondaryLabel ? <SecondaryButton label={secondaryLabel} onPress={onSecondary} /> : null}
       </View>
-    </View>
+    </PlatformSurface>
   );
 }
 
@@ -584,6 +587,7 @@ function ScreenCopy({ title, subtitle, compact, allowTwoLines = false, variant }
 }
 
 export function LanguageScreen({
+  colors,
   selectedLanguage,
   selectedCurrency,
   onLanguageChange,
@@ -601,12 +605,6 @@ export function LanguageScreen({
   const copy = useRedesignCopy(language);
   const contentWidth = Math.min(Math.max(320, width) - 36, 560);
   const languageTileWidth = Math.floor((contentWidth - 14) / 3);
-  const currencyList = useMemo(() => {
-    const source = Array.isArray(availableCurrencies) ? availableCurrencies : [];
-    return [...PRIMARY_CURRENCIES, ...source]
-      .map((item) => String(item || "").toUpperCase())
-      .filter((item, index, list) => item && list.indexOf(item) === index);
-  }, [availableCurrencies]);
   return (
     <ScreenFrame
       step={1}
@@ -665,24 +663,14 @@ export function LanguageScreen({
             >
               {copy("language.currency")}
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.currencyRow}
-              style={[styles.currencyScroll, styles.ltrDirection]}
-              bounces={false}
-              overScrollMode="never"
-            >
-              {currencyList.map((currency) => (
-                <Chip
-                  key={currency}
-                  label={currency}
-                  selected={currency === selectedCurrency}
-                  onPress={() => onCurrencyChange?.(currency)}
-                  style={styles.currencyChip}
-                />
-              ))}
-            </ScrollView>
+            <CurrencySelectorField
+              language={selectedLanguage}
+              currency={selectedCurrency}
+              codes={availableCurrencies}
+              colors={colors}
+              onCurrencyChange={onCurrencyChange}
+              onTap={onTap}
+            />
             <Text
               style={styles.legalHint}
               numberOfLines={1}
@@ -699,7 +687,7 @@ export function LanguageScreen({
               >
                 {copy("language.terms")}
               </Text>
-              {language === "zh" || language === "ja" ? "。" : "."}
+              {language === "zh" || language === "zh-Hant" || language === "ja" ? "。" : "."}
             </Text>
           </ScreenScroll>
           <ActionDock
@@ -909,7 +897,7 @@ function PersonaCard({ persona, label, selected, onPress, width, rtl }) {
           accessibilityState={{ selected }}
         >
           <View style={[styles.personaWash, { backgroundColor: persona.wash }]} pointerEvents="none" />
-          <Image source={persona.asset} style={styles.personaImage} resizeMode="contain" />
+          <Image source={persona.asset} style={styles.personaImage} resizeMode="contain" resizeMethod="resize" />
           <AutoFitText style={styles.personaLabel} center minimumFontScale={0.58}>
             {label}
           </AutoFitText>
@@ -1780,7 +1768,7 @@ const styles = StyleSheet.create({
   progressSegmentCurrent: { width: 42 },
   progressSegmentActive: { backgroundColor: PALETTE.primary },
   progressHeaderRowRtl: { flexDirection: "row-reverse" },
-  headerIconButton: { width: 44, height: 44, borderRadius: 11 },
+  headerIconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: PALETTE.surface },
   headerIconInner: { flex: 1, alignItems: "center", justifyContent: "center" },
   skipButton: { width: 70, height: 44, justifyContent: "center" },
   skipText: {
@@ -1938,7 +1926,8 @@ const styles = StyleSheet.create({
   actionDockContent: { width: "100%", maxWidth: 560, alignSelf: "center" },
   primaryButton: {
     width: "100%",
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: PALETTE.primary,
     shadowColor: "#181922",
@@ -1966,7 +1955,8 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     width: "100%",
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 14,
     marginTop: 7,
     borderWidth: 1,
     borderColor: PALETTE.border,

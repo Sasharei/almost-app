@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Almost</string>
+    <string name="app_name">Almost Savings</string>
     <string name="widget_title_default">Almost</string>
     <string name="widget_label_saved_default">Saved this month</string>
     <string name="widget_label_today_default">Today</string>

@@ -1,0 +1,7 @@
+appId: com.sasarei.almostclean
+name: Chest reward and pause retention
+---
+- tapOn: Open chest
+- tapOn: Open chest
+- tapOn: Open chest
+- takeScreenshot: chest-opened

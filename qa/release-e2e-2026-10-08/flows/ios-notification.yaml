@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Deny iOS notifications and continue
+---
+- tapOn: Don’t Allow
+- assertVisible: Try it with your purchase
+- takeScreenshot: notification-denied-tutorial

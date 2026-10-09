@@ -1,0 +1,8 @@
+appId: com.sasarei.almostclean
+name: iPad second confirmation exact saving
+---
+- tapOn:
+    id: almost-pay-confirm
+- runFlow: 05-tutorial-finish.yaml
+- runFlow: 06-save-result.yaml
+- takeScreenshot: ipad-final

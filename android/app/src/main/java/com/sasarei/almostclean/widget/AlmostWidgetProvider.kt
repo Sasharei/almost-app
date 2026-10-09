@@ -92,6 +92,11 @@ class AlmostWidgetProvider : AppWidgetProvider() {
       size: WidgetSize
     ) {
       val widgetData = WidgetDataStore.read(context)
+      val almiScene = AlmiWidgetGuardian.render(context, appWidgetManager, appWidgetId, size, widgetData)
+      if (almiScene != null) {
+        appWidgetManager.updateAppWidget(appWidgetId, almiScene)
+        return
+      }
       val isMedium = size == WidgetSize.MEDIUM
       val isLarge = size == WidgetSize.LARGE
       val layoutId = when (size) {
@@ -317,9 +322,9 @@ class AlmostWidgetProvider : AppWidgetProvider() {
           heroPanelRes = R.drawable.widget_panel_hero_dark,
           supportingPanelRes = R.drawable.widget_panel_support_dark,
           saveButtonRes = R.drawable.widget_button_save_bg,
-          spendButtonRes = R.drawable.widget_button_spend_bg,
+          spendButtonRes = R.drawable.widget_button_spend_bg_dark,
           saveButtonTextColor = Color.WHITE,
-          spendButtonTextColor = Color.WHITE,
+          spendButtonTextColor = Color.parseColor("#FFB8C4"),
           titleColor = Color.parseColor("#F7F9FF"),
           labelColor = Color.parseColor("#A5B1CC"),
           valueColor = Color.parseColor("#64F2B5"),
@@ -347,7 +352,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
             saveButtonRes = proSaveButtonResForAccent(accentId),
             spendButtonRes = R.drawable.widget_button_spend_bg,
             saveButtonTextColor = contrastingTextColor(accentColor),
-            spendButtonTextColor = Color.WHITE,
+            spendButtonTextColor = Color.parseColor("#A83E4E"),
             titleColor = blendColors(titleBase, accentColor, 0.12f),
             labelColor = blendColors(labelBase, accentColor, 0.18f),
             valueColor = accentColor,
@@ -370,7 +375,7 @@ class AlmostWidgetProvider : AppWidgetProvider() {
           saveButtonRes = R.drawable.widget_button_save_bg,
           spendButtonRes = R.drawable.widget_button_spend_bg,
           saveButtonTextColor = Color.WHITE,
-          spendButtonTextColor = Color.WHITE,
+          spendButtonTextColor = Color.parseColor("#A83E4E"),
           titleColor = Color.parseColor("#0A241C"),
           labelColor = Color.parseColor("#3B5C50"),
           valueColor = Color.parseColor("#087A43"),

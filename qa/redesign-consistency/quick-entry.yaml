@@ -1,0 +1,5 @@
+appId: com.sasarei.almostclean
+name: Quick entry visual review
+---
+- waitForAnimationToEnd
+- takeScreenshot: quick-entry

@@ -1,0 +1,100 @@
+{
+  "appId": "6756276744",
+  "bundleId": "com.sasarei.almostclean",
+  "version": "8.0.0",
+  "operation": "Saved draft app information; not submitted or published",
+  "date": "2026-10-03",
+  "localizations": [
+    {
+      "locale": "English (U.S.)",
+      "beforeName": "Almost: Shop Less, Save More",
+      "beforeSubtitle": "Stop Impulse Buying",
+      "name": "Almost Savings",
+      "subtitle": "Shop less, save more"
+    },
+    {
+      "locale": "Arabic",
+      "beforeName": "Almost: تسوق أقل، ادخر أكثر",
+      "beforeSubtitle": "ادخار وأهداف وميزانية",
+      "name": "Almost Savings",
+      "subtitle": "تسوق أقل، ادخر أكثر"
+    },
+    {
+      "locale": "Chinese (Traditional)",
+      "beforeName": "Almost：少購物，多存錢",
+      "beforeSubtitle": "儲蓄目標、預算管理與無消費挑戰",
+      "name": "Almost Savings",
+      "subtitle": "少購物，多存錢"
+    },
+    {
+      "locale": "French",
+      "beforeName": "Almost: Achète moins, épargne",
+      "beforeSubtitle": "Épargne, objectifs et budget",
+      "name": "Almost Savings",
+      "subtitle": "Achetez moins, épargnez plus"
+    },
+    {
+      "locale": "German",
+      "beforeName": "Almost: Weniger kaufen, sparen",
+      "beforeSubtitle": "Sparziele & kaufreie Tage",
+      "name": "Almost Savings",
+      "subtitle": "Weniger kaufen, mehr sparen"
+    },
+    {
+      "locale": "Italian",
+      "beforeName": "Almost: Compra meno, risparmia",
+      "beforeSubtitle": "Risparmio, obiettivi e budget",
+      "name": "Almost Savings",
+      "subtitle": "Compra meno, risparmia di più"
+    },
+    {
+      "locale": "Japanese",
+      "beforeName": "Almost：買い物を減らして、もっと貯金",
+      "beforeSubtitle": "買わない習慣と予算・節約の記録",
+      "name": "Almost Savings",
+      "subtitle": "買い物を減らして、もっと貯金"
+    },
+    {
+      "locale": "Korean",
+      "beforeName": "Almost: 쇼핑은 줄이고 저축은 늘리고",
+      "beforeSubtitle": "무지출 챌린지와 예산 관리",
+      "name": "Almost Savings",
+      "subtitle": "쇼핑은 줄이고 저축은 늘리고"
+    },
+    {
+      "locale": "Portuguese (Brazil)",
+      "beforeName": "Almost: Compre menos e poupe",
+      "beforeSubtitle": "Economia, metas e orçamento",
+      "name": "Almost Savings",
+      "subtitle": "Compre menos, poupe mais"
+    },
+    {
+      "locale": "Portuguese (Portugal)",
+      "beforeName": "Almost: Compra menos e poupa",
+      "beforeSubtitle": "Poupança, metas e orçamento",
+      "name": "Almost Savings",
+      "subtitle": "Compre menos, poupe mais"
+    },
+    {
+      "locale": "Russian",
+      "beforeName": "Almost: трать меньше и копи",
+      "beforeSubtitle": "Копилка, цели и бюджет",
+      "name": "Almost Savings",
+      "subtitle": "Трать меньше, копи больше"
+    },
+    {
+      "locale": "Spanish (Mexico)",
+      "beforeName": "Almost: Compra menos y ahorra",
+      "beforeSubtitle": "Ahorro, metas y presupuesto",
+      "name": "Almost Savings",
+      "subtitle": "Compra menos, ahorra más"
+    },
+    {
+      "locale": "Spanish (Spain)",
+      "beforeName": "Almost: Compra menos y ahorra",
+      "beforeSubtitle": "Ahorro, metas y presupuesto",
+      "name": "Almost Savings",
+      "subtitle": "Compra menos, ahorra más"
+    }
+  ]
+}

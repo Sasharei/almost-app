@@ -6,6 +6,7 @@ const {
   applyTemptationSeriesAction,
   claimTemptationSeries,
   createInitialTemptationSeriesState,
+  getLocalDayKey,
   getTemptationSeriesDisplayProgress,
   getTemptationSeriesProgress,
   getUncreditedTemptationSeriesCoins,
@@ -453,4 +454,16 @@ test("one-of-one never completes and later distinct actions grow the series to t
   assert.equal(second.state.status, TEMPTATION_SERIES_STATUS.ACTIVE);
   assert.deepEqual(third.state.targetIds, ["coffee", "delivery", "games"]);
   assert.equal(third.state.status, TEMPTATION_SERIES_STATUS.READY);
+});
+
+
+test("reconciliation excludes retired and unrelated IDs without changing earned coins", () => {
+  const timestamp = new Date(2026, 9, 1, 12).getTime();
+  const dayKey = getLocalDayKey(timestamp);
+  const resolution = { firstAction: "save", lastAction: "save", firstAt: timestamp, lastAt: timestamp, actionCount: 1 };
+  const state = { ...createInitialTemptationSeriesState(), dayKey, startedAt: timestamp, status: TEMPTATION_SERIES_STATUS.ACTIVE, targetIds: ["coffee", "retired"], resolutions: { retired: resolution }, pendingCoins: 30, creditedCoins: 30 };
+  const result = reconcileTemptationSeriesTargets(state, { dayKey, timestamp, targetIds: ["coffee"], eligibleIds: ["coffee"], historyResolutions: { external: resolution } });
+  assert.deepEqual(result.targetIds, ["coffee"]);
+  assert.equal(result.pendingCoins, 30);
+  assert.equal(result.creditedCoins, 30);
 });

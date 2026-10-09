@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Almost",
+    "name": "Almost Savings",
     "slug": "almost_clean",
-    "version": "7.2.1",
+    "version": "8.0.0",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -22,11 +22,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "icon": "./assets/AlmostGlass.icon",
       "bundleIdentifier": "com.sasarei.almostclean",
       "supportsTablet": true,
       "requireFullScreen": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "127",
+      "buildNumber": "128",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -72,12 +73,24 @@
         ],
         "NSCameraUsageDescription": "Almost lets you snap a portrait so your savings profile feels personal.",
         "NSPhotoLibraryUsageDescription": "Almost accesses your photos to update the avatar that keeps you motivated.",
-        "NSUserTrackingUsageDescription": "Your data will be used to measure advertising efficiency."
+        "NSUserTrackingUsageDescription": "Your data will be used to measure advertising efficiency.",
+        "NSFaceIDUsageDescription": "Almost uses Face ID only to confirm your choice in Almost Pay. No real payment is made.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "CFBundleDisplayName": "Almost Savings"
+      },
+      "entitlements": {
+        "aps-environment": "production",
+        "com.apple.developer.family-controls": true,
+        "com.apple.security.application-groups": [
+          "group.com.sasarei.almostclean"
+        ]
       }
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 127,
+      "versionCode": 128,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
@@ -89,7 +102,8 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.POST_NOTIFICATIONS",
-        "com.google.android.gms.permission.AD_ID"
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.USE_BIOMETRIC"
       ]
     },
     "web": {
@@ -148,6 +162,12 @@
         {
           "configureAndroidBackup": false
         }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Almost uses Face ID only to confirm your choice in Almost Pay. No real payment is made."
+        }
       ]
     ],
     "extra": {
@@ -163,6 +183,20 @@
       "checkAutomatically": "ON_ERROR_RECOVERY",
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/f2adb262-e091-47a0-bb3a-09b067fd148a"
+    },
+    "locales": {
+      "en": "./src/locales/native/en.json",
+      "ru": "./src/locales/native/ru.json",
+      "es": "./src/locales/native/es.json",
+      "fr": "./src/locales/native/fr.json",
+      "de": "./src/locales/native/de.json",
+      "pt": "./src/locales/native/pt.json",
+      "it": "./src/locales/native/it.json",
+      "ar": "./src/locales/native/ar.json",
+      "zh": "./src/locales/native/zh.json",
+      "ko": "./src/locales/native/ko.json",
+      "ja": "./src/locales/native/ja.json",
+      "zh-Hant": "./src/locales/native/zh-Hant.json"
     }
   }
 }

@@ -1,0 +1,26 @@
+appId: com.sasarei.almost.sliderqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-slider
+    timeout: 30000
+- tapOn:
+    id: qa-slider
+- assertVisible: '15.00'
+- assertVisible: 'Dragging false · Changes 0'
+- tapOn:
+    point: 75%,35%
+- assertNotVisible: '15.00'
+- assertVisible: 'Dragging false.*'
+- takeScreenshot: track-tap
+- tapOn:
+    id: qa-autosave
+- waitForAnimationToEnd
+- takeScreenshot: modal-before-tap
+- tapOn:
+    point: 75%,43%
+- takeScreenshot: modal-after-tap
+- assertVisible: 'До \$30'
+- tapOn: 'Закрыть без подтверждения'
+- assertVisible: '.*coffee.*'
+- takeScreenshot: track-tap-committed

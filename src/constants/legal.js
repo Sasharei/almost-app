@@ -1,25 +1,37 @@
+export const IOS_TERMS_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+
+// Use explicit site language preferences so country redirects do not override the app language.
+// Terms are published in English/Russian; Traditional Chinese privacy uses English.
 export const TERMS_LINKS = {
-  en: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
-  ru: "https://www.notion.so/RU-2b24e58ea9a0809ea04fe54138975e96?",
-  es: "https://www.notion.so/T-RMINOS-DE-USO-ES-2d14e58ea9a080988f5bed55ccea3c2e?",
-  fr: "https://www.notion.so/CONDITIONS-D-UTILISATION-FR-2d14e58ea9a080dd9c53dcf52d5eb3e0?",
-  de: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
-  "ar-sa": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
-  "ar-ae": "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
-  zh: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
-  ja: "https://www.notion.so/TERMS-OF-USE-EN-2b24e58ea9a0801292ead33eba50d02b?",
+  en: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  ru: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/ru/?lang=ru",
+  es: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  fr: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  de: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  pt: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  it: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  "ar-sa": "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  "ar-ae": "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  "zh-Hant": "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  zh: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  ko: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
+  ja: "https://almost-apps.com/legal/almost-shop-less-save-more/terms/?lang=en",
 };
 
 export const PRIVACY_LINKS = {
-  ru: "https://www.notion.so/RU-2b24e58ea9a08032b017d3a5c69bbf48",
-  en: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
-  es: "https://www.notion.so/POL-TICA-DE-PRIVACIDAD-ES-2d14e58ea9a080a09132c0bc8d722b7b?source=copy_link",
-  fr: "https://www.notion.so/POLITIQUE-DE-CONFIDENTIALIT-FR-2d14e58ea9a080628e6bc7cdaef3f451?source=copy_link",
-  de: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
-  "ar-sa": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
-  "ar-ae": "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
-  zh: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
-  ja: "https://www.notion.so/PRIVACY-POLICY-EN-2b24e58ea9a08033abe7e038e63a2003",
+  en: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/?lang=en",
+  ru: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/ru/?lang=ru",
+  es: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/es/?lang=es",
+  fr: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/fr/?lang=fr",
+  de: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/de/?lang=de",
+  pt: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/pt/?lang=pt",
+  it: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/it/?lang=it",
+  "ar-sa": "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/ar/?lang=ar",
+  "ar-ae": "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/ar/?lang=ar",
+  "zh-Hant": "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/?lang=en",
+  zh: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/zh-Hans/?lang=zh-Hans",
+  ko: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/ko/?lang=ko",
+  ja: "https://almost-apps.com/legal/almost-shop-less-save-more/privacy/ja/?lang=ja",
 };
 
 export const TERMS_POINTS = {
@@ -71,7 +83,13 @@ export const TERMS_POINTS = {
     "نحتفظ فقط بالحد الأدنى من بيانات الملف الشخصي اللازمة لتشغيل التطبيق. يمكنك تعديلها أو طلب حذفها عبر الإعدادات أو الدعم، وعند الحذف يتم حذف السجل المرتبط.",
     "تخضع هذه الاتفاقية لقوانين الجهة القضائية التي تم تسجيل Almost فيها. تتم معالجة النزاعات ودياً أولاً، وعند الحاجة أمام المحاكم المختصة في تلك الجهة.",
   ],
-  zh: [
+  "zh-Hant": [
+    "Almost 是幫助你建立理性消費習慣的應用，不是銀行、券商或財務顧問。所有儲蓄與消費決定仍由你自行負責。",
+    "你確認所提供資訊真實且自願，用於 Almost 個性化提示、通知與匿名分析。",
+    "我們僅儲存執行應用所需的最少個人資料資料。你可在設定或透過支援修改/刪除資料；刪除資料時相關歷史也會一併清除。",
+    "本協議適用 Almost 註冊地所在司法轄區法律。爭議將先友好協商，必要時提交該轄區有管轄權法院處理。",
+  ],
+    zh: [
     "Almost 是帮助你建立理性消费习惯的应用，不是银行、券商或财务顾问。所有储蓄与消费决定仍由你自行负责。",
     "你确认所提供信息真实且自愿，用于 Almost 个性化提示、通知与匿名分析。",
     "我们仅保存运行应用所需的最少个人资料数据。你可在设置或通过支持修改/删除数据；删除资料时相关历史也会一并清除。",

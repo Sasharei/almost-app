@@ -12,5 +12,6 @@ import SwiftUI
 struct Almost_WidgetBundle: WidgetBundle {
     var body: some Widget {
         Almost_Widget()
+        WalletExpenseLiveActivity()
     }
 }

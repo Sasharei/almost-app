@@ -1,0 +1,33 @@
+import 'react-native-gesture-handler';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
+import React,{useState,useEffect} from 'react';
+import {registerRootComponent} from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
+import {ScrollView,View,Text,Pressable,LogBox} from 'react-native';
+import {SafeAreaProvider,SafeAreaView} from 'react-native-safe-area-context';
+import {TycoonAutosaveModal,TycoonAutosaveAmountSlider,TemptationCardComponent,resolveThemeColors} from './.codex_tmp_slider_app';
+import {TRANSLATIONS} from './src/constants/translations';
+import {PRO_THEME_ACCENT_OPTIONS} from './src/constants/themeConfig';
+LogBox.ignoreAllLogs(true);
+function QA(){
+ const [legacy,setLegacy]=useState(false);
+ const [theme,setTheme]=useState('light'),[accent,setAccent]=useState('indigo');
+ const [visible,setVisible]=useState(false),[overrides,setOverrides]=useState({}),[spent,setSpent]=useState({});
+ const [amount,setAmount]=useState(15),[dragging,setDragging]=useState(false),[changes,setChanges]=useState(0);
+ useEffect(()=>{SplashScreen.hideAsync().catch(()=>{});},[]);
+ const colors=resolveThemeColors(theme,accent);
+ const t=(key,params={})=>{ const raw=TRANSLATIONS.ru[key]||TRANSLATIONS.en[key]||key; return typeof raw === 'string' ? Object.entries(params).reduce((s,[k,v])=>s.replaceAll('{{'+k+'}}',String(v)),raw) : raw; };
+ const events=[{id:'coffee',title:'Кофе',emoji:'☕',amountUSD:15,sliderBaseAmountUSD:15},{id:'wheels',title:'Покупки',emoji:'🛍',amountUSD:120,sliderBaseAmountUSD:120}];
+ const control=(id,fn)=><Pressable key={id} testID={'qa-'+id} onPress={fn} style={{padding:8,minHeight:44,backgroundColor:colors.card,borderRadius:8}}><Text style={{color:colors.text}}>{id}</Text></Pressable>;
+ return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><SafeAreaView style={{flex:1,backgroundColor:colors.background}}><ScrollView scrollEnabled={!dragging} contentContainerStyle={{padding:20,gap:16}}>
+ <View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}>{['light','dark'].map(id=>control(id,()=>setTheme(id)))}{PRO_THEME_ACCENT_OPTIONS.map(o=>control(o.id,()=>{setTheme('pro');setAccent(o.id)}))}</View>
+ <View style={{backgroundColor:colors.card,padding:16,borderRadius:16}}><Text style={{color:colors.text,fontSize:18}}>Сумма (USD)</Text><Text testID="qa-amount" style={{color:colors.text,fontSize:32}}>{amount.toFixed(2)}</Text>
+ <TycoonAutosaveAmountSlider testID="qa-slider" nativeDrag currency="USD" value={amount} maximumValue={30} accentColor={colors.primary} trackColor={colors.border} thumbColor={colors.card} accessibilityLabel="Сумма" onValueChange={v=>{setAmount(v);setChanges(n=>n+1)}} onInteractionChange={setDragging}/></View>
+ <Text testID="qa-state" style={{color:colors.text}}>Dragging {String(dragging)} · Changes {changes}</Text>
+ {control('legacy',()=>setLegacy(true))}
+ {legacy ? <TemptationCardComponent item={{id:'coffee',templateId:'coffee',title:'Кофе',priceUSD:15,emoji:'☕'}} titleOverride="Кофе" language="ru" currency="USD" colors={colors} t={t} onAction={()=>setLegacy(false)} onAmountSliderToggle={()=>{}}/> : null}
+ {control('reset',()=>{setAmount(15);setChanges(0)})}{control('autosave',()=>setVisible(true))}
+ <Text style={{color:colors.text}}>{JSON.stringify(overrides)}</Text>
+ </ScrollView><TycoonAutosaveModal visible={visible} events={events} amountOverrides={overrides} selectedSpentIds={spent} onAmountChange={(id,v)=>setOverrides(o=>({...o,[id]:v}))} onToggleSpent={id=>setSpent(o=>({...o,[id]:!o[id]}))} onToggleUndecided={()=>{}} onSnooze={()=>setVisible(false)} onClose={()=>setVisible(false)} onConfirm={()=>setVisible(false)} colors={colors} t={t} currency="USD"/></SafeAreaView></SafeAreaProvider></GestureHandlerRootView>;
+}
+registerRootComponent(QA);

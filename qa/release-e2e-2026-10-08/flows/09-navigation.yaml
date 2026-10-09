@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+name: Navigation and savings persistence
+---
+- tapOn: Continue with limited version
+- tapOn: Today
+- takeScreenshot: today-saved
+- tapOn: Progress
+- takeScreenshot: progress-saved
+- tapOn: Budget
+- takeScreenshot: budget
+- tapOn: Profile
+- takeScreenshot: profile
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- takeScreenshot: history-saved
+- stopApp
+- launchApp
+- takeScreenshot: restored-after-relaunch

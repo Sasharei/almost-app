@@ -15,6 +15,10 @@ class WidgetStorageModule(private val reactContext: ReactApplicationContext) : R
   @ReactMethod
   fun setWidgetData(data: ReadableMap, promise: Promise) {
     try {
+      val almiEditor = reactContext.getSharedPreferences(WidgetDataStore.PREFS_NAME, 0).edit()
+      if (data.hasKey("almiContext")) almiEditor.putString("widget_almi_context", data.getString("almiContext"))
+      if (data.hasKey("almiLastOpenedAt")) almiEditor.putLong("widget_almi_last_opened", data.getDouble("almiLastOpenedAt").toLong())
+      almiEditor.apply()
       val savedMonthLabel = if (data.hasKey("savedMonthLabel")) data.getString("savedMonthLabel") else null
       val savedTotalLabel = if (data.hasKey("savedTotalLabel")) data.getString("savedTotalLabel") else null
       val savedTodayLabel = if (data.hasKey("savedTodayLabel")) data.getString("savedTodayLabel") else null

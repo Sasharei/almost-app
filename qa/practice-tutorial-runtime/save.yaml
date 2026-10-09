@@ -1,0 +1,25 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: Try it with your purchase
+    timeout: 90000
+- takeScreenshot: open
+- tapOn:
+    id: today-make-decision
+- assertVisible: 'Choose a purchase'
+- takeScreenshot: card
+- tapOn: '.*,.*Not checked today.*'
+- assertVisible: 'Check the price'
+- takeScreenshot: amount
+- tapOn:
+    id: decision-amount-input
+- takeScreenshot: keyboard
+- eraseText: 4
+- inputText: '7'
+- tapOn:
+    id: decision-amount-done
+- assertVisible: 'What happened to the purchase\?'
+- takeScreenshot: action
+- tapOn:
+    text: I decided not to buy
+- takeScreenshot: outcome-dialog

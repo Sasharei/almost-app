@@ -43,11 +43,11 @@ Debug checklist:
 9. Wait up to 24h for Meta Events Manager / Ads Manager visibility.
 10. Confirm no duplicate `StartTrial` or `Subscribe` events are created.
 
-### 3-day free trial
+### 14-day free trial
 
-- Configure the free trial directly in App Store Connect / Google Play Console for the subscription you want (usually monthly).
+- Configure the free trial directly in App Store Connect / Google Play Console for the active trial subscription: set the introductory free trial to **2 weeks / 14 days** on both stores. This store-side change is required; the client cannot change the billing period.
 - Keep the same product IDs in RevenueCat (`almost_premium_monthly`, `almost_premium_yearly`, `almost_premium_lifetime`) and include them in the active Offering.
-- The client now reads trial metadata from store products and shows `3 days free` with `then ...` pricing on the paywall.
+- The client now reads trial metadata from store products and shows the actual store trial duration (target: `14 days free`) with `then ...` pricing on the paywall.
 - iOS eligibility is checked via RevenueCat SDK (`checkTrialOrIntroductoryPriceEligibility`) so trial is only shown when the user is eligible.
 - Android trial visibility is derived from the product/package offer returned by Google Play Billing through RevenueCat.
 
@@ -66,10 +66,10 @@ Store-provided localized prices override these defaults when offerings are avail
 
 ### Transaction abandoned offer (all paywalls, 24h cooldown)
 
-- When user taps purchase, opens store checkout, then cancels checkout (`PURCHASE_CANCELLED`), client switches current paywall to trigger `transaction_abandoned`.
+- When user cancels a monthly checkout (`PURCHASE_CANCELLED`), the client switches the current paywall to `transaction_abandoned` and shows the wheel. Cancelling yearly, weekly, or lifetime checkout does not trigger this offer.
 - This is rate-limited to once per 24 hours per user install.
 - Works for soft / hard / feature paywalls (including non-dismissible hard locks).
-- For `transaction_abandoned` trigger, client tries to load a dedicated RevenueCat Offering first, then falls back to `current` Offering.
+- For `transaction_abandoned` trigger, the client requires the monthly package from the dedicated RevenueCat Offering. After the wheel, it shows only that monthly plan on iOS and Android. If the dedicated monthly package is unavailable, no abandoned offer is shown.
 - Supported offering identifiers (case-insensitive):
   - `transaction_abandoned`
   - `transaction_abandoned_offer`

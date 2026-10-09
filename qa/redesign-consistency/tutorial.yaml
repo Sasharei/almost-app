@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+name: New savings tutorial and quick entry
+---
+- extendedWaitUntil:
+    visible: "Начни с трёх карточек"
+    timeout: 60000
+- waitForAnimationToEnd
+- takeScreenshot: tutorial-light-ru
+- tapOn: 'Открыть «Сегодня»'
+- waitForAnimationToEnd
+- takeScreenshot: today-light-ru
+- tapOn:
+    id: header-help
+- takeScreenshot: help-light-ru

@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Chest final tap
+---
+- tapOn: Open chest
+- waitForAnimationToEnd
+- takeScreenshot: reward-result

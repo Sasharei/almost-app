@@ -10,6 +10,7 @@ module.exports = defineConfig([
       "android/**",
       "**/*.xcarchive/**",
       "patches/**",
+      "vendor/security/**",
       "src/constants/languageMapFallback.generated.js",
       "src/constants/translations.generated.js",
     ],

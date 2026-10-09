@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: E2E-005 Configure reminder, collapse inline time picker, deny notifications
+---
+- assertVisible: When should we check again\?
+- tapOn: Weekly
+- takeScreenshot: weekly-reminder
+- tapOn: Check time
+- takeScreenshot: reminder-time-picker
+- tapOn: Check time
+- assertVisible: When should we check again\?
+- tapOn: Set reminder
+- runFlow:
+    when:
+      visible: Don't allow
+    commands:
+      - tapOn: Don't allow
+- assertNotVisible: When should we check again\?
+- waitForAnimationToEnd
+- takeScreenshot: reminder-complete

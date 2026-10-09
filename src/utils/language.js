@@ -1,5 +1,6 @@
 import React from "react";
 import { NativeModules } from "react-native";
+import { getLocales } from "expo-localization";
 import { LANGUAGE_MAP_FALLBACK_TRANSLATIONS } from "../constants/languageMapFallback.generated.js";
 
 export const DEFAULT_LANGUAGE = "en";
@@ -16,6 +17,7 @@ export const SUPPORTED_LANGUAGES = [
   "ar-sa",
   "ar-ae",
   "zh",
+  "zh-Hant",
   "ko",
   "ja",
 ];
@@ -61,11 +63,11 @@ const LANGUAGE_ALIASES = {
   "zh-cn": "zh",
   "zh-hans": "zh",
   "zh-sg": "zh",
-  "zh-hk": "zh",
-  "zh-tw": "zh",
-  "zh-hant": "zh",
-  "zh-hant-hk": "zh",
-  "zh-hant-tw": "zh",
+  "zh-hk": "zh-Hant",
+  "zh-tw": "zh-Hant",
+  "zh-hant": "zh-Hant",
+  "zh-hant-hk": "zh-Hant",
+  "zh-hant-tw": "zh-Hant",
   zho: "zh",
   chi: "zh",
   chinese: "zh",
@@ -90,6 +92,7 @@ const LANGUAGE_LABEL_KEYS = {
   "ar-sa": "languageArabicSaudi",
   "ar-ae": "languageArabicUAE",
   zh: "languageChinese",
+  "zh-Hant": "languageChineseTraditional",
   ko: "languageKorean",
   ja: "languageJapanese",
 };
@@ -103,7 +106,8 @@ export const LANGUAGE_NATIVE_LABELS = {
   it: "Italiano",
   "ar-sa": "العربية (السعودية)",
   "ar-ae": "العربية (الإمارات)",
-  zh: "中文",
+  zh: "简体中文",
+  "zh-Hant": "繁體中文",
   ko: "한국어",
   ja: "日本語",
 };
@@ -117,11 +121,13 @@ const FORMAT_LOCALES = {
   it: "it-IT",
   "ar-sa": "ar-SA",
   "ar-ae": "ar-AE",
-  zh: "zh-CN",
+  zh: "zh-Hans-CN",
+  "zh-Hant": "zh-Hant-TW",
   ko: "ko-KR",
   ja: "ja-JP",
 };
 const SHORT_LANGUAGE_MAP = {
+  "zh-Hant": "zh-Hant",
   ru: "ru",
   en: "en",
   es: "es",
@@ -160,12 +166,17 @@ const ARABIC_DIGIT_TO_WESTERN = {
   "۹": "9",
 };
 const LANGUAGE_DEFAULT_CURRENCY_BY_CODE = {
+  en: "USD",
+  es: "EUR",
+  fr: "EUR",
+  ru: "RUB",
   de: "EUR",
   pt: "EUR",
   it: "EUR",
   "ar-sa": "SAR",
   "ar-ae": "AED",
   zh: "CNY",
+  "zh-Hant": "TWD",
   ko: "KRW",
   ja: "JPY",
 };
@@ -179,6 +190,7 @@ const canonicalizeLanguageCode = (value) =>
 export const normalizeLanguage = (value) => {
   const normalized = canonicalizeLanguageCode(value);
   if (!normalized) return DEFAULT_LANGUAGE;
+  if (/^zh-(?:hant(?:-|$)|tw(?:-|$)|hk(?:-|$)|mo(?:-|$))/.test(normalized)) return "zh-Hant";
   const aliased = LANGUAGE_ALIASES[normalized] || normalized;
   if (SUPPORTED_LANGUAGES.includes(aliased)) return aliased;
   const base = aliased.split("-")[0];
@@ -298,20 +310,34 @@ export const getDefaultCurrencyForLanguage = (language, fallbackCurrency = "USD"
 };
 
 export const getPreferredDeviceLanguage = () => {
+  // Expo returns the user's ordered language preferences on both native platforms.
+  let deviceLocales = [];
+  try {
+    deviceLocales = getLocales().map((locale) => locale.languageTag);
+  } catch {
+    // Older native runtimes can still expose language preferences via NativeModules.
+  }
+  const settings = NativeModules?.SettingsManager?.settings || {};
+  const appleLanguages = Array.isArray(settings?.AppleLanguages) ? settings.AppleLanguages : [];
   let intlLocale = "";
   try {
     intlLocale = Intl?.DateTimeFormat?.().resolvedOptions?.().locale || "";
   } catch {
-    intlLocale = "";
+    // The app's default language remains available without Intl.
   }
-  const settings = NativeModules?.SettingsManager?.settings || {};
-  const appleLanguages = Array.isArray(settings?.AppleLanguages) ? settings.AppleLanguages : [];
   const rawCandidates = [
-    intlLocale,
-    appleLanguages[0],
+    ...deviceLocales,
+    ...appleLanguages,
     settings?.AppleLocale,
     NativeModules?.I18nManager?.localeIdentifier,
+    intlLocale,
   ];
-  const candidate = rawCandidates.find((entry) => typeof entry === "string" && entry.trim().length > 0);
-  return normalizeLanguage(candidate || DEFAULT_LANGUAGE);
+  for (const entry of rawCandidates) {
+    const canonical = canonicalizeLanguageCode(entry);
+    if (!canonical) continue;
+    const base = canonical.split("-")[0];
+    const supported = LANGUAGE_ALIASES[canonical] || LANGUAGE_ALIASES[base] || base;
+    if (SUPPORTED_LANGUAGES.includes(supported)) return normalizeLanguage(canonical);
+  }
+  return DEFAULT_LANGUAGE;
 };

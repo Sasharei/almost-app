@@ -1,0 +1,36 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- scrollUntilVisible:
+    element:
+      id: settings-currency
+    direction: UP
+- tapOn:
+    id: settings-currency
+- assertVisible: Код или название валюты
+- takeScreenshot: currency-top-final
+- tapOn: Код или название валюты
+- inputText: zzzz
+- assertVisible: Валюты не найдены
+- takeScreenshot: currency-empty-final
+- tapOn: Очистить поиск
+- tapOn: Код или название валюты
+- inputText: UZS
+- takeScreenshot: currency-uzs-final
+- tapOn: .*, UZS
+- assertNotVisible: Код или название валюты
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ar-sa&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: light:gold:ar-sa
+    timeout: 10000
+- takeScreenshot: arabic-settings-final

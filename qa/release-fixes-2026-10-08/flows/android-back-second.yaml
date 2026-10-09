@@ -1,0 +1,17 @@
+appId: com.sasarei.almostclean
+name: Goal Back leaves stored name unchanged
+---
+- assertNotVisible: Edit goal
+- assertVisible: .*QA release goalay fund.*
+- takeScreenshot: goal-second-back-cancelled
+- tapOn: Edit
+- tapOn: QA release goalay fund
+- takeScreenshot: goal-keyboard-before
+- pressKey: Back
+- assertVisible: Edit goal
+- assertVisible: QA release goalay fund
+- takeScreenshot: goal-back-retained
+- pressKey: Back
+- assertNotVisible: Edit goal
+- assertVisible: .*QA release goalay fund.*
+- takeScreenshot: goal-second-back-retains-original

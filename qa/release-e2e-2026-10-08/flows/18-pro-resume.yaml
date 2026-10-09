@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+name: PRO locked offer
+---
+- scrollUntilVisible:
+    element:
+      id: settings-choice-pro_indigo
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-pro_indigo
+- waitForAnimationToEnd
+- takeScreenshot: pro-lock-offer

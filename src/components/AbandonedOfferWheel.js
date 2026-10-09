@@ -1,3 +1,4 @@
+import { PlatformTouchableOpacity } from "./PlatformSurface";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -6,7 +7,6 @@ import {
   Easing,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -523,7 +523,7 @@ const AbandonedOfferWheel = ({
       </View>
 
       <View style={styles.footer}>
-        <TouchableOpacity
+        <PlatformTouchableOpacity surfaceRole="control"
           style={[
             styles.primaryButton,
             {
@@ -543,10 +543,10 @@ const AbandonedOfferWheel = ({
           <Text style={[styles.primaryButtonText, { color: palette.ctaText }]} numberOfLines={2}>
             {primaryLabel}
           </Text>
-        </TouchableOpacity>
+        </PlatformTouchableOpacity>
 
         {stage === "result" ? (
-          <TouchableOpacity
+          <PlatformTouchableOpacity surfaceRole="control"
             style={styles.secondaryButton}
             onPress={handleDismiss}
             activeOpacity={0.72}
@@ -556,7 +556,7 @@ const AbandonedOfferWheel = ({
             <Text style={[styles.secondaryButtonText, { color: palette.muted }, textAlignStyle]}>
               {copy?.transactionAbandonedPopupSecondaryCta}
             </Text>
-          </TouchableOpacity>
+          </PlatformTouchableOpacity>
         ) : null}
       </View>
     </View>

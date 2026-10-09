@@ -1,0 +1,7 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Keep saving
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- takeScreenshot: theme-options

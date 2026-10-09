@@ -703,7 +703,95 @@ export const ONBOARDING_REDESIGN_COPY = {
       "close": "إغلاق"
     }
   },
-  "zh": {
+  "zh-Hant": {
+    "common": {
+      "continue": "繼續",
+      "skip": "跳過",
+      "step": "第 {{step}} 步，共 4 步",
+      "back": "返回"
+    },
+    "language": {
+      "title": "讓 Almost 更懂你",
+      "subtitle": "選擇語言和貨幣，之後可以隨時更改。",
+      "appLanguage": "應用語言",
+      "currency": "主要貨幣",
+      "legalPrefix": "繼續即表示你接受",
+      "terms": "使用條款"
+    },
+    "privacy": {
+      "title": "幫助我們改進 Almost",
+      "subtitle": "可選使用資料幫助我們更快發現問題。",
+      "stabilityTitle": "穩定性與錯誤",
+      "stabilityBody": "更快發現崩潰和執行緩慢的問題。",
+      "featuresTitle": "改進功能",
+      "featuresBody": "瞭解哪些使用流程真正有幫助。",
+      "financeTitle": "不含個人財務資料",
+      "financeBody": "目標、收藏內容和金額不會分享給廣告網路。",
+      "note": "之後可在設定中更改此選擇。",
+      "allow": "允許分析",
+      "decline": "不啟用分析並繼續"
+    },
+    "persona": {
+      "title": "你最大的誘惑是什麼？",
+      "subtitle": "選擇一個熟悉的場景，Almost 會調整最初的提示。",
+      "allTitle": "所有誘惑",
+      "allSubtitle": "選擇最符合你的場景，Almost 會調整最初的提示。之後可以更改選擇。",
+      "address": "希望我們如何稱呼你？",
+      "female": "女性",
+      "male": "男性",
+      "unspecified": "不說明",
+      "scenario": "你的主要場景",
+      "showAll": "檢視所有誘惑",
+      "more": "另有 6 個",
+      "profiles": {
+        "mindful_coffee": "咖啡愛好者",
+        "habit_smoking": "正在戒菸",
+        "glam_beauty": "美妝愛好者",
+        "gamer_loot": "遊戲玩家",
+        "foodie_delivery": "外賣愛好者",
+        "online_impulse": "網購達人",
+        "home_picks": "家居好物愛好者",
+        "anime_fan": "動漫愛好者",
+        "sub_lover": "訂閱愛好者",
+        "fashion_fan": "時尚愛好者"
+      }
+    },
+    "goal": {
+      "title": "想把省下的錢用在哪裡？",
+      "subtitle": "最多可選擇三個目標，也可以建立自己的目標。",
+      "amountTitle": "設定金額",
+      "amountSubtitle": "這樣進度會更明確，之後可以更改金額。",
+      "travel": "旅行",
+      "tech": "數碼產品",
+      "joy": "日常小確幸",
+      "save": "單純儲蓄",
+      "example": "示例：{{amount}}",
+      "custom": "建立自己的目標",
+      "target": "目標金額",
+      "finish": "完成設定"
+    },
+    "custom": {
+      "title": "自己的目標",
+      "subtitle": "為目標填寫簡短名稱和金額，從第一天起就能看到進度。",
+      "name": "名稱",
+      "sample": "新膝上型電腦",
+      "icon": "圖示",
+      "target": "目標金額",
+      "add": "新增目標"
+    },
+    "terms": {
+      "title": "使用條款",
+      "subtitle": "繼續前先檢視簡要說明，完整法律文字將單獨開啟。",
+      "decisionTitle": "Almost 幫助你做決定",
+      "decisionBody": "本應用不是銀行，也不會轉移資金。你需要自行在外部服務中完成財務操作。",
+      "dataTitle": "你的資料與訂閱",
+      "dataBody": "我們會儲存設定，以便應用功能正常執行。購買和恢復訂閱由應用商店安全處理。",
+      "full": "開啟完整文件",
+      "accept": "接受並繼續",
+      "close": "關閉"
+    }
+  },
+    "zh": {
     "common": {
       "continue": "继续",
       "skip": "跳过",

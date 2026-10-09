@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: iPad profile native tab position
+---
+- tapOn:
+    point: '73%,96%'
+- takeScreenshot: ipad-profile

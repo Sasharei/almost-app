@@ -1,0 +1,34 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-light
+    timeout: 60000
+- tapOn:
+    id: qa-monthly
+- tapOn:
+    id: qa-light
+- takeScreenshot: light-calendar-confirmed
+- tapOn:
+    id: qa-dark
+- takeScreenshot: dark-calendar-confirmed
+- tapOn:
+    id: qa-indigo
+- takeScreenshot: indigo-calendar-confirmed
+- tapOn:
+    id: qa-emerald
+- takeScreenshot: emerald-calendar-confirmed
+- tapOn:
+    id: qa-sunset
+- takeScreenshot: sunset-calendar-confirmed
+- tapOn:
+    id: qa-gold
+- takeScreenshot: gold-calendar-confirmed
+- tapOn:
+    id: qa-violet
+- takeScreenshot: violet-calendar-confirmed
+- tapOn:
+    id: qa-aqua
+- takeScreenshot: aqua-calendar-confirmed
+- tapOn: "Напоминать в 10:00"
+- takeScreenshot: time-expanded-confirmed

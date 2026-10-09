@@ -235,8 +235,8 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
           image: tabIcon,
           selectedImage: tabIcon
         )
-        item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
-        item.imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)
+        item.titlePositionAdjustment = .zero
+        item.imageInsets = .zero
         item.badgeValue = model.badgeValue
         if let badgeColor = model.badgeColor {
           item.badgeColor = badgeColor
@@ -432,10 +432,10 @@ class NativeLiquidTabBarContainer: UIView, UITabBarDelegate {
       itemAppearance.selected.badgePositionAdjustment = badgePositionAdjustment
       itemAppearance.disabled.badgePositionAdjustment = badgePositionAdjustment
       itemAppearance.focused.badgePositionAdjustment = badgePositionAdjustment
-      itemAppearance.normal.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
-      itemAppearance.selected.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
-      itemAppearance.disabled.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
-      itemAppearance.focused.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)
+      itemAppearance.normal.titlePositionAdjustment = .zero
+      itemAppearance.selected.titlePositionAdjustment = .zero
+      itemAppearance.disabled.titlePositionAdjustment = .zero
+      itemAppearance.focused.titlePositionAdjustment = .zero
     }
 
     setColors(appearance.stackedLayoutAppearance)

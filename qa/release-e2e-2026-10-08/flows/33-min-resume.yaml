@@ -1,0 +1,23 @@
+appId: com.sasarei.almostclean
+name: Compact persona list and tutorial
+---
+- assertVisible: What is your biggest temptation\?
+- scrollUntilVisible:
+    element: Show all temptations
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: compact-persona-scrolled
+- tapOn: Show all temptations
+- assertVisible: All temptations
+- takeScreenshot: compact-all-personas
+- tapOn: Coffee lover
+- tapOn: Continue
+- tapOn: Just save.*
+- tapOn: Finish setup
+- runFlow:
+    when:
+      visible: Don’t Allow
+    commands:
+      - tapOn: Don’t Allow
+- runFlow: ios-tutorial-full.yaml

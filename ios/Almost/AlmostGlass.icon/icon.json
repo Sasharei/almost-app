@@ -1,0 +1,72 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.96000,0.98500,1.00000,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": "system-dark"
+    }
+  ],
+  "groups": [
+    {
+      "name": "Almi · foreground glass",
+      "layers": [
+        {
+          "image-name": "Almi.png",
+          "name": "Almi with savings coin",
+          "position": {
+            "scale": 0.817,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting": "individual",
+      "blur-material": 0,
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.1
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.06
+      }
+    },
+    {
+      "name": "Halo · cyan glass",
+      "layers": [
+        {
+          "image-name": "Halo.svg",
+          "name": "Cyan halo",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting": "individual",
+      "blur-material": 0,
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.06
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

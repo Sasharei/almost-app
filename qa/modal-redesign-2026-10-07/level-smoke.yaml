@@ -1,0 +1,37 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-ready
+    timeout: 60000
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: level-light
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-dark
+- tapOn:
+    id: qa-level
+- takeScreenshot: level-dark
+- tapOn:
+    id: level-result-share
+- assertVisible: share-12
+- tapOn:
+    id: qa-emerald
+- tapOn:
+    id: qa-level
+- takeScreenshot: level-pro-emerald
+- tapOn:
+    id: level-result-continue
+- tapOn:
+    id: qa-feature
+- takeScreenshot: feature-pro-emerald
+- tapOn: ок
+- assertVisible:
+    id: qa-ready

@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- assertVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-cancel
+- assertVisible: 'What happened to the purchase\?'
+- tapOn: I decided not to buy
+- assertVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- takeScreenshot: save-confirmed

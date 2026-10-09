@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Continue series then income editor
+---
+- tapOn: Continue
+- waitForAnimationToEnd
+- runFlow: 44-income.yaml

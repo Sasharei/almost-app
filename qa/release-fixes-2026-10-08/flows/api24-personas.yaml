@@ -1,0 +1,28 @@
+appId: com.sasarei.almostclean
+name: API24 all ten personas stay reachable without OOM
+---
+- assertVisible: What is your biggest temptation\?
+- scrollUntilVisible:
+    element: Show all temptations
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: show-all-visible
+- tapOn: Show all temptations
+- assertVisible: All temptations
+- takeScreenshot: all-personas-top
+- scrollUntilVisible:
+    element: Fashion hunter
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: all-personas-bottom
+- scrollUntilVisible:
+    element: Coffee lover
+    direction: UP
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn: Coffee lover
+- tapOn: Continue
+- assertVisible: What should your savings support\?
+- takeScreenshot: reached-goals

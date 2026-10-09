@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, StyleSheet, Text, View } from "react-native";
+import { AccessiblePressable as Pressable } from "./AccessibleControls";
 import { BlurView as ExpoBlurView } from "expo-blur";
 import Svg, {
   Circle as SvgCircle,
@@ -12,6 +13,7 @@ import Svg, {
 } from "react-native-svg";
 import LiquidGlassNativeView, { canUseNativeLiquidGlassView } from "./LiquidGlassNativeView";
 import NativeLiquidTabBar, { canUseNativeLiquidTabBar } from "./NativeLiquidTabBar";
+import NativeMaterialNavigation, { canUseNativeMaterialNavigation } from "./NativeMaterialNavigation";
 import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { ANDROID_LIVE_GLASS_BLUR_ENABLED } from "../constants/appBehavior";
 const TAB_ROW_HORIZONTAL_PADDING = 8;
@@ -354,8 +356,8 @@ const LiquidGlassTabBar = ({
   const rootStyle = {
     paddingBottom: barBottomInset,
     marginBottom: isIos && !useAndroidLikeVisualStyle ? -(Number(safeAreaBottom) || 0) : 0,
-    paddingTop: tabBarTopPadding,
-    paddingHorizontal: 14,
+    paddingTop: isAndroid ? 8 : tabBarTopPadding,
+    paddingHorizontal: isAndroid ? 12 : 14,
     backgroundColor: "transparent",
   };
   const nativeOnlyRootStyle = {
@@ -399,7 +401,13 @@ const LiquidGlassTabBar = ({
     ]
   );
 
-  const trackBaseColor = isDarkTheme
+  const trackBaseColor = isAndroid
+    ? isDarkTheme
+      ? "rgba(30,39,57,0.72)"
+      : isProTheme
+      ? colorWithAlpha(proThemeSurfaceColor, 0.78)
+      : "rgba(234,239,248,0.76)"
+    : isDarkTheme
     ? "rgba(20,25,35,0.84)"
     : isLiquidGlassStyle
     ? "rgba(244,247,252,0.84)"
@@ -418,13 +426,33 @@ const LiquidGlassTabBar = ({
     : isLiquidGlassStyle
     ? "rgba(255,255,255,0.92)"
     : "rgba(255,255,255,0.86)";
-  const androidTrackBlurIntensity = isCompactAndroid ? 18 : 20;
-  const androidTrackBlurReductionFactor = 4;
+  const androidTrackBlurIntensity = isCompactAndroid ? 38 : 44;
+  const androidTrackBlurReductionFactor = 2;
   const androidBubbleTintBase = isDarkTheme ? "rgba(30,37,50,0.64)" : "rgba(255,255,255,0.68)";
   const shouldUseAndroidBubbleTintFallback = useAndroidLikeVisualStyle && !useNativeLiquidBackground;
   const useAndroidSolidTrack = isAndroid && !ANDROID_LIVE_GLASS_BLUR_ENABLED;
   const shouldUseNativeOnly = nativeTabBarAvailable;
-  const shouldRenderInnerBubble = availableTabs.length > 0;
+  const shouldRenderInnerBubble = !isAndroid && availableTabs.length > 0;
+
+  if (isAndroid && canUseNativeMaterialNavigation()) {
+    const surface = isDarkTheme ? "#242C3B" : isProTheme ? proThemeSurfaceColor : "#EBEDF4";
+    return (
+      <View onLayout={handleRootLayout} style={{ paddingBottom: Math.max(0, Number(safeAreaBottom) || 0), backgroundColor: surface }}>
+        <NativeMaterialNavigation
+          style={{ height: 80, alignSelf: "stretch" }}
+          items={tabPayload}
+          selectedKey={activeTab}
+          palette={{
+            active: isDarkTheme ? "#AAB6FF" : isProTheme ? proThemeAccentColor : "#485ED7",
+            inactive: isDarkTheme ? "#ADB6C8" : isProTheme ? proThemeMutedColor : "#687083",
+            indicator: isDarkTheme ? "#303B76" : isProTheme ? "#FFFFFF" : "#D8DDF9",
+            surface,
+          }}
+          onTabPress={onTabPress}
+        />
+      </View>
+    );
+  }
 
   if (shouldUseNativeOnly) {
     return (
@@ -449,8 +477,28 @@ const LiquidGlassTabBar = ({
 
   return (
     <View style={rootStyle} onLayout={handleRootLayout}>
+      {isAndroid && barBottomInset > 0 && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.androidSafeBase,
+            {
+              height: barBottomInset + 8,
+              backgroundColor: isDarkTheme
+                ? "#10141B"
+                : isProTheme
+                ? proThemeSurfaceColor
+                : "#F3F5FA",
+            },
+          ]}
+        />
+      )}
       <View
-        style={[styles.track, { backgroundColor: trackBaseColor, borderColor: trackBorderColor }]}
+        style={[
+          styles.track,
+          isAndroid && styles.androidTrack,
+          { backgroundColor: trackBaseColor, borderColor: trackBorderColor },
+        ]}
         onLayout={handleTrackLayout}
       >
         {useNativeLiquidBackground ? (
@@ -470,7 +518,7 @@ const LiquidGlassTabBar = ({
                   ? "#20283A"
                   : isProTheme
                   ? proThemeSurfaceColor
-                  : "#EEF3FB",
+                  : "#EDF1F8",
               },
             ]}
           />
@@ -619,6 +667,21 @@ const LiquidGlassTabBar = ({
                 hitSlop={4}
               >
                 <View style={styles.tabIconSlot}>
+                  {isAndroid && isActive && (
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.androidActiveIndicator,
+                        {
+                          backgroundColor: isDarkTheme
+                            ? "#465574"
+                            : isProTheme
+                            ? colorWithAlpha(proThemeAccentColor, 0.18)
+                            : "#DCE5F5",
+                        },
+                      ]}
+                    />
+                  )}
                   <TabGlyph tab={tab} color={tabTextColor} />
                   {badgeValue > 0 && (
                     <View
@@ -685,6 +748,17 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
     justifyContent: "center",
+  },
+  androidTrack: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderRadius: 28,
+  },
+  androidSafeBase: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   nativeOnlyBar: {
     minHeight: 84,
@@ -754,6 +828,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+  },
+  androidActiveIndicator: {
+    position: "absolute",
+    width: 64,
+    height: 32,
+    left: -16,
+    top: -4,
+    borderRadius: 16,
   },
   badge: {
     position: "absolute",

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array><string>remote-notification</string></array>
 	<key>AttributionCopyEndpoint</key>
 	<string>https://appsflyer-skadnetwork.com/</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
@@ -9,7 +13,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Almost</string>
+	<string>Almost Savings</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -21,7 +25,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>7.2.1</string>
+	<string>8.0.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -79,6 +83,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Almost to use the camera for quick profile snapshots.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Almost uses Face ID only to confirm your choice in Almost Pay. No real payment is made.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
 	<key>NSMotionUsageDescription</key>

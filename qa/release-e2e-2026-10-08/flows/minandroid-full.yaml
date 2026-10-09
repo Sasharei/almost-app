@@ -1,0 +1,9 @@
+appId: com.sasarei.almostclean
+name: Minimum API24 onboarding saving reminder
+---
+- runFlow: 02-onboarding.yaml
+- runFlow: 03-tutorial-card.yaml
+- runFlow: 04-tutorial-save.yaml
+- runFlow: 05-tutorial-finish.yaml
+- runFlow: 06-save-result.yaml
+- runFlow: 07-reminder.yaml

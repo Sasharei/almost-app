@@ -1,0 +1,55 @@
+appId: com.sasarei.almostclean
+name: Round 7 primary and secondary routes
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- tapOn: Today
+- takeScreenshot: today
+- tapOn:
+    id: header-bug-report
+- assertVisible: Report a bug
+- takeScreenshot: bug-report
+- tapOn: Cancel
+- tapOn:
+    id: header-help
+- takeScreenshot: help
+- tapOn: Close
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-name
+- assertVisible:
+    id: profile-open-reports
+- takeScreenshot: profile
+- tapOn:
+    id: profile-edit-name
+- assertVisible:
+    id: profile-save
+- takeScreenshot: edit-profile
+- tapOn: Cancel
+- tapOn: Progress
+- scrollUntilVisible:
+    element:
+      id: progress-week-preview
+    direction: DOWN
+- takeScreenshot: progress-week
+- tapOn:
+    id: progress-week-preview
+- assertVisible: Money movement
+- takeScreenshot: spending
+- tapOn: Close breakdown
+- scrollUntilVisible:
+    element:
+      id: progress-forecast-preview
+    direction: DOWN
+- takeScreenshot: progress-forecast
+- tapOn:
+    id: progress-forecast-preview
+- takeScreenshot: forecast
+- tapOn: Close
+- tapOn: Pause
+- takeScreenshot: pause
+- tapOn: Budget
+- takeScreenshot: budget

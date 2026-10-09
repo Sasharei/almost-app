@@ -1,0 +1,13 @@
+Hello App Review Team,
+
+Almost Savings does not require an account or sign-in. An optional name is stored locally for personalization. Version 8.0.0 fully redesigns the app experience, including navigation, onboarding, savings decisions, goals, budget, reports and widgets.
+
+The purchase simulation is a decision-recording flow: users add a temptation and price, record a choice not to buy it and see the amount not spent. It does not place merchandise orders, process those payments, transfer money or verify bank balances. Savings progress is based on user entries.
+
+Shopping Pause (iPhone, iOS 16+) uses individual Screen Time authorization and Apple's private app picker. Choose apps and a savings target. Confirmed manual savings recorded after activation count toward that target. Reaching it allows a 30-minute visit to one selected app; the other selected apps stay blocked. The native DeviceActivity extension restores blocking when the visit ends. The user can stop the pause in Profile > Settings. No Screen Time app-token data is sent to advertising partners.
+
+Apple Pay automatic expenses (iOS 17+, Almost Premium): open Profile > Settings > Automatic expenses, enable import, then choose Set up Apple Pay. The bundled signed Shortcuts file is presented for user installation. On iOS 17–26, users create a Wallet Transaction automation and run Almost Apple Pay with Shortcut Input. On iOS 27, the supplied file contains the Wallet trigger, but users must confirm adding it and enable Automation. The app cannot silently enable Wallet access or read Wallet history. Only supported payments delivered by the user-enabled Wallet trigger are imported. Records appear in spending history and budget; users can correct categories, edit/delete records, review combined deliveries or pause capture. Almi may show a payment confirmation through a Live Activity when the system allows it. No bank credentials are requested.
+
+Almost Premium is an optional in-app subscription. Restore Purchases is available in the paywall and settings flows. Existing expense records remain editable without Premium. The app does not display advertising placements. Analytics and attribution SDKs support product performance and campaign attribution.
+
+Thank you.

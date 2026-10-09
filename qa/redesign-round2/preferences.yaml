@@ -1,0 +1,39 @@
+appId: com.sasarei.almostclean
+name: Direct profile preference selection
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- tapOn: Profile
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- scrollUntilVisible:
+    element:
+      text: English
+    direction: DOWN
+- tapOn: Русский
+- assertVisible: Язык
+- takeScreenshot: profile-russian
+- tapOn: English
+- assertVisible: Language
+- tapOn: AED
+- takeScreenshot: profile-aed
+- tapOn: USD
+- scrollUntilVisible:
+    element:
+      text: Light
+    direction: DOWN
+- tapOn: Light
+- takeScreenshot: profile-inline-light
+- tapOn: Language
+- assertVisible: English
+- takeScreenshot: language-full-list
+- tapOn: ".*Settings.*"
+- scrollUntilVisible:
+    element:
+      text: Theme
+    direction: DOWN
+- takeScreenshot: settings-inline

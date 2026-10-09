@@ -1,0 +1,143 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-ru
+- tapOn:
+    id: qa-light
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: light-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: light-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-dark
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: dark-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: dark-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-indigo
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: indigo-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: indigo-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-emerald
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: emerald-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: emerald-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-sunset
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: sunset-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: sunset-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-gold
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: gold-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: gold-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-violet
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: violet-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: violet-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-aqua
+- tapOn:
+    id: qa-level
+- assertVisible:
+    id: level-result-continue
+- takeScreenshot: aqua-level
+- tapOn:
+    id: level-result-continue
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-feature
+- takeScreenshot: aqua-feature
+- tapOn: ок
+- assertVisible:
+    id: qa-ready

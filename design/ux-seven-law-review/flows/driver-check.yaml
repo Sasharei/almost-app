@@ -1,0 +1,3 @@
+appId: com.sasarei.almostclean
+---
+- assertVisible: Today

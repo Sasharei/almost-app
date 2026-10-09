@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+name: Paywall benefits restore and dismissal
+---
+- takeScreenshot: paywall-before
+- tapOn: Restore purchases
+- waitForAnimationToEnd
+- takeScreenshot: restore-response
+- runFlow:
+    when:
+      visible: OK
+    commands:
+      - tapOn: OK
+- tapOn: Continue with limited version
+- takeScreenshot: dismissed-paywall

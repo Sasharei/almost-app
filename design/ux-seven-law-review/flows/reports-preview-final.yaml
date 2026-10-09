@@ -1,0 +1,7 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: '‹  Profile'
+- tapOn: 'Reports.*'
+- waitForAnimationToEnd
+- takeScreenshot: reports-unlocked-final
+- assertNotVisible: Unlock Premium

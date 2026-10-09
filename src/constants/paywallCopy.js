@@ -8,6 +8,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     pt: "Semanal",
     it: "Settimanale",
     ar: "أسبوعي",
+    "zh-Hant": "周付",
     zh: "周付",
     ko: "주간",
   },
@@ -20,6 +21,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     pt: "Anual",
     it: "Annuale",
     ar: "سنوي",
+    "zh-Hant": "年付",
     zh: "年付",
     ko: "연간",
   },
@@ -32,6 +34,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     pt: "Mensal",
     it: "Mensile",
     ar: "شهري",
+    "zh-Hant": "月付",
     zh: "月付",
     ko: "월간",
   },
@@ -44,6 +47,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     pt: "Vitalício",
     it: "A vita",
     ar: "مدى الحياة",
+    "zh-Hant": "終身",
     zh: "终身",
     ko: "평생",
   },
@@ -56,6 +60,7 @@ export const PAYWALL_PLAN_LABEL_BY_LANGUAGE = {
     pt: "Premium",
     it: "Premium",
     ar: "Premium",
+    "zh-Hant": "Premium",
     zh: "Premium",
     ko: "Premium",
   },
@@ -70,7 +75,8 @@ export const PAYWALL_SAVE_BADGE_TEMPLATE_BY_LANGUAGE = {
   pt: "Poupa {{percent}}%",
   it: "Risparmia {{percent}}%",
   ar: "وفّر {{percent}}%",
-  zh: "省 {{percent}}%",
+  "zh-Hant": "省 {{percent}}%",
+    zh: "省 {{percent}}%",
   ko: "{{percent}}% 절약",
 };
 
@@ -83,7 +89,8 @@ export const PAYWALL_TRIAL_BADGE_BY_LANGUAGE = {
   pt: "Teste grátis",
   it: "Prova gratis",
   ar: "تجربة مجانية",
-  zh: "免费试用",
+  "zh-Hant": "免費試用",
+    zh: "免费试用",
   ko: "무료 체험",
 };
 
@@ -96,7 +103,8 @@ export const PAYWALL_TRIAL_DURATION_TEMPLATE_BY_LANGUAGE = {
   pt: "{{count}} dias grátis",
   it: "{{count}} giorni gratis",
   ar: "{{count}} أيام مجاناً",
-  zh: "{{count}} 天免费试用",
+  "zh-Hant": "{{count}} 天免費試用",
+    zh: "{{count}} 天免费试用",
   ko: "{{count}}일 무료 체험",
 };
 
@@ -109,7 +117,8 @@ export const PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE = {
   pt: "{{trial}}, depois {{price}}. Renovação automática anual. Cancele em {{store}} antes do fim do teste para evitar a cobrança.",
   it: "{{trial}}, poi {{price}}. Rinnovo automatico annuale. Annulla su {{store}} prima della fine della prova per evitare l’addebito.",
   ar: "{{trial}}، ثم {{price}}. يتجدد الاشتراك تلقائياً كل سنة. ألغِ عبر {{store}} قبل انتهاء التجربة لتجنب تحصيل الرسوم.",
-  zh: "{{trial}}，之后收费 {{price}}。此后每年自动续订。请在试用结束前通过 {{store}} 取消，以免被扣费。",
+  "zh-Hant": "{{trial}}，之後收費 {{price}}。此後每年自動續訂。請在試用結束前透過 {{store}} 取消，以免被扣費。",
+    zh: "{{trial}}，之后收费 {{price}}。此后每年自动续订。请在试用结束前通过 {{store}} 取消，以免被扣费。",
   ko: "{{trial}} 후 {{price}}이 청구되며 매년 자동 갱신됩니다. 요금이 청구되지 않도록 체험 종료 전에 {{store}}에서 취소하세요.",
 };
 
@@ -137,7 +146,8 @@ export const PAYWALL_YEAR_SUFFIX_BY_LANGUAGE = {
   pt: "/ano",
   it: "/anno",
   ar: "/سنة",
-  zh: "/年",
+  "zh-Hant": "/年",
+    zh: "/年",
   ko: "/년",
 };
 
@@ -150,7 +160,8 @@ export const PAYWALL_MONTH_SUFFIX_BY_LANGUAGE = {
   pt: "/mês",
   it: "/mese",
   ar: "/شهر",
-  zh: "/月",
+  "zh-Hant": "/月",
+    zh: "/月",
   ko: "/월",
 };
 
@@ -163,7 +174,8 @@ export const PAYWALL_WEEK_SUFFIX_BY_LANGUAGE = {
   pt: "/semana",
   it: "/settimana",
   ar: "/أسبوع",
-  zh: "/周",
+  "zh-Hant": "/周",
+    zh: "/周",
   ko: "/주",
 };
 
@@ -177,6 +189,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     pt: "Cobrado semanalmente",
     it: "Addebitato ogni settimana",
     ar: "يتم الفوترة أسبوعياً",
+    "zh-Hant": "按周計費",
     zh: "按周计费",
     ko: "매주 청구",
   },
@@ -189,6 +202,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     pt: "Cobrado anualmente",
     it: "Addebitato ogni anno",
     ar: "يتم الفوترة سنوياً",
+    "zh-Hant": "按年計費",
     zh: "按年计费",
     ko: "매년 청구",
   },
@@ -201,6 +215,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     pt: "Cobrado mensalmente",
     it: "Addebitato ogni mese",
     ar: "يتم الفوترة شهرياً",
+    "zh-Hant": "按月計費",
     zh: "按月计费",
     ko: "매월 청구",
   },
@@ -213,6 +228,7 @@ export const PAYWALL_BILLING_LABEL_BY_LANGUAGE = {
     pt: "Pagamento único",
     it: "Pagamento unico",
     ar: "شراء لمرة واحدة",
+    "zh-Hant": "一次性購買",
     zh: "一次性购买",
     ko: "1회 결제",
   },
@@ -267,7 +283,13 @@ export const PAYWALL_EQUIVALENT_TEMPLATE_BY_LANGUAGE = {
     yearly: "≈ {{emoji}} {{count}} {{item}} / سنة",
     lifetime: "≈ {{emoji}} {{count}} {{item}} لمرة واحدة",
   },
-  zh: {
+  "zh-Hant": {
+    weekly: "≈ {{emoji}} {{count}} {{item}} / 周",
+    monthly: "≈ {{emoji}} {{count}} {{item}} / 月",
+    yearly: "≈ {{emoji}} {{count}} {{item}} / 年",
+    lifetime: "≈ {{emoji}} {{count}} {{item}} 一次性",
+  },
+    zh: {
     weekly: "≈ {{emoji}} {{count}} {{item}} / 周",
     monthly: "≈ {{emoji}} {{count}} {{item}} / 月",
     yearly: "≈ {{emoji}} {{count}} {{item}} / 年",
@@ -297,7 +319,8 @@ export const PAYWALL_TRIAL_CTA_DEFAULT_BY_LANGUAGE = {
   pt: "Iniciar o meu teste grátis",
   it: "Inizia la mia prova gratuita",
   ar: "ابدأ تجربتي المجانية",
-  zh: "开始我的免费试用",
+  "zh-Hant": "開始我的免費試用",
+    zh: "开始我的免费试用",
   ko: "내 무료 체험 시작",
 };
 
@@ -310,7 +333,8 @@ export const PAYWALL_POST_TRIAL_PREFIX_BY_LANGUAGE = {
   pt: "Teste grátis, depois",
   it: "Prova gratis, poi",
   ar: "جرّب مجاناً ثم",
-  zh: "先免费试用，之后",
+  "zh-Hant": "先免費試用，之後",
+    zh: "先免费试用，之后",
   ko: "무료 체험 후",
 };
 
@@ -323,12 +347,13 @@ export const PAYWALL_NOW_PREFIX_BY_LANGUAGE = {
   pt: "Agora",
   it: "Ora",
   ar: "الآن",
-  zh: "现在",
+  "zh-Hant": "現在",
+    zh: "现在",
   ko: "지금",
 };
 
 export const PAYWALL_MONTHLY_TRIAL_FALLBACK_DAYS = 3;
-export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 3;
+export const PAYWALL_YEARLY_TRIAL_FALLBACK_DAYS = 14;
 
 export const PAYWALL_SAR_MARKERS_REGEX = /(﷼|sar|ر\.?\s*س\.?|ريال(?:ات)?)/gi;
 export const PAYWALL_BIDI_MARKS_REGEX = /[\u200e\u200f\u061c]/g;

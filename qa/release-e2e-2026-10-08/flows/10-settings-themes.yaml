@@ -1,0 +1,29 @@
+appId: com.sasarei.almostclean
+name: Profile settings themes and language
+---
+- tapOn: Profile
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-light
+- tapOn:
+    id: settings-theme
+- tapOn:
+    id: settings-choice-dark
+- takeScreenshot: settings-dark
+- tapOn:
+    id: settings-back
+- tapOn: Today
+- takeScreenshot: today-dark
+- tapOn: Progress
+- takeScreenshot: progress-dark
+- tapOn: Pause
+- takeScreenshot: pause-dark
+- tapOn: Budget
+- takeScreenshot: budget-dark
+- tapOn: Profile
+- takeScreenshot: profile-dark
+- tapOn:
+    id: settings-theme
+- tapOn:
+    id: settings-choice-pro
+- takeScreenshot: pro-locked-state

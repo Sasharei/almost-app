@@ -1,0 +1,26 @@
+appId: com.sasarei.almostclean
+name: Edit goal save cancel persistence
+---
+- tapOn: Edit
+- tapOn: Rainy-day fund
+- eraseText: 60
+- inputText: QA release goal
+- pressKey: Enter
+- tapOn: '2000'
+- eraseText: 20
+- inputText: '100.25'
+- pressKey: Enter
+- tapOn: Save
+- extendedWaitUntil:
+    visible: .*QA release goal.*
+    timeout: 15000
+- takeScreenshot: goal-saved
+- tapOn: Edit
+- tapOn: QA release goal
+- eraseText: 60
+- inputText: SHOULD NOT SAVE
+- pressKey: Enter
+- tapOn: Cancel
+- assertVisible: .*QA release goal.*
+- assertNotVisible: SHOULD NOT SAVE
+- takeScreenshot: goal-edit-cancelled

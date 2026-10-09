@@ -93,3 +93,47 @@ tmp/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Release outputs stay local; only source and release metadata belong in Git.
+*.ipa
+*.xcarchive/
+*.dSYM/
+*.jsbundle
+__pycache__/
+*.pyc
+/store/release-*/builds/
+/store/release-*/checks/
+/store/release-*/*baseline*.txt
+/store/release-*/*readback*.txt
+/store/release-*/google-play-after-save.txt
+/store/release-*/google-play-listing-locales-evidence.txt
+/store/release-*/source-snapshot.json
+
+# Local browser captures and design review evidence.
+/.playwright-cli/
+/.impeccable/mocks/
+/.impeccable/review/
+/.impeccable/questions/
+/output/playwright/
+/design/**/screenshots/
+/design/**/evidence/
+/design/**/review/*
+!/design/**/review/*.md
+/design/redesign-round7/*/
+
+# Keep QA reports and reproducible tests, exclude captured runtime output.
+/qa/**/*
+!/qa/**/
+!/qa/**/*.md
+!/qa/**/*.js
+!/qa/**/*.cjs
+!/qa/**/*.mjs
+!/qa/**/*.py
+!/qa/**/*.yaml
+!/qa/**/*.yml
+!/qa/**/*.fixture
+/qa/**/artifacts/
+/qa/**/evidence/
+/qa/**/logs/
+/qa/**/fixture-backup/
+/qa/**/followup/

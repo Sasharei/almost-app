@@ -1,0 +1,5 @@
+appId: com.sasarei.almostclean
+name: Later decision visible action
+---
+- tapOn: Think about it later
+- takeScreenshot: later-options

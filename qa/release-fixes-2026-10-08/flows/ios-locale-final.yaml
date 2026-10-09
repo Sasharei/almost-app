@@ -1,0 +1,64 @@
+appId: com.sasarei.almostclean
+name: DE Arabic variants persistence and recovery
+---
+- launchApp
+- tapOn: الملف الشخصي
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-de
+    direction: UP
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-de
+- takeScreenshot: locale-de-before
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-ar-sa
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-ar-sa
+- assertVisible:
+    id: settings-language
+- takeScreenshot: locale-ar-sa-after
+- stopApp
+- launchApp
+- tapOn: الملف الشخصي
+- assertVisible:
+    id: settings-language
+- takeScreenshot: locale-ar-sa-restart
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-ar-ae
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-ar-ae
+- assertVisible:
+    id: settings-language
+- takeScreenshot: locale-ar-ae-after
+- tapOn:
+    id: settings-language
+- scrollUntilVisible:
+    element:
+      id: settings-choice-de
+    direction: UP
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-choice-de
+- assertVisible:
+    id: settings-language
+- takeScreenshot: locale-de-recovered

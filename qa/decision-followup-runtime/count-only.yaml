@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: 'Ожидают решения: 20|OK'
+    timeout: 60000
+- tapOn:
+    text: OK
+    optional: true
+- assertVisible: 'Ожидают решения: 20'
+- assertNotVisible: QA Ready
+- assertNotVisible: QA Due 02
+- takeScreenshot: count-only-today
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- assertVisible: QA Ready
+- takeScreenshot: count-only-wheel

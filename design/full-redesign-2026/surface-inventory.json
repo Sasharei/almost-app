@@ -1,0 +1,3672 @@
+[
+  {
+    "style": "coinValueCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 5275,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "coinValuePrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 5479,
+    "actions": [
+      "onPress={onPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"coinValueCta\")}"
+    ]
+  },
+  {
+    "style": "challengeSwipeButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 9158,
+    "actions": [
+      "onPress={() => {\n            closeRow();\n            onCancel?.();\n          }}"
+    ]
+  },
+  {
+    "style": "temptationCard",
+    "host": "View",
+    "material": "row",
+    "line": 16454,
+    "actions": []
+  },
+  {
+    "style": "temptationAmountModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 17087,
+    "actions": []
+  },
+  {
+    "style": "temptationAmountStatCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17179,
+    "actions": [
+      "onPress={openAmountManual}",
+      "disabled={!allowAmountManualInput}"
+    ]
+  },
+  {
+    "style": "temptationAmountStatCard",
+    "host": "View",
+    "material": "row",
+    "line": 17209,
+    "actions": []
+  },
+  {
+    "style": "temptationAmountBudgetPanel",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17248,
+    "actions": [
+      "onPress={handleAmountCategoryBudgetPress}"
+    ]
+  },
+  {
+    "style": "temptationAmountSliderPanel",
+    "host": "View",
+    "material": "card",
+    "line": 17362,
+    "actions": []
+  },
+  {
+    "style": "temptationAmountModalActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17433,
+    "actions": [
+      "onPress={() => handleAmountModalActionPress(\"save\")}"
+    ]
+  },
+  {
+    "style": "temptationAmountModalActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17473,
+    "actions": [
+      "onPress={() => handleAmountModalActionPress(\"spend\")}"
+    ]
+  },
+  {
+    "style": "coinEntryManualCard",
+    "host": "View",
+    "material": "card",
+    "line": 17538,
+    "actions": []
+  },
+  {
+    "style": "coinEntryManualButtonPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17578,
+    "actions": [
+      "onPress={handleAmountManualSave}"
+    ]
+  },
+  {
+    "style": "coinEntryManualCard",
+    "host": "View",
+    "material": "card",
+    "line": 17628,
+    "actions": []
+  },
+  {
+    "style": "coinEntryManualButtonPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 17668,
+    "actions": [
+      "onPress={handleAmountManualSave}"
+    ]
+  },
+  {
+    "style": "temptationReviewPrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 17690,
+    "actions": [
+      "onPress={() => isArchived ? onSwipeArchive?.(item) : cardLocked ? onLockedPress?.(item) : onCheck?.(item)}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "temptationPauseButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 17862,
+    "actions": [
+      "onPress={openPauseFreezePicker}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"pauseAction\")}"
+    ]
+  },
+  {
+    "style": "pauseFreezeModalCard",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 17991,
+    "actions": []
+  },
+  {
+    "style": "pauseFreezeOptionChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 18063,
+    "actions": [
+      "onPress={() => handlePauseFreezeOptionPress(option.id)}"
+    ]
+  },
+  {
+    "style": "pauseFreezeActionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 18104,
+    "actions": [
+      "onPress={handlePauseFreezeConfirm}"
+    ]
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 18211,
+    "actions": [
+      "onPress={onEditSave}"
+    ]
+  },
+  {
+    "style": "temptationSeriesIdleCard",
+    "host": "View",
+    "material": "card",
+    "line": 18383,
+    "actions": [
+      "accessibilityRole=\"summary\""
+    ]
+  },
+  {
+    "style": "temptationSeriesClaimedCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 18411,
+    "actions": [
+      "onPress={onOpenChest}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"temptationSeriesViewReward\")}",
+      "accessibilityHint={t(\"temptationSeriesClaimedHint\")}"
+    ]
+  },
+  {
+    "style": "temptationSeriesProgressCard",
+    "host": "View",
+    "material": "card",
+    "line": 18471,
+    "actions": [
+      "accessibilityRole=\"summary\""
+    ]
+  },
+  {
+    "style": "temptationSeriesOpenButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 18532,
+    "actions": [
+      "onPress={onOpenChest}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"temptationSeriesOpenChest\")}"
+    ]
+  },
+  {
+    "style": "temptationSeriesSheet",
+    "host": "View",
+    "material": "sheet",
+    "line": 18565,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "temptationSeriesCompletionCard",
+    "host": "View",
+    "material": "card",
+    "line": 18838,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "temptationSeriesRewardPanel",
+    "host": "View",
+    "material": "card",
+    "line": 18916,
+    "actions": []
+  },
+  {
+    "style": "temptationSeriesCompletionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 19008,
+    "actions": [
+      "onPress={onContinue}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "temptationSeriesCompletionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 19023,
+    "actions": [
+      "onPress={onClaim}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "temptationEditSheet",
+    "host": "View",
+    "material": "sheet",
+    "line": 19213,
+    "actions": []
+  },
+  {
+    "style": "temptationEditHeaderAction",
+    "host": "Pressable",
+    "material": "control",
+    "line": 19228,
+    "actions": [
+      "onPress={onEditDuplicate}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={duplicateActionLabel}",
+      "accessibilityHint={duplicateHint}"
+    ]
+  },
+  {
+    "style": "temptationEditGoalButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 19440,
+    "actions": [
+      "onPress={onEditGoalSelect}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"goalDestinationLabel\")}"
+    ]
+  },
+  {
+    "style": "dailyRewardButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 19599,
+    "actions": [
+      "onPress={unlocked ? onPress : undefined}",
+      "disabled={!unlocked || !ready}"
+    ]
+  },
+  {
+    "style": "goalDepositCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 20134,
+    "actions": []
+  },
+  {
+    "style": "redesignGoalDepositHero",
+    "host": "View",
+    "material": "card",
+    "line": 20150,
+    "actions": []
+  },
+  {
+    "style": "saveCelebrationPrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 20252,
+    "actions": [
+      "onPress={onPrimaryAction}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"saveOverlayPrimaryCta\")}"
+    ]
+  },
+  {
+    "style": "goalJarDetailActivityCard",
+    "host": "View",
+    "material": "card",
+    "line": 20692,
+    "actions": []
+  },
+  {
+    "style": "dailyRewardModalCard",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 21127,
+    "actions": []
+  },
+  {
+    "style": "dailyRewardModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 21416,
+    "actions": [
+      "onPress={handleDailyRewardClosePress}"
+    ]
+  },
+  {
+    "style": "dailyRewardModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 21438,
+    "actions": [
+      "onPress={handleDailyRewardCollect}"
+    ]
+  },
+  {
+    "style": "progressHeroCard",
+    "host": "View",
+    "material": "card",
+    "line": 22481,
+    "actions": [
+      "onLayout={handleHeroLayout}"
+    ]
+  },
+  {
+    "style": "savingRatingModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 23037,
+    "actions": []
+  },
+  {
+    "style": "savingRatingModalOddsCard",
+    "host": "View",
+    "material": "card",
+    "line": 23097,
+    "actions": []
+  },
+  {
+    "style": "savingRatingModalMetricCard",
+    "host": "View",
+    "material": "row",
+    "line": 23133,
+    "actions": []
+  },
+  {
+    "style": "savingRatingModalHowItWorks",
+    "host": "View",
+    "material": "card",
+    "line": 23188,
+    "actions": []
+  },
+  {
+    "style": "savingRatingModalButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 23212,
+    "actions": [
+      "onPress={handleSavingRatingClose}"
+    ]
+  },
+  {
+    "style": "savingsTrendModalCard",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 23255,
+    "actions": []
+  },
+  {
+    "style": "progressHeroCard",
+    "host": "View",
+    "material": "card",
+    "line": 23576,
+    "actions": []
+  },
+  {
+    "style": "subscriptionWatchCard",
+    "host": "Pressable",
+    "material": "control",
+    "line": 23832,
+    "actions": [
+      "onPress={onPress || undefined}",
+      "onLayout={onLayout || undefined}",
+      "disabled={typeof onPress !== \"function\"}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"subscriptionWidgetTitle\")}",
+      "accessibilityHint={t(\"subscriptionWidgetTapHint\")}"
+    ]
+  },
+  {
+    "style": "freeDayCard",
+    "host": "View",
+    "material": "card",
+    "line": 24436,
+    "actions": [
+      "onLayout={onLayout || undefined}"
+    ]
+  },
+  {
+    "style": "freeDayRescueButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 24527,
+    "actions": [
+      "onPress={onRescue}"
+    ]
+  },
+  {
+    "style": "payCard",
+    "host": "View",
+    "material": "card",
+    "line": 24970,
+    "actions": []
+  },
+  {
+    "style": "spendResultButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 25057,
+    "actions": [
+      "onPress={onDismiss}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"spendResultCta\")}"
+    ]
+  },
+  {
+    "style": "fridgeFreezeCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 25450,
+    "actions": []
+  },
+  {
+    "style": "saveSpamCard",
+    "host": "View",
+    "material": "card",
+    "line": 25612,
+    "actions": []
+  },
+  {
+    "style": "saveSpamButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 25620,
+    "actions": [
+      "onPress={onCancel}"
+    ]
+  },
+  {
+    "style": "saveSpamButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 25627,
+    "actions": [
+      "onPress={onConfirm}"
+    ]
+  },
+  {
+    "style": "impulseCard",
+    "host": "View",
+    "material": "card",
+    "line": 25900,
+    "actions": []
+  },
+  {
+    "style": "budgetLockedScreenHero",
+    "host": "View",
+    "material": "card",
+    "line": 26528,
+    "actions": []
+  },
+  {
+    "style": "historyControlChip",
+    "host": "Pressable",
+    "material": "control",
+    "line": 26967,
+    "actions": [
+      "onPress={onPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ selected }}",
+      "accessibilityLabel={option.label}"
+    ]
+  },
+  {
+    "style": "historyMoreButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 27000,
+    "actions": [
+      "onPress={handleLoadMore}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "profileReportsLockedCard",
+    "host": "View",
+    "material": "card",
+    "line": 27857,
+    "actions": []
+  },
+  {
+    "style": "profileReportsLockedMetric",
+    "host": "View",
+    "material": "row",
+    "line": 27875,
+    "actions": []
+  },
+  {
+    "style": "profileReportsPrimaryAction",
+    "host": "Pressable",
+    "material": "control",
+    "line": 27883,
+    "actions": [
+      "onPress={onPremiumPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"premiumFomoRevealCta\")}"
+    ]
+  },
+  {
+    "style": "profileReportsEmptyCard",
+    "host": "View",
+    "material": "card",
+    "line": 27901,
+    "actions": []
+  },
+  {
+    "style": "profileReportsArchiveButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 27915,
+    "actions": [
+      "disabled={!canShowOlder}",
+      "onPress={() => {\n                setDetailsExpanded(false);\n                setReportIndex((prev) => Math.min(activeReports.length - 1, prev + 1));\n              }}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"reportsArchivePrevious\")}",
+      "accessibilityState={{ disabled: !canShowOlder }}"
+    ]
+  },
+  {
+    "style": "profileReportsArchiveButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 27945,
+    "actions": [
+      "disabled={!canShowNewer}",
+      "onPress={() => {\n                setDetailsExpanded(false);\n                setReportIndex((prev) => Math.max(0, prev - 1));\n              }}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"reportsArchiveNext\")}",
+      "accessibilityState={{ disabled: !canShowNewer }}"
+    ]
+  },
+  {
+    "style": "reportSummaryHero",
+    "host": "View",
+    "material": "card",
+    "line": 27969,
+    "actions": []
+  },
+  {
+    "style": "reportSummaryMetric",
+    "host": "View",
+    "material": "row",
+    "line": 27989,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 28000,
+    "actions": []
+  },
+  {
+    "style": "profileReportsOutcomeCard",
+    "host": "View",
+    "material": "card",
+    "line": 28023,
+    "actions": []
+  },
+  {
+    "style": "profileReportsInsightCard",
+    "host": "View",
+    "material": "card",
+    "line": 28154,
+    "actions": []
+  },
+  {
+    "style": "profileReportsFocusBlock",
+    "host": "View",
+    "material": "card",
+    "line": 28185,
+    "actions": []
+  },
+  {
+    "style": "profileReportsPrimaryAction",
+    "host": "Pressable",
+    "material": "control",
+    "line": 28216,
+    "actions": [
+      "onPress={() => onPrimaryAction?.(activeReport)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={primaryActionLabel}"
+    ]
+  },
+  {
+    "style": "profileReportsSnapshotMetric",
+    "host": "View",
+    "material": "row",
+    "line": 28284,
+    "actions": []
+  },
+  {
+    "style": "profileReportsDriverCard",
+    "host": "View",
+    "material": "card",
+    "line": 28342,
+    "actions": []
+  },
+  {
+    "style": "profileReportsSecondaryAction",
+    "host": "Pressable",
+    "material": "control",
+    "line": 28463,
+    "actions": [
+      "onPress={() => onCreateGoal?.(activeReport)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"reportsActionCreateGoal\")}"
+    ]
+  },
+  {
+    "style": "bugReportModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 28857,
+    "actions": []
+  },
+  {
+    "style": "bugReportSecondaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 28950,
+    "actions": [
+      "onPress={handleClose}",
+      "disabled={sending}"
+    ]
+  },
+  {
+    "style": "bugReportPrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 28960,
+    "actions": [
+      "onPress={handleSubmit}",
+      "disabled={submitDisabled}"
+    ]
+  },
+  {
+    "style": "helpGuideFeedHero",
+    "host": "View",
+    "material": "card",
+    "line": 29590,
+    "actions": []
+  },
+  {
+    "style": "helpGuideMiniCard",
+    "host": "View",
+    "material": "card",
+    "line": 29607,
+    "actions": []
+  },
+  {
+    "style": "helpGuidePendingCard",
+    "host": "View",
+    "material": "card",
+    "line": 29651,
+    "actions": []
+  },
+  {
+    "style": "helpGuideRewardCard",
+    "host": "View",
+    "material": "card",
+    "line": 29667,
+    "actions": []
+  },
+  {
+    "style": "helpGuideMiniCard",
+    "host": "View",
+    "material": "card",
+    "line": 29719,
+    "actions": []
+  },
+  {
+    "style": "helpGuideMiniCard",
+    "host": "View",
+    "material": "card",
+    "line": 29722,
+    "actions": []
+  },
+  {
+    "style": "helpGuideModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 29807,
+    "actions": []
+  },
+  {
+    "style": "tycoonAutosaveCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 30132,
+    "actions": []
+  },
+  {
+    "style": "tycoonAutosaveHungryCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 30493,
+    "actions": []
+  },
+  {
+    "style": "tycoonAutosaveHungrySecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 30523,
+    "actions": [
+      "onPress={onClose}"
+    ]
+  },
+  {
+    "style": "tycoonAutosaveHungryPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 30540,
+    "actions": [
+      "onPress={onFeed}"
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 30608,
+    "actions": []
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 30618,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 30621,
+    "actions": [
+      "onPress={() => onAction(\"save\", focusEntry.item)}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 30623,
+    "actions": []
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 30634,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 30637,
+    "actions": [
+      "onPress={() => onFocus(leadEntry)}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 30641,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 30644,
+    "actions": [
+      "onPress={onAdd}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 30648,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 30650,
+    "actions": [
+      "onPress={onAll}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "feedTailPlaceholderCard",
+    "host": "View",
+    "material": "card",
+    "line": 34903,
+    "actions": []
+  },
+  {
+    "style": "dayTwoIncomePromptCard",
+    "host": "View",
+    "material": "card",
+    "line": 35746,
+    "actions": []
+  },
+  {
+    "style": "dayTwoIncomePromptPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 35756,
+    "actions": [
+      "onPress={handleDayTwoIncomePromptPress}"
+    ]
+  },
+  {
+    "style": "dayTwoIncomePromptSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 35765,
+    "actions": [
+      "onPress={handleDayTwoIncomePromptDismiss}"
+    ]
+  },
+  {
+    "style": "feedCategoryChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 35795,
+    "actions": [
+      "onPress={() => handleFeedCategoryFilterPress(option.id)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={option.label}",
+      "accessibilityState={{ selected: isActive }}"
+    ]
+  },
+  {
+    "style": "feedTemptationAddButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 35854,
+    "actions": [
+      "onPress={onNewTemptation}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"fabNewTemptation\")}"
+    ]
+  },
+  {
+    "style": "goalSwipeButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 36056,
+    "actions": [
+      "onPress={handleEdit}",
+      "disabled={!onEdit}"
+    ]
+  },
+  {
+    "style": "goalSwipeButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 36063,
+    "actions": [
+      "onPress={handleDelete}",
+      "disabled={!onDelete}"
+    ]
+  },
+  {
+    "style": "budgetSliderAmountChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 36597,
+    "actions": [
+      "disabled={!editable}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${t(\"budgetLegendLimit\")}: ${formatAmount(safeLimitUSD)}`}",
+      "accessibilityHint={editable ? t(\"budgetEditHint\") : undefined}",
+      "onPress={() => onManualEdit?.(entry.id, safeLimitUSD)}"
+    ]
+  },
+  {
+    "style": "budgetSliderResetButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 36621,
+    "actions": [
+      "disabled={!editable || !hasManualOverride}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"priceEditReset\")}",
+      "onPress={() => onResetLimit?.(entry.id)}"
+    ]
+  },
+  {
+    "style": "subscriptionDueCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 36954,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "subscriptionDueActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 37126,
+    "actions": [
+      "onPress={() => onDecision?.(\"skipped\")}",
+      "disabled={decisionPending}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"subscriptionDueNotPaidButton\")}",
+      "accessibilityState={{ disabled: decisionPending }}"
+    ]
+  },
+  {
+    "style": "subscriptionDueActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 37145,
+    "actions": [
+      "onPress={() => onDecision?.(\"paid\")}",
+      "disabled={decisionPending}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"subscriptionDuePaidButton\")}",
+      "accessibilityState={{ disabled: decisionPending }}"
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 37193,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 37202,
+    "actions": [
+      "onPress={onOpenGoal}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37204,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37208,
+    "actions": []
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 37239,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37248,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 37251,
+    "actions": [
+      "onPress={primaryAction}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37252,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37271,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37289,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 37290,
+    "actions": [
+      "onPress={items.length && onOpenActiveGoal ? onOpenActiveGoal : onCreateGoal}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "reportSummaryMetric",
+    "host": "View",
+    "material": "row",
+    "line": 37314,
+    "actions": []
+  },
+  {
+    "style": "reportSummaryMetric",
+    "host": "View",
+    "material": "row",
+    "line": 37315,
+    "actions": []
+  },
+  {
+    "style": "insightsWeekCard",
+    "host": "View",
+    "material": "row",
+    "line": 37318,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 37332,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 37338,
+    "actions": [
+      "onPress={hasDecisions ? onDetailsPress : onTodayPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityHint={`${t(\"impulseThirtyDayBalance\")}: ${monthlyNetUSD >= 0 ? \"+\" : \"−\"}${formatAmount(monthlyNetUSD)}`}"
+    ]
+  },
+  {
+    "style": "primaryGoalCard",
+    "host": "View",
+    "material": "card",
+    "line": 38878,
+    "actions": []
+  },
+  {
+    "style": "goalSelectButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 39039,
+    "actions": [
+      "onPress={() => onSetActiveGoal?.(goalId)}"
+    ]
+  },
+  {
+    "style": "wishCard",
+    "host": "View",
+    "material": "row",
+    "line": 39083,
+    "actions": []
+  },
+  {
+    "style": "pendingButtonPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 39131,
+    "actions": [
+      "onPress={() => {\n                  if (!isActiveGoal) {\n                    onSetActiveGoal?.(goalId);\n                  }\n                }}",
+      "disabled={isActiveGoal}"
+    ]
+  },
+  {
+    "style": "pendingButtonSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 39144,
+    "actions": [
+      "onPress={() => onRemoveWish(wish.id)}"
+    ]
+  },
+  {
+    "style": "challengeCard",
+    "host": "View",
+    "material": "card",
+    "line": 39213,
+    "actions": [
+      "onLayout={(event) => registerChallengeLayout(challenge.id, event)}"
+    ]
+  },
+  {
+    "style": "challengeActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 39266,
+    "actions": [
+      "disabled={!isActionEnabled}",
+      "onPress={handleActionPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={challenge.actionLabel}",
+      "accessibilityState={{ disabled: !isActionEnabled }}"
+    ]
+  },
+  {
+    "style": "challengeCancelButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 39281,
+    "actions": [
+      "onPress={confirmCancel}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"challengeCancelAction\")}"
+    ]
+  },
+  {
+    "style": "progressEarnCoinsPanel",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 41157,
+    "actions": [
+      "onPress={() => onProgressSectionChange?.(\"challenges\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"progressEarnCoinsTitle\")}"
+    ]
+  },
+  {
+    "style": "budgetWidgetCard",
+    "host": "View",
+    "material": "card",
+    "line": 41340,
+    "actions": [
+      "onLayout={onBudgetWidgetLayout || undefined}"
+    ]
+  },
+  {
+    "style": "budgetWidgetEmptyButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 41662,
+    "actions": [
+      "onPress={() => onIncomeEntryOpen?.(\"widget\")}"
+    ]
+  },
+  {
+    "style": "progressActiveChallengeButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42034,
+    "actions": [
+      "disabled={!activeChallengeActionEnabled}",
+      "onPress={() => {\n                if (activeChallenge.canClaim) {\n                  onChallengeClaim?.(activeChallenge.id);\n                } else if (activeChallenge.canStart) {\n                  setChallengeConfirmation({ kind: \"accept\", id: activeChallenge.id, title: activeChallenge.title });\n                }\n              }}"
+    ]
+  },
+  {
+    "style": "challengeCancelButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42066,
+    "actions": [
+      "onPress={() => {\n                setChallengeConfirmation({ kind: \"cancel\", id: activeChallenge.id, title: activeChallenge.title });\n              }}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"challengeCancelAction\")}"
+    ]
+  },
+  {
+    "style": "progressAnalyticsCard",
+    "host": "View",
+    "material": "card",
+    "line": 42122,
+    "actions": []
+  },
+  {
+    "style": "progressAnalyticsSummaryPanel",
+    "host": "View",
+    "material": "card",
+    "line": 42171,
+    "actions": []
+  },
+  {
+    "style": "progressGoalMiniCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42601,
+    "actions": [
+      "onPress={() => {\n                if (isDoneGoal) {\n                  Alert.alert(t(\"goalRepeatTitle\"), t(\"goalRepeatMessage\"), [\n                    { text: t(\"goalRepeatCancel\"), style: \"cancel\" },\n                    {\n                      text: t(\"goalRepeatAction\"),\n                      onPress: () => onCreateGoal?.(),\n                    },\n                  ]);\n                  return;\n                }\n                if (!isActiveGoal) {\n                  onSetActiveGoal?.(goalId);\n                  return;\n                }\n                onGoalEdit?.(wish);\n              }}",
+      "onLongPress={() => onSetActiveGoal?.(goalId)}"
+    ]
+  },
+  {
+    "style": "progressGoalMiniCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42682,
+    "actions": [
+      "onPress={() => onCreateGoal?.()}"
+    ]
+  },
+  {
+    "style": "subscriptionModalCreateButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42862,
+    "actions": [
+      "onPress={handleSubscriptionCreateTemptation}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "subscriptionModalAutoButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42878,
+    "actions": [
+      "onPress={() => handleSubscriptionAutoImportOpen(\"modal_button\")}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "subscriptionAutoPanel",
+    "host": "View",
+    "material": "card",
+    "line": 42916,
+    "actions": []
+  },
+  {
+    "style": "subscriptionAutoImportButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 42943,
+    "actions": [
+      "onPress={handleSubscriptionAutoImportConfirm}"
+    ]
+  },
+  {
+    "style": "subscriptionModalKeyMetric",
+    "host": "View",
+    "material": "row",
+    "line": 42997,
+    "actions": []
+  },
+  {
+    "style": "subscriptionModalKeyMetric",
+    "host": "View",
+    "material": "row",
+    "line": 43005,
+    "actions": []
+  },
+  {
+    "style": "budgetModalCard",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 43493,
+    "actions": []
+  },
+  {
+    "style": "budgetModalMonthChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 43545,
+    "actions": [
+      "onPress={() => setBudgetModalMonthKey(monthKey)}"
+    ]
+  },
+  {
+    "style": "budgetModalAdaptiveCard",
+    "host": "View",
+    "material": "card",
+    "line": 43692,
+    "actions": []
+  },
+  {
+    "style": "budgetModalAction",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 43740,
+    "actions": [
+      "onPress={() => {\n                      closeBudgetModal();\n                      onExtraIncomeEntryOpen?.(\"budget_modal\");\n                    }}"
+    ]
+  },
+  {
+    "style": "budgetModalActionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 43752,
+    "actions": [
+      "onPress={confirmBudgetModal}"
+    ]
+  },
+  {
+    "style": "budgetManualPromptCard",
+    "host": "View",
+    "material": "card",
+    "line": 43776,
+    "actions": []
+  },
+  {
+    "style": "primaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 43812,
+    "actions": [
+      "onPress={handleBudgetManualSubmit}"
+    ]
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 43865,
+    "actions": [
+      "onPress={() => {\n                const action = challengeConfirmation;\n                setChallengeConfirmation(null);\n                if (action?.kind === \"cancel\") onChallengeCancel?.(action.id);\n                else if (action?.kind === \"accept\") onChallengeAccept?.(action.id);\n              }}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "fridgeIntroCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 44594,
+    "actions": []
+  },
+  {
+    "style": "fridgeIntroButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 44657,
+    "actions": [
+      "onPress={() => handleClose(\"cta\")}"
+    ]
+  },
+  {
+    "style": "feedIntroCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 44887,
+    "actions": []
+  },
+  {
+    "style": "feedIntroDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 44965,
+    "actions": []
+  },
+  {
+    "style": "feedIntroButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 45198,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"feedIntroCta\")}",
+      "onPress={() => handleClose(\"cta\")}"
+    ]
+  },
+  {
+    "style": "pauseHero",
+    "host": "View",
+    "material": "card",
+    "line": 45330,
+    "actions": []
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 45338,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 45341,
+    "actions": [
+      "onPress={() => { setSelectedId(null); onResolve(selected, \"decline\"); }}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 45345,
+    "actions": []
+  },
+  {
+    "style": "pauseIntroCard",
+    "host": "View",
+    "material": "card",
+    "line": 45363,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 45379,
+    "actions": [
+      "onPress={onNewTemptation}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseExtendOption",
+    "host": "Pressable",
+    "material": "control",
+    "line": 45392,
+    "actions": [
+      "onPress={() => setExtendOptionId(option.id)}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityState={{ checked: extendOption?.id === option.id }}"
+    ]
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 45402,
+    "actions": [
+      "onPress={() => {\n              if (extendItem && extendOption) onExtend?.(extendItem, { durationMs: extendOption.durationMs, freezeOptionId: extendOption.id, source: \"pause_detail\" });\n              setExtendItemId(null);\n            }}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "fridgeEmptyAction",
+    "host": "Pressable",
+    "material": "control",
+    "line": 46189,
+    "actions": [
+      "onPress={onNewTemptation}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"quickCustomTitle\")}"
+    ]
+  },
+  {
+    "style": "fridgeItemCard",
+    "host": "View",
+    "material": "card",
+    "line": 46240,
+    "actions": []
+  },
+  {
+    "style": "fridgeActionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 46284,
+    "actions": [
+      "onPress={() => onResolve(item, \"spend\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"pendingActionWant\")}"
+    ]
+  },
+  {
+    "style": "fridgeActionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 46299,
+    "actions": [
+      "onPress={() => onResolve(item, \"decline\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"pendingActionDecline\")}"
+    ]
+  },
+  {
+    "style": "fridgeActionSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 46318,
+    "actions": [
+      "onPress={() => onExtend(item)}"
+    ]
+  },
+  {
+    "style": "fridgeShelfPlaceholderCard",
+    "host": "View",
+    "material": "card",
+    "line": 46362,
+    "actions": []
+  },
+  {
+    "style": "fridgePremiumShelfCard",
+    "host": "View",
+    "material": "card",
+    "line": 46379,
+    "actions": []
+  },
+  {
+    "style": "fridgePremiumShelfButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 46404,
+    "actions": [
+      "onPress={onPremiumShelvesPress}",
+      "disabled={!onPremiumShelvesPress}"
+    ]
+  },
+  {
+    "style": "fridgePanel",
+    "host": "View",
+    "material": "card",
+    "line": 46448,
+    "actions": [
+      "onLayout={handleFridgePanelLayout}"
+    ]
+  },
+  {
+    "style": "fridgeIntroCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 47052,
+    "actions": []
+  },
+  {
+    "style": "fridgeIntroButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 47117,
+    "actions": [
+      "onPress={() => closeFridgeIntro(\"cta\")}"
+    ]
+  },
+  {
+    "style": "fridgeExtendModalCard",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 47144,
+    "actions": []
+  },
+  {
+    "style": "fridgeExtendModalOption",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 47203,
+    "actions": [
+      "onPress={() => handleFridgeExtendOptionPress(option)}"
+    ]
+  },
+  {
+    "style": "fridgeExtendModalActionSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 47229,
+    "actions": [
+      "onPress={() => closeFridgeExtendModal({ source: \"cancel\" })}"
+    ]
+  },
+  {
+    "style": "fridgeExtendModalActionPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 47241,
+    "actions": [
+      "onPress={handleFridgeExtendConfirm}"
+    ]
+  },
+  {
+    "style": "challengeCard",
+    "host": "View",
+    "material": "card",
+    "line": 48815,
+    "actions": []
+  },
+  {
+    "style": "challengeActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 48873,
+    "actions": [
+      "disabled={!isActionEnabled}",
+      "onPress={handleActionPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={challenge.actionLabel}",
+      "accessibilityState={{ disabled: !isActionEnabled }}"
+    ]
+  },
+  {
+    "style": "challengeCancelButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 48888,
+    "actions": [
+      "onPress={confirmCancel}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"challengeCancelAction\")}"
+    ]
+  },
+  {
+    "style": "goalCard",
+    "host": "View",
+    "material": "card",
+    "line": 48949,
+    "actions": []
+  },
+  {
+    "style": "rewardClaimButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 49017,
+    "actions": [
+      "onPress={(event) => {\n              event?.stopPropagation?.();\n              onRewardClaim?.(reward);\n            }}"
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 49151,
+    "actions": []
+  },
+  {
+    "style": "pauseCard",
+    "host": "View",
+    "material": "card",
+    "line": 49159,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 49162,
+    "actions": [
+      "onPress={claimableReward ? () => onRewardClaim?.(claimableReward) : () => onProgressSectionChange?.(\"challenges\")}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 49165,
+    "actions": []
+  },
+  {
+    "style": "rewardsTabButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 49227,
+    "actions": [
+      "onPress={() => {\n                  if (tab.id !== pane) {\n                    onPaneChange?.(tab.id);\n                  }\n                }}"
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 49623,
+    "actions": []
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 49630,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 49633,
+    "actions": [
+      "onPress={onPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 49651,
+    "actions": []
+  },
+  {
+    "style": "budgetSegmentOption",
+    "host": "Pressable",
+    "material": "control",
+    "line": 49659,
+    "actions": [
+      "onPress={() => onPaneChange(id)}",
+      "accessibilityRole=\"tab\"",
+      "accessibilityState={{ selected: pane === id }}"
+    ]
+  },
+  {
+    "style": "pauseDecisionCard",
+    "host": "View",
+    "material": "card",
+    "line": 49662,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 49673,
+    "actions": [
+      "onPress={pane === \"debt\" && !initialDebtUSD ? onDebtSettingsPress : onTransferPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 49675,
+    "actions": []
+  },
+  {
+    "style": "budgetAvailableCard",
+    "host": "View",
+    "material": "card",
+    "line": 50108,
+    "actions": []
+  },
+  {
+    "style": "budgetPaneTabButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 50150,
+    "actions": [
+      "onPress={() => setPane(item.id)}",
+      "accessibilityRole=\"tab\"",
+      "accessibilityState={{ selected: active }}",
+      "accessibilityLabel={item.label}"
+    ]
+  },
+  {
+    "style": "budgetFocusCard",
+    "host": "View",
+    "material": "card",
+    "line": 50177,
+    "actions": []
+  },
+  {
+    "style": "budgetFocusEditButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 50206,
+    "actions": [
+      "onPress={openDebtSettings}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy(\"budgetDebtEditButton\", \"Edit debt plan\")}"
+    ]
+  },
+  {
+    "style": "budgetPrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 50276,
+    "actions": [
+      "onPress={() => {\n            if (pane === \"debt\" && initialDebtUSD <= 0) {\n              openDebtSettings();\n              return;\n            }\n            openTransfer(pane === \"debt\" ? \"debt\" : \"savings\");\n          }}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "budgetGuideCard",
+    "host": "View",
+    "material": "card",
+    "line": 50295,
+    "actions": []
+  },
+  {
+    "style": "budgetProofButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 50471,
+    "actions": [
+      "disabled={transferDraft.verifyingProof}",
+      "onPress={() => handlePickTransferProof(\"camera\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy(\"budgetProofCamera\", \"Camera\")}"
+    ]
+  },
+  {
+    "style": "budgetProofButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 50490,
+    "actions": [
+      "disabled={transferDraft.verifyingProof}",
+      "onPress={() => handlePickTransferProof(\"library\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy(\"budgetProofLibrary\", \"Gallery\")}"
+    ]
+  },
+  {
+    "style": "pauseIntroCard",
+    "host": "View",
+    "material": "card",
+    "line": 50735,
+    "actions": []
+  },
+  {
+    "style": "profileMetric",
+    "host": "View",
+    "material": "row",
+    "line": 50742,
+    "actions": []
+  },
+  {
+    "style": "profileMetric",
+    "host": "View",
+    "material": "row",
+    "line": 50743,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 50746,
+    "actions": [
+      "onPress={onReportsPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 50747,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 50777,
+    "actions": []
+  },
+  {
+    "style": "pauseActionList",
+    "host": "View",
+    "material": "row",
+    "line": 50845,
+    "actions": []
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 50873,
+    "actions": []
+  },
+  {
+    "style": "pauseCard",
+    "host": "View",
+    "material": "card",
+    "line": 50880,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 50883,
+    "actions": [
+      "onPress={onPremiumPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "todayHero",
+    "host": "View",
+    "material": "card",
+    "line": 50896,
+    "actions": []
+  },
+  {
+    "style": "pauseCard",
+    "host": "View",
+    "material": "card",
+    "line": 50902,
+    "actions": []
+  },
+  {
+    "style": "pausePrimary",
+    "host": "Pressable",
+    "material": "control",
+    "line": 50904,
+    "actions": [
+      "onPress={onTodayPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "profileEditableFieldButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 51366,
+    "actions": [
+      "onPress={() => onIncomeEntryOpen?.(\"profile\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"incomeEntryAmountLabel\")}"
+    ]
+  },
+  {
+    "style": "profileToolbarSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 51639,
+    "actions": [
+      "onPress={onCancelEdit}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"profileCancel\")}"
+    ]
+  },
+  {
+    "style": "profileToolbarPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 51651,
+    "actions": [
+      "onPress={\n                  isCurrentSectionEditing\n                    ? onSaveEdit\n                    : () =>\n                        onEditPress?.(\n                          profileSection === \"settings\" ? \"settings\" : \"profile\"\n                        )\n                }",
+      "disabled={isCurrentSectionEditing ? !onSaveEdit : !onEditPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={\n                  isCurrentSectionEditing ? t(\"profileSave\") : t(\"profileEdit\")\n                }"
+    ]
+  },
+  {
+    "style": "profileCard",
+    "host": "View",
+    "material": "card",
+    "line": 51738,
+    "actions": []
+  },
+  {
+    "style": "profileMoodStatusChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 51777,
+    "actions": [
+      "onPress={handleMoodInfoPress}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "profileSetupPanel",
+    "host": "View",
+    "material": "card",
+    "line": 51933,
+    "actions": []
+  },
+  {
+    "style": "profileReportsOverviewCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52037,
+    "actions": [
+      "onPress={() => openReportsSection(\"profile_overview\")}",
+      "disabled={reportsDisabled}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"reportsButton\")}"
+    ]
+  },
+  {
+    "style": "settingsCard",
+    "host": "View",
+    "material": "card",
+    "line": 52299,
+    "actions": []
+  },
+  {
+    "style": "settingChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52373,
+    "actions": [
+      "onPress={() =>\n                          onThemeToggle(option.id, {\n                            proAccentId: option.proAccentId,\n                            openAccentPicker: false,\n                          })\n                        }",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={option.accessibilityLabel || option.label}",
+      "accessibilityState={{ selected: active }}"
+    ]
+  },
+  {
+    "style": "settingChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52464,
+    "actions": [
+      "onPress={() => onLanguageChange(lng)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={LANGUAGE_NATIVE_LABELS[lng] || t(getLanguageLabelKey(lng))}",
+      "accessibilityState={{ selected: active }}",
+      "onLayout={(event) => {\n                      profileLanguageChipLayoutsRef.current[lng] = event.nativeEvent.layout;\n                      if (active) {\n                        scrollProfileLanguageIntoView(lng, false);\n                      }\n                    }}"
+    ]
+  },
+  {
+    "style": "settingChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52511,
+    "actions": [
+      "onPress={() => onCurrencyChange?.(code)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={String(code || \"\").trim().toUpperCase()}",
+      "accessibilityState={{ selected: currentCurrency === code }}"
+    ]
+  },
+  {
+    "style": "settingChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52548,
+    "actions": [
+      "onPress={() => openManageCategoriesModal?.()}"
+    ]
+  },
+  {
+    "style": "resetButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52707,
+    "actions": [
+      "onPress={onResetData}"
+    ]
+  },
+  {
+    "style": "historyCard",
+    "host": "View",
+    "material": "row",
+    "line": 52717,
+    "actions": []
+  },
+  {
+    "style": "profileLinkButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52735,
+    "actions": [
+      "onPress={handlePrivacyPolicyOpen}"
+    ]
+  },
+  {
+    "style": "profileLinkButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52747,
+    "actions": [
+      "onPress={handleInstagramPress}"
+    ]
+  },
+  {
+    "style": "profileLinkButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 52759,
+    "actions": [
+      "onPress={handleSupportPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${t(\"supportLink\")}. ${t(\"supportHint\")}`}"
+    ]
+  },
+  {
+    "style": "breakdownModeToggleOption",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 61925,
+    "actions": [
+      "onPress={entry.onPress}",
+      "disabled={isActive}",
+      "accessibilityRole=\"tab\"",
+      "accessibilityLabel={entry.label}",
+      "accessibilityState={{ selected: isActive }}"
+    ]
+  },
+  {
+    "style": "tamagotchiOptionCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 80576,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${label}. ${\n                isDesired ? `${t(\"tamagotchiFoodWantLabel\")}. ` : \"\"\n              }${t(\"tamagotchiFoodBoostLabel\", {\n                percent: food.hungerBoost,\n              })}. ×${displayCost}`}",
+      "accessibilityState={{ disabled: tamagotchiIsFull }}",
+      "onPress={() => {\n                playSound(\"tap\");\n                feedTamagotchi(food.id);\n              }}",
+      "disabled={tamagotchiIsFull}"
+    ]
+  },
+  {
+    "style": "tamagotchiOptionCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 80662,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${label}. ${\n                isDesired ? `${t(\"tamagotchiPlayWantLabel\")}. ` : \"\"\n              }${t(\"tamagotchiPlayBoostLabel\", {\n                percent: toy.moodBoost,\n              })}. -${toy.cleanPenalty}% ${t(\"tamagotchiCleanlinessLabel\")}. ×${toy.cost}`}",
+      "onPress={() => {\n                playSound(\"tap\");\n                playWithTamagotchiToy(toy.id);\n              }}"
+    ]
+  },
+  {
+    "style": "tamagotchiOptionCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 80841,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${label}. ${accessibleBoostText}. ${t(\"tamagotchiToolUsesLeftLabel\", {\n                  current: remaining,\n                  total: maxUses,\n                })}. ×${displayCost}`}",
+      "accessibilityState={{ selected: isActiveSelection }}",
+      "onPress={() => {\n                  playSound(\"tap\");\n                  if (hasSupply) {\n                    setTamagotchiSelectedCleanToolId(tool.id);\n                    setTamagotchiCleanToolArmed(true);\n                    return;\n                  }\n                  const bought = buyTamagotchiCleanTool(tool.id);\n                  if (bought) {\n                    setTamagotchiSelectedCleanToolId(tool.id);\n                    setTamagotchiCleanToolArmed(true);\n                  }\n                }}"
+    ]
+  },
+  {
+    "style": "spendStatsCloseButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 90878,
+    "actions": [
+      "onPress={closeBreakdown}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"weeklyBreakdownCloseA11y\")}"
+    ]
+  },
+  {
+    "style": "spendStatsNavButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 90939,
+    "actions": [
+      "onPress={handleBreakdownPrev}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"weeklyBreakdownPreviousPeriodA11y\")}"
+    ]
+  },
+  {
+    "style": "spendStatsNavButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 90968,
+    "actions": [
+      "onPress={handleBreakdownNext}",
+      "disabled={activeBreakdownOffset === 0}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"weeklyBreakdownNextPeriodA11y\")}",
+      "accessibilityState={{ disabled: activeBreakdownOffset === 0 }}"
+    ]
+  },
+  {
+    "style": "dailyChallengeCompleteCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 91202,
+    "actions": []
+  },
+  {
+    "style": "dailyChallengeCompleteButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91274,
+    "actions": [
+      "onPress={handleDailyChallengeCompleteClose}"
+    ]
+  },
+  {
+    "style": "dailyChallengeRevealPanel",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 91540,
+    "actions": []
+  },
+  {
+    "style": "dailyChallengePrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91613,
+    "actions": [
+      "onPress={handleDailyChallengeAccept}"
+    ]
+  },
+  {
+    "style": "dailyChallengeGhostButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91622,
+    "actions": [
+      "onPress={handleDailyChallengeLater}"
+    ]
+  },
+  {
+    "style": "quickModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 91642,
+    "actions": []
+  },
+  {
+    "style": "quickModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91691,
+    "actions": [
+      "onPress={handleDidYouKnowMute}"
+    ]
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91711,
+    "actions": [
+      "onPress={handleDidYouKnowContinue}"
+    ]
+  },
+  {
+    "style": "noGoalSavePromptCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 91743,
+    "actions": []
+  },
+  {
+    "style": "quickModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91814,
+    "actions": [
+      "onPress={handleNoGoalSavePromptLater}"
+    ]
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91828,
+    "actions": [
+      "onPress={handleNoGoalSavePromptCreateGoal}"
+    ]
+  },
+  {
+    "style": "cycleSavingsRevokedCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 91860,
+    "actions": []
+  },
+  {
+    "style": "cycleSavingsRevokedAmountPanel",
+    "host": "View",
+    "material": "card",
+    "line": 91912,
+    "actions": []
+  },
+  {
+    "style": "cycleSavingsRevokedButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 91935,
+    "actions": [
+      "onPress={closeCycleSavingsRevokedPrompt}"
+    ]
+  },
+  {
+    "style": "dailySummaryCard",
+    "host": "View",
+    "material": "card",
+    "line": 92006,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "dailySummaryStatCard",
+    "host": "Pressable",
+    "material": "control",
+    "line": 92192,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${t(\"statsDeclines\")}: ${\n                            dailySummaryData.declines || 0\n                          }, ${dailySummarySavedAmountLabel}`}",
+      "accessibilityState={{ expanded: dailySummaryBreakdownType === \"saves\" }}",
+      "onPress={() => handleDailySummaryBreakdownPress(\"saves\")}"
+    ]
+  },
+  {
+    "style": "dailySummaryStatCard",
+    "host": "Pressable",
+    "material": "control",
+    "line": 92229,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${t(\"dailySummarySpendsLabel\")}: ${\n                            dailySummaryData.spends || 0\n                          }, ${dailySummarySpentAmountLabel}`}",
+      "accessibilityState={{ expanded: dailySummaryBreakdownType === \"spends\" }}",
+      "onPress={() => handleDailySummaryBreakdownPress(\"spends\")}"
+    ]
+  },
+  {
+    "style": "dailySummaryBreakdownCard",
+    "host": "View",
+    "material": "card",
+    "line": 92268,
+    "actions": []
+  },
+  {
+    "style": "dailySummaryEmptyCard",
+    "host": "View",
+    "material": "card",
+    "line": 92346,
+    "actions": []
+  },
+  {
+    "style": "dailySummaryButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 92376,
+    "actions": [
+      "onPress={handleDailySummaryContinue}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "quickModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 92413,
+    "actions": []
+  },
+  {
+    "style": "quickModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92421,
+    "actions": [
+      "onPress={handlePushDayThreePromptLater}"
+    ]
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92435,
+    "actions": [
+      "onPress={handlePushDayThreePromptEnable}"
+    ]
+  },
+  {
+    "style": "ratingPromptCard",
+    "host": "View",
+    "material": "card",
+    "line": 92475,
+    "actions": []
+  },
+  {
+    "style": "ratingPromptStarButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92535,
+    "actions": [
+      "onPress={() => handleRatingPromptSelect(star)}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityState={{ selected: star === ratingPromptRating }}",
+      "accessibilityLabel={t(\"ratingPromptStarLabel\", { count: star })}"
+    ]
+  },
+  {
+    "style": "ratingPromptSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92587,
+    "actions": [
+      "onPress={handleRatingPromptLater}"
+    ]
+  },
+  {
+    "style": "ratingPromptPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92609,
+    "actions": [
+      "disabled={ratingPromptRating <= 0}",
+      "onPress={handleRatingPromptConfirm}",
+      "accessibilityState={{ disabled: ratingPromptRating <= 0 }}"
+    ]
+  },
+  {
+    "style": "ratingPromptSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92708,
+    "actions": [
+      "disabled={ratingPromptFeedbackSubmitting}",
+      "onPress={handleRatingPromptFeedbackBack}"
+    ]
+  },
+  {
+    "style": "ratingPromptPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92731,
+    "actions": [
+      "disabled={\n                                !ratingPromptFeedbackValid || ratingPromptFeedbackSubmitting\n                              }",
+      "onPress={handleRatingPromptFeedbackSubmit}",
+      "accessibilityState={{\n                                disabled:\n                                  !ratingPromptFeedbackValid ||\n                                  ratingPromptFeedbackSubmitting,\n                                busy: ratingPromptFeedbackSubmitting,\n                              }}"
+    ]
+  },
+  {
+    "style": "levelShareModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 92792,
+    "actions": []
+  },
+  {
+    "style": "levelSharePrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 92849,
+    "actions": [
+      "disabled={levelShareSharing}",
+      "onPress={handleLevelShareConfirm}"
+    ]
+  },
+  {
+    "style": "tamagotchiBackButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 93331,
+    "actions": [
+      "onPress={closeTamagotchiOverlay}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"onboardingBack\")}"
+    ]
+  },
+  {
+    "style": "tamagotchiTopActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 93359,
+    "actions": [
+      "onPress={openSkinPicker}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"tamagotchiSkinsShortLabel\")}"
+    ]
+  },
+  {
+    "style": "tamagotchiStickyRewardButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 93410,
+    "actions": [
+      "onPress={handleTamagotchiDailyRewardPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={`${dailyRewardButtonTitle}. ${dailyRewardButtonLabel}`}"
+    ]
+  },
+  {
+    "style": "tamagotchiDailySummaryCompactButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 93544,
+    "actions": [
+      "onPress={handleTamagotchiDailySummaryPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"dailySummaryBadgeCTA\")}"
+    ]
+  },
+  {
+    "style": "tamagotchiImmunityCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 93817,
+    "actions": []
+  },
+  {
+    "style": "tamagotchiHourlyRewardCard",
+    "host": "View",
+    "material": "card",
+    "line": 94022,
+    "actions": []
+  },
+  {
+    "style": "tamagotchiHourlyRewardAmountPanel",
+    "host": "View",
+    "material": "card",
+    "line": 94082,
+    "actions": []
+  },
+  {
+    "style": "tamagotchiHourlyRewardClaimButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94112,
+    "actions": [
+      "onPress={handleTamagotchiHourlyRewardClaim}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"tamagotchiHourlyRewardClaim\")}"
+    ]
+  },
+  {
+    "style": "tamagotchiTabButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94160,
+    "actions": [
+      "onPress={() => handleTamagotchiTabPress(tab.id)}",
+      "accessibilityRole=\"tab\"",
+      "accessibilityLabel={tab.label}",
+      "accessibilityState={{ selected: active }}"
+    ]
+  },
+  {
+    "style": "tamagotchiButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 94250,
+    "actions": [
+      "onPress={startParty}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"tamagotchiPartyButtonLabel\", {\n                          cost: TAMAGOTCHI_PARTY_BLUE_COST,\n                        })}",
+      "accessibilityHint={t(\"tamagotchiPartyBenefit\", {\n                          hours: tamagotchiImmunityDurationHours,\n                        })}"
+    ]
+  },
+  {
+    "style": "skinPickerCloseButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94388,
+    "actions": [
+      "onPress={closeSkinPicker}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"budgetModalClose\")}"
+    ]
+  },
+  {
+    "style": "proAccentCard",
+    "host": "View",
+    "material": "card",
+    "line": 94541,
+    "actions": []
+  },
+  {
+    "style": "proAccentHero",
+    "host": "View",
+    "material": "card",
+    "line": 94554,
+    "actions": []
+  },
+  {
+    "style": "proAccentOption",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94594,
+    "actions": [
+      "onPress={() => handleProThemeAccentSelect(option.id, { close: false })}"
+    ]
+  },
+  {
+    "style": "proAccentDoneButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94681,
+    "actions": [
+      "onPress={closeProThemeAccentPicker}"
+    ]
+  },
+  {
+    "style": "quickModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 94713,
+    "actions": []
+  },
+  {
+    "style": "frequencyReminderForecastCard",
+    "host": "View",
+    "material": "card",
+    "line": 94776,
+    "actions": []
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 94902,
+    "actions": [
+      "onPress={handleFrequencyReminderPromptSave}"
+    ]
+  },
+  {
+    "style": "moodDetailsButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 95057,
+    "actions": [
+      "onPress={closeMoodDetails}"
+    ]
+  },
+  {
+    "style": "potentialDetailsCard",
+    "host": "View",
+    "material": "card",
+    "line": 95083,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "potentialDetailsButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 95230,
+    "actions": [
+      "onPress={closePotentialDetails}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "fabActionSheet",
+    "host": "Animated.View",
+    "material": "sheet",
+    "line": 95256,
+    "actions": []
+  },
+  {
+    "style": "focusDigestCard",
+    "host": "View",
+    "material": "card",
+    "line": 95401,
+    "actions": []
+  },
+  {
+    "style": "focusDigestSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 95460,
+    "actions": [
+      "onPress={handleFocusOverlayLater}"
+    ]
+  },
+  {
+    "style": "focusDigestPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 95471,
+    "actions": [
+      "disabled={!overlay.message?.targetId}",
+      "onPress={() =>\n                        handleFocusOverlayConfirm(\n                          overlay.message?.targetId,\n                          overlay.message?.positive ? \"digest_positive\" : \"digest_negative\"\n                        )\n                      }"
+    ]
+  },
+  {
+    "style": "customTemptationCard",
+    "host": "View",
+    "material": "row",
+    "line": 95609,
+    "actions": []
+  },
+  {
+    "style": "impulseAlertCard",
+    "host": "View",
+    "material": "card",
+    "line": 95868,
+    "actions": []
+  },
+  {
+    "style": "impulseAlertMoodCard",
+    "host": "View",
+    "material": "card",
+    "line": 95925,
+    "actions": []
+  },
+  {
+    "style": "impulseAlertButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 95941,
+    "actions": [
+      "onPress={dismissOverlay}"
+    ]
+  },
+  {
+    "style": "goalModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96003,
+    "actions": []
+  },
+  {
+    "style": "goalOptionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96030,
+    "actions": [
+      "onPress={() => handleGoalLinkSelect(goal.id)}"
+    ]
+  },
+  {
+    "style": "goalModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96095,
+    "actions": []
+  },
+  {
+    "style": "goalOptionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96120,
+    "actions": [
+      "onPress={() => handleGoalTemptationAssign(template.id)}"
+    ]
+  },
+  {
+    "style": "priceModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96172,
+    "actions": []
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96239,
+    "actions": [
+      "onPress={saveGoalEditorPrompt}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96247,
+    "actions": [
+      "onPress={closeGoalEditorPrompt}"
+    ]
+  },
+  {
+    "style": "goalRenewalCard",
+    "host": "View",
+    "material": "card",
+    "line": 96278,
+    "actions": []
+  },
+  {
+    "style": "goalRenewalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96291,
+    "actions": [
+      "onPress={handleGoalRenewalLater}"
+    ]
+  },
+  {
+    "style": "goalRenewalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96304,
+    "actions": [
+      "onPress={handleGoalRenewalStart}"
+    ]
+  },
+  {
+    "style": "priceModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96354,
+    "actions": []
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96370,
+    "actions": [
+      "onPress={handleCategoryPromptConfirm}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96378,
+    "actions": [
+      "onPress={closeCategoryPrompt}"
+    ]
+  },
+  {
+    "style": "priceModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96412,
+    "actions": [
+      "accessibilityViewIsModal"
+    ]
+  },
+  {
+    "style": "categoryManagerLimitCard",
+    "host": "View",
+    "material": "card",
+    "line": 96431,
+    "actions": []
+  },
+  {
+    "style": "categoryManagerSavingsCard",
+    "host": "View",
+    "material": "card",
+    "line": 96478,
+    "actions": []
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96533,
+    "actions": [
+      "onPress={handleCategoryEditSave}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96541,
+    "actions": [
+      "onPress={handleCategoryEditCancel}"
+    ]
+  },
+  {
+    "style": "categoryManagerAddButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96552,
+    "actions": [
+      "onPress={openAddCategoryModal}"
+    ]
+  },
+  {
+    "style": "categoryManagerDeleteButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96626,
+    "actions": [
+      "onPress={() => confirmCategoryDelete(entry.id)}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96642,
+    "actions": [
+      "onPress={closeManageCategoriesModal}"
+    ]
+  },
+  {
+    "style": "priceModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 96673,
+    "actions": []
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96736,
+    "actions": [
+      "onPress={handleAddCategorySave}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"addCategorySave\")}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 96746,
+    "actions": [
+      "onPress={closeAddCategoryModal}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"addCategoryCancel\")}"
+    ]
+  },
+  {
+    "style": "sheetButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 120825,
+    "actions": [
+      "onPress={() => onSelect(\"library\")}"
+    ]
+  },
+  {
+    "style": "sheetButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 120831,
+    "actions": [
+      "onPress={() => onSelect(\"camera\")}"
+    ]
+  },
+  {
+    "style": "impulseCategoryChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 121818,
+    "actions": [
+      "onPress={() => onChange?.(categoryId)}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityLabel={categoryLabel}",
+      "accessibilityState={{ selected: active }}"
+    ]
+  },
+  {
+    "style": "coinEntryCategoryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123259,
+    "actions": [
+      "onPress={() => {\n                            setSelectedCategory(categoryId);\n                            setCategoryError(false);\n                          }}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityLabel={label}",
+      "accessibilityState={{ selected: active }}"
+    ]
+  },
+  {
+    "style": "coinEntryActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123318,
+    "actions": [
+      "onPress={() => entryMode === \"spend\" ? handleAction(\"spend\") : setEntryMode(\"spend\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ selected: entryMode === \"spend\" }}"
+    ]
+  },
+  {
+    "style": "coinEntryActionButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123343,
+    "actions": [
+      "onPress={() => entryMode === \"save\" ? handleAction(\"save\") : setEntryMode(\"save\")}",
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ selected: entryMode === \"save\" }}"
+    ]
+  },
+  {
+    "style": "coinEntryManualCard",
+    "host": "View",
+    "material": "card",
+    "line": 123390,
+    "actions": []
+  },
+  {
+    "style": "coinEntryManualButtonPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123438,
+    "actions": [
+      "onPress={handleManualSave}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "frequencyModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 123624,
+    "actions": []
+  },
+  {
+    "style": "quickModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123680,
+    "actions": [
+      "onPress={onCancel}"
+    ]
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 123693,
+    "actions": [
+      "onPress={handleSave}"
+    ]
+  },
+  {
+    "style": "frequencyCadenceOption",
+    "host": "Pressable",
+    "material": "control",
+    "line": 123804,
+    "actions": [
+      "onPress={() => handleFrequencyChange(option.id)}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityLabel={\n                  optionMeta\n                    ? t(\"frequencyReminderCadenceOptionA11y\", {\n                        cadence: option.label,\n                        amount: optionMeta,\n                      })\n                    : option.label\n                }",
+      "accessibilityState={{ selected: isActive }}"
+    ]
+  },
+  {
+    "style": "frequencyDayChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 124253,
+    "actions": [
+      "onPress={() => toggleDay(day)}"
+    ]
+  },
+  {
+    "style": "frequencyMonthDayChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 124331,
+    "actions": [
+      "onPress={() => toggleDay(dayValue)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ selected: isActive }}"
+    ]
+  },
+  {
+    "style": "frequencyTimeToggleButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 124368,
+    "actions": [
+      "onPress={onPress}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={\n        summary\n          ? t(\"frequencyReminderSelectedTime\", { time: summary })\n          : t(\"frequencyReminderTimeLabel\")\n      }",
+      "accessibilityState={{ expanded }}"
+    ]
+  },
+  {
+    "style": "temptationEditGoalButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 124912,
+    "actions": [
+      "onPress={() => setScheduleExpanded(true)}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "temptationEditGoalButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125001,
+    "actions": [
+      "onPress={() => setGoalPickerExpanded((expanded) => !expanded)}",
+      "disabled={!allowGoalAssignment || availableGoals.length < 2}",
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ disabled: !allowGoalAssignment || availableGoals.length < 2, expanded: goalPickerExpanded }}"
+    ]
+  },
+  {
+    "style": "temptationEditGoalButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125018,
+    "actions": [
+      "onPress={() => { onChange(\"goalId\", goal.id); setGoalPickerExpanded(false); }}",
+      "accessibilityRole=\"button\""
+    ]
+  },
+  {
+    "style": "priceModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 125105,
+    "actions": []
+  },
+  {
+    "style": "incomeEntryPaydayChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125190,
+    "actions": [
+      "onPress={() => setDraft((prev) => ({ ...prev, payday: day }))}"
+    ]
+  },
+  {
+    "style": "priceModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125218,
+    "actions": [
+      "onPress={() => onSubmit?.(draft)}"
+    ]
+  },
+  {
+    "style": "priceModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125226,
+    "actions": [
+      "onPress={onSkip}"
+    ]
+  },
+  {
+    "style": "quickModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 125266,
+    "actions": []
+  },
+  {
+    "style": "quickModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125328,
+    "actions": [
+      "onPress={onCancel}"
+    ]
+  },
+  {
+    "style": "quickModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125341,
+    "actions": [
+      "onPress={onSubmit}"
+    ]
+  },
+  {
+    "style": "newPendingModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 125419,
+    "actions": []
+  },
+  {
+    "style": "newPendingFreezeChip",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125549,
+    "actions": [
+      "accessibilityRole=\"button\"",
+      "accessibilityState={{ selected }}",
+      "onPress={() => {\n                              onChange(\"freezeOptionId\", option.id);\n                              onChange(\"freezeDurationMs\", option.durationMs);\n                            }}"
+    ]
+  },
+  {
+    "style": "newPendingModalSecondary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125592,
+    "actions": [
+      "onPress={onCancel}"
+    ]
+  },
+  {
+    "style": "newPendingModalPrimary",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 125609,
+    "actions": [
+      "onPress={onSubmit}"
+    ]
+  },
+  {
+    "style": "levelShareButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 127053,
+    "actions": [
+      "onPress={() => onSharePress(levelNumber)}"
+    ]
+  },
+  {
+    "style": "saveCelebrationCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 127801,
+    "actions": []
+  },
+  {
+    "style": "redesignSaveResultHero",
+    "host": "View",
+    "material": "card",
+    "line": 127819,
+    "actions": []
+  },
+  {
+    "style": "saveCelebrationStatCard",
+    "host": "Animated.View",
+    "material": "row",
+    "line": 127841,
+    "actions": []
+  },
+  {
+    "style": "saveCelebrationPrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 127888,
+    "actions": [
+      "onPress={onPrimaryAction}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"saveOverlayPrimaryCta\")}"
+    ]
+  },
+  {
+    "style": "saveCelebrationCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 127914,
+    "actions": []
+  },
+  {
+    "style": "saveCountdownButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 127996,
+    "actions": [
+      "onPress={onCountdownAction}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"saveOverlayNextCta\")}"
+    ]
+  },
+  {
+    "style": "rewardCard",
+    "host": "View",
+    "material": "card",
+    "line": 128350,
+    "actions": []
+  },
+  {
+    "style": "chestRewardCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 128672,
+    "actions": []
+  },
+  {
+    "style": "chestRewardCloseButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 128684,
+    "actions": [
+      "onPress={handleDismiss}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"profileCancel\")}"
+    ]
+  },
+  {
+    "style": "chestRewardAction",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 128902,
+    "actions": [
+      "onPress={opened ? handleClose : handleChestTap}"
+    ]
+  },
+  {
+    "style": "dailyRewardCard",
+    "host": "View",
+    "material": "card",
+    "line": 129521,
+    "actions": []
+  },
+  {
+    "style": "usageStreakWeeklyCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 129781,
+    "actions": []
+  },
+  {
+    "style": "usageStreakWeeklyButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 129912,
+    "actions": [
+      "onPress={handleClose}"
+    ]
+  },
+  {
+    "style": "streakPledgeRewardCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 130108,
+    "actions": []
+  },
+  {
+    "style": "streakPledgeRewardButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 130209,
+    "actions": [
+      "onPress={handleClose}"
+    ]
+  },
+  {
+    "style": "streakPledgeCard",
+    "host": "View",
+    "material": "card",
+    "line": 130263,
+    "actions": []
+  },
+  {
+    "style": "streakPledgeOption",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 130288,
+    "actions": [
+      "onPress={() => setSelectedId(option.id)}"
+    ]
+  },
+  {
+    "style": "streakPledgePrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 130330,
+    "actions": [
+      "onPress={() => onConfirm?.(selectedOption, payload)}",
+      "disabled={!selectedOption}"
+    ]
+  },
+  {
+    "style": "usageStreakCard",
+    "host": "View",
+    "material": "card",
+    "line": 130637,
+    "actions": []
+  },
+  {
+    "style": "saveCelebrationPrimaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 130760,
+    "actions": [
+      "onPress={onDismiss}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"profileOk\")}"
+    ]
+  },
+  {
+    "style": "usageStreakRestoreCard",
+    "host": "View",
+    "material": "card",
+    "line": 130855,
+    "actions": []
+  },
+  {
+    "style": "usageStreakRestoreButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 130890,
+    "actions": [
+      "onPress={handleRestorePress}"
+    ]
+  },
+  {
+    "style": "featureUnlockButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 131153,
+    "actions": [
+      "onPress={onDismiss}"
+    ]
+  },
+  {
+    "style": "featureUnlockCard",
+    "host": "Animated.View",
+    "material": "card",
+    "line": 131161,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniHeroCard",
+    "host": "View",
+    "material": "card",
+    "line": 131331,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 131342,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 131387,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniChallengeCard",
+    "host": "View",
+    "material": "card",
+    "line": 131476,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniProfileCard",
+    "host": "View",
+    "material": "card",
+    "line": 131505,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniHeroCard",
+    "host": "View",
+    "material": "card",
+    "line": 131522,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniChallengeCard",
+    "host": "View",
+    "material": "card",
+    "line": 131540,
+    "actions": []
+  },
+  {
+    "style": "featureUnlockMiniModalCard",
+    "host": "View",
+    "material": "sheet",
+    "line": 131551,
+    "actions": []
+  },
+  {
+    "file": "src/components/PremiumUnlockStories.js",
+    "style": "brandBadge",
+    "host": "View",
+    "material": "card",
+    "line": 354,
+    "actions": []
+  },
+  {
+    "file": "src/components/PremiumUnlockStories.js",
+    "style": "closeButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 368,
+    "actions": [
+      "onPress={handleClose}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"premiumStoryCloseA11y\")}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumUnlockStories.js",
+    "style": "primaryButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 486,
+    "actions": [
+      "onPress={handlePrimaryAction}",
+      "onPressIn={() => animateButton(UI_MOTION.pressScale)}",
+      "onPressOut={() => animateButton(1)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"premiumStoryStart\")}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumUnlockStories.js",
+    "style": "nextButton",
+    "host": "Pressable",
+    "material": "control",
+    "line": 513,
+    "actions": [
+      "onPress={handlePrimaryAction}",
+      "onPressIn={() => animateButton(UI_MOTION.pressScale)}",
+      "onPressOut={() => animateButton(1)}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={t(\"premiumStoryNextA11y\")}"
+    ]
+  },
+  {
+    "file": "src/components/AbandonedOfferWheel.js",
+    "style": "primaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 526,
+    "actions": [
+      "onPress={stage === \"result\" ? handleClaim : handleSpin}",
+      "disabled={primaryDisabled}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={primaryLabel}",
+      "accessibilityState={{ disabled: primaryDisabled, busy: primaryDisabled }}"
+    ]
+  },
+  {
+    "file": "src/components/AbandonedOfferWheel.js",
+    "style": "secondaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 549,
+    "actions": [
+      "onPress={handleDismiss}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy?.transactionAbandonedPopupSecondaryCta}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "headerDismissIconButton",
+    "host": "View",
+    "material": "card",
+    "line": 1213,
+    "actions": []
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "freeTrialToggleCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 1364,
+    "actions": [
+      "onPress={handleFreeTrialToggle}",
+      "disabled={restoring || !!purchaseLoadingPlan}",
+      "accessibilityRole=\"switch\"",
+      "accessibilityLabel={freeTrialToggleTitle}",
+      "accessibilityState={{ checked: freeTrialEnabled, disabled: restoring || !!purchaseLoadingPlan }}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "planCard",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 1476,
+    "actions": [
+      "onLayout={(event) => {\n                      if (planId) {\n                        planCardOffsetsRef.current.set(planId, event.nativeEvent.layout.y);\n                      }\n                    }}",
+      "onPress={() => handlePlanSelect(plan)}",
+      "disabled={plan?.available === false}",
+      "accessibilityRole=\"radio\"",
+      "accessibilityLabel={`${titleLabel} ${planPriceLine || \"\"} ${planDetailLine || \"\"}`.trim()}",
+      "accessibilityState={{ selected, disabled: plan?.available === false }}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "planValueBadge",
+    "host": "View",
+    "material": "card",
+    "line": 1559,
+    "actions": []
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "secondaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 1698,
+    "actions": [
+      "onPress={() => onRestorePress({ source: \"restore_button\" })}",
+      "disabled={!!purchaseLoadingPlan || restoring}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy?.ctaRestore || localizedUi.restore}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "secondaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 1731,
+    "actions": [
+      "onPress={() => onManagePress({ source: \"manage_button\" })}",
+      "disabled={!!purchaseLoadingPlan || restoring}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={copy?.ctaManage || localizedUi.manage}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "primaryButton",
+    "host": "TouchableOpacity",
+    "material": "control",
+    "line": 1814,
+    "actions": [
+      "onPress={handlePrimaryPress}",
+      "disabled={purchaseDisabled}",
+      "accessibilityRole=\"button\"",
+      "accessibilityLabel={primaryButtonLabel}",
+      "accessibilityState={{ disabled: purchaseDisabled }}"
+    ]
+  },
+  {
+    "file": "src/components/PremiumPaywallModalV2.js",
+    "style": "abandonedWheelSheet",
+    "host": "View",
+    "material": "sheet",
+    "line": 1861,
+    "actions": []
+  }
+]

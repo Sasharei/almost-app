@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: 'Progress'
+- assertVisible: '.*Your progress.*|.*Main goal.*|.*Other steps.*'
+- takeScreenshot: progress
+- tapOn: 'Pause'
+- assertVisible: '.*Pause.*'
+- takeScreenshot: pause
+- tapOn: 'Budget'
+- assertVisible: '.*Give this money.*|.*Premium.*|.*Available.*'
+- takeScreenshot: budget
+- tapOn: 'Profile'
+- assertVisible: '.*Settings.*|.*Your data.*|.*Edit profile.*'
+- takeScreenshot: profile

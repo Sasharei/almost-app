@@ -1,0 +1,24 @@
+appId: com.sasarei.almostclean
+name: History persistence and settings
+---
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileHistory
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- takeScreenshot: history
+- stopApp
+- launchApp
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileHistory
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- takeScreenshot: history-after-restart

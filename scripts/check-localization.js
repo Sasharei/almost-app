@@ -7,6 +7,9 @@ const parser = require("@babel/parser");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const REQUIRED_TRANSLATION_EXPORTS = [
+  { file: "src/constants/almiWidgetCopy.js", names: ["ALMI_WIDGET_COPY"] },
+  { file: "src/constants/currencySelectorCopy.js", names: ["CURRENCY_SELECTOR_COPY"] },
+  { file: "src/constants/bankExpenseCopy.js", names: ["BANK_EXPENSE_COPY"] },
   {
     file: "src/constants/localizedUiCopy.js",
     names: [
@@ -297,6 +300,14 @@ function checkLanguageMapFallbackTranslations(requiredLanguages, errors) {
         continue;
       }
 
+      // These dictionaries contain translations into languages that do not use
+      // Cyrillic. A copied Russian source is not a valid localized fallback.
+      if (/[А-Яа-яЁё]/u.test(dictionary[key])) {
+        errors.push(`${FALLBACK_TRANSLATION_EXPORT.name}.${language}["${key}"] contains untranslated Cyrillic text.`);
+      }
+      if (/[—–]/u.test(dictionary[key])) {
+        errors.push(`${FALLBACK_TRANSLATION_EXPORT.name}.${language}["${key}"] contains a long dash; use natural sentence punctuation.`);
+      }
       const expectedPlaceholders = collectPlaceholders(key);
       const actualPlaceholders = collectPlaceholders(dictionary[key]);
       if (!sameSet(expectedPlaceholders, actualPlaceholders)) {

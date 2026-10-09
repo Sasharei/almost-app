@@ -1,0 +1,23 @@
+{
+  "status": "saved draft; reload verified",
+  "version": "8.0.0",
+  "saved_locales": [
+    "en-US",
+    "ar",
+    "de-DE",
+    "es-ES",
+    "fr-FR",
+    "it-IT",
+    "ja-JP",
+    "ko-KR",
+    "pt-BR",
+    "pt-PT",
+    "ru-RU",
+    "zh-TW"
+  ],
+  "prepared_unpersisted_locales": [
+    "es-419",
+    "zh-CN"
+  ],
+  "note": "Listing draft contains these languages, but release editor silently removes their notes on save; do not claim they are saved."
+}

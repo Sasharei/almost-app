@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+name: iPad tutorial resume native keyboard
+---
+- tapOn:
+    point: '93%,34%'
+- assertVisible: What happened to the purchase\?
+- tapOn: I decided not to buy
+- assertVisible:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: I decided not to buy
+- tapOn:
+    id: almost-pay-confirm
+- assertVisible: You made your first decision
+- runFlow: 05-tutorial-finish.yaml
+- runFlow: 06-save-result.yaml
+- takeScreenshot: ipad-saved

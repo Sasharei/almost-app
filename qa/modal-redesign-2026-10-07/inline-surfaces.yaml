@@ -1,0 +1,67 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- assertVisible:
+    id: qa-ready
+- tapOn:
+    id: qa-en
+- scrollUntilVisible:
+    element:
+      id: qa-share
+    direction: DOWN
+- tapOn:
+    id: qa-share
+- takeScreenshot: share
+- scrollUntilVisible:
+    element: "Close"
+    direction: DOWN
+- tapOn: "Close"
+- scrollUntilVisible:
+    element: closed-share
+    direction: DOWN
+- assertVisible: closed-share
+- scrollUntilVisible:
+    element:
+      id: qa-mood
+    direction: DOWN
+- tapOn:
+    id: qa-mood
+- takeScreenshot: mood
+- scrollUntilVisible:
+    element: "(?i)ok"
+    direction: DOWN
+- tapOn: "(?i)ok"
+- scrollUntilVisible:
+    element: closed-mood
+    direction: DOWN
+- assertVisible: closed-mood
+- scrollUntilVisible:
+    element:
+      id: qa-renewal
+    direction: DOWN
+- tapOn:
+    id: qa-renewal
+- takeScreenshot: renewal
+- scrollUntilVisible:
+    element: "Later"
+    direction: DOWN
+- tapOn: "Later"
+- scrollUntilVisible:
+    element: closed-renewal
+    direction: DOWN
+- assertVisible: closed-renewal
+- scrollUntilVisible:
+    element:
+      id: qa-confirmation
+    direction: DOWN
+- tapOn:
+    id: qa-confirmation
+- takeScreenshot: confirmation
+- scrollUntilVisible:
+    element: "Cancel"
+    direction: DOWN
+- tapOn: "Cancel"
+- scrollUntilVisible:
+    element: closed-confirmation
+    direction: DOWN
+- assertVisible: closed-confirmation

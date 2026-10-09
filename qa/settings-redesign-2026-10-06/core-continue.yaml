@@ -1,0 +1,55 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- assertVisible: "1234.56.*"
+- scrollUntilVisible:
+    element:
+      id: settings-payday
+    direction: DOWN
+- tapOn:
+    id: settings-payday
+- scrollUntilVisible:
+    element:
+      text: '31'
+    direction: DOWN
+- tapOn: '31'
+- takeScreenshot: payday-light
+- scrollUntilVisible:
+    element:
+      text: 'Сохранить'
+    direction: DOWN
+- tapOn: 'Сохранить'
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+- assertVisible:
+    id: settings-expenses-premium-badge
+- tapOn:
+    id: settings-expenses
+- assertVisible:
+    id: expenses-premium-badge
+- takeScreenshot: expenses-free
+- tapOn:
+    id: expenses-upgrade
+- assertNotVisible:
+    id: expenses-premium-badge
+- assertVisible:
+    id: expenses-enable
+- takeScreenshot: expenses-premium
+- tapOn:
+    id: expenses-enable
+- assertVisible:
+    id: expenses-shortcuts
+- tapOn:
+    id: expenses-close
+- assertNotVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: settings-premium-badge-gone
+- tapOn:
+    id: qa-error
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-error
+- tapOn: 'Повторить'
+- tapOn:
+    id: expenses-close

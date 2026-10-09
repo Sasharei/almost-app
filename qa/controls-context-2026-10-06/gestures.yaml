@@ -1,0 +1,24 @@
+appId: com.sasarei.almostclean
+---
+- swipe:
+    start: 50%,43%
+    end: 95%,48%
+    duration: 1000
+- assertVisible: 'До \$30'
+- takeScreenshot: slider-right-limit
+- swipe:
+    start: 88%,43%
+    end: 12%,38%
+    duration: 1000
+- assertVisible: 'До \$30'
+- takeScreenshot: slider-left-limit
+- swipe:
+    start: 12%,43%
+    end: 85%,43%
+    duration: 800
+- assertVisible: 'До \$30'
+- takeScreenshot: slider-repeated-range
+- tapOn: 'Закрыть без подтверждения'
+- assertVisible:
+    id: qa-time
+- takeScreenshot: wheel-before

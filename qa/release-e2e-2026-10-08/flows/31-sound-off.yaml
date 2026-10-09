@@ -1,0 +1,20 @@
+appId: com.sasarei.almostclean
+name: Disable sound and inspect settings
+---
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: settings-row-soundLabel
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-row-soundLabel
+- takeScreenshot: sound-setting

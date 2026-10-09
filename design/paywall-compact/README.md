@@ -1,0 +1,9 @@
+# Compact paywall — 2026-10-03
+
+Primary action: purchase the selected plan or begin the eligible yearly trial. Secondary actions: select a plan, toggle the trial, inspect benefits, restore/manage subscription, open legal links, dismiss after the existing cooldown. Purchase/restore loading and unavailable-plan states retain disabled controls; error messages and retry remain intact. Eligibility continues to come from store metadata.
+
+The hero is 96–108 points tall, the empty dismissal header no longer consumes a separate row, and the plan list comes before benefits. All three plan cards have an 80-point minimum height. Trial text uses a readable green on a green-tinted surface, including a full untruncated trial duration inside the yearly card. Callback and purchase wiring are preserved. No display strings changed.
+
+Visual evidence: actual component in a temporary React Native Web harness, light/dark/all six PRO accents, 320×667 and 390×844, RTL with fontScale 1.3, and ineligible state. All three plans fit before scrolling at standard text sizes tested. Monthly selection disables the yearly trial and updates the CTA; re-enabling the trial restores yearly selection. At larger accessibility settings, scrolling remains available. Web fixtures use illustrative prices and substitute native surfaces. Native simulator/device rendering was not tested.
+
+Reviewed the five UX principles and seven laws: visible grouped plan choice, one purchase CTA, adequate targets, distinct secondary controls, honest trial/renewal terms, preserved cancel/back and accessible layouts. No new strings; localization passes all 11 supported languages. Theme and functional parity checks pass. The hero-size contract was updated for the explicitly requested layout compression; purchase/restore/legal assertions remain. Full verify stops at the existing 11 npm audit advisories; attribution, cloud, session and engagement tests before that gate pass.

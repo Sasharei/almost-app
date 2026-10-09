@@ -1,0 +1,62 @@
+appId: com.sasarei.almostclean
+name: Round two native action review
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- tapOn: Today
+- assertVisible:
+    id: today-savings-details
+- takeScreenshot: today
+- tapOn:
+    id: today-savings-details
+- assertVisible: Money movement
+- tapOn: Weeks
+- takeScreenshot: savings-week
+- tapOn: Spent
+- takeScreenshot: spending-week
+- tapOn: Close breakdown
+- tapOn: How much?
+- assertVisible: Slide the coin and pick a category.
+- takeScreenshot: quick-entry
+- tapOn: Spend
+- takeScreenshot: quick-spend
+- tapOn: Cancel
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- takeScreenshot: profile
+- tapOn: Care for Almi
+- assertVisible:
+    id: tamagotchi-back-button
+- takeScreenshot: care-food
+- tapOn: Games
+- takeScreenshot: care-games
+- tapOn: Clean
+- takeScreenshot: care-clean
+- tapOn:
+    id: tamagotchi-back-button
+- tapOn:
+    id: header-help
+- tapOn: Close
+- tapOn:
+    id: header-bug-report
+- tapOn: Cancel
+- tapOn:
+    id: profile-edit-avatar
+- assertVisible:
+    id: profile-save
+- takeScreenshot: edit
+- tapOn: Cancel
+- tapOn: Progress
+- takeScreenshot: progress
+- tapOn: Pause
+- takeScreenshot: pause
+- tapOn: Budget
+- takeScreenshot: budget
+- tapOn:
+    id: budget-details
+    optional: true
+- takeScreenshot: budget-details

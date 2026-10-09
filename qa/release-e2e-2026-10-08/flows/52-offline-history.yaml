@@ -1,0 +1,11 @@
+appId: com.sasarei.almostclean
+name: Offline ledger and pause persisted
+---
+- stopApp
+- launchApp:
+    permissions:
+      notifications: deny
+- tapOn: Pause
+- assertVisible: Coffee to-go|Coffee and pastry combo
+- takeScreenshot: offline-pause
+- runFlow: 15-history-assert.yaml

@@ -1,0 +1,5 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- assertVisible:
+    text: '.*Today.*|.*English.*|.*Русский.*'

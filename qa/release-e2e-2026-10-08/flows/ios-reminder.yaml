@@ -1,0 +1,10 @@
+appId: com.sasarei.almostclean
+name: iOS weekly reminder
+---
+- tapOn: Weekly, estimated.*
+- takeScreenshot: weekly-ios
+- tapOn: Remind at.*
+- takeScreenshot: time-picker-ios
+- tapOn: Set reminder
+- waitForAnimationToEnd
+- takeScreenshot: ios-reminder-complete

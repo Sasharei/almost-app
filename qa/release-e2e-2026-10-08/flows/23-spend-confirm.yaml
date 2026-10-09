@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: Spend cancel retry and exact result
+---
+- tapOn: Keep saving
+- assertVisible:
+    id: decision-spend
+- tapOn:
+    id: decision-spend
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible: Back to today
+    timeout: 15000
+- assertVisible: .*3\.50.*
+- takeScreenshot: spent-exact-result
+- tapOn: Back to today
+- takeScreenshot: after-spend

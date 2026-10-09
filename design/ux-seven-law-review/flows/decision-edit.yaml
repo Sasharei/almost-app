@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+---
+- takeScreenshot: restored-slider
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: '12.34'
+- hideKeyboard
+- takeScreenshot: exact-amount
+- tapOn:
+    id: decision-edit-card
+- takeScreenshot: card-editor

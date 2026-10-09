@@ -1,0 +1,8 @@
+appId: com.sasarei.almostclean
+name: Pause content and income editor
+---
+- tapOn: Ok
+- tapOn: Pause
+- assertVisible: Coffee to-go|Coffee and pastry combo
+- takeScreenshot: pause-content
+- runFlow: 44-income.yaml

@@ -1,0 +1,53 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: "Make a decision|OK"
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Missing.*EXPO_PUBLIC_RC.*"
+    commands:
+      - tapOn: OK
+- takeScreenshot: today
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: wheel
+- tapOn: Pause
+- assertVisible: ".*QA Pause Timer.*"
+- takeScreenshot: pause
+- tapOn: Profile
+- assertVisible: ".*QA Tester.*"
+- takeScreenshot: profile
+- scrollUntilVisible:
+    element:
+      text: ".*Settings.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*Settings.*"
+- assertVisible: App sounds
+- takeScreenshot: settings
+- assertNotVisible: Open All Settings
+- scrollUntilVisible:
+    element:
+      text: ".*Categories.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*Categories.*"
+- assertVisible: Add category
+- takeScreenshot: categories
+- tapOn: Add category
+- assertVisible: New category
+- takeScreenshot: new-category
+- tapOn: Name
+- inputText: QA New Category
+- hideKeyboard
+- tapOn: Save
+- assertVisible: QA New Category
+- takeScreenshot: category-created
+- tapOn: Done
+- tapOn: Pause
+- assertVisible: ".*QA Pause Timer.*"
+- tapOn: ".*QA Pause Timer.*"
+- takeScreenshot: pause-detail

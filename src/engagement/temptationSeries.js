@@ -232,6 +232,7 @@ const reconcileTemptationSeriesTargets = (
   {
     dayKey = null,
     targetIds = [],
+    eligibleIds = null,
     historyResolutions = {},
     timestamp = Date.now(),
   } = {}
@@ -259,8 +260,10 @@ const reconcileTemptationSeriesTargets = (
       resolutions[id] = resolution;
     });
   }
+  const eligible = Array.isArray(eligibleIds) ? new Set(normalizeTemptationIds(eligibleIds)) : null;
+  if (eligible) targetIds = normalizeTemptationIds(targetIds).filter((id) => eligible.has(id));
   const resolvedTodayIds = Object.entries(resolutions).reduce((ids, [id, resolution]) => {
-    if (getLocalDayKey(resolution.firstAt) === todayKey) ids.push(id);
+    if ((!eligible || eligible.has(id)) && getLocalDayKey(resolution.firstAt) === todayKey) ids.push(id);
     return ids;
   }, []);
   const nextTargetIds = normalizeTemptationIds([...targetIds, ...resolvedTodayIds]);

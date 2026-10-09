@@ -1,0 +1,45 @@
+appId: com.sasarei.almostclean
+name: Assert settled native navigation
+---
+- tapOn:
+    text: Progress
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: You are closer
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 20000
+- assertVisible:
+    id: header-bug-report
+- takeScreenshot: progress-light
+- tapOn:
+    text: Pause
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: All quiet for now
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 20000
+- assertVisible:
+    id: header-bug-report
+- takeScreenshot: pause-light
+- tapOn:
+    text: Budget
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: Take the next step
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 20000
+- assertVisible:
+    id: header-bug-report
+- takeScreenshot: budget-light
+- tapOn: Today
+- assertVisible:
+    id: today-savings-details

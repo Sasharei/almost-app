@@ -1,0 +1,105 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- takeScreenshot: settings-top-light
+- tapOn:
+    id: settings-language
+- assertVisible: English
+- takeScreenshot: language-light
+- tapOn:
+    id: settings-back
+- tapOn:
+    id: settings-theme
+- takeScreenshot: theme-free
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-row-incomeEntryAmountLabel
+    direction: DOWN
+- takeScreenshot: settings-personal-light
+- tapOn:
+    id: settings-row-incomeEntryAmountLabel
+- assertVisible:
+    id: income-entry-amount
+- takeScreenshot: income-light
+- tapOn:
+    id: income-entry-amount
+- inputText: '1234.56'
+- waitForAnimationToEnd
+- takeScreenshot: income-keyboard-light
+- scrollUntilVisible:
+    element:
+      id: income-entry-confirm
+    direction: DOWN
+- waitForAnimationToEnd
+- tapOn:
+    id: income-entry-confirm
+- extendedWaitUntil:
+    visible:
+      id: settings-row-incomeEntryAmountLabel
+    timeout: 10000
+- assertVisible:
+    id: qa-result
+- scrollUntilVisible:
+    element:
+      id: settings-payday
+    direction: DOWN
+- tapOn:
+    id: settings-payday
+- scrollUntilVisible:
+    element:
+      text: '31'
+    direction: DOWN
+- tapOn: '31'
+- takeScreenshot: payday-light
+- scrollUntilVisible:
+    element:
+      text: 'Сохранить'
+    direction: DOWN
+- tapOn: 'Сохранить'
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+- assertVisible:
+    id: settings-expenses-premium-badge
+- tapOn:
+    id: settings-expenses
+- assertVisible:
+    id: expenses-premium-badge
+- takeScreenshot: expenses-free
+- tapOn:
+    id: expenses-upgrade
+- assertNotVisible:
+    id: expenses-premium-badge
+- assertVisible:
+    id: expenses-enable
+- takeScreenshot: expenses-premium
+- tapOn:
+    id: expenses-enable
+- assertVisible:
+    id: expenses-shortcuts
+- tapOn:
+    id: expenses-close
+- assertNotVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: settings-premium-badge-gone
+- tapOn:
+    id: qa-error
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-error
+- tapOn: 'Повторить'
+- tapOn:
+    id: expenses-close

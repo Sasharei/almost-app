@@ -1,0 +1,50 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 240000
+- runFlow:
+    when:
+      visible: Not now
+    commands:
+      - tapOn: Not now
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- tapOn:
+    id: decision-card-picker
+- tapOn: '.*QA Coffee.*'
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: '17.5'
+- tapOn:
+    id: decision-amount-done
+- tapOn: I decided not to buy
+- assertVisible: Choose a category
+- tapOn: Not now
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- tapOn: I decided not to buy
+- tapOn: Save category
+- assertVisible:
+    id: almost-pay-confirm
+- takeScreenshot: confirmation-after-category
+- tapOn:
+    id: almost-pay-cancel
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- takeScreenshot: cancellation-retains-amount
+- tapOn: I decided not to buy
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- takeScreenshot: committed-save

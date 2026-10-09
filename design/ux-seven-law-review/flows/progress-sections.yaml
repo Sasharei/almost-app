@@ -1,0 +1,17 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Continue with limited version
+- tapOn: Progress
+- scrollUntilVisible:
+    element:
+      text: 'All goals.*'
+    direction: DOWN
+- tapOn: 'All goals.*'
+- takeScreenshot: all-goals
+- tapOn: '‹  Progress'
+- scrollUntilVisible:
+    element:
+      text: 'Challenges and rewards.*'
+    direction: DOWN
+- tapOn: 'Challenges and rewards.*'
+- takeScreenshot: rewards

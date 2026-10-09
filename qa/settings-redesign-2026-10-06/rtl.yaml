@@ -1,0 +1,22 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp: {}
+- extendedWaitUntil:
+    visible:
+      id: qa-state
+    timeout: 60000
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ar&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: light:gold:ar
+    timeout: 10000
+- takeScreenshot: settings-ar-final
+- tapOn:
+    id: settings-language
+- assertVisible:
+    id: settings-choice-en
+- takeScreenshot: language-ar-final

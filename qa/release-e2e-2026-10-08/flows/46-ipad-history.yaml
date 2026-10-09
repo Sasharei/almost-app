@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: iPad leave settings and verify history
+---
+- tapOn:
+    id: settings-back
+- runFlow: 15-history-assert.yaml

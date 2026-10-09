@@ -238,3 +238,50 @@ test("a category slice remains one feed even when it has no temptations due toda
   assert.deepEqual(partition.checkedToday, []);
   assert.deepEqual(partition.other, items);
 });
+
+
+test("duplicate catalog aliases count once and unrelated history does not resolve a card", () => {
+  const plan = buildPlan({
+    products: [{ id: "coffee" }, { id: "coffee-copy", templateId: "coffee" }],
+    interactions: { coffee: { nextCheckAt: TODAY_EVENING } },
+    history: [{ kind: "spend", timestamp: TODAY_MORNING, meta: { templateId: "external-purchase" } }],
+  });
+  assert.deepEqual(plan.targetIds, ["coffee"]);
+  assert.deepEqual(plan.checkedIds, []);
+  assert.deepEqual(Object.keys(plan.resolutions), []);
+});
+
+
+test("a new profile gets its first three unique personalized cards without timers", () => {
+  const products = [{ id: "gamer" }, { id: "dlc" }, { id: "game-pass" }, { id: "coffee" }];
+  const plan = buildPlan({ products });
+  assert.deepEqual(plan.targetIds, ["gamer", "dlc", "game-pass"]);
+  assert.deepEqual(plan.dueIds, plan.targetIds);
+  const afterSave = buildPlan({ products, history: [{ kind: "refuse_spend", timestamp: TODAY_MORNING, meta: { templateId: "gamer" } }] });
+  assert.deepEqual(afterSave.targetIds, plan.targetIds);
+  assert.deepEqual(afterSave.dueIds, ["dlc", "game-pass"]);
+  assert.deepEqual(afterSave.checkedIds, ["gamer"]);
+  const complete = buildPlan({ products, history: plan.targetIds.map(templateId => ({ kind: "spend", timestamp: TODAY_MORNING, meta: { templateId } })) });
+  assert.deepEqual(complete.targetIds, plan.targetIds);
+  assert.deepEqual(complete.dueIds, []);
+});
+
+test("starter plan deduplicates aliases and respects a future manual timer", () => {
+  const products = [{ id: "coffee", templateId: "coffee" }, { id: "alias", templateId: "coffee" }, { id: "snack" }, { id: "dessert" }, { id: "taxi" }];
+  assert.deepEqual(buildPlan({ products }).targetIds, ["coffee", "snack", "dessert"]);
+  const scheduled = buildPlan({ products, interactions: { coffee: { frequencyReminderManualConfigured: true, nextCheckAt: TOMORROW } } });
+  assert.deepEqual(scheduled.targetIds, []);
+});
+
+
+test("configuring a timer after the first starter decision keeps the remaining two in the plan", () => {
+  const products = [{ id: "coffee" }, { id: "snack" }, { id: "dessert" }, { id: "taxi" }];
+  const plan = buildTodayTemptationPlan({ products, timestamp: TODAY,
+    activeTargetIds: ["coffee", "snack", "dessert"],
+    interactionStats: { coffee: { frequencyReminderManualConfigured: true, nextCheckAt: TOMORROW } },
+    historyEvents: [{ kind: "refuse_spend", timestamp: TODAY_MORNING, meta: { templateId: "coffee" } }],
+  });
+  assert.deepEqual(plan.targetIds, ["coffee", "snack", "dessert"]);
+  assert.deepEqual(plan.dueIds, ["snack", "dessert"]);
+  assert.deepEqual(plan.checkedIds, ["coffee"]);
+});

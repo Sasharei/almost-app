@@ -1,0 +1,11 @@
+Almost 8.0 is here — a complete redesign and a new way to shop less!
+
+We rebuilt the entire experience: refreshed screens, clearer navigation, easier everyday controls and a new look for your goals, budget, progress and Almi. Your next step is easier to find, from the first decision to your next milestone.
+
+NEW: Shopping Pause on iPhone. Block selected shopping apps with Screen Time, record savings toward your target and unlock one app for a 30-minute visit when you reach it. You choose the apps and stay in control.
+
+NEW: Apple Pay expense tracking. Set up a Wallet automation in Shortcuts to automatically import supported payments, see them in your spending history and budget, correct categories and review expenses. Almi can celebrate a received payment with a Live Activity.
+
+Redesigned widgets, clearer reports, improved savings decisions and renewed onboarding bring it all together. Welcome to the new Almost Savings!
+
+Shopping Pause requires iOS 16+. Apple Pay import requires iOS 17+, Almost Premium and a user-enabled Wallet automation; only payments delivered by that automation are imported.

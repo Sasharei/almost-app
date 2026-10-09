@@ -1,0 +1,19 @@
+appId: com.sasarei.almostclean
+name: Redesigned help, rewards and challenge routes
+---
+- tapOn:
+    point: "92%,93%"
+- tapOn:
+    point: "92%,87%"
+- tapOn:
+    id: header-help
+- assertVisible: Close
+- takeScreenshot: help-dark
+- tapOn: Close
+- tapOn: Progress
+- takeScreenshot: progress-dark
+- scrollUntilVisible:
+    element: Subscription watch
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: subscriptions-dark

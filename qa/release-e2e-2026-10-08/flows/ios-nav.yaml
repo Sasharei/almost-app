@@ -1,0 +1,27 @@
+appId: com.sasarei.almostclean
+name: iOS navigation and persistent record
+---
+- runFlow:
+    when:
+      visible: Continue with limited version
+    commands:
+      - tapOn: Continue with limited version
+- tapOn: Today
+- takeScreenshot: today-ios
+- tapOn: Progress
+- runFlow:
+    when:
+      visible: Got it
+    commands:
+      - tapOn: Got it
+- takeScreenshot: progress-ios
+- tapOn: Budget
+- runFlow:
+    when:
+      visible: Got it
+    commands:
+      - tapOn: Got it
+- takeScreenshot: budget-ios
+- tapOn: Profile
+- takeScreenshot: profile-ios
+- runFlow: 13-history.yaml

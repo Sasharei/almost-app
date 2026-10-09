@@ -273,8 +273,8 @@ android {
         applicationId "com.sasarei.almostclean"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 127
-        versionName "7.2.1"
+        versionCode 128
+        versionName "8.0.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
         resValue "string", "facebook_app_id", facebookAppId
@@ -364,6 +364,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation("com.google.android.material:material:1.12.0")
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     implementation("com.facebook.android:facebook-android-sdk:${facebookSdkVersion}")

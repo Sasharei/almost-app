@@ -1,3 +1,4 @@
+import PlatformSurface, { PlatformPressable } from "./PlatformSurface";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -6,13 +7,13 @@ import {
   Image,
   PanResponder,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { AccessiblePressable as Pressable } from "./AccessibleControls";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -351,7 +352,7 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
         </View>
 
         <View style={[styles.brandRow, isRtl && styles.rowReverse]}>
-          <View
+          <PlatformSurface surfaceRole="card"
             style={[
               styles.brandBadge,
               { backgroundColor: palette.card, borderColor: palette.border },
@@ -364,8 +365,8 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
             >
               {t("premiumStoryBadge")}
             </Text>
-          </View>
-          <Pressable
+          </PlatformSurface>
+          <PlatformPressable surfaceRole="control"
             onPress={handleClose}
             hitSlop={8}
             style={({ pressed }) => [
@@ -379,7 +380,7 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
             <Text style={[styles.closeGlyph, { color: palette.text }]} maxFontSizeMultiplier={1}>
               ×
             </Text>
-          </Pressable>
+          </PlatformPressable>
         </View>
       </View>
 
@@ -483,7 +484,7 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
       >
         {isLastStory ? (
           <Animated.View style={[styles.primaryButtonWrap, { transform: [{ scale: buttonScale }] }]}>
-            <Pressable
+            <PlatformPressable surfaceRole="control"
               onPress={handlePrimaryAction}
               onPressIn={() => animateButton(UI_MOTION.pressScale)}
               onPressOut={() => animateButton(1)}
@@ -507,10 +508,10 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
               >
                 {isRtl ? "←" : "→"}
               </Text>
-            </Pressable>
+            </PlatformPressable>
           </Animated.View>
         ) : (
-          <Pressable
+          <PlatformPressable surfaceRole="control"
             onPress={handlePrimaryAction}
             onPressIn={() => animateButton(UI_MOTION.pressScale)}
             onPressOut={() => animateButton(1)}
@@ -531,7 +532,7 @@ const PremiumUnlockStories = ({ colors, language, onClose, playSound, t }) => {
             >
               {isRtl ? "←" : "→"}
             </Animated.Text>
-          </Pressable>
+          </PlatformPressable>
         )}
       </View>
     </View>

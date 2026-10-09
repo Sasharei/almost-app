@@ -3,3 +3,6 @@
 "NSMotionUsageDescription" = "貯金箱のコインを端末の傾きに合わせて動かすため、モーションデータを使用します。";
 "NSPhotoLibraryUsageDescription" = "プロフィール画像を更新するため、Almostに写真へのアクセスを許可してください。";
 "NSUserTrackingUsageDescription" = "広告効果を測定するためにデータが使用されます。";
+"NSFaceIDUsageDescription" = "AlmostはAlmost Payで選択を確認するためだけにFace IDを使用します。実際の支払いは行われません。";
+
+"CFBundleDisplayName" = "Almost Savings";

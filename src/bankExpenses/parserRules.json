@@ -1,0 +1,7 @@
+{
+  "outgoing": "\\b(purchase|purchased|paid|payment|spent|debited|charged|compra|pago|pagamento|acquisto|achat|paiement|kauf|bezahlt|abbuchung)\\b|покупк|оплат|списан|شراء|دفع|خصم|支付|消费|消費|支払|購入|결제|구매",
+  "exclude": "\\b(declined|failed|rejected|pending|refund|refunded|reversed|reversal|cashback|credited|received|otp|verification|verify|scheduled|due|request|attempt|unsuccessful|insufficient|not|declinada|rechazado|reembolso|recibido|recusado|recebido|rifiutato|rimborso|refuse|remboursement|recu|abgelehnt|erstattung|erhalten)\\b|отклон|отмен|возврат|зачислен|поступлен|не выполн|ожидан|код|رفض|مرفوض|استرداد|إيداع|ايداع|رمز|لم تتم|失败|失敗|退款|验证码|驗證碼|入账|入帳|返金|失敗|認証|입금|취소|실패|인증|refusé|remboursé|reçu|rifiutat|rimborso|recusad|rechazad|abgelehnt|fehlgeschlagen|отказ|ошибк|неуспеш|رفض|معلق|قيد المعالجة|待处理|待處理|撤销|撤銷|取消|취소|보류|\\b(will|tomorrow|offer|earn|reward|limit|minimum|authorization|authorisation)\\b",
+  "balance": "balance|available|remaining|saldo|solde|guthaben|остат|баланс|رصيد|الرصيد|متاح|余额|餘額|残高|잔액",
+  "code": "(?:CZK|KGS|MDL|NGN|RON|UAH|PKR|SCR|UZS|USD|EUR|GBP|SAR|AED|RUB|CNY|JPY|KRW|BRL|CAD|AUD|CHF|INR|KWD|BHD|OMR|QAR|EGP|TRY|MXN|PLN|SEK|NOK|DKK|ZAR|HKD|SGD|NZD|IDR|THB|MYR|PHP|VND|ILS|TWD|€|£|₽|ر\\.س\\.?|ر\\.س|ريال|درهم)",
+  "number": "[0-9]+(?:[., ][0-9]+)*"
+}

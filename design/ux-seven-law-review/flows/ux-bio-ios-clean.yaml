@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- tapOn:
+    point: "50%, 51%"
+- assertVisible:
+    id: decision-amount-input
+- tapOn: I decided not to buy
+- assertVisible: Almost Pay
+- takeScreenshot: biometric-or-fallback

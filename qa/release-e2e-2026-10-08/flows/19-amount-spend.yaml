@@ -1,0 +1,47 @@
+appId: com.sasarei.almostclean
+name: Zero amount validation and spend cancel retry
+---
+- runFlow:
+    when:
+      visible: Continue with limited version
+    commands:
+      - tapOn: Continue with limited version
+- tapOn: Today
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- runFlow:
+    when:
+      visible: Afternoon coffee refill,.*
+    commands:
+      - tapOn: Afternoon coffee refill,.*
+- runFlow:
+    when:
+      visible: Check temptation
+    commands:
+      - tapOn:
+          text: Check temptation
+          index: 0
+- assertVisible:
+    id: decision-amount-input
+- tapOn:
+    id: decision-amount-input
+- eraseText: 20
+- inputText: '0'
+- tapOn:
+    id: decision-amount-done
+- assertVisible: Add an average cost
+- takeScreenshot: zero-invalid
+- tapOn:
+    id: decision-amount-input
+- eraseText: 20
+- inputText: '3.50'
+- tapOn:
+    id: decision-amount-done
+- tapOn:
+    id: decision-spend
+- takeScreenshot: spend-confirm

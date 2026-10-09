@@ -1,0 +1,37 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    point: "84%, 94%"
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'Light'
+- waitForAnimationToEnd
+- takeScreenshot: theme-0-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'Dark'
+- waitForAnimationToEnd
+- takeScreenshot: theme-1-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Indigo'
+- waitForAnimationToEnd
+- takeScreenshot: theme-2-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Emerald'
+- waitForAnimationToEnd
+- takeScreenshot: theme-3-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Sunset'
+- waitForAnimationToEnd
+- takeScreenshot: theme-4-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Gold'
+- waitForAnimationToEnd
+- takeScreenshot: theme-5-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Violet'
+- waitForAnimationToEnd
+- takeScreenshot: theme-6-settings
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Aqua'
+- waitForAnimationToEnd
+- takeScreenshot: theme-7-settings

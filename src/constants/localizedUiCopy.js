@@ -7,7 +7,8 @@ export const WEEKDAY_FULL_LABELS = {
   pt: ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"],
   it: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
   ar: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"],
-  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  "zh-Hant": ["週日", "週一", "週二", "週三", "週四", "週五", "週六"],
+    zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
   ko: ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
   ja: ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
 };
@@ -69,7 +70,14 @@ export const HEALTH_COIN_LABELS = {
     blue: "عملات زرقاء",
     green: "عملات خضراء",
   },
-  zh: {
+  "zh-Hant": {
+    pink: "粉色幣",
+    red: "紅色幣",
+    orange: "橙色幣",
+    blue: "藍色幣",
+    green: "綠色幣",
+  },
+    zh: {
     pink: "粉色币",
     red: "红色币",
     orange: "橙色币",
@@ -101,7 +109,8 @@ export const ZERO_HEALTH_REWARD_LABELS = {
   pt: "0 moedas",
   it: "0 monete",
   ar: "0 عملات",
-  zh: "0 个币",
+  "zh-Hant": "0 個幣",
+    zh: "0 个币",
   ko: "코인 0개",
   ja: "コイン0枚",
 };
@@ -115,7 +124,8 @@ export const WEEKDAY_LABELS = {
   pt: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
   it: ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
   ar: ["أحد", "اثن", "ثلا", "أرب", "خمي", "جمع", "سبت"],
-  zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+  "zh-Hant": ["週日", "週一", "週二", "週三", "週四", "週五", "週六"],
+    zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
   ko: ["일", "월", "화", "수", "목", "금", "토"],
   ja: ["日", "月", "火", "水", "木", "金", "土"],
 };
@@ -129,7 +139,8 @@ export const WEEKDAY_LABELS_MONDAY_FIRST = {
   pt: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"],
   it: ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"],
   ar: ["اثن", "ثلا", "أرب", "خمي", "جمع", "سبت", "أحد"],
-  zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+  "zh-Hant": ["週一", "週二", "週三", "週四", "週五", "週六", "週日"],
+    zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
   ko: ["월", "화", "수", "목", "금", "토", "일"],
   ja: ["月", "火", "水", "木", "金", "土", "日"],
 };
@@ -155,7 +166,8 @@ export const FREQUENCY_COUNTDOWN_TOKENS = {
   pt: { day: "d", hour: "h", minute: "min" },
   it: { day: "g", hour: "h", minute: "min" },
   ar: { day: "ي", hour: "س", minute: "د" },
-  zh: { day: "天", hour: "小时", minute: "分" },
+  "zh-Hant": { day: "天", hour: "小時", minute: "分" },
+    zh: { day: "天", hour: "小时", minute: "分" },
   ko: { day: "일", hour: "시간", minute: "분" },
   ja: { day: "日", hour: "時間", minute: "分" },
 };
@@ -169,7 +181,8 @@ export const FRIDGE_DOOR_NOTE_LABELS = {
   pt: "Lista de compras",
   it: "Lista acquisti",
   ar: "قائمة المشتريات",
-  zh: "购物清单",
+  "zh-Hant": "購物清單",
+    zh: "购物清单",
   ko: "구매 목록",
   ja: "買い物リスト",
 };
@@ -183,7 +196,8 @@ export const TEMPTATION_SAVINGS_SCORE_LABELS = {
   pt: "Pontuação de poupança",
   it: "Punteggio risparmio",
   ar: "درجة الادخار",
-  zh: "储蓄评分",
+  "zh-Hant": "儲蓄評分",
+    zh: "储蓄评分",
   ko: "저축 점수",
   ja: "節約スコア",
 };
@@ -197,7 +211,8 @@ export const TEMPTATION_SAVINGS_SCORE_COMPACT_TEMPLATES = {
   pt: "Evitado {{count}}× · +{{amount}}",
   it: "Saltato {{count}}× · +{{amount}}",
   ar: "تم التخطي {{count}}× · +{{amount}}",
-  zh: "已跳过 {{count}}× · +{{amount}}",
+  "zh-Hant": "已跳過 {{count}}× · +{{amount}}",
+    zh: "已跳过 {{count}}× · +{{amount}}",
   ko: "{{count}}× 건너뜀 · +{{amount}}",
   ja: "{{count}}回見送り · +{{amount}}",
 };
@@ -211,7 +226,8 @@ export const TEMPTATION_DUPLICATE_ACTION_LABELS = {
   pt: "Duplicar cartão",
   it: "Duplica scheda",
   ar: "تكرار البطاقة",
-  zh: "复制卡片",
+  "zh-Hant": "複製卡片",
+    zh: "复制卡片",
   ko: "카드 복제",
   ja: "カードを複製",
 };
@@ -225,7 +241,8 @@ export const TEMPTATION_DUPLICATE_HINTS = {
   pt: "A cópia já foi criada. Atualize o nome e os detalhes.",
   it: "La copia è già stata creata. Aggiorna il nome e i dettagli.",
   ar: "تم إنشاء النسخة بالفعل. حدّث اسمها وتفاصيلها.",
-  zh: "副本已创建。请更新名称和详细信息。",
+  "zh-Hant": "副本已建立。請更新名稱和詳細資訊。",
+    zh: "副本已创建。请更新名称和详细信息。",
   ko: "복사본이 이미 생성되었습니다. 이름과 세부 정보를 수정하세요.",
   ja: "コピーを作成しました。名前と詳細を編集してください。",
 };

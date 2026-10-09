@@ -1,0 +1,10 @@
+appId: com.sasarei.almostclean
+name: E2E-002 Tutorial opens real decision cards
+---
+- assertVisible: Try it with your purchase
+- tapOn:
+    id: today-make-decision
+- assertVisible: Choose a purchase
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: tutorial-card-wheel

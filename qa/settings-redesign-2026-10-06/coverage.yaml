@@ -1,0 +1,82 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp: {}
+- extendedWaitUntil:
+    visible:
+      id: qa-state
+    timeout: 60000
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible: light:gold:ru
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: settings-payday
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: payday-row-final
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1&modal=accents
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: pro-accent-scroll
+- takeScreenshot: accent-copy-top
+- scrollUntilVisible:
+    element:
+      text: "[оОoO][кКkK]"
+    direction: DOWN
+- takeScreenshot: accent-copy-bottom
+- tapOn: "[оОoO][кКkK]"
+- assertNotVisible:
+    id: pro-accent-scroll
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- tapOn:
+    id: settings-currency
+- assertVisible: Код или название валюты
+- takeScreenshot: currency-top
+- tapOn: Код или название валюты
+- inputText: zzzz
+- assertVisible: Валюты не найдены
+- takeScreenshot: currency-empty-keyboard
+- tapOn: Очистить поиск
+- tapOn: Код или название валюты
+- inputText: UZS
+- takeScreenshot: currency-search
+- tapOn: UZS,.*
+- assertNotVisible: Код или название валюты
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1&modal=help
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: help-replay-practice
+- takeScreenshot: help-guide-final
+- tapOn:
+    id: help-replay-practice
+- assertNotVisible:
+    id: help-replay-practice
+- openLink: almostsettingsqa://preview?theme=light&accent=gold&lang=ru&premium=1&modal=bug
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- takeScreenshot: bug-report-final
+- tapOn: Отмена
+- assertVisible:
+    id: qa-state

@@ -22,6 +22,8 @@ import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
 import com.sasarei.almostclean.share.LevelSharePackage
 import com.sasarei.almostclean.widget.WidgetStoragePackage
+import com.sasarei.almostclean.expenses.BankExpensesPackage
+import com.sasarei.almostclean.design.MaterialNavigationPackage
 import java.io.IOException
 
 class MainApplication : Application(), ReactApplication {
@@ -43,6 +45,8 @@ class MainApplication : Application(), ReactApplication {
               // add(MyReactNativePackage())
               add(LevelSharePackage())
               add(WidgetStoragePackage())
+              add(BankExpensesPackage())
+              add(MaterialNavigationPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

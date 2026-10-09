@@ -1,0 +1,42 @@
+import 'react-native-gesture-handler';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
+import React,{useState,useEffect,useRef} from 'react';
+import {registerRootComponent} from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
+import {View,Text,Pressable,ScrollView,LogBox,Keyboard,Linking} from 'react-native';
+import {SafeAreaProvider,SafeAreaView} from 'react-native-safe-area-context';
+import {ProfileScreen,ProThemeAccentPicker,BudgetScreen,ProgressScreen,RewardsScreen,IncomeEntryModal,HelpGuideModal,BugReportModal,resolveThemeColors,resolveTranslationValueForLanguage} from './.codex_tmp_settings_app';
+import BankExpensesPanel from './src/components/BankExpensesPanel';
+import {expenseCopy} from './src/bankExpenses/useBankExpenses';
+import {TRANSLATIONS} from './src/constants/translations';
+import {PRO_THEME_ACCENT_OPTIONS,PRO_THEME_ACCENT_COPY} from './src/constants/themeConfig';
+LogBox.ignoreAllLogs(true);
+function QA(){
+ const [theme,setTheme]=useState('light'),[accent,setAccent]=useState('indigo'),[language,setLanguage]=useState('ru'),[premium,setPremium]=useState(false);
+ const [accentOpen,setAccentOpen]=useState(false);
+ const [keyboardInset,setKeyboardInset]=useState(0);
+ useEffect(()=>{const show=Keyboard.addListener("keyboardDidShow",e=>setKeyboardInset(e.endCoordinates.height));const hide=Keyboard.addListener("keyboardDidHide",()=>setKeyboardInset(0));return()=>{show.remove();hide.remove()};},[]);
+ const [surface,setSurface]=useState("profile"),[section,setSection]=useState("challenges");
+ const [income,setIncome]=useState(false),[help,setHelp]=useState(false),[bug,setBug]=useState(false);
+ const [currency,setCurrency]=useState('USD'),[edit,setEdit]=useState('none'),[visible,setVisible]=useState(false),[sound,setSound]=useState(true),[spend,setSpend]=useState(false),[tycoon,setTycoon]=useState(false),[enabled,setEnabled]=useState(false),[error,setError]=useState(false),[result,setResult]=useState('');
+ const [profile,setProfile]=useState({firstName:'Мария',lastName:'QA',incomePayday:15,currency:'USD'});
+ const scrollRef=useRef(null);
+ useEffect(()=>{const timeout=setTimeout(()=>SplashScreen.hideAsync().catch(()=>{}),2000);return()=>clearTimeout(timeout);},[]);
+ useEffect(()=>{const apply=url=>{if(!url?.startsWith('almostsettingsqa:'))return;const args=Object.fromEntries((url.split('?')[1]||'').split('&').filter(Boolean).map(part=>part.split('=')));if(args.theme)setTheme(args.theme);if(args.accent)setAccent(args.accent);if(args.lang)setLanguage(args.lang==='ar'?'ar-sa':args.lang);setSurface(args.surface||'profile');setIncome(args.modal==='income');setHelp(args.modal==='help');setBug(args.modal==='bug');setAccentOpen(args.modal==='accents');setVisible(args.modal==='expenses');if(args.premium)setPremium(args.premium==='1');};const sub=Linking.addEventListener('url',e=>apply(e.url));Linking.getInitialURL().then(apply);return()=>sub.remove();},[]);
+ const colors=resolveThemeColors(theme,accent);
+ const t=(key,params={})=>Object.entries(params).reduce((s,[k,v])=>s.replaceAll('{{'+k+'}}',String(v)),resolveTranslationValueForLanguage(language,key)||key);
+ const bank={supported:true,isPremium:premium,copy:expenseCopy(language),visible,setVisible,open:()=>setVisible(true),busy:false,error,status:{enabled,authorized:true},items:[],apps:[],selected:[],hasMore:false,configure:async v=>{setEnabled(v);return true},refresh:()=>setError(false),openShortcuts:()=>setResult('shortcuts'),update:async()=>true};
+ const control=(id,fn)=><Pressable key={id} testID={'qa-'+id} onPress={fn} style={{minHeight:44,paddingHorizontal:10,justifyContent:'center'}}><Text style={{color:colors.text,fontSize:12}}>{id}</Text></Pressable>;
+ return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><SafeAreaView style={{flex:1,backgroundColor:colors.background}}>
+ <ScrollView horizontal style={{maxHeight:48}} contentContainerStyle={{alignItems:'center'}}>{['light','dark'].map(id=>control(id,()=>setTheme(id)))}{PRO_THEME_ACCENT_OPTIONS.map(o=>control(o.id,()=>{setPremium(true);setTheme('pro');setAccent(o.id)}))}</ScrollView><ScrollView horizontal style={{maxHeight:48}}>{['ru','de','ar-sa','en'].map(id=>control(id,()=>setLanguage(id)))}{control('premium',()=>setPremium(v=>!v))}{control('error',()=>setError(v=>!v))}{control('accents',()=>setAccentOpen(true))}</ScrollView>
+<View style={{flexDirection:"row",gap:6}}>{["profile","budget","progress","rewards"].map(id=>control(id,()=>setSurface(id)))}</View>
+ {surface==="profile" ? <ProfileScreen key={`${theme}:${accent}:${language}`} {...{profile,theme,language,colors,t,scrollRef,soundEnabled:sound,spendReducesSavings:spend,tycoonModeEnabled:tycoon}} stats={[{value:'$250'},{value:3},{value:2}]} isPremiumUser={premium} proThemeAccentId={accent} currencyValue={currency} monthlyIncomeUSD={12345678.9} editMode={edit} onFieldChange={(k,v)=>setProfile(p=>({...p,[k]:v}))} onEditPress={setEdit} onSaveEdit={()=>{setEdit('none');setResult('saved')}} onCancelEdit={()=>{setEdit('none');setResult('cancelled')}} onLanguageChange={setLanguage} onCurrencyChange={setCurrency} onThemeToggle={(id,o)=>{if(id==='pro'&&!premium){setResult('paywall');return}setTheme(id);if(o?.proAccentId)setAccent(o.proAccentId)}} onSoundToggle={setSound} onSpendReductionToggle={setSpend} onTycoonModeToggle={v=>premium?setTycoon(v):setResult('paywall')} bankExpenses={bank} onReportsPremiumPress={()=>setResult('paywall')} reportsLocked={!premium} onIncomeEntryOpen={()=>setIncome(true)} openManageCategoriesModal={()=>setResult('categories')} onShoppingBlockerPress={()=>setResult('shopping')} onMascotPress={()=>setResult('care')} onTodayPress={()=>setResult('today')} onResetData={()=>setResult('reset')} onHelpGuidePress={()=>setHelp(true)} onBugReportPress={()=>setBug(true)} contentBottomPadding={24} topInset={0}/> : surface==="budget" ? <BudgetScreen colors={colors} t={t} availableToAllocateUSD={250} savedTotalUSD={250}/> : surface==="progress" ? <ProgressScreen colors={colors} t={t} theme={theme} language={language} wishes={[]} progressSection={section} onProgressSectionChange={setSection} isPremiumUser={premium}/> : <RewardsScreen colors={colors} t={t} language={language} activePane="rewards"/>}
+ <Text testID="qa-state" style={{color:colors.text,fontSize:12}}>{theme}:{accent}:{language}</Text><Text testID="qa-result" style={{color:colors.text,fontSize:12}}>{result} · {premium?'Premium':'Free'}</Text>
+ <ProThemeAccentPicker visible={accentOpen} colors={colors} language={language} t={t} proThemeAccentId={accent} proThemeAccentColor={colors.primary} proThemeAccentCopy={PRO_THEME_ACCENT_COPY[language]||PRO_THEME_ACCENT_COPY.en} handleProThemeAccentSelect={id=>{setAccent(id);setTheme("pro");setPremium(true)}} closeProThemeAccentPicker={()=>setAccentOpen(false)}/>
+ <IncomeEntryModal visible={income} keyboardPaddingStyle={{paddingBottom:keyboardInset}} colors={colors} t={t} profilePayday={profile.incomePayday} onDismiss={()=>setIncome(false)} onSkip={()=>setIncome(false)} onSubmit={draft=>{setResult(draft.amount);setIncome(false)}}/>
+ <HelpGuideModal visible={help} colors={colors} language={language} t={t} activeTab="profile" getTabLabel={id=>id} onClose={()=>setHelp(false)} onScrolled={()=>{}} onReplayTutorial={()=>setHelp(false)}/>
+ <BugReportModal visible={bug} colors={colors} language={language} onClose={()=>setBug(false)} onSubmit={async()=>true}/>
+ <BankExpensesPanel controller={bank} colors={colors} language={language} onUpgrade={()=>{setPremium(true);setResult('upgraded')}}/>
+ </SafeAreaView></SafeAreaProvider></GestureHandlerRootView>;
+}
+registerRootComponent(QA);

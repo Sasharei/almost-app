@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    id: almost-pay-confirm
+- assertVisible: Press again to confirm
+- tapOn:
+    id: almost-pay-cancel
+- assertVisible:
+    id: decision-amount-input
+- tapOn: I decided not to buy
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    notVisible: Almost Pay
+    timeout: 15000
+- takeScreenshot: fallback-success

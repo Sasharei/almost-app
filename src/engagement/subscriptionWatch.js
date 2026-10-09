@@ -36,7 +36,9 @@ const findPendingSubscriptionDueEntry = (
   const dismissed =
     dismissedKeys && typeof dismissedKeys.has === "function" ? dismissedKeys : new Set();
   return (
-    (Array.isArray(entries) ? entries : []).find((entry) => {
+    [...(Array.isArray(entries) ? entries : [])]
+      .sort((a, b) => (Number(a?.dueAt || a?.nextCheckAt) || 0) - (Number(b?.dueAt || b?.nextCheckAt) || 0) || normalizeSubscriptionId(a?.id || a?.templateId).localeCompare(normalizeSubscriptionId(b?.id || b?.templateId)))
+      .find((entry) => {
       if (!entry || entry.dueForConfirmation !== true) return false;
       const dueAt =
         normalizePositiveTimestamp(entry.dueAt) ||
@@ -77,7 +79,9 @@ const buildSubscriptionNotificationPlan = ({
   const groups = new Map();
   const addToGroup = ({ kind, dayKey, triggerTime, daysBefore, subscription }) => {
     if (!kind || !dayKey || !Number.isFinite(triggerTime) || !subscription) return;
-    const groupKey = kind + ":" + dayKey;
+    // Each subscription gets its own delivery; the scheduler queues collisions
+    // through its cooldown instead of merging a day into the first subscription.
+    const groupKey = kind + ":" + dayKey + ":" + subscription.templateId + ":" + daysBefore;
     const current = groups.get(groupKey) || {
       groupKey,
       kind,
@@ -185,6 +189,9 @@ const doesScheduledSubscriptionNotificationMatchPlan = (
     typeof data.subscriptionPlanKey === "string" ? data.subscriptionPlanKey : "";
   if (storedPlanKey) return storedPlanKey === planEntry.planKey;
   if (data.kind !== planEntry.kind || data.dayKey !== planEntry.dayKey) return false;
+  const plannedSubscriptions = planEntry.subscriptions || [];
+  if (plannedSubscriptions.length !== 1 ||
+      normalizeSubscriptionId(data.templateId) !== plannedSubscriptions[0].templateId) return false;
   const triggerTime = Number(resolveTriggerTime(scheduledEntry?.trigger));
   return (
     Number.isFinite(triggerTime) &&

@@ -1,0 +1,159 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: 'Light'
+- waitForAnimationToEnd
+- takeScreenshot: theme-0-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-0-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-0-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'Dark'
+- waitForAnimationToEnd
+- takeScreenshot: theme-1-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-1-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-1-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Indigo'
+- waitForAnimationToEnd
+- takeScreenshot: theme-2-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-2-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-2-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Emerald'
+- waitForAnimationToEnd
+- takeScreenshot: theme-3-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-3-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-3-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Sunset'
+- waitForAnimationToEnd
+- takeScreenshot: theme-4-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-4-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-4-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Gold'
+- waitForAnimationToEnd
+- takeScreenshot: theme-5-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-5-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-5-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Violet'
+- waitForAnimationToEnd
+- takeScreenshot: theme-6-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-6-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-6-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'
+- tapOn: 'PRO: Aqua'
+- waitForAnimationToEnd
+- takeScreenshot: theme-7-settings
+- tapOn: '‹  Profile'
+- tapOn: Today
+- tapOn: Make a decision
+- waitForAnimationToEnd
+- takeScreenshot: theme-7-decision
+- tapOn: I decided not to buy
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- waitForAnimationToEnd
+- takeScreenshot: theme-7-pay
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: '‹  Today'

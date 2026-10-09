@@ -1,0 +1,25 @@
+appId: com.sasarei.almost.sliderqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-legacy
+    timeout: 30000
+- tapOn:
+    id: qa-legacy
+- tapOn: Сэкономлено
+- waitForAnimationToEnd
+- swipe:
+    start: 50%,68%
+    end: 3%,68%
+    duration: 1200
+- takeScreenshot: zero-save-disabled
+- tapOn: Потрачено
+- takeScreenshot: zero-spend-disabled
+- swipe:
+    start: 12%,68%
+    end: 50%,68%
+    duration: 1200
+- takeScreenshot: restored-valid-amount
+- tapOn: Потрачено
+- assertNotVisible: Кофе
+- takeScreenshot: confirmed-return

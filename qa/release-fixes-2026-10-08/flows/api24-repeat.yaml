@@ -1,0 +1,21 @@
+appId: com.sasarei.almostclean
+name: API24 expanded list second pass
+---
+- launchApp
+- assertVisible: What is your biggest temptation\?
+- scrollUntilVisible:
+    element: Fashion lover
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: repeated-personas-bottom
+- scrollUntilVisible:
+    element: All temptations
+    direction: UP
+    visibilityPercentage: 100
+    centerElement: true
+- takeScreenshot: repeated-personas-top
+- tapOn: Coffee lover
+- tapOn: Continue
+- assertVisible: What should your savings support\?
+- takeScreenshot: repeated-goals

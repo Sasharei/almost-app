@@ -1,0 +1,33 @@
+appId: com.sasarei.almostclean
+name: Compact onboarding and system permission
+---
+- assertVisible: Continue
+- tapOn: English
+- takeScreenshot: language-english
+- tapOn: Continue
+- assertVisible: Help make Almost better
+- takeScreenshot: analytics-choice
+- tapOn: Back
+- assertVisible: Continue
+- tapOn: Continue
+- tapOn: Continue without analytics
+- assertVisible: What is your biggest temptation\?
+- takeScreenshot: persona
+- tapOn: Show all temptations
+- assertVisible: All temptations
+- takeScreenshot: all-personas
+- tapOn: Coffee lover
+- tapOn: Continue
+- assertVisible: What should your savings support\?
+- takeScreenshot: goals
+- tapOn: Just save.*
+- assertVisible: Finish setup
+- takeScreenshot: goal-amount
+- tapOn: Finish setup
+- runFlow:
+    when:
+      visible: Don’t Allow
+    commands:
+      - tapOn: Don’t Allow
+- assertVisible: Try it with your purchase
+- takeScreenshot: compact-onboarding-complete

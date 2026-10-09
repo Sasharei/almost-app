@@ -1,0 +1,17 @@
+appId: com.sasarei.almostclean
+name: iPad dismiss keyboard and finish tutorial
+---
+- tapOn:
+    point: '93%,98%'
+- tapOn:
+    point: '93%,34%'
+- assertVisible: What happened to the purchase\?
+- tapOn: I decided not to buy
+- tapOn:
+    id: almost-pay-cancel
+- tapOn: I decided not to buy
+- tapOn:
+    id: almost-pay-confirm
+- runFlow: 05-tutorial-finish.yaml
+- runFlow: 06-save-result.yaml
+- takeScreenshot: ipad-saved

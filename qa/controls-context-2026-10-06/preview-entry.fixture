@@ -1,0 +1,33 @@
+import 'react-native-gesture-handler';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
+import React,{useState,useEffect} from 'react';
+import {registerRootComponent} from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
+import {ScrollView,View,Text,Pressable,LogBox} from 'react-native';
+import {SafeAreaProvider,SafeAreaView} from 'react-native-safe-area-context';
+import {TycoonAutosaveModal,FrequencySchedulePicker,RedesignTodayHeader,resolveThemeColors} from './.codex_tmp_controls_app';
+import {TRANSLATIONS} from './src/constants/translations';
+import {PRO_THEME_ACCENT_OPTIONS} from './src/constants/themeConfig';
+LogBox.ignoreAllLogs(true);
+function QA(){
+ const [theme,setTheme]=useState('light'),[accent,setAccent]=useState('indigo'),[language,setLanguage]=useState('ru');
+ const [visible,setVisible]=useState(false),[overrides,setOverrides]=useState({}),[spent,setSpent]=useState({});
+ const [hour,setHour]=useState(10),[minute,setMinute]=useState(0),[frequency,setFrequency]=useState('daily'),[days,setDays]=useState([1]),[monthDays,setMonthDays]=useState([1]);
+ const [done,setDone]=useState(0),[closed,setClosed]=useState(''),[revision,setRevision]=useState(0);
+ useEffect(()=>{SplashScreen.hideAsync().catch(()=>{});},[]);
+ const colors=resolveThemeColors(theme,accent);
+ const t=(key,params={})=>Object.entries(params).reduce((s,[k,v])=>s.replaceAll('{{'+k+'}}',String(v)),TRANSLATIONS[language][key]||TRANSLATIONS.en[key]||key);
+ const now=new Date(2026,9,6,12).getTime();
+ const entries=Array.from({length:8},(_,i)=>({id:'card-'+i,item:{id:'card-'+i,title:'Колёса '+i,priceUSD:15},interaction:{frequencyReminderManualConfigured:true,nextCheckAt:now+(i<2?-1:1)*3600000,lastSavedAt:i<done?now-1000:0}}));
+ const events=[{id:'coffee',title:'Кофе',emoji:'☕',amountUSD:overrides.coffee||15,sliderBaseAmountUSD:15},{id:'wheels',title:'Колёса',emoji:'🛞',amountUSD:overrides.wheels||120,sliderBaseAmountUSD:120}];
+ const control=(id,fn,label=id)=><Pressable key={id} testID={'qa-'+id} onPress={fn} style={{padding:8,minHeight:44,backgroundColor:colors.card,borderRadius:8}}><Text style={{color:colors.text}}>{label}</Text></Pressable>;
+ return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><SafeAreaView style={{flex:1,backgroundColor:colors.background}}><ScrollView contentContainerStyle={{padding:16,gap:12}}>
+ <View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}>{['light','dark'].map(id=>control(id,()=>setTheme(id)))}{PRO_THEME_ACCENT_OPTIONS.map(o=>control(o.id,()=>{setTheme('pro');setAccent(o.id)}))}{['ru','de','ar'].map(id=>control(id,()=>setLanguage(id)))}</View>
+ <View style={{flexDirection:'row',gap:6,flexWrap:'wrap'}}>{control('autosave',()=>setVisible(true))}{control('daily',()=>setFrequency('daily'))}{control('weekly',()=>setFrequency('weekly'))}{control('monthly',()=>setFrequency('monthly'))}{control('decision',()=>setDone(v=>Math.min(8,v+1)))}{control('next-day',()=>setDone(0))}{control('rerender',()=>setRevision(v=>v+1))}</View>
+ <Text testID="qa-result" style={{color:colors.text}}>Result {closed} · {revision}</Text>
+ <Text testID="qa-time" style={{color:colors.text,fontSize:20}}>{String(hour).padStart(2,'0')}:{String(minute).padStart(2,'0')}</Text>
+ <FrequencySchedulePicker frequency={frequency} reminderHour={hour} reminderMinute={minute} weeklyDays={days} monthlyDays={monthDays} onReminderTimeChange={v=>{setHour(v.hour);setMinute(v.minute)}} onWeeklyDayChange={setDays} onMonthlyDayChange={setMonthDays} colors={colors} t={t}/>
+ <RedesignTodayHeader t={t} colors={colors} language={language} currency="USD" decisionEntries={entries} dueEntries={entries.slice(0,2).filter(e=>!e.interaction.lastSavedAt)} laterEntries={entries.slice(2).filter(e=>!e.interaction.lastSavedAt)} leadEntry={entries[0]} hasCards mode="overview" now={now} savedTotalUSD={0} mascotSource={require('./assets/icon.png')} onFocus={()=>setClosed('focus')} onSavingsBreakdownPress={()=>{}} onMascotPress={()=>{}} onAdd={()=>{}} onAll={()=>{}}/>
+ </ScrollView><TycoonAutosaveModal visible={visible} events={events} amountOverrides={overrides} selectedSpentIds={spent} onAmountChange={(id,v)=>setOverrides(o=>({...o,[id]:v}))} onToggleSpent={id=>setSpent(o=>({...o,[id]:!o[id]}))} onToggleUndecided={()=>{}} onSnooze={()=>{setVisible(false);setClosed('later')}} onClose={()=>{setVisible(false);setClosed('cancel')}} onConfirm={()=>{setVisible(false);setClosed('confirm')}} colors={colors} t={t} currency="USD"/></SafeAreaView></SafeAreaProvider></GestureHandlerRootView>;
+}
+registerRootComponent(QA);

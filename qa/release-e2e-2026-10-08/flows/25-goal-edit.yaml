@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Goal editor open
+---
+- tapOn: Edit
+- waitForAnimationToEnd
+- takeScreenshot: goal-editor

@@ -1,0 +1,35 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Keep saving
+    commands:
+      - tapOn: Keep saving
+- tapOn: Profile
+- tapOn: Settings.*
+- tapOn: 'Appearance.*|Theme.*'

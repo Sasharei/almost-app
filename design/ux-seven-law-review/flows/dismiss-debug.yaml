@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- tapOn: Profile
+- tapOn: 'Settings.*'
+- takeScreenshot: settings

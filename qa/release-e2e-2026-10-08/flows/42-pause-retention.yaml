@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+name: Rating later and persisted pause
+---
+- tapOn: Later
+- takeScreenshot: chest-claimed
+- runFlow:
+    when:
+      visible: Close
+    commands:
+      - tapOn: Close
+- tapOn: Pause
+- takeScreenshot: pause-retained

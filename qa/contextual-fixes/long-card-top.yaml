@@ -1,0 +1,7 @@
+appId: com.sasarei.almostclean
+---
+- scrollUntilVisible:
+    element:
+      id: qa-light
+    direction: UP
+- takeScreenshot: readable-long-card-top

@@ -132,7 +132,15 @@ const isManualTemptationCycleAlreadyConsumed = ({
   );
 };
 
+const resolveReconciledIntervalMs = ({ storedIntervalMs, desiredIntervalMs, hasCustomReminderTime = false }) => {
+  const desired = Number(desiredIntervalMs);
+  const stored = Number(storedIntervalMs);
+  if (!hasCustomReminderTime && Number.isFinite(desired) && desired > 0) return desired;
+  return Number.isFinite(stored) && stored > 0 ? stored : Number.isFinite(desired) && desired > 0 ? desired : null;
+};
+
 module.exports = {
+  resolveReconciledIntervalMs,
   advanceAnchoredTemptationSchedule,
   buildAnchoredTemptationDueWindows,
   hasStableManualTemptationSchedule,

@@ -1,0 +1,56 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Missing.*EXPO_PUBLIC_RC.*"
+    commands:
+      - tapOn: OK
+- takeScreenshot: today
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: wheel
+- tapOn: Pause
+- assertVisible: ".*QA Pause Timer.*"
+- takeScreenshot: pause
+- tapOn: Profil
+- assertVisible: ".*QA Tester.*"
+- takeScreenshot: profile
+- scrollUntilVisible:
+    element:
+      text: ".*Einstellungen.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*Einstellungen.*"
+- assertVisible: App-Sounds
+- takeScreenshot: settings
+- assertNotVisible: Open All Einstellungen
+- scrollUntilVisible:
+    element:
+      text: ".*Kategorien.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*Kategorien.*"
+- assertVisible: Kategorie hinzufügen
+- takeScreenshot: categories
+- tapOn: Kategorie hinzufügen
+- assertVisible: Neue Kategorie
+- takeScreenshot: new-category
+- tapOn: Stornieren
+- tapOn: Erledigt
+- tapOn: Fortschritt
+- scrollUntilVisible:
+    element:
+      text: Abo-Überblick
+    direction: DOWN
+    visibilityPercentage: 10
+    centerElement: true
+- takeScreenshot: subscription-widget
+- tapOn: Abo-Überblick
+- assertVisible: Abos
+- takeScreenshot: subscription-details

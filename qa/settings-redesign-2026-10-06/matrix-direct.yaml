@@ -1,0 +1,420 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      id: qa-state
+    timeout: 60000
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: light:indigo:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-light
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-light
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-light
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-light
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=dark&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: dark:indigo:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-dark
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-dark
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-dark
+- openLink: almostsettingsqa://preview?theme=dark&accent=indigo&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-dark
+- openLink: almostsettingsqa://preview?theme=dark&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:indigo:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-indigo
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-indigo
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-indigo
+- openLink: almostsettingsqa://preview?theme=pro&accent=indigo&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-indigo
+- openLink: almostsettingsqa://preview?theme=pro&accent=indigo&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=emerald&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:emerald:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-emerald
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-emerald
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-emerald
+- openLink: almostsettingsqa://preview?theme=pro&accent=emerald&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-emerald
+- openLink: almostsettingsqa://preview?theme=pro&accent=emerald&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=sunset&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:sunset:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-sunset
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-sunset
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-sunset
+- openLink: almostsettingsqa://preview?theme=pro&accent=sunset&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-sunset
+- openLink: almostsettingsqa://preview?theme=pro&accent=sunset&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:gold:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-gold
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-gold
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-gold
+- openLink: almostsettingsqa://preview?theme=pro&accent=gold&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-gold
+- openLink: almostsettingsqa://preview?theme=pro&accent=gold&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=violet&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:violet:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-violet
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-violet
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-violet
+- openLink: almostsettingsqa://preview?theme=pro&accent=violet&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-violet
+- openLink: almostsettingsqa://preview?theme=pro&accent=violet&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: pro:aqua:ru
+    timeout: 10000
+- waitForAnimationToEnd: {}
+- takeScreenshot: settings-top-aqua
+- tapOn:
+    id: settings-theme
+- assertVisible:
+    id: settings-choice-light
+- takeScreenshot: theme-aqua
+- tapOn:
+    id: settings-back
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-aqua
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: expenses-aqua
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=de&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: light:indigo:de
+    timeout: 10000
+- takeScreenshot: settings-de
+- tapOn:
+    id: settings-language
+- assertVisible:
+    id: settings-choice-en
+- takeScreenshot: language-de
+- tapOn:
+    id: settings-back
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ar&premium=1
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- extendedWaitUntil:
+    visible:
+      text: light:indigo:ar
+    timeout: 10000
+- takeScreenshot: settings-ar
+- tapOn:
+    id: settings-language
+- assertVisible:
+    id: settings-choice-en
+- takeScreenshot: language-ar
+- tapOn:
+    id: settings-back
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&modal=accents
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: pro-accent-scroll
+- takeScreenshot: accent-picker-top
+- scrollUntilVisible:
+    element:
+      text: "[оОoO][кКkK]"
+    direction: DOWN
+- takeScreenshot: accent-picker-bottom
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&modal=help
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: help-replay-practice
+- takeScreenshot: help-guide
+- tapOn:
+    id: help-replay-practice
+- assertNotVisible:
+    id: help-replay-practice
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&modal=bug
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- takeScreenshot: bug-report
+- tapOn: Отмена
+- assertVisible:
+    id: qa-state

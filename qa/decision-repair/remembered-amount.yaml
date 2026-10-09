@@ -1,0 +1,13 @@
+appId: com.sasarei.almostclean
+---
+- takeScreenshot: dark-next-due-card
+- tapOn:
+    id: decision-card-picker
+- takeScreenshot: dark-full-picker
+- tapOn: '.*QA Coffee.*'
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- takeScreenshot: dark-remembered-amount
+- tapOn: I bought this
+- takeScreenshot: spend-prompt

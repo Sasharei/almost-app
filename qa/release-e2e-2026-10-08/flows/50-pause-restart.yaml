@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+name: Pause after notification deny restart
+---
+- back
+- tapOn: Pause
+- assertVisible: Coffee to-go|Coffee and pastry combo
+- takeScreenshot: pause-queue-final
+- stopApp
+- launchApp:
+    permissions:
+      notifications: deny
+- tapOn: Pause
+- assertVisible: Coffee to-go|Coffee and pastry combo
+- takeScreenshot: pause-queue-restart

@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    text: "OK"
+    optional: true
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: "92%, 92%"
+- tapOn: Today
+- assertVisible:
+    id: today-make-decision
+- takeScreenshot: qa/artifacts/decision-followup-runtime/android-light-today
+- tapOn:
+    id: today-make-decision
+- takeScreenshot: qa/artifacts/decision-followup-runtime/android-light-wheel

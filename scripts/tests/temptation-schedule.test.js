@@ -210,3 +210,14 @@ test("an automatic confirmation preserves its current timer and pending ledger e
     }
   );
 });
+
+test('legacy intervals converge to the current cadence while calendar reminders retain their anchor', () => {
+  const { resolveReconciledIntervalMs } = require('../../src/engagement/temptationSchedule');
+  const day = 86400000, desired = 26 * 3600000;
+  const migrated = resolveReconciledIntervalMs({ storedIntervalMs: day, desiredIntervalMs: desired });
+  assert.equal(migrated, desired);
+  assert.equal(resolveReconciledIntervalMs({ storedIntervalMs: migrated, desiredIntervalMs: desired }), migrated);
+  assert.equal(resolveReconciledIntervalMs({ storedIntervalMs: day, desiredIntervalMs: desired, hasCustomReminderTime: true }), day);
+  assert.equal(resolveReconciledIntervalMs({ storedIntervalMs: '9000', desiredIntervalMs: null }), 9000);
+  assert.equal(resolveReconciledIntervalMs({ storedIntervalMs: null, desiredIntervalMs: null }), null);
+});

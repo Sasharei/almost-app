@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: iPad crash recovery history
+---
+- runFlow: 31-sound-off.yaml
+- runFlow: 15-history-assert.yaml
+- takeScreenshot: ipad-recovered

@@ -1,0 +1,54 @@
+[
+  {
+    "locale": "English (U.S.)",
+    "verified": true
+  },
+  {
+    "locale": "Arabic",
+    "verified": true
+  },
+  {
+    "locale": "Chinese (Traditional)",
+    "verified": true
+  },
+  {
+    "locale": "French",
+    "verified": true
+  },
+  {
+    "locale": "German",
+    "verified": true
+  },
+  {
+    "locale": "Italian",
+    "verified": true
+  },
+  {
+    "locale": "Japanese",
+    "verified": true
+  },
+  {
+    "locale": "Korean",
+    "verified": true
+  },
+  {
+    "locale": "Portuguese (Brazil)",
+    "verified": true
+  },
+  {
+    "locale": "Portuguese (Portugal)",
+    "verified": true
+  },
+  {
+    "locale": "Russian",
+    "verified": true
+  },
+  {
+    "locale": "Spanish (Mexico)",
+    "verified": true
+  },
+  {
+    "locale": "Spanish (Spain)",
+    "verified": true
+  }
+]

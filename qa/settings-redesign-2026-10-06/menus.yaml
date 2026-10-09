@@ -1,0 +1,92 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-budget
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: budget-details
+- takeScreenshot: budget-details
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-progress
+- takeScreenshot: challenges-empty
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-rewards
+- scrollUntilVisible:
+    element:
+      text: Награды.*
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn: Награды.*
+- takeScreenshot: rewards-details
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-de
+- takeScreenshot: settings-de
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-ar
+- takeScreenshot: settings-ar
+- waitForAnimationToEnd: {}
+- scrollUntilVisible:
+    element:
+      id: settings-language
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: settings-language
+- takeScreenshot: language-ar
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-back
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-ru
+- scrollUntilVisible:
+    element:
+      id: settings-help
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-help
+- takeScreenshot: help-guide
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: help-replay-practice
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-report-bug
+- takeScreenshot: bug-report
+- waitForAnimationToEnd: {}
+- tapOn: Отмена

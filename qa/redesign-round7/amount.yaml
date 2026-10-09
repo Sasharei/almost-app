@@ -1,0 +1,43 @@
+appId: com.sasarei.almostclean
+name: Restore historical average in the actual decision form
+# Run seed-ios.py first on the dedicated synthetic review simulator.
+# All Temptations title may appear before its transition completes; wait for To check.
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- tapOn: Today
+- scrollUntilVisible:
+    element:
+      text: All Temptations
+    direction: DOWN
+- tapOn: All Temptations
+- extendedWaitUntil:
+    visible: To check
+    timeout: 15000
+- tapOn:
+    text: Check temptation
+    index: 0
+- assertVisible:
+    id: decision-amount-input
+    text: '30'
+- takeScreenshot: decision-average-30
+# Purchase logging is immediate in this existing flow; category selection may follow.
+# Do not assert an Almost Pay confirmation here (that belongs to the saving flow).
+- tapOn:
+    id: decision-spend
+- tapOn:
+    text: Not now
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: To check
+    direction: UP
+- tapOn:
+    text: Check temptation
+    index: 0
+- assertVisible:
+    id: decision-amount-input
+    text: '30'

@@ -1,0 +1,26 @@
+appId: com.sasarei.almostclean
+name: German untouched preset copy
+---
+- launchApp
+- runFlow:
+    when:
+      visible: Verstanden, weiter
+    commands:
+      - tapOn: Verstanden, weiter
+- extendedWaitUntil:
+    visible: Heute
+    timeout: 60000
+- tapOn: Heute
+- runFlow:
+    when:
+      visible:
+        id: today-make-decision
+    commands:
+      - tapOn:
+          id: today-make-decision
+- scrollUntilVisible:
+    element: Kaffee und Gebäck
+    direction: DOWN
+    visibilityPercentage: 100
+- assertVisible: Kaffee und Gebäck
+- takeScreenshot: german-preset-title-description

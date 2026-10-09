@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: iPad full onboarding tutorial save
+---
+- runFlow: 01-fresh-launch.yaml
+- runFlow: compact-onboarding.yaml
+- runFlow: ios-tutorial-full.yaml

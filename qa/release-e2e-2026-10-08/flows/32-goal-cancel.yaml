@@ -1,0 +1,11 @@
+appId: com.sasarei.almostclean
+name: Cancel goal edit preserves saved title
+---
+- tapOn: .*QA release goal.*
+- eraseText: 60
+- inputText: SHOULD NOT SAVE
+- pressKey: Enter
+- tapOn: Cancel
+- assertVisible: .*QA release goal.*
+- assertNotVisible: .*SHOULD NOT SAVE.*
+- takeScreenshot: goal-cancel-retained

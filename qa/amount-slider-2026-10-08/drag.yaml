@@ -1,0 +1,26 @@
+appId: com.sasarei.almost.sliderqa
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-slider
+    timeout: 30000
+- tapOn:
+    id: qa-reset
+- swipe:
+    start: 50%,35%
+    end: 75%,48%
+    duration: 1500
+- assertVisible: 'Dragging false.*'
+- assertVisible: '(1[5-9]|2[0-2])\.\d\d'
+- takeScreenshot: fine-diagonal
+- tapOn:
+    id: qa-autosave
+- swipe:
+    start: 50%,43%
+    end: 87%,43%
+    duration: 1200
+- assertVisible: 'До \$30'
+- takeScreenshot: autocollect-drag
+- tapOn: 'Закрыть без подтверждения'
+- assertVisible: '.*coffee.*'
+- takeScreenshot: committed-draft

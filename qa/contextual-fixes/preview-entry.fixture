@@ -1,0 +1,43 @@
+import 'react-native-gesture-handler';
+import {GestureHandlerRootView} from 'react-native-gesture-handler';
+import React, {useState,useEffect} from 'react';
+import * as SplashScreen from 'expo-splash-screen';
+import {registerRootComponent} from 'expo';
+import {LogBox, ScrollView, Text, View, Pressable} from 'react-native';
+import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import {RedesignTodayHeader, HomeSubscriptionWidgetCard, resolveThemeColors} from './.codex_tmp_contextual_app';
+import ShoppingBlockerPanel, {ShoppingBlockerEntry} from './src/components/ShoppingBlockerPanel';
+import {AlmostPaySheet} from './src/components/AlmostPay';
+import {TRANSLATIONS} from './src/constants/translations';
+import {PRO_THEME_ACCENT_OPTIONS} from './src/constants/themeConfig';
+LogBox.ignoreAllLogs(true);
+const longTitle = 'Very long purchase العربية 日本語 💰 '.repeat(30);
+function QA() {
+ useEffect(()=>{SplashScreen.hideAsync().catch(()=>{});},[]);
+ const [theme,setTheme]=useState('light'), [accent,setAccent]=useState('indigo'), [language,setLanguage]=useState('en');
+ const [visible,setVisible]=useState(false), [pay,setPay]=useState(false), [focus,setFocus]=useState(false);
+ const [ready,setReady]=useState(false), [unlocked,setUnlocked]=useState(false);
+ const colors=resolveThemeColors(theme,accent);
+ const t=(key,params={})=>Object.entries(params).reduce((s,[k,v])=>s.replaceAll('{{'+k+'}}',String(v)),TRANSLATIONS[language][key]||TRANSLATIONS.en[key]||key);
+ const format=(value)=>new Intl.NumberFormat(language,{style:'currency',currency:'EUR',maximumFractionDigits:2}).format(value);
+ const entry={id:'custom_qa_preview',item:{id:'custom_qa_preview',title:longTitle,priceUSD:9999999.99,basePriceUSD:9999999.99},interaction:{frequencyReminderManualConfigured:true,nextCheckAt:Date.now()-10000}};
+ const status={supported:true,authorized:true,active:true,appCount:2,goalUSD:100,goalAmount:100,goalCurrency:'EUR',progressUSD:ready?100:40,ready,unlockUntil:unlocked?Date.now()+1800000:0};
+ const controller={status,visible,setVisible,busy:false,unlock:()=>setUnlocked(true),stop:()=>setVisible(false),refresh:()=>{},showPrompt:false};
+ const subscription={id:'sub',title:longTitle,daysUntil:1,amountLabel:format(9999999.99),monthlyAmountLabel:format(9999999.99)};
+ return <GestureHandlerRootView style={{flex:1}}><SafeAreaProvider><SafeAreaView style={{flex:1,backgroundColor:colors.background}}><ScrollView contentContainerStyle={{padding:18,gap:12}}>
+  <View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}>{['light','dark','pro'].map(id=><Pressable key={id} testID={'qa-'+id} onPress={()=>setTheme(id)} style={{padding:10,backgroundColor:colors.card}}><Text style={{color:colors.text}}>{id}</Text></Pressable>)}
+  {PRO_THEME_ACCENT_OPTIONS.map(option=><Pressable key={option.id} testID={'qa-'+option.id} onPress={()=>{setTheme('pro');setAccent(option.id)}} style={{padding:10}}><Text style={{color:colors.text}}>{option.id}</Text></Pressable>)}
+  {['en','de','ar'].map(id=><Pressable key={id} testID={'qa-'+id} onPress={()=>setLanguage(id)} style={{padding:10}}><Text style={{color:colors.text}}>{id}</Text></Pressable>)}</View>
+  <RedesignTodayHeader t={t} colors={colors} currency="EUR" savedTotalUSD={9999999.99} mascotSource={require('./assets/icon.png')} language={language}
+   resolveTemplateTitle={()=>longTitle} leadEntry={entry} decisionEntries={[entry]} dueEntries={[entry, {...entry,id:'two'}, {...entry,id:'three'}]} hasCards focusEntry={entry} mode={focus?'focus':'overview'}
+   onFocus={()=>setFocus(true)} onBack={()=>setFocus(false)} onAction={()=>setPay(true)} onEdit={()=>{}} onAdd={()=>{}} onAll={()=>{}} onSavingsBreakdownPress={()=>{}} onMascotPress={()=>{}}
+   shoppingBlockerEntry={<ShoppingBlockerEntry controller={controller} t={t} colors={colors} language={language} formatAmount={format} formatLocalAmount={format}/>} />
+  <HomeSubscriptionWidgetCard colors={colors} t={t} entries={[subscription]} totalMonthlyLabel={format(9999999.99)} totalAnnualLabel={format(119999999.88)} timerText={t('subscriptionWidgetDayLeft',{days:1})} onPress={()=>{}} />
+  <Pressable testID="qa-pay" onPress={()=>setPay(true)} style={{padding:16,backgroundColor:colors.primary}}><Text style={{color:colors.onPrimary}}>QA confirmation</Text></Pressable>
+  <Pressable testID="qa-ready" onPress={()=>{setReady(true);setVisible(true)}} style={{padding:16}}><Text style={{color:colors.text}}>QA earned goal</Text></Pressable>
+ </ScrollView>
+ <ShoppingBlockerPanel controller={controller} t={t} colors={colors} language={language} currency="EUR" formatAmount={format} formatLocalAmount={format} toUSD={v=>v}/>
+ <AlmostPaySheet request={pay?{title:longTitle,amountLabel:format(9999999.99),action:'save',summaryLines:[`${t('almostPaySave')}: ${format(15.000574)}`]}:null} onConfirm={()=>setPay(false)} onCancel={()=>setPay(false)} colors={colors} t={t}/>
+ </SafeAreaView></SafeAreaProvider></GestureHandlerRootView>;
+}
+registerRootComponent(QA);

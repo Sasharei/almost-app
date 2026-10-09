@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: 'Language.*'
+- assertVisible: English
+- takeScreenshot: language
+- tapOn: English
+- tapOn: 'Appearance.*|Theme.*'
+- takeScreenshot: theme
+- tapOn: Light
+- takeScreenshot: settings-light
+- tapOn: '.*Profile'
+- takeScreenshot: profile-light

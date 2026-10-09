@@ -1,0 +1,10 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: 'Your resisted purchase is recorded.*'
+    timeout: 30000
+- takeScreenshot: save-result
+- tapOn:
+    id: practice-finish
+- assertNotVisible:
+    id: practice-skip

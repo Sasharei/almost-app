@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    text: Got it
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: Subscription watch
+    direction: DOWN
+    visibilityPercentage: 10
+    centerElement: true
+- takeScreenshot: subscription-widget
+- tapOn: Subscription watch
+- assertVisible: Subscriptions
+- takeScreenshot: subscription-details

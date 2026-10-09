@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+name: Light goal form and contextual paywall
+---
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: settings-theme
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: settings-theme
+- assertVisible: Light
+- tapOn:
+    id: settings-choice-light
+- takeScreenshot: light-theme-selection
+- tapOn: Progress
+- tapOn:
+    id: progress-goal-open
+- tapOn: Edit
+- takeScreenshot: light-goal-editor
+- tapOn: Cancel
+- scrollUntilVisible:
+    element: New goal
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: New goal
+- assertVisible: Unlock Unlimited goals with Premium
+- takeScreenshot: light-unlimited-header
+- tapOn: Continue with limited version
+- tapOn: Pause
+- assertVisible: 1 purchase awaits your decision.
+- takeScreenshot: light-pause

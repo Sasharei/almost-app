@@ -1,0 +1,43 @@
+appId: com.sasarei.almostclean
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: qa-daily
+    timeout: 60000
+- tapOn:
+    id: qa-daily
+- waitForAnimationToEnd
+- tapOn:
+    id: qa-light
+- waitForAnimationToEnd
+- takeScreenshot: light-wheel-confirmed
+- tapOn:
+    id: qa-dark
+- waitForAnimationToEnd
+- takeScreenshot: dark-wheel-confirmed
+- tapOn:
+    id: qa-indigo
+- waitForAnimationToEnd
+- takeScreenshot: indigo-wheel-confirmed
+- tapOn:
+    id: qa-emerald
+- waitForAnimationToEnd
+- takeScreenshot: emerald-wheel-confirmed
+- tapOn:
+    id: qa-sunset
+- waitForAnimationToEnd
+- takeScreenshot: sunset-wheel-confirmed
+- tapOn:
+    id: qa-gold
+- waitForAnimationToEnd
+- takeScreenshot: gold-wheel-confirmed
+- tapOn:
+    id: qa-violet
+- waitForAnimationToEnd
+- takeScreenshot: violet-wheel-confirmed
+- tapOn:
+    id: qa-aqua
+- waitForAnimationToEnd
+- takeScreenshot: aqua-wheel-confirmed

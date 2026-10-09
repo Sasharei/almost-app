@@ -1,0 +1,50 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- openLink: almostsettingsqa://preview?theme=light&accent=indigo&lang=ru&premium=1&modal=income
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: income-entry-amount
+- takeScreenshot: income-large-diagram-fixed
+- swipe:
+    start: 50%, 62%
+    end: 50%, 32%
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: 50%, 62%
+          end: 50%, 32%
+- waitForAnimationToEnd
+- takeScreenshot: income-large-after-swipe
+- assertVisible:
+    id: income-entry-skip
+- tapOn:
+    id: income-entry-skip
+- assertNotVisible:
+    id: income-entry-amount
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&premium=1&modal=accents
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: pro-accent-scroll
+- swipe:
+    start: 50%, 70%
+    end: 50%, 35%
+- takeScreenshot: accents-large-after-swipe
+- scrollUntilVisible:
+    element:
+      text: '[оОoO][кКkK]'
+    direction: DOWN
+    centerElement: false
+    visibilityPercentage: 80
+- takeScreenshot: accents-large-done
+- tapOn: '[оОoO][кКkK]'
+- assertNotVisible:
+    id: pro-accent-scroll

@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+name: iOS dark theme and settings
+---
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- scrollUntilVisible:
+    element:
+      text: ".*Theme.*"
+    direction: DOWN
+- tapOn: ".*Theme.*"
+- assertVisible: Dark
+- takeScreenshot: theme-options
+- tapOn: Dark
+- tapOn: Profile
+- takeScreenshot: profile-dark
+- tapOn:
+    id: profile-edit-avatar
+- assertVisible:
+    id: profile-save
+- takeScreenshot: profile-edit-dark
+- tapOn: Cancel
+- tapOn: Today
+- assertVisible:
+    id: header-add-temptation
+- takeScreenshot: today-dark
+- tapOn: Progress
+- takeScreenshot: progress-dark
+- tapOn: Pause
+- takeScreenshot: pause-dark
+- tapOn: Budget
+- takeScreenshot: budget-dark

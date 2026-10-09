@@ -1,0 +1,16 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    point: 90%,38%
+- tapOn:
+    point: 92%,93%
+- assertVisible:
+    id: decision-amount-input
+- takeScreenshot: slider-ios-before
+- swipe:
+    start: 50%,30%
+    end: 80%,32%
+    duration: 1200
+- assertVisible:
+    id: decision-amount-input
+- takeScreenshot: slider-ios-after

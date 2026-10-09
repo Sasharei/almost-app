@@ -1,0 +1,11 @@
+¡Llega Almost 8.0: un rediseño completo y una nueva forma de comprar menos!
+
+Renovamos toda la experiencia: pantallas, navegación más clara, controles más cómodos y una nueva imagen para tus metas, presupuesto, progreso y Almi. Ahora es más fácil encontrar el siguiente paso, desde tu primera decisión hasta tu próximo logro.
+
+NUEVO: pausa de compras en iPhone. Bloquea las apps de compras que elijas con Tiempo de uso, registra ahorros para tu meta y desbloquea una app durante 30 minutos al alcanzarla. Tú decides y mantienes el control.
+
+NUEVO: registro de gastos de Apple Pay. Configura una automatización de Wallet en Atajos para importar automáticamente los pagos compatibles y verlos en tu historial y presupuesto. Revisa gastos y corrige categorías. Almi puede confirmar un pago recibido con una Actividad en directo.
+
+Widgets renovados, informes más claros, mejores decisiones de ahorro y una nueva bienvenida. ¡Descubre el nuevo Almost Savings!
+
+La pausa de compras requiere iOS 16+. La importación de Apple Pay requiere iOS 17+, Almost Premium y una automatización de Wallet activada por ti; solo se importan los pagos que esta envía.

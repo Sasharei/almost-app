@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Almost Savings</string>
+    <string name="widget_title_default">Almost</string>
+    <string name="widget_label_saved_default">本月已省下</string>
+    <string name="widget_label_today_default">今天</string>
+    <string name="widget_label_total_default">總計</string>
+    <string name="widget_label_balance_default">餘額</string>
+    <string name="widget_label_goal_default">距離目標</string>
+    <string name="widget_label_month_goal_default">每月目標</string>
+    <string name="widget_label_budget_remaining_default">剩餘預算</string>
+    <string name="widget_label_recent_default">最近紀錄</string>
+    <string name="widget_label_recent_empty_default">尚無紀錄</string>
+    <string name="widget_action_save_default">存下</string>
+    <string name="widget_action_spend_default">花費</string>
+    <string name="widget_empty_state_default">今天開始存錢</string>
+</resources>

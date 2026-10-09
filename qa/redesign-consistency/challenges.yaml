@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+name: Challenges and rewards navigation
+---
+- tapOn:
+    id: progress-rewards
+- takeScreenshot: rewards-dark
+- tapOn:
+    text: ".*[Cc]hallenge.*"
+    index: 0
+- takeScreenshot: challenges-dark
+- tapOn:
+    text: Start challenge
+    index: 0
+    optional: true
+- takeScreenshot: challenge-confirmation-dark

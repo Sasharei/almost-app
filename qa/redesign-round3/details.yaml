@@ -1,0 +1,36 @@
+appId: com.sasarei.almostclean
+name: Insight detail sheets and new goal
+---
+- scrollUntilVisible:
+    element:
+      text: ^Week$
+    direction: DOWN
+- tapOn:
+    text: ^Week$
+    index: 1
+- extendedWaitUntil:
+    visible: Money movement
+    timeout: 30000
+- takeScreenshot: weekly-light
+- tapOn: Close breakdown
+- scrollUntilVisible:
+    element:
+      text: Balance trend
+    direction: DOWN
+- tapOn: Balance trend
+- takeScreenshot: balance-light
+- tapOn: Close
+- tapOn: Savings forecast
+- takeScreenshot: potential-light
+- tapOn: Close
+- tapOn: Progress
+- tapOn: Progress
+- tapOn: Open goal
+- scrollUntilVisible:
+    element:
+      text: New goal
+    direction: DOWN
+- tapOn: New goal
+- assertVisible: Name the dream and set its target.
+- takeScreenshot: new-goal-light
+- tapOn: Cancel

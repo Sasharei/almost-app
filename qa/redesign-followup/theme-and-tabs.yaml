@@ -1,0 +1,44 @@
+appId: com.sasarei.almostclean
+name: Settings and main tab review
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- tapOn: Profile
+- tapOn:
+    text: Cancel
+    optional: true
+- assertVisible:
+    id: profile-edit-avatar
+- scrollUntilVisible:
+    element:
+      text: ".*Theme.*"
+    direction: DOWN
+- tapOn: ".*Theme.*"
+- assertVisible: Light
+- takeScreenshot: theme-choice
+- tapOn: Light
+- tapOn: Profile
+- takeScreenshot: profile-light
+- tapOn: Today
+- assertVisible:
+    id: header-add-temptation
+- takeScreenshot: today-light
+- tapOn: Progress
+- assertVisible:
+    id: header-help
+- takeScreenshot: progress-light
+- tapOn: Pause
+- assertVisible:
+    id: header-help
+- takeScreenshot: pause-light
+- tapOn: Budget
+- assertVisible:
+    id: header-help
+- takeScreenshot: budget-light
+- tapOn:
+    id: budget-details
+    optional: true
+- takeScreenshot: budget-details-light

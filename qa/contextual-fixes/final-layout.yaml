@@ -1,0 +1,50 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: qa-light
+    timeout: 60000
+- tapOn:
+    id: qa-en
+- scrollUntilVisible:
+    element:
+      id: qa-light
+    direction: UP
+- tapOn:
+    id: qa-light
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: light-complete-amounts
+- scrollUntilVisible:
+    element:
+      id: qa-dark
+    direction: UP
+- tapOn:
+    id: qa-dark
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: dark-complete-amounts
+- scrollUntilVisible:
+    element:
+      id: qa-gold
+    direction: UP
+- tapOn:
+    id: qa-gold
+- scrollUntilVisible:
+    element:
+      id: qa-pay
+    direction: DOWN
+- takeScreenshot: gold-complete-amounts
+- scrollUntilVisible:
+    element:
+      id: today-make-decision
+    direction: UP
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-amount-input
+- takeScreenshot: readable-long-card

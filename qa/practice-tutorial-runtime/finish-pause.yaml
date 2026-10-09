@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    when:
+      visible: 'Don.t Allow'
+    commands:
+      - tapOn: 'Don.t Allow'
+- extendedWaitUntil:
+    visible: 'The purchase is paused.*'
+    timeout: 20000
+- takeScreenshot: pause-result
+- tapOn:
+    id: practice-finish
+- assertNotVisible:
+    id: practice-skip

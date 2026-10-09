@@ -1,0 +1,6 @@
+appId: com.sasarei.almostclean
+name: Inspect actual profile state
+---
+- tapOn: Profile
+- takeScreenshot: profile-state
+- assertVisible: Your settings

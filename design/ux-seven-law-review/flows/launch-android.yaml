@@ -1,0 +1,4 @@
+appId: com.sasarei.almostclean
+---
+- launchApp
+- takeScreenshot: /tmp/almost-seven-law-android-before

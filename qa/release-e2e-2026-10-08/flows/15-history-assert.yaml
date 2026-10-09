@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+name: Verify history contents after process restart
+---
+- launchApp
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileHistory
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- extendedWaitUntil:
+    visible: .*Afternoon coffee refill.*
+    timeout: 15000
+- takeScreenshot: actual-history
+- stopApp
+- launchApp
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileHistory
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- extendedWaitUntil:
+    visible: .*Afternoon coffee refill.*
+    timeout: 15000
+- takeScreenshot: actual-history-after-restart

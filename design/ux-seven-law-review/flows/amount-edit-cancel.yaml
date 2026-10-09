@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    id: decision-edit-card
+- assertVisible: Edit temptation
+- waitForAnimationToEnd
+- takeScreenshot: editor-settled
+- tapOn: '6'
+- eraseText
+- inputText: '7.89'
+- tapOn: '.*Rent.*'
+- tapOn: Save
+- extendedWaitUntil:
+    notVisible: Edit temptation
+    timeout: 10000
+- assertVisible: '7.89'
+- assertVisible: '.*Rent.*'
+- takeScreenshot: edited-card

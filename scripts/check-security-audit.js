@@ -6,6 +6,7 @@ const { Buffer } = require('buffer');
 const { spawnSync } = require('child_process');
 
 const projectRoot = path.resolve(__dirname, '..');
+require('./security-vendor-contract').checkSecurityVendors();
 const allowedAdvisories = new Set([
   'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
   'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',

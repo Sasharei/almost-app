@@ -1,0 +1,29 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Done
+- tapOn: Progress
+- takeScreenshot: progress-overview
+- scrollUntilVisible:
+    element:
+      id: progress-sections-toggle
+    direction: DOWN
+- assertNotVisible: Goals
+- takeScreenshot: progress-collapsed
+- tapOn:
+    id: progress-sections-toggle
+- takeScreenshot: progress-expanded
+- tapOn: Pause
+- assertVisible: QA Pause Timer
+- assertVisible: ".*50.*"
+- takeScreenshot: pause-timer-a
+- tapOn: Profile
+- assertVisible:
+    id: profile-full-access
+- takeScreenshot: profile-free
+- scrollUntilVisible:
+    element:
+      text: ".*Settings.*"
+    direction: DOWN
+- tapOn: ".*Settings.*"
+- takeScreenshot: settings-expanded
+- assertNotVisible: Open All Settings

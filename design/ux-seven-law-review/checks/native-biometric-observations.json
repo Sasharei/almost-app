@@ -1,0 +1,27 @@
+{
+  "android_after_auth_cancel": {
+    "savedTotal": 112.39,
+    "historyCount": 11,
+    "latestKind": "refuse_spend",
+    "latestAmountUSD": 7.89
+  },
+  "android_after_auth_success": {
+    "savedTotal": 118.39,
+    "historyCount": 12,
+    "latestKind": "refuse_spend",
+    "latestAmountUSD": 6
+  },
+  "android_after_spend_success": {
+    "savedTotal": 104.5,
+    "historyCount": 11,
+    "latestKind": "spend",
+    "latestAmountUSD": 6
+  },
+  "android_system_prompt_observed": {
+    "title": "Almost Pay",
+    "subtitle": "Simulated confirmation. No money is charged.",
+    "instruction": "Touch the fingerprint sensor",
+    "cancel": "Cancel",
+    "capture": "OS secure window gives black pixels; accessibility hierarchy was inspected."
+  }
+}

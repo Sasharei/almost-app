@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+name: Cancel store authentication and leave offer
+---
+- tapOn: Cancel
+- runFlow:
+    when:
+      visible: Cancel
+    commands:
+      - tapOn: Cancel
+- runFlow:
+    when:
+      visible: OK
+    commands:
+      - tapOn: OK
+- waitForAnimationToEnd
+- takeScreenshot: after-store-cancel
+- tapOn: Continue with limited version
+- takeScreenshot: offer-dismissed

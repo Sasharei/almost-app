@@ -1,0 +1,82 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp: {}
+- extendedWaitUntil:
+    visible:
+      id: qa-state
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- assertVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: free-settings-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- assertVisible:
+    id: expenses-premium-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-upgrade
+- assertNotVisible:
+    id: expenses-premium-badge
+- assertVisible:
+    id: expenses-enable
+- takeScreenshot: premium-panel-no-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-enable
+- assertVisible:
+    id: expenses-shortcuts
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- assertNotVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: premium-settings-no-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-error
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-retry
+- waitForAnimationToEnd: {}
+- tapOn: Повторить
+- assertVisible:
+    id: expenses-shortcuts
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- openLink: almostsettingsqa://preview?theme=dark&accent=indigo&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: safearea-dark
+- tapOn:
+    id: expenses-close
+- assertVisible:
+    id: qa-state
+- openLink: almostsettingsqa://preview?theme=pro&accent=aqua&lang=ru&premium=1&modal=expenses
+- runFlow:
+    when:
+      visible: Open
+    commands:
+      - tapOn: Open
+- assertVisible:
+    id: expenses-close
+- waitForAnimationToEnd: {}
+- takeScreenshot: safearea-pro
+- tapOn:
+    id: expenses-close
+- assertVisible:
+    id: qa-state

@@ -1,0 +1,130 @@
+appId: com.sasarei.almostclean.settingsqa
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: qa-result
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- runFlow:
+    when:
+      visible:
+        id: profile-row-redesignProfileSettings
+    commands:
+      - waitForAnimationToEnd: {}
+      - tapOn:
+          id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: settings-row-incomeEntryAmountLabel
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- takeScreenshot: settings-personal-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-row-incomeEntryAmountLabel
+- assertVisible:
+    id: income-entry-amount
+- takeScreenshot: income-light
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: income-entry-amount
+- inputText: "1234.56"
+- waitForAnimationToEnd
+- takeScreenshot: income-keyboard-light
+- scrollUntilVisible:
+    element:
+      id: income-entry-confirm
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: income-entry-confirm
+- extendedWaitUntil:
+    visible:
+      id: settings-row-incomeEntryAmountLabel
+    timeout: 10000
+- assertVisible:
+    id: qa-result
+- scrollUntilVisible:
+    element:
+      id: settings-payday
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-payday
+- scrollUntilVisible:
+    element:
+      text: "31"
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn: "31"
+- takeScreenshot: payday-light
+- scrollUntilVisible:
+    element:
+      text: Сохранить
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- waitForAnimationToEnd: {}
+- tapOn: Сохранить
+- scrollUntilVisible:
+    element:
+      id: settings-expenses
+    direction: DOWN
+    centerElement: true
+    waitToSettleTimeoutMs: 1000
+- assertVisible:
+    id: settings-expenses-premium-badge
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- assertVisible:
+    id: expenses-premium-badge
+- takeScreenshot: expenses-free
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-upgrade
+- assertNotVisible:
+    id: expenses-premium-badge
+- assertVisible:
+    id: expenses-enable
+- takeScreenshot: expenses-premium
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-enable
+- assertVisible:
+    id: expenses-shortcuts
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close
+- assertNotVisible:
+    id: settings-expenses-premium-badge
+- takeScreenshot: settings-premium-badge-gone
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: qa-error
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: settings-expenses
+- takeScreenshot: expenses-error
+- waitForAnimationToEnd: {}
+- tapOn: Повторить
+- waitForAnimationToEnd: {}
+- tapOn:
+    id: expenses-close

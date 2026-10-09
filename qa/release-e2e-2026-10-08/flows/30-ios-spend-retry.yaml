@@ -1,0 +1,25 @@
+appId: com.sasarei.almostclean
+name: iOS spend confirmed exact
+---
+- scrollUntilVisible:
+    element:
+      id: decision-spend
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn:
+    id: decision-spend
+- extendedWaitUntil:
+    visible:
+      id: almost-pay-confirm
+    timeout: 15000
+- takeScreenshot: ios-spend-confirm-settled
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible: Back to today
+    timeout: 15000
+- assertVisible: .*3\.50.*
+- takeScreenshot: ios-spent-exact
+- tapOn: Back to today

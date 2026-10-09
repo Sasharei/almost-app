@@ -1,0 +1,22 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: '17.5'
+- tapOn:
+    id: decision-amount-done
+- tapOn:
+    id: decision-card-picker
+- tapOn: Готово
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- takeScreenshot: picker-cancel-preserves-input
+- swipe:
+    start: 50%,36%
+    end: 50%,31%
+    duration: 250
+- tapOn:
+    id: decision-spend
+- takeScreenshot: action-after-fast-wheel

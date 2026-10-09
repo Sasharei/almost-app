@@ -1,0 +1,14 @@
+appId: com.sasarei.almostclean
+name: Redesign header and profile smoke
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 120000
+- assertVisible:
+    id: header-bug-report
+- takeScreenshot: today
+- tapOn:
+    id: header-help
+- takeScreenshot: help

@@ -1,0 +1,21 @@
+appId: com.sasarei.almostclean
+name: Series claimed result and cold restart
+---
+- takeScreenshot: chest-opened
+- tapOn: Ok
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: series-complete
+- tapOn:
+    text: Continue
+    index: 1
+- waitForAnimationToEnd
+- assertVisible: Choose what to spend and what to save.
+- takeScreenshot: series-return-today
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: header-help
+    timeout: 60000
+- takeScreenshot: series-relaunch

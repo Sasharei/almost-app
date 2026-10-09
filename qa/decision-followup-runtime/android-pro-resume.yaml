@@ -1,0 +1,40 @@
+appId: com.sasarei.almostclean
+---
+- scrollUntilVisible:
+    element:
+      text: ".*Settings.*"
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn: ".*Settings.*"
+- assertVisible: App sounds
+- takeScreenshot: settings
+- assertNotVisible: Open All Settings
+- scrollUntilVisible:
+    element:
+      text: ".*Categories.*"
+    direction: DOWN
+    visibilityPercentage: 100
+    centerElement: true
+- tapOn: ".*Categories.*"
+- assertVisible: Add category
+- takeScreenshot: categories
+- tapOn: Add category
+- assertVisible: New category
+- takeScreenshot: new-category
+- tapOn: Cancel
+- tapOn: Done
+- tapOn: Progress
+- tapOn:
+    text: Got it
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: Subscription watch
+    direction: DOWN
+    visibilityPercentage: 10
+    centerElement: true
+- takeScreenshot: subscription-widget
+- tapOn: Subscription watch
+- assertVisible: Subscriptions
+- takeScreenshot: subscription-details

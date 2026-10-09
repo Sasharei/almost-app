@@ -1,0 +1,30 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    when:
+      visible: Cancel
+    commands:
+      - tapOn: Cancel
+- tapOn: Today
+- tapOn: Add a temptation
+- assertVisible: Cancel
+- assertVisible: Name
+- takeScreenshot: form-accessible
+- tapOn: Add
+- assertVisible: '.*name.*|.*Name.*'
+- takeScreenshot: form-validation
+- tapOn: Cancel
+- tapOn: Make a decision
+- takeScreenshot: decision-focus
+- tapOn: '‹  Today'
+- tapOn: Progress
+- takeScreenshot: progress-final
+- tapOn: Add your own goal
+- takeScreenshot: goal-form
+- tapOn: Cancel
+- tapOn: Pause
+- takeScreenshot: pause-final
+- tapOn: Budget
+- takeScreenshot: budget-final
+- tapOn: View Premium
+- takeScreenshot: premium

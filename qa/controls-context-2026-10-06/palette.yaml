@@ -1,0 +1,22 @@
+appId: com.sasarei.almostclean
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible:
+      id: qa-light
+    timeout: 60000
+- tapOn:
+    id: qa-${PALETTE}
+- takeScreenshot: ${PALETTE}-daily
+- tapOn:
+    id: qa-monthly
+- takeScreenshot: ${PALETTE}-monthly
+- tapOn:
+    id: qa-weekly
+- takeScreenshot: ${PALETTE}-weekly
+- tapOn:
+    id: qa-autosave
+- takeScreenshot: ${PALETTE}-autocollect
+- tapOn: 'Закрыть без подтверждения'
+- assertVisible: 'Result cancel.*'

@@ -89,7 +89,7 @@ test("the next subscription deadline wakes the due flow at the exact nearest tim
   );
 });
 
-test("subscription notification plans are stable and grouped by delivery day", () => {
+test("subscription notification plans deliver both same-day subscriptions separately", () => {
   const now = Date.UTC(2026, 7, 1, 8);
   const nextCheckAt = now + 10 * DAY_MS;
   const input = {
@@ -117,15 +117,15 @@ test("subscription notification plans are stable and grouped by delivery day", (
   const firstPlan = buildSubscriptionNotificationPlan(input);
   const secondPlan = buildSubscriptionNotificationPlan(input);
 
-  assert.equal(firstPlan.length, 4);
+  assert.equal(firstPlan.length, 8);
   assert.deepEqual(
     firstPlan.map((entry) => entry.dedupeKey),
     secondPlan.map((entry) => entry.dedupeKey)
   );
-  assert.ok(firstPlan.every((entry) => entry.subscriptions.length === 2));
+  assert.ok(firstPlan.every((entry) => entry.subscriptions.length === 1));
   assert.equal(
     firstPlan.filter((entry) => entry.kind === "subscription_due").length,
-    1
+    2
   );
 });
 
@@ -175,4 +175,77 @@ test("notification reconciliation keeps an exact plan and replaces a changed pla
     ),
     false
   );
+});
+
+
+test("same-day due checks drain oldest first, including a failed retry and stale snapshots", () => {
+  const now = Date.UTC(2026, 9, 3, 12);
+  const entries = [
+    { id: "later", dueAt: now - 1000, dueForConfirmation: true },
+    { id: "first", dueAt: now - 3000, dueForConfirmation: true },
+    { id: "second", dueAt: now - 2000, dueForConfirmation: true },
+  ];
+  const dismissedKeys = new Set();
+  const next = () => findPendingSubscriptionDueEntry(entries, { now, dismissedKeys });
+  assert.equal(next().id, "first");
+  // A failed decision leaves the same subscription available for retry.
+  assert.equal(next().id, "first");
+  for (const id of ["first", "second", "later"]) {
+    const current = next();
+    assert.equal(current.id, id);
+    dismissedKeys.add(buildSubscriptionDuePromptKey(current));
+  }
+  assert.equal(next(), null);
+});
+
+test("different due times on the same day keep their own delivery time", () => {
+  const now = Date.UTC(2026, 9, 1, 12);
+  const plan = buildSubscriptionNotificationPlan({
+    subscriptions: [
+      { templateId: "morning", nextCheckAt: Date.UTC(2026, 9, 3, 8) },
+      { templateId: "evening", nextCheckAt: Date.UTC(2026, 9, 3, 20) },
+    ], now, reminderOffsetsDays: [], getDayKey: getUtcDayKey,
+  });
+  assert.equal(plan.length, 2);
+  assert.notEqual(plan[0].dedupeKey, plan[1].dedupeKey);
+  assert.equal(plan[0].triggerTime, Date.UTC(2026, 9, 3, 8));
+  assert.equal(plan[1].triggerTime, Date.UTC(2026, 9, 3, 20));
+});
+
+test("the app keeps a due question stable during payment and queues the next after closing", () => {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  const parser = require("@babel/parser");
+  const source = fs.readFileSync(require("node:path").join(__dirname, "../../App.js"), "utf8");
+  const ast = parser.parse(source, { sourceType: "module", plugins: ["jsx"] });
+  const app = ast.program.body.find((node) => node.type === "FunctionDeclaration" && node.id.name === "AppContent");
+  const effect = app.body.body.find((node) => node.type === "ExpressionStatement" && node.expression.callee?.name === "useEffect" && source.slice(node.start, node.end).includes("findPendingSubscriptionDueEntry(subscriptionDueEntries"));
+  assert.ok(effect);
+  const calls = [];
+  const now = Date.UTC(2026, 9, 3, 12);
+  const first = { id: "first", dueAt: now - 2, dueForConfirmation: true };
+  const second = { id: "second", dueAt: now - 1, dueForConfirmation: true };
+  const context = vm.createContext({
+    useEffect: (callback) => callback(), temptationInteractionsHydrated: true,
+    quickTemptationsHydrated: true, categoryOverridesHydrated: true, historyHydrated: true,
+    subscriptionDueDecisionPendingRef: { current: true }, subscriptionDueDecisionPending: true,
+    subscriptionDueReferenceTs: now, subscriptionDueSessionVersion: 0,
+    subscriptionDueEntries: [second], subscriptionDueHandledPromptKeysRef: { current: new Set() },
+    queuedModalType: "subscription_due", QUEUED_MODAL_TYPES: { SUBSCRIPTION_DUE: "subscription_due" },
+    queuedModalQueueRef: { current: [] }, queuedModalActiveRef: { current: "subscription_due" },
+    findPendingSubscriptionDueEntry,
+    setSubscriptionDuePromptEntry: (entry) => calls.push(entry?.id || "empty"),
+    enqueueQueuedModal: (type) => calls.push(type), clearQueuedModal: () => {}, requestQueuedModalProcess: () => {},
+  });
+  const code = source.slice(effect.start, effect.end);
+  vm.runInContext(code, context);
+  assert.deepEqual(calls, []); // Timer/history updates cannot replace the in-flight question.
+  context.subscriptionDueEntries = [first, second]; // A stale snapshot may still include the resolved item.
+  context.subscriptionDueHandledPromptKeysRef.current.add(buildSubscriptionDuePromptKey(first));
+  context.subscriptionDueDecisionPendingRef.current = false;
+  context.subscriptionDueDecisionPending = false;
+  context.queuedModalType = null;
+  context.queuedModalActiveRef.current = null;
+  vm.runInContext(code, context);
+  assert.deepEqual(calls, ["second", "subscription_due"]);
 });

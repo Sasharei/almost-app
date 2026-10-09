@@ -1,0 +1,16 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Great!
+- tapOn: Today
+- tapOn: Make a decision
+- tapOn:
+    id: decision-amount-input
+- eraseText: 10
+- inputText: '7.89'
+- tapOn: 'I bought this.*'
+- extendedWaitUntil:
+    visible: Almost Pay
+    timeout: 15000
+- assertVisible: '.*7.89.*'
+- waitForAnimationToEnd
+- takeScreenshot: almost-pay-spend

@@ -1,0 +1,46 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 240000
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-wheel-search
+- takeScreenshot: dark-wheel-search-status
+- tapOn:
+    id: decision-wheel-search
+- assertVisible:
+    id: decision-card-search-input
+- inputText: 'zznomatch'
+- assertVisible: No matching cards
+- takeScreenshot: search-empty
+- tapOn:
+    id: decision-card-search-input
+- eraseText
+- inputText: 'QA Snack'
+- takeScreenshot: search-snack-result
+- tapOn: '.*, QA Snack,.*'
+- assertVisible:
+    id: decision-amount-input
+    text: '7'
+- takeScreenshot: checked-today-card
+- tapOn:
+    id: decision-card-picker
+- tapOn:
+    id: decision-card-search-input
+- inputText: 'QA Coffee'
+- tapOn: '.*, QA Coffee,.*'
+- assertVisible:
+    id: decision-amount-input
+    text: '12'
+- swipe:
+    start: 50%,40%
+    end: 50%,31%
+    duration: 250
+- tapOn:
+    id: decision-card-picker
+- assertVisible:
+    id: decision-card-search-input
+- takeScreenshot: immediate-tap-after-swipe

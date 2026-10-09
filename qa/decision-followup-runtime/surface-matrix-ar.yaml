@@ -1,0 +1,56 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 60000
+- runFlow:
+    when:
+      visible: "Missing.*EXPO_PUBLIC_RC.*"
+    commands:
+      - tapOn: OK
+- takeScreenshot: today
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: wheel
+- tapOn: التفكير
+- assertVisible: ".*QA Pause Timer.*"
+- takeScreenshot: pause
+- tapOn: الملف الشخصي
+- assertVisible: ".*QA Tester.*"
+- takeScreenshot: profile
+- scrollUntilVisible:
+    element:
+      text: ".*الإعدادات.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*الإعدادات.*"
+- assertVisible: أصوات التطبيق
+- takeScreenshot: settings
+- assertNotVisible: Open All الإعدادات
+- scrollUntilVisible:
+    element:
+      text: ".*فئات.*"
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: ".*فئات.*"
+- assertVisible: أضف فئة
+- takeScreenshot: categories
+- tapOn: أضف فئة
+- assertVisible: فئة جديدة
+- takeScreenshot: new-category
+- tapOn: يلغي
+- tapOn: منتهي
+- tapOn: التقدم
+- scrollUntilVisible:
+    element:
+      text: متابعة الاشتراكات
+    direction: DOWN
+    visibilityPercentage: 10
+    centerElement: true
+- takeScreenshot: subscription-widget
+- tapOn: متابعة الاشتراكات
+- assertVisible: الاشتراكات
+- takeScreenshot: subscription-details

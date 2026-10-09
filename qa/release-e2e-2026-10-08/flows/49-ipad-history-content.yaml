@@ -1,0 +1,15 @@
+appId: com.sasarei.almostclean
+name: iPad actual history after crash
+---
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- assertVisible: .*Afternoon coffee refill.*
+- takeScreenshot: ipad-history
+- stopApp
+- launchApp
+- tapOn:
+    point: '73%,96%'
+- tapOn:
+    id: profile-row-redesignProfileHistory
+- assertVisible: .*Afternoon coffee refill.*
+- takeScreenshot: ipad-history-restart

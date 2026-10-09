@@ -157,7 +157,7 @@ const buildTodayHistoryResolutions = ({ historyEvents = [], aliasToCanonical, da
     if (!timestamp || getLocalDayKey(timestamp) !== dayKey) return;
     const historyId = getHistoryTemplateId(entry);
     const canonicalId = historyId ? aliasToCanonical.get(historyId) || historyId : null;
-    if (!canonicalId) return;
+    if (!canonicalId || !aliasToCanonical.has(historyId)) return;
     const bucket = buckets.get(canonicalId) || [];
     bucket.push({ action, timestamp });
     buckets.set(canonicalId, bucket);
@@ -267,6 +267,7 @@ const buildTodayTemptationPlan = ({
   products = [],
   interactionStats = {},
   historyEvents = [],
+  activeTargetIds = [],
   timestamp = Date.now(),
 } = {}) => {
   const bounds = getLocalDayBounds(timestamp);
@@ -287,9 +288,20 @@ const buildTodayTemptationPlan = ({
   const dueIds = [];
   const checkedIds = [];
 
+  // Products are already ranked by the onboarding persona. Choose before
+  // filtering completed decisions so checking one never pulls in a fourth card.
+  const hasManualSchedule = items.some((item) => {
+    const interaction = resolveInteractionEntry(item, interactionStats);
+    return interaction?.frequencyReminderManualConfigured === true ||
+      item?.frequencyReminderManualConfigured === true;
+  });
+  const starterIds = new Set(hasManualSchedule ? [] :
+    [...new Set(items.map(getCanonicalItemId).filter(Boolean))].slice(0, 3));
+  const continuingIds = new Set(Array.isArray(activeTargetIds) ? activeTargetIds : []);
+  const seenTargets = new Set();
   items.forEach((item) => {
     const id = getCanonicalItemId(item);
-    if (!id) return;
+    if (!id || seenTargets.has(id)) return;
     const interaction = resolveInteractionEntry(item, interactionStats);
     const checkedToday = Boolean(resolutions[id]);
     const missedToday =
@@ -300,8 +312,12 @@ const buildTodayTemptationPlan = ({
       interaction,
       referenceDate,
       dayEnd: bounds.end,
-    }) || missedToday;
+    }) || missedToday || starterIds.has(id) || (
+      continuingIds.has(id) && interaction?.frequencyReminderManualConfigured !== true &&
+      item?.frequencyReminderManualConfigured !== true
+    );
     if (!checkedToday && !dueToday) return;
+    seenTargets.add(id);
     targetIds.push(id);
     if (checkedToday) checkedIds.push(id);
     else dueIds.push(id);

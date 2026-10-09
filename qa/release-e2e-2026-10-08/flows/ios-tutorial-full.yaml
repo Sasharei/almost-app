@@ -1,0 +1,8 @@
+appId: com.sasarei.almostclean
+name: Full iOS tutorial savings cancel retry
+---
+- runFlow: 03-tutorial-card.yaml
+- runFlow: 04-tutorial-save.yaml
+- runFlow: 05-tutorial-finish.yaml
+- runFlow: 06-save-result.yaml
+- takeScreenshot: ios-post-save

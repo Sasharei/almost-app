@@ -7,25 +7,53 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E8BA00000000000000000081 /* WalletExpenseAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000080 /* WalletExpenseAttributes.swift */; };
+		024E8D6715014DC52798C3B3 /* ShoppingBlockerMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0A71B87D31A4000100AF0001 /* AdSupport.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A71B87D31A4000100AF0002 /* AdSupport.framework */; };
+		0AECE44331EC5EB8B7D01377 /* ShoppingBlockerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */; };
 		0F999E35099803B484AF78F1 /* libPods-Almost.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		367F2BD150A9CD79FCAFCD85 /* ShoppingBlockerShield.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0980DD33B165AAC6CA6C0482 /* ShoppingBlockerShield.swift */; };
+		39549F3431315719D9BBAEAF /* ShoppingBlockerAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 0BAED0E54E59932AC497B37C /* ShoppingBlockerAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4157469E2F48796A00EA9099 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4157469D2F48796A00EA9099 /* WidgetKit.framework */; };
 		415746A02F48796A00EA9099 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4157469F2F48796A00EA9099 /* SwiftUI.framework */; };
 		415746B12F48796B00EA9099 /* Almost WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4157469C2F48796A00EA9099 /* Almost WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		47855B314851E57FF6C138D7 /* ShoppingSavings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */; };
+		492E284A88BF0A93587EC9A5 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 624F683552E75C24A4F0B14F /* Foundation.framework */; };
+		49DB751AD35B208CCE8674B4 /* ShoppingBlockerAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 317F733DBA0830127E7685E2 /* ShoppingBlockerAction.swift */; };
 		4C844D10E6B33036DD700665 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848F000B85CA5B43A40D01BE /* ExpoModulesProvider.swift */; };
+		5DD5CA604AEACC019662741F /* ShoppingSavings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */; };
 		6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */; };
-		AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1736D10533954F28ADABB2CA /* GoogleService-Info.plist */; };
+		960A46E13EED6344BDD90DBA /* ShoppingBlockerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = FDE257C01245D67F7C150F45 /* ShoppingBlockerBridge.m */; };
+		A17A61000000000000000001 /* AlmostGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = A17A61000000000000000002 /* AlmostGlass.icon */; };
 		A19A00000000000000000003 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A19A00000000000000000002 /* InfoPlist.strings */; };
+		ACB290B1B3731D3D91BF824A /* ShoppingBlockerShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BDDF6E693A2C0B0823AE2147 /* ShoppingBlockerShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1736D10533954F28ADABB2CA /* GoogleService-Info.plist */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */; };
 		C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */; };
+		C0FCA41724BBDA795BFA6743 /* ShoppingSavings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */; };
+		CEB4F617FFDA2A1305E6E2F6 /* ShoppingBlockerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */; };
 		D1A2B3C4D5E6F70123456789 /* LiquidGlassNativeViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */; };
 		D1A2B3C4D5E6F7012345678A /* LiquidGlassNativeViewBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = D1A2B3C4D5E6F7012345678C /* LiquidGlassNativeViewBridge.m */; };
 		D2B3C4D5E6F70123456789AA /* NativeLiquidTabBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2B3C4D5E6F70123456789AC /* NativeLiquidTabBarManager.swift */; };
 		D2B3C4D5E6F70123456789AB /* NativeLiquidTabBarBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = D2B3C4D5E6F70123456789AD /* NativeLiquidTabBarBridge.m */; };
+		D9355780CAD539F2CD910D19 /* ShoppingBlockerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */; };
+		E411526C05948DB9E78B1F5D /* ShoppingBlockerMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DAB3FFA34776C08E523DDAF /* ShoppingBlockerMonitor.swift */; };
+		E8AF6F8E5D854CA4BF694995 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 624F683552E75C24A4F0B14F /* Foundation.framework */; };
+		E8BA00000000000000000065 /* BankExpenses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000001 /* BankExpenses.swift */; };
+		E8BA00000000000000000066 /* BankExpensesBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000002 /* BankExpensesBridge.m */; };
+		E8BA00000000000000000067 /* ExpenseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000003 /* ExpenseParser.swift */; };
+		E8BA00000000000000000068 /* ExpensePatterns.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000004 /* ExpensePatterns.swift */; };
+		E8BA00000000000000000069 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000005 /* Localizable.xcstrings */; };
+		E8BA0000000000000000006A /* AppShortcuts.strings in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000006 /* AppShortcuts.strings */; };
+		E8BA00000000000000000079 /* AlmostApplePayAction.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */; };
+		E8BA0000000000000000007A /* AlmostApplePayAutomation.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */; };
+		ECA403849D38506028A1BAC6 /* ShoppingBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD0CFB81B9F9BC2BD4F33D8 /* ShoppingBlocker.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
+		F29FE1207C3DAD8ABDAA8BBD /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5470B128D5138A24963E87FA /* Localizable.strings */; };
+		FC610BCA57BCCC853361FA60 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 624F683552E75C24A4F0B14F /* Foundation.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,6 +63,27 @@
 			proxyType = 1;
 			remoteGlobalIDString = 4157469B2F48796A00EA9099;
 			remoteInfo = "Almost WidgetExtension";
+		};
+		9BF4AE3D5A285E4D6A4F7159 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0CD6C87B22D61B2FEE548826;
+			remoteInfo = ShoppingBlockerShield;
+		};
+		A877BA034DD8ACE52AD71FC0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6BFF3B917DC4A71F731FFDB2;
+			remoteInfo = ShoppingBlockerAction;
+		};
+		AF0A16E4286DA72755104561 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 26193CBD49E5419932DEF4F7;
+			remoteInfo = ShoppingBlockerMonitor;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -46,6 +95,9 @@
 			dstSubfolderSpec = 13;
 			files = (
 				415746B12F48796B00EA9099 /* Almost WidgetExtension.appex in Embed Foundation Extensions */,
+				024E8D6715014DC52798C3B3 /* ShoppingBlockerMonitor.appex in Embed Foundation Extensions */,
+				ACB290B1B3731D3D91BF824A /* ShoppingBlockerShield.appex in Embed Foundation Extensions */,
+				39549F3431315719D9BBAEAF /* ShoppingBlockerAction.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -53,31 +105,85 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E8BA00000000000000000080 /* WalletExpenseAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Almost Widget/WalletExpenseAttributes.swift"; sourceTree = "<group>"; };
+		014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShoppingBlockerMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0980DD33B165AAC6CA6C0482 /* ShoppingBlockerShield.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingBlockerShield.swift; sourceTree = "<group>"; };
 		0A71B87D31A4000100AF0002 /* AdSupport.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AdSupport.framework; path = System/Library/Frameworks/AdSupport.framework; sourceTree = SDKROOT; };
 		0A946BB15BACF5239221DE28 /* Pods-Almost.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Almost.release.xcconfig"; path = "Target Support Files/Pods-Almost/Pods-Almost.release.xcconfig"; sourceTree = "<group>"; };
+		0BAED0E54E59932AC497B37C /* ShoppingBlockerAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShoppingBlockerAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0DAB3FFA34776C08E523DDAF /* ShoppingBlockerMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingBlockerMonitor.swift; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Almost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Almost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Almost/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Almost/Info.plist; sourceTree = "<group>"; };
+		13BDF87D8ACF412A5227D039 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = Almost/ar.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		1736D10533954F28ADABB2CA /* GoogleService-Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Almost/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		1BBA66DF8C35E45F2DD5D7ED /* ko */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
+		2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingBlockerStore.swift; sourceTree = "<group>"; };
+		2E5B3F280D10833E5F5E70E2 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Almost/ru.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		317F733DBA0830127E7685E2 /* ShoppingBlockerAction.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingBlockerAction.swift; sourceTree = "<group>"; };
+		329C15AB0B1E69C32DD242BD /* zh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = zh; path = zh.lproj/Localizable.strings; sourceTree = "<group>"; };
+		3DB93D7A17C8E17D6869480D /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = Almost/ko.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		4157469C2F48796A00EA9099 /* Almost WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Almost WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		4157469D2F48796A00EA9099 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		4157469F2F48796A00EA9099 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Almost/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		59517DEC52DD6E98FB28C97C /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Almost/es.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		5E9B2A371BC16AD140483062 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Almost/ja.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		5FCE49F44109A7598CF1282C /* ar */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Localizable.strings; sourceTree = "<group>"; };
+		624F683552E75C24A4F0B14F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		662932607F613858F472295C /* ja */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingSavings.swift; sourceTree = "<group>"; };
+		701FBAEEBD89EF81F74B8399 /* fr */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		735BE40EDE34F8C53E8B3F56 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Almost/de.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		794833AFA5D8C59A2785D65D /* en */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		848F000B85CA5B43A40D01BE /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Almost/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		860A31576FE4ACBEB571B99C /* pt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = pt; path = pt.lproj/Localizable.strings; sourceTree = "<group>"; };
+		912432696A9AFE5E5F0DF360 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Almost/pt.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		A17A61000000000000000002 /* AlmostGlass.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; name = AlmostGlass.icon; path = Almost/AlmostGlass.icon; sourceTree = "<group>"; };
+		A1877ED83B4BBB6860E6DDEF /* de */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A19A00000000000000000001 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Almost/ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A203F5A2DB68A981BB46A56A /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "Almost/zh-Hant.lproj/AppShortcuts.strings"; sourceTree = "<group>"; };
+		A20B00000000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Almost/en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000002 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = Almost/es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000003 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Almost/fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000004 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = Almost/ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000005 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = Almost/de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000006 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Almost/pt.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000007 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = Almost/it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000008 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = Almost/ar.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B00000000000000000009 /* zh */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh; path = Almost/zh.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B0000000000000000000A /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = Almost/ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A20B0000000000000000000B /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "Almost/zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Almost/SplashScreen.storyboard; sourceTree = "<group>"; };
+		B4C33D865B057C498C29F136 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = Almost/it.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		BDDF6E693A2C0B0823AE2147 /* ShoppingBlockerShield.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShoppingBlockerShield.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE0185EE9D6B804056722466 /* zh */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = zh; path = Almost/zh.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetStorage.swift; path = Almost/WidgetStorage.swift; sourceTree = "<group>"; };
 		C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = WidgetStorageBridge.m; path = Almost/WidgetStorageBridge.m; sourceTree = "<group>"; };
+		CCC6437E7614B575FDFB6924 /* es */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidGlassNativeViewManager.swift; path = Almost/LiquidGlassNativeViewManager.swift; sourceTree = "<group>"; };
 		D1A2B3C4D5E6F7012345678C /* LiquidGlassNativeViewBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LiquidGlassNativeViewBridge.m; path = Almost/LiquidGlassNativeViewBridge.m; sourceTree = "<group>"; };
 		D2B3C4D5E6F70123456789AC /* NativeLiquidTabBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeLiquidTabBarManager.swift; path = Almost/NativeLiquidTabBarManager.swift; sourceTree = "<group>"; };
 		D2B3C4D5E6F70123456789AD /* NativeLiquidTabBarBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = NativeLiquidTabBarBridge.m; path = Almost/NativeLiquidTabBarBridge.m; sourceTree = "<group>"; };
+		D705E03E0C44A46AF09A8A25 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = Almost/fr.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		DAC5A2D01953DB8202D91AD4 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = Almost/en.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		DD95BECD8918810B9E6BD6EA /* it */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E184C9BDEF3BBB6B48471387 /* Pods-Almost.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Almost.debug.xcconfig"; path = "Target Support Files/Pods-Almost/Pods-Almost.debug.xcconfig"; sourceTree = "<group>"; };
 		E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Almost.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E8BA00000000000000000001 /* BankExpenses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/BankExpenses.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000002 /* BankExpensesBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Almost/BankExpensesBridge.m; sourceTree = "<group>"; };
+		E8BA00000000000000000003 /* ExpenseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpenseParser.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000004 /* ExpensePatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpensePatterns.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000005 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Almost/Localizable.xcstrings; sourceTree = "<group>"; };
+		E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAction.shortcut; sourceTree = "<group>"; };
+		E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAutomation.shortcut; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		ED40D8923F7192C1DC3C08BE /* ru */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Almost/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* Almost-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Almost-Bridging-Header.h"; path = "Almost/Almost-Bridging-Header.h"; sourceTree = "<group>"; };
-		A19A00000000000000000001 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Almost/ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		FBD0CFB81B9F9BC2BD4F33D8 /* ShoppingBlocker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShoppingBlocker.swift; path = Almost/ShoppingBlocker.swift; sourceTree = "<group>"; };
+		FDE257C01245D67F7C150F45 /* ShoppingBlockerBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShoppingBlockerBridge.m; path = Almost/ShoppingBlockerBridge.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -115,12 +221,36 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		286F6CCC048F58E083264E13 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8AF6F8E5D854CA4BF694995 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		415746992F48796A00EA9099 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				415746A02F48796A00EA9099 /* SwiftUI.framework in Frameworks */,
 				4157469E2F48796A00EA9099 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		79A395B702D9E80741B49C1B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				492E284A88BF0A93587EC9A5 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A12222994B876447B957194A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC610BCA57BCCC853361FA60 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -139,6 +269,15 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+				E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */,
+				E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */,
+				E8BA00000000000000000001 /* BankExpenses.swift */,
+				E8BA00000000000000000080 /* WalletExpenseAttributes.swift */,
+				E8BA00000000000000000002 /* BankExpensesBridge.m */,
+				E8BA00000000000000000003 /* ExpenseParser.swift */,
+				E8BA00000000000000000004 /* ExpensePatterns.swift */,
+				E8BA00000000000000000005 /* Localizable.xcstrings */,
+				E8BA00000000000000000006 /* AppShortcuts.strings */,
 				C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */,
 				C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */,
 				D1A2B3C4D5E6F7012345678B /* LiquidGlassNativeViewManager.swift */,
@@ -148,11 +287,14 @@
 				F11748442D0722820044C1D9 /* Almost-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
+				A17A61000000000000000002 /* AlmostGlass.icon */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				A19A00000000000000000002 /* InfoPlist.strings */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */,
 				1736D10533954F28ADABB2CA /* GoogleService-Info.plist */,
+				FBD0CFB81B9F9BC2BD4F33D8 /* ShoppingBlocker.swift */,
+				FDE257C01245D67F7C150F45 /* ShoppingBlockerBridge.m */,
 			);
 			name = Almost;
 			sourceTree = "<group>";
@@ -165,6 +307,7 @@
 				E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */,
 				4157469D2F48796A00EA9099 /* WidgetKit.framework */,
 				4157469F2F48796A00EA9099 /* SwiftUI.framework */,
+				646EA5CEF27F7683E449FDCA /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -176,6 +319,42 @@
 				0A946BB15BACF5239221DE28 /* Pods-Almost.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		5B90ECD2E16A9BD9981F10D4 /* ShoppingBlockerShared */ = {
+			isa = PBXGroup;
+			children = (
+				2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */,
+				68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */,
+			);
+			name = ShoppingBlockerShared;
+			path = ShoppingBlockerShared;
+			sourceTree = "<group>";
+		};
+		646EA5CEF27F7683E449FDCA /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				624F683552E75C24A4F0B14F /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		6E795FC115C160D5BFCA64B4 /* ShoppingBlockerAction */ = {
+			isa = PBXGroup;
+			children = (
+				317F733DBA0830127E7685E2 /* ShoppingBlockerAction.swift */,
+			);
+			name = ShoppingBlockerAction;
+			path = ShoppingBlockerAction;
+			sourceTree = "<group>";
+		};
+		81F0D29393FB55EFE7D77379 /* ShoppingBlockerMonitor */ = {
+			isa = PBXGroup;
+			children = (
+				0DAB3FFA34776C08E523DDAF /* ShoppingBlockerMonitor.swift */,
+			);
+			name = ShoppingBlockerMonitor;
+			path = ShoppingBlockerMonitor;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -195,6 +374,10 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				408565A7511231F6830AA0ED /* Pods */,
 				125E02D465774E4C61343A11 /* ExpoModulesProviders */,
+				5B90ECD2E16A9BD9981F10D4 /* ShoppingBlockerShared */,
+				81F0D29393FB55EFE7D77379 /* ShoppingBlockerMonitor */,
+				8D213D583607063B5E6F4904 /* ShoppingBlockerShield */,
+				6E795FC115C160D5BFCA64B4 /* ShoppingBlockerAction */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -206,8 +389,21 @@
 			children = (
 				13B07F961A680F5B00A75B9A /* Almost.app */,
 				4157469C2F48796A00EA9099 /* Almost WidgetExtension.appex */,
+				014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */,
+				BDDF6E693A2C0B0823AE2147 /* ShoppingBlockerShield.appex */,
+				0BAED0E54E59932AC497B37C /* ShoppingBlockerAction.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8D213D583607063B5E6F4904 /* ShoppingBlockerShield */ = {
+			isa = PBXGroup;
+			children = (
+				0980DD33B165AAC6CA6C0482 /* ShoppingBlockerShield.swift */,
+				5470B128D5138A24963E87FA /* Localizable.strings */,
+			);
+			name = ShoppingBlockerShield;
+			path = ShoppingBlockerShield;
 			sourceTree = "<group>";
 		};
 		A9DABEBAD107248C0E1FEC2A /* Almost */ = {
@@ -230,6 +426,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0CD6C87B22D61B2FEE548826 /* ShoppingBlockerShield */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D87EF5F9555524F11AB36C05 /* Build configuration list for PBXNativeTarget "ShoppingBlockerShield" */;
+			buildPhases = (
+				36D8851CA46B89CD2745A066 /* Sources */,
+				79A395B702D9E80741B49C1B /* Frameworks */,
+				A25A31BAC6284F57463D318F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShoppingBlockerShield;
+			productName = ShoppingBlockerShield;
+			productReference = BDDF6E693A2C0B0823AE2147 /* ShoppingBlockerShield.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		13B07F861A680F5B00A75B9A /* Almost */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Almost" */;
@@ -250,11 +463,31 @@
 			);
 			dependencies = (
 				415746B02F48796B00EA9099 /* PBXTargetDependency */,
+				13643C5B13F4C6FE7AB69C13 /* PBXTargetDependency */,
+				241745791C474BE23655338A /* PBXTargetDependency */,
+				00464AD0C30B893F30F3F662 /* PBXTargetDependency */,
 			);
 			name = Almost;
 			productName = Almost;
 			productReference = 13B07F961A680F5B00A75B9A /* Almost.app */;
 			productType = "com.apple.product-type.application";
+		};
+		26193CBD49E5419932DEF4F7 /* ShoppingBlockerMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D9D3A623A51510BCE00DFD2B /* Build configuration list for PBXNativeTarget "ShoppingBlockerMonitor" */;
+			buildPhases = (
+				746AED4EC2BD4F1B061C29D8 /* Sources */,
+				A12222994B876447B957194A /* Frameworks */,
+				0AED4E6B62D846E3FCA0D58C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShoppingBlockerMonitor;
+			productName = ShoppingBlockerMonitor;
+			productReference = 014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		4157469B2F48796A00EA9099 /* Almost WidgetExtension */ = {
 			isa = PBXNativeTarget;
@@ -274,6 +507,23 @@
 			name = "Almost WidgetExtension";
 			productName = "Almost WidgetExtension";
 			productReference = 4157469C2F48796A00EA9099 /* Almost WidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		6BFF3B917DC4A71F731FFDB2 /* ShoppingBlockerAction */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 86E688BF27F69400E7FAC1EF /* Build configuration list for PBXNativeTarget "ShoppingBlockerAction" */;
+			buildPhases = (
+				4BA8360A7C3DD0ABF2B9D6F3 /* Sources */,
+				286F6CCC048F58E083264E13 /* Frameworks */,
+				1595FC633D2086E8EE0D4455 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShoppingBlockerAction;
+			productName = ShoppingBlockerAction;
+			productReference = 0BAED0E54E59932AC497B37C /* ShoppingBlockerAction.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -300,6 +550,16 @@
 			knownRegions = (
 				en,
 				ja,
+				es,
+				fr,
+				ru,
+				de,
+				pt,
+				it,
+				ar,
+				zh,
+				"zh-Hant",
+				ko,
 				Base,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
@@ -309,21 +569,43 @@
 			targets = (
 				13B07F861A680F5B00A75B9A /* Almost */,
 				4157469B2F48796A00EA9099 /* Almost WidgetExtension */,
+				26193CBD49E5419932DEF4F7 /* ShoppingBlockerMonitor */,
+				0CD6C87B22D61B2FEE548826 /* ShoppingBlockerShield */,
+				6BFF3B917DC4A71F731FFDB2 /* ShoppingBlockerAction */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0AED4E6B62D846E3FCA0D58C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				A17A61000000000000000001 /* AlmostGlass.icon in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */,
 				AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */,
+				E8BA00000000000000000079 /* AlmostApplePayAction.shortcut in Resources */,
+				E8BA0000000000000000007A /* AlmostApplePayAutomation.shortcut in Resources */,
+				E8BA00000000000000000069 /* Localizable.xcstrings in Resources */,
+				E8BA0000000000000000006A /* AppShortcuts.strings in Resources */,
 				A19A00000000000000000003 /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1595FC633D2086E8EE0D4455 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,18 +616,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXVariantGroup section */
-		A19A00000000000000000002 /* InfoPlist.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				A19A00000000000000000001 /* ja */,
+		A25A31BAC6284F57463D318F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F29FE1207C3DAD8ABDAA8BBD /* Localizable.strings in Resources */,
 			);
-			name = InfoPlist.strings;
-			sourceTree = "<group>";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXVariantGroup section */
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */ = {
@@ -422,6 +701,7 @@
 				"${PODS_CONFIGURATION_BUILD_DIR}/FirebaseCoreInternal/FirebaseCoreInternal_Privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/FirebaseCrashlytics/FirebaseCrashlytics_Privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/FirebaseInstallations/FirebaseInstallations_Privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/FirebaseMessaging/FirebaseMessaging_Privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/FirebaseRemoteConfig/FirebaseRemoteConfig_Privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/GTMSessionFetcher/GTMSessionFetcher_Core_Privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/GoogleDataTransport/GoogleDataTransport_Privacy.bundle",
@@ -463,6 +743,7 @@
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FirebaseCoreInternal_Privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FirebaseCrashlytics_Privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FirebaseInstallations_Privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FirebaseMessaging_Privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/FirebaseRemoteConfig_Privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GTMSessionFetcher_Core_Privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleDataTransport_Privacy.bundle",
@@ -572,6 +853,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+				E8BA00000000000000000065 /* BankExpenses.swift in Sources */,
+				E8BA00000000000000000081 /* WalletExpenseAttributes.swift in Sources */,
+				E8BA00000000000000000066 /* BankExpensesBridge.m in Sources */,
+				E8BA00000000000000000067 /* ExpenseParser.swift in Sources */,
+				E8BA00000000000000000068 /* ExpensePatterns.swift in Sources */,
 				C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */,
 				C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */,
 				D1A2B3C4D5E6F70123456789 /* LiquidGlassNativeViewManager.swift in Sources */,
@@ -579,6 +865,20 @@
 				D2B3C4D5E6F70123456789AA /* NativeLiquidTabBarManager.swift in Sources */,
 				D2B3C4D5E6F70123456789AB /* NativeLiquidTabBarBridge.m in Sources */,
 				4C844D10E6B33036DD700665 /* ExpoModulesProvider.swift in Sources */,
+				D9355780CAD539F2CD910D19 /* ShoppingBlockerStore.swift in Sources */,
+				ECA403849D38506028A1BAC6 /* ShoppingBlocker.swift in Sources */,
+				960A46E13EED6344BDD90DBA /* ShoppingBlockerBridge.m in Sources */,
+				47855B314851E57FF6C138D7 /* ShoppingSavings.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		36D8851CA46B89CD2745A066 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				367F2BD150A9CD79FCAFCD85 /* ShoppingBlockerShield.swift in Sources */,
+				CEB4F617FFDA2A1305E6E2F6 /* ShoppingBlockerStore.swift in Sources */,
+				C0FCA41724BBDA795BFA6743 /* ShoppingSavings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -589,9 +889,45 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4BA8360A7C3DD0ABF2B9D6F3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				49DB751AD35B208CCE8674B4 /* ShoppingBlockerAction.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		746AED4EC2BD4F1B061C29D8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E411526C05948DB9E78B1F5D /* ShoppingBlockerMonitor.swift in Sources */,
+				0AECE44331EC5EB8B7D01377 /* ShoppingBlockerStore.swift in Sources */,
+				5DD5CA604AEACC019662741F /* ShoppingSavings.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		00464AD0C30B893F30F3F662 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShoppingBlockerAction;
+			target = 6BFF3B917DC4A71F731FFDB2 /* ShoppingBlockerAction */;
+			targetProxy = A877BA034DD8ACE52AD71FC0 /* PBXContainerItemProxy */;
+		};
+		13643C5B13F4C6FE7AB69C13 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShoppingBlockerMonitor;
+			target = 26193CBD49E5419932DEF4F7 /* ShoppingBlockerMonitor */;
+			targetProxy = AF0A16E4286DA72755104561 /* PBXContainerItemProxy */;
+		};
+		241745791C474BE23655338A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShoppingBlockerShield;
+			target = 0CD6C87B22D61B2FEE548826 /* ShoppingBlockerShield */;
+			targetProxy = 9BF4AE3D5A285E4D6A4F7159 /* PBXContainerItemProxy */;
+		};
 		415746B02F48796B00EA9099 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 4157469B2F48796A00EA9099 /* Almost WidgetExtension */;
@@ -599,15 +935,74 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin PBXVariantGroup section */
+		5470B128D5138A24963E87FA /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				5FCE49F44109A7598CF1282C /* ar */,
+				A1877ED83B4BBB6860E6DDEF /* de */,
+				794833AFA5D8C59A2785D65D /* en */,
+				CCC6437E7614B575FDFB6924 /* es */,
+				701FBAEEBD89EF81F74B8399 /* fr */,
+				DD95BECD8918810B9E6BD6EA /* it */,
+				662932607F613858F472295C /* ja */,
+				1BBA66DF8C35E45F2DD5D7ED /* ko */,
+				860A31576FE4ACBEB571B99C /* pt */,
+				ED40D8923F7192C1DC3C08BE /* ru */,
+				329C15AB0B1E69C32DD242BD /* zh */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		A19A00000000000000000002 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A19A00000000000000000001 /* ja */,
+				A20B00000000000000000001 /* en */,
+				A20B00000000000000000002 /* es */,
+				A20B00000000000000000003 /* fr */,
+				A20B00000000000000000004 /* ru */,
+				A20B00000000000000000005 /* de */,
+				A20B00000000000000000006 /* pt */,
+				A20B00000000000000000007 /* it */,
+				A20B00000000000000000008 /* ar */,
+				A20B00000000000000000009 /* zh */,
+				A20B0000000000000000000B /* zh-Hant */,
+				A20B0000000000000000000A /* ko */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E8BA00000000000000000006 /* AppShortcuts.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				DAC5A2D01953DB8202D91AD4 /* en */,
+				2E5B3F280D10833E5F5E70E2 /* ru */,
+				59517DEC52DD6E98FB28C97C /* es */,
+				D705E03E0C44A46AF09A8A25 /* fr */,
+				735BE40EDE34F8C53E8B3F56 /* de */,
+				13BDF87D8ACF412A5227D039 /* ar */,
+				BE0185EE9D6B804056722466 /* zh */,
+				A203F5A2DB68A981BB46A56A /* zh-Hant */,
+				912432696A9AFE5E5F0DF360 /* pt */,
+				B4C33D865B057C498C29F136 /* it */,
+				5E9B2A371BC16AD140483062 /* ja */,
+				3DB93D7A17C8E17D6869480D /* ko */,
+			);
+			name = AppShortcuts.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = E184C9BDEF3BBB6B48471387 /* Pods-Almost.debug.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AlmostGlass;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 128;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -621,7 +1016,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 7.2.1;
+				MARKETING_VERSION = 8.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -642,10 +1037,10 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 0A946BB15BACF5239221DE28 /* Pods-Almost.release.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AlmostGlass;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 128;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = Almost/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
@@ -654,7 +1049,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 7.2.1;
+				MARKETING_VERSION = 8.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -685,7 +1080,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_ENTITLEMENTS = "Almost Widget/Almost Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 128;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -701,7 +1096,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 7.2.1;
+				MARKETING_VERSION = 8.0.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
@@ -735,7 +1130,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Almost Widget/Almost Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 127;
+				CURRENT_PROJECT_VERSION = 128;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -751,7 +1146,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 7.2.1;
+				MARKETING_VERSION = 8.0.0;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.sasarei.almostclean.Almost-Widget";
@@ -766,6 +1161,91 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		6E5640F3440F042C3DA36EAB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerAction/ShoppingBlockerAction.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerAction/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerAction;
+				PRODUCT_MODULE_NAME = ShoppingBlockerAction;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		784ABBA1D17657B64E02CE0B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerMonitor/ShoppingBlockerMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerMonitor/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerMonitor;
+				PRODUCT_MODULE_NAME = ShoppingBlockerMonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8287223DCADCB48B12940528 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerShield/ShoppingBlockerShield.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerShield/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerShield;
+				PRODUCT_MODULE_NAME = ShoppingBlockerShield;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -885,6 +1365,92 @@
 			};
 			name = Release;
 		};
+		96C5B9367AB1B375E49F214A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerShield/ShoppingBlockerShield.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerShield/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerShield;
+				PRODUCT_MODULE_NAME = ShoppingBlockerShield;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B3A32AEB8D43065544C2E300 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerAction/ShoppingBlockerAction.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerAction/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerAction;
+				PRODUCT_MODULE_NAME = ShoppingBlockerAction;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		C48D03AE2B989D803649523A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerMonitor/ShoppingBlockerMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 128;
+				DEVELOPMENT_TEAM = CGRYGJXPS2;
+				INFOPLIST_FILE = ShoppingBlockerMonitor/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 8.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerMonitor;
+				PRODUCT_MODULE_NAME = ShoppingBlockerMonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -911,6 +1477,33 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		86E688BF27F69400E7FAC1EF /* Build configuration list for PBXNativeTarget "ShoppingBlockerAction" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B3A32AEB8D43065544C2E300 /* Release */,
+				6E5640F3440F042C3DA36EAB /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D87EF5F9555524F11AB36C05 /* Build configuration list for PBXNativeTarget "ShoppingBlockerShield" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				96C5B9367AB1B375E49F214A /* Release */,
+				8287223DCADCB48B12940528 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D9D3A623A51510BCE00DFD2B /* Build configuration list for PBXNativeTarget "ShoppingBlockerMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				784ABBA1D17657B64E02CE0B /* Release */,
+				C48D03AE2B989D803649523A /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

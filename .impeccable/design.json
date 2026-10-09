@@ -1,74 +1,619 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-20T00:00:00+03:00",
+  "generatedAt": "2026-10-03T10:37:19.045861Z",
   "title": "Design System: Almost",
   "extensions": {
     "colorMeta": {
       "light-background": {
         "role": "neutral",
         "displayName": "Cool Ground",
-        "canonical": "#F5F6F8",
-        "tonalRamp": ["#191A1C", "#34363A", "#55585E", "#787C84", "#A0A4AC", "#C4C7CD", "#E1E3E7", "#F5F6F8"]
+        "canonical": "#F5F6FA",
+        "tonalRamp": [
+          "#191A1C",
+          "#34363A",
+          "#55585E",
+          "#787C84",
+          "#A0A4AC",
+          "#C4C7CD",
+          "#E1E3E7",
+          "#F5F6FA"
+        ]
       },
       "light-surface": {
         "role": "neutral",
         "displayName": "Bright Surface",
         "canonical": "#FFFFFF",
-        "tonalRamp": ["#1A1A1A", "#383838", "#5C5C5C", "#858585", "#ADADAD", "#D0D0D0", "#ECECEC", "#FFFFFF"]
+        "tonalRamp": [
+          "#1A1A1A",
+          "#383838",
+          "#5C5C5C",
+          "#858585",
+          "#ADADAD",
+          "#D0D0D0",
+          "#ECECEC",
+          "#FFFFFF"
+        ]
       },
       "light-text": {
         "role": "primary",
         "displayName": "Almost Ink",
-        "canonical": "#202129",
-        "tonalRamp": ["#121318", "#202129", "#393B49", "#56596B", "#777A8C", "#A1A4B2", "#CDD0D8", "#F1F2F5"]
+        "canonical": "#1F2230",
+        "tonalRamp": [
+          "#121318",
+          "#1F2230",
+          "#393B49",
+          "#56596B",
+          "#777A8C",
+          "#A1A4B2",
+          "#CDD0D8",
+          "#F1F2F5"
+        ]
       },
       "pro-primary": {
         "role": "primary",
         "displayName": "PRO Indigo",
         "canonical": "#3E4FD7",
-        "tonalRamp": ["#12183E", "#1E2868", "#2D3A9D", "#3E4FD7", "#6E7AE4", "#9CA5EE", "#C8CDF7", "#EEF0FD"]
+        "tonalRamp": [
+          "#12183E",
+          "#1E2868",
+          "#2D3A9D",
+          "#3E4FD7",
+          "#6E7AE4",
+          "#9CA5EE",
+          "#C8CDF7",
+          "#EEF0FD"
+        ]
       },
       "savings": {
         "role": "secondary",
         "displayName": "Verified Savings",
         "canonical": "#28D985",
-        "tonalRamp": ["#08281A", "#0E482D", "#156A43", "#1E985F", "#28D985", "#62E6A7", "#A3F1CD", "#E6FBF2"]
+        "tonalRamp": [
+          "#08281A",
+          "#0E482D",
+          "#156A43",
+          "#1E985F",
+          "#28D985",
+          "#62E6A7",
+          "#A3F1CD",
+          "#E6FBF2"
+        ]
       },
       "debt": {
         "role": "secondary",
         "displayName": "Responsible Debt",
         "canonical": "#FF657B",
-        "tonalRamp": ["#3B0B13", "#68121F", "#981D30", "#D5334B", "#FF657B", "#FF91A1", "#FFBDC6", "#FFECEF"]
+        "tonalRamp": [
+          "#3B0B13",
+          "#68121F",
+          "#981D30",
+          "#D5334B",
+          "#FF657B",
+          "#FF91A1",
+          "#FFBDC6",
+          "#FFECEF"
+        ]
       },
       "information": {
         "role": "tertiary",
         "displayName": "Guidance Blue",
         "canonical": "#356A9A",
-        "tonalRamp": ["#102334", "#193A54", "#275174", "#356A9A", "#6089AE", "#8CAAC5", "#BACDDD", "#E8F0F6"]
+        "tonalRamp": [
+          "#102334",
+          "#193A54",
+          "#275174",
+          "#356A9A",
+          "#6089AE",
+          "#8CAAC5",
+          "#BACDDD",
+          "#E8F0F6"
+        ]
+      },
+      "light-muted": {
+        "role": "neutral",
+        "displayName": "Light Muted",
+        "canonical": "#687083",
+        "tonalRamp": [
+          "oklch(15% 0.03122 267.28)",
+          "oklch(26% 0.03122 267.28)",
+          "oklch(37% 0.03122 267.28)",
+          "oklch(49% 0.03122 267.28)",
+          "oklch(61% 0.03122 267.28)",
+          "oklch(73% 0.03122 267.28)",
+          "oklch(85% 0.03122 267.28)",
+          "oklch(95% 0.03122 267.28)"
+        ]
+      },
+      "light-border": {
+        "role": "neutral",
+        "displayName": "Light Border",
+        "canonical": "#DDE1EA",
+        "tonalRamp": [
+          "oklch(15% 0.01298 266.69)",
+          "oklch(26% 0.01298 266.69)",
+          "oklch(37% 0.01298 266.69)",
+          "oklch(49% 0.01298 266.69)",
+          "oklch(61% 0.01298 266.69)",
+          "oklch(73% 0.01298 266.69)",
+          "oklch(85% 0.01298 266.69)",
+          "oklch(95% 0.01298 266.69)"
+        ]
+      },
+      "light-primary": {
+        "role": "primary",
+        "displayName": "Light Primary",
+        "canonical": "#485ED7",
+        "tonalRamp": [
+          "oklch(15% 0.18634 270.93)",
+          "oklch(26% 0.18634 270.93)",
+          "oklch(37% 0.18634 270.93)",
+          "oklch(49% 0.18634 270.93)",
+          "oklch(61% 0.18634 270.93)",
+          "oklch(73% 0.18634 270.93)",
+          "oklch(85% 0.18634 270.93)",
+          "oklch(95% 0.18634 270.93)"
+        ]
+      },
+      "light-primary-surface": {
+        "role": "neutral",
+        "displayName": "Light Primary Surface",
+        "canonical": "#E6E8FF",
+        "tonalRamp": [
+          "oklch(15% 0.03109 281.82)",
+          "oklch(26% 0.03109 281.82)",
+          "oklch(37% 0.03109 281.82)",
+          "oklch(49% 0.03109 281.82)",
+          "oklch(61% 0.03109 281.82)",
+          "oklch(73% 0.03109 281.82)",
+          "oklch(85% 0.03109 281.82)",
+          "oklch(95% 0.03109 281.82)"
+        ]
+      },
+      "light-surface-muted": {
+        "role": "neutral",
+        "displayName": "Light Surface Muted",
+        "canonical": "#EBEDF4",
+        "tonalRamp": [
+          "oklch(15% 0.00963 273.35)",
+          "oklch(26% 0.00963 273.35)",
+          "oklch(37% 0.00963 273.35)",
+          "oklch(49% 0.00963 273.35)",
+          "oklch(61% 0.00963 273.35)",
+          "oklch(73% 0.00963 273.35)",
+          "oklch(85% 0.00963 273.35)",
+          "oklch(95% 0.00963 273.35)"
+        ]
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Dark Background",
+        "canonical": "#0C1019",
+        "tonalRamp": [
+          "oklch(15% 0.01989 265.83)",
+          "oklch(26% 0.01989 265.83)",
+          "oklch(37% 0.01989 265.83)",
+          "oklch(49% 0.01989 265.83)",
+          "oklch(61% 0.01989 265.83)",
+          "oklch(73% 0.01989 265.83)",
+          "oklch(85% 0.01989 265.83)",
+          "oklch(95% 0.01989 265.83)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "canonical": "#191F2B",
+        "tonalRamp": [
+          "oklch(15% 0.02481 263.93)",
+          "oklch(26% 0.02481 263.93)",
+          "oklch(37% 0.02481 263.93)",
+          "oklch(49% 0.02481 263.93)",
+          "oklch(61% 0.02481 263.93)",
+          "oklch(73% 0.02481 263.93)",
+          "oklch(85% 0.02481 263.93)",
+          "oklch(95% 0.02481 263.93)"
+        ]
+      },
+      "dark-text": {
+        "role": "neutral",
+        "displayName": "Dark Text",
+        "canonical": "#F3F5FA",
+        "tonalRamp": [
+          "oklch(15% 0.00700 268.55)",
+          "oklch(26% 0.00700 268.55)",
+          "oklch(37% 0.00700 268.55)",
+          "oklch(49% 0.00700 268.55)",
+          "oklch(61% 0.00700 268.55)",
+          "oklch(73% 0.00700 268.55)",
+          "oklch(85% 0.00700 268.55)",
+          "oklch(95% 0.00700 268.55)"
+        ]
+      },
+      "dark-muted": {
+        "role": "neutral",
+        "displayName": "Dark Muted",
+        "canonical": "#ADB6C8",
+        "tonalRamp": [
+          "oklch(15% 0.02755 264.40)",
+          "oklch(26% 0.02755 264.40)",
+          "oklch(37% 0.02755 264.40)",
+          "oklch(49% 0.02755 264.40)",
+          "oklch(61% 0.02755 264.40)",
+          "oklch(73% 0.02755 264.40)",
+          "oklch(85% 0.02755 264.40)",
+          "oklch(95% 0.02755 264.40)"
+        ]
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Dark Primary",
+        "canonical": "#AAB6FF",
+        "tonalRamp": [
+          "oklch(15% 0.10461 276.56)",
+          "oklch(26% 0.10461 276.56)",
+          "oklch(37% 0.10461 276.56)",
+          "oklch(49% 0.10461 276.56)",
+          "oklch(61% 0.10461 276.56)",
+          "oklch(73% 0.10461 276.56)",
+          "oklch(85% 0.10461 276.56)",
+          "oklch(95% 0.10461 276.56)"
+        ]
+      },
+      "dark-border": {
+        "role": "neutral",
+        "displayName": "Dark Border",
+        "canonical": "#303A4A",
+        "tonalRamp": [
+          "oklch(15% 0.03120 259.71)",
+          "oklch(26% 0.03120 259.71)",
+          "oklch(37% 0.03120 259.71)",
+          "oklch(49% 0.03120 259.71)",
+          "oklch(61% 0.03120 259.71)",
+          "oklch(73% 0.03120 259.71)",
+          "oklch(85% 0.03120 259.71)",
+          "oklch(95% 0.03120 259.71)"
+        ]
+      },
+      "dark-on-primary": {
+        "role": "primary",
+        "displayName": "Dark On Primary",
+        "canonical": "#141A2C",
+        "tonalRamp": [
+          "oklch(15% 0.03651 269.24)",
+          "oklch(26% 0.03651 269.24)",
+          "oklch(37% 0.03651 269.24)",
+          "oklch(49% 0.03651 269.24)",
+          "oklch(61% 0.03651 269.24)",
+          "oklch(73% 0.03651 269.24)",
+          "oklch(85% 0.03651 269.24)",
+          "oklch(95% 0.03651 269.24)"
+        ]
+      },
+      "pro-base-background": {
+        "role": "neutral",
+        "displayName": "Pro Base Background",
+        "canonical": "#F0EEFB",
+        "tonalRamp": [
+          "oklch(15% 0.01745 293.14)",
+          "oklch(26% 0.01745 293.14)",
+          "oklch(37% 0.01745 293.14)",
+          "oklch(49% 0.01745 293.14)",
+          "oklch(61% 0.01745 293.14)",
+          "oklch(73% 0.01745 293.14)",
+          "oklch(85% 0.01745 293.14)",
+          "oklch(95% 0.01745 293.14)"
+        ]
+      },
+      "pro-base-text": {
+        "role": "neutral",
+        "displayName": "Pro Base Text",
+        "canonical": "#261F44",
+        "tonalRamp": [
+          "oklch(15% 0.06701 289.81)",
+          "oklch(26% 0.06701 289.81)",
+          "oklch(37% 0.06701 289.81)",
+          "oklch(49% 0.06701 289.81)",
+          "oklch(61% 0.06701 289.81)",
+          "oklch(73% 0.06701 289.81)",
+          "oklch(85% 0.06701 289.81)",
+          "oklch(95% 0.06701 289.81)"
+        ]
+      },
+      "pro-base-primary": {
+        "role": "primary",
+        "displayName": "Pro Base Primary",
+        "canonical": "#6549C8",
+        "tonalRamp": [
+          "oklch(15% 0.18777 287.93)",
+          "oklch(26% 0.18777 287.93)",
+          "oklch(37% 0.18777 287.93)",
+          "oklch(49% 0.18777 287.93)",
+          "oklch(61% 0.18777 287.93)",
+          "oklch(73% 0.18777 287.93)",
+          "oklch(85% 0.18777 287.93)",
+          "oklch(95% 0.18777 287.93)"
+        ]
+      },
+      "pro-background": {
+        "role": "neutral",
+        "displayName": "Pro Background",
+        "canonical": "#ECEFFD",
+        "tonalRamp": [
+          "oklch(15% 0.01905 276.35)",
+          "oklch(26% 0.01905 276.35)",
+          "oklch(37% 0.01905 276.35)",
+          "oklch(49% 0.01905 276.35)",
+          "oklch(61% 0.01905 276.35)",
+          "oklch(73% 0.01905 276.35)",
+          "oklch(85% 0.01905 276.35)",
+          "oklch(95% 0.01905 276.35)"
+        ]
+      },
+      "pro-surface": {
+        "role": "neutral",
+        "displayName": "Pro Surface",
+        "canonical": "#FAFAFF",
+        "tonalRamp": [
+          "oklch(15% 0.00661 286.28)",
+          "oklch(26% 0.00661 286.28)",
+          "oklch(37% 0.00661 286.28)",
+          "oklch(49% 0.00661 286.28)",
+          "oklch(61% 0.00661 286.28)",
+          "oklch(73% 0.00661 286.28)",
+          "oklch(85% 0.00661 286.28)",
+          "oklch(95% 0.00661 286.28)"
+        ]
+      },
+      "pro-text": {
+        "role": "neutral",
+        "displayName": "Pro Text",
+        "canonical": "#171C46",
+        "tonalRamp": [
+          "oklch(15% 0.07812 274.16)",
+          "oklch(26% 0.07812 274.16)",
+          "oklch(37% 0.07812 274.16)",
+          "oklch(49% 0.07812 274.16)",
+          "oklch(61% 0.07812 274.16)",
+          "oklch(73% 0.07812 274.16)",
+          "oklch(85% 0.07812 274.16)",
+          "oklch(95% 0.07812 274.16)"
+        ]
+      },
+      "savings-dark": {
+        "role": "neutral",
+        "displayName": "Savings Dark",
+        "canonical": "#35E295",
+        "tonalRamp": [
+          "oklch(15% 0.17517 158.30)",
+          "oklch(26% 0.17517 158.30)",
+          "oklch(37% 0.17517 158.30)",
+          "oklch(49% 0.17517 158.30)",
+          "oklch(61% 0.17517 158.30)",
+          "oklch(73% 0.17517 158.30)",
+          "oklch(85% 0.17517 158.30)",
+          "oklch(95% 0.17517 158.30)"
+        ]
+      },
+      "debt-dark": {
+        "role": "neutral",
+        "displayName": "Debt Dark",
+        "canonical": "#FF7B8D",
+        "tonalRamp": [
+          "oklch(15% 0.16100 13.37)",
+          "oklch(26% 0.16100 13.37)",
+          "oklch(37% 0.16100 13.37)",
+          "oklch(49% 0.16100 13.37)",
+          "oklch(61% 0.16100 13.37)",
+          "oklch(73% 0.16100 13.37)",
+          "oklch(85% 0.16100 13.37)",
+          "oklch(95% 0.16100 13.37)"
+        ]
+      },
+      "on-savings": {
+        "role": "neutral",
+        "displayName": "On Savings",
+        "canonical": "#042B1B",
+        "tonalRamp": [
+          "oklch(15% 0.05272 161.33)",
+          "oklch(26% 0.05272 161.33)",
+          "oklch(37% 0.05272 161.33)",
+          "oklch(49% 0.05272 161.33)",
+          "oklch(61% 0.05272 161.33)",
+          "oklch(73% 0.05272 161.33)",
+          "oklch(85% 0.05272 161.33)",
+          "oklch(95% 0.05272 161.33)"
+        ]
+      },
+      "on-debt": {
+        "role": "neutral",
+        "displayName": "On Debt",
+        "canonical": "#30030A",
+        "tonalRamp": [
+          "oklch(15% 0.07289 16.80)",
+          "oklch(26% 0.07289 16.80)",
+          "oklch(37% 0.07289 16.80)",
+          "oklch(49% 0.07289 16.80)",
+          "oklch(61% 0.07289 16.80)",
+          "oklch(73% 0.07289 16.80)",
+          "oklch(85% 0.07289 16.80)",
+          "oklch(95% 0.07289 16.80)"
+        ]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Primary screen headings and major statements." },
-      "headline": { "displayName": "Headline", "purpose": "Section-level titles." },
-      "title": { "displayName": "Title", "purpose": "High-emphasis card and destination titles." },
-      "body": { "displayName": "Body", "purpose": "Explanations, forms, and ordinary content." },
-      "secondary": { "displayName": "Secondary", "purpose": "Metadata, helper copy, and amount qualifiers." },
-      "label": { "displayName": "Label", "purpose": "Actions and compact controls." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Primary screen headings and major statements."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section-level titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "High-emphasis card and destination titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Explanations, forms, and ordinary content."
+      },
+      "secondary": {
+        "displayName": "Secondary",
+        "purpose": "Metadata, helper copy, and amount qualifiers."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Actions and compact controls."
+      }
     },
     "shadows": [
-      { "name": "card-ambient", "value": "0 7px 14px rgba(25,27,34,0.06)", "purpose": "Structural priority on summary and focus cards." },
-      { "name": "action-lift", "value": "0 6px 10px rgba(0,0,0,0.08)", "purpose": "A single primary destination action." }
+      {
+        "name": "card-ambient",
+        "value": "0 7px 14px rgba(25,27,34,0.06)",
+        "purpose": "Structural priority on summary and focus cards."
+      },
+      {
+        "name": "action-lift",
+        "value": "0 6px 10px rgba(0,0,0,0.08)",
+        "purpose": "A single primary destination action."
+      }
     ],
     "motion": [
-      { "name": "press", "value": "120ms", "purpose": "Immediate native press feedback." },
-      { "name": "micro", "value": "180ms", "purpose": "Small state changes and focus-art pulse." },
-      { "name": "transition", "value": "220ms", "purpose": "Default state transition." },
-      { "name": "reduced", "value": "140ms", "purpose": "Reduced-motion fallback without continuous movement." }
+      {
+        "name": "press",
+        "value": "120ms",
+        "purpose": "Immediate native press feedback."
+      },
+      {
+        "name": "micro",
+        "value": "180ms",
+        "purpose": "Small state changes and focus-art pulse."
+      },
+      {
+        "name": "transition",
+        "value": "220ms",
+        "purpose": "Default state transition."
+      },
+      {
+        "name": "reduced",
+        "value": "140ms",
+        "purpose": "Reduced-motion fallback without continuous movement."
+      }
     ],
     "breakpoints": [
-      { "name": "compact", "value": "380px" },
-      { "name": "short", "value": "740px height" }
-    ]
+      {
+        "name": "compact",
+        "value": "380px"
+      },
+      {
+        "name": "short",
+        "value": "740px height"
+      }
+    ],
+    "componentEvidence": {
+      "source": "App.js; src/constants/themeConfig.js; src/constants/designSystem.js",
+      "note": "Web snippets are illustrative translations of native components; focus-visible is a preview affordance, not evidence of React Native keyboard focus. Native assets are not replaced with synthetic artwork."
+    },
+    "surfaceFollowup": {
+      "date": "2026-10-03",
+      "source": [
+        "App.js",
+        "src/components/DecisionCardWheel.js",
+        "design/redesign-decision-followup/STATE-ACTIONS.md"
+      ],
+      "scope": "Current-source decision and secondary-surface patterns within the incumbent visual system; no new global tokens.",
+      "patterns": [
+        "Today places all due card names and a localized count above Make a Decision; the wheel Today badge uses text, weight and primary surface independently of checked state.",
+        "Progress and Insights Sections start collapsed with labeled accessible disclosure; full existing details remain reachable.",
+        "Subscription Watch shows a themed next-check inset, actual totals and three preview rows; full agenda and empty-state add remain reachable.",
+        "Pause shows the amount awaiting decisions and second-updated localized deadline timers, day counts and explicit expiry; detail actions remain reachable.",
+        "Free Profile prioritizes Get full access on the existing success role with readable foreground; Reports is quieter. Premium Profile prioritizes Reports.",
+        "Settings groups preferences, preserves payday Save/Cancel and keeps choice screens reachable during a draft; payday choices have platform-sized minimum width and height.",
+        "Category selection reveals and scrolls to the editor with reduced-motion support. Save becomes primary; Add becomes secondary. Creation retains validation, premium gates and dismissal.",
+        "The user-requested legacy Open All Settings branch and duplicate Profile shell are retired; live routes remain. Shared form sheets use incumbent shapes and headings."
+      ],
+      "evidence": {
+        "kind": "Source inspection and task-reported static checks only",
+        "passing": "Parity 203 contracts; localization 11 languages; themes 3 modes/6 accents; typecheck; lint zero errors; UI 48 and engagement 149 tests; attribution/cloud/security/backend/release-parity checks.",
+        "fullVerify": "Blocked at 11 existing dependency audit advisories.",
+        "unverified": "No current release artifact build, screenshots or simulator/emulator/device session. Rendering, contrast, gestures, live timer/keyboard behavior, long translations, large text, RTL and all theme/accent visual states remain unverified. Earlier captures establish only their original batch."
+      }
+    },
+    "paywallRedesign": {
+      "scope": "Approved plans-row Premium offer only; incumbent global tokens and narrative retained.",
+      "source": [
+        "src/components/PremiumPaywallModalV2.js",
+        "src/components/PaywallOfferIcon.js",
+        "src/constants/paywallCompactCopy.js",
+        "design/paywall-redesign/brief.md",
+        ".impeccable/mocks/decision/paywall-redesign/plans-row.json"
+      ],
+      "layout": {
+        "heroMinHeight": 208,
+        "compactHeroMinHeight": 88,
+        "tabletHeroMinHeight": 176,
+        "compactBelowHeight": 720,
+        "tabletAtHeight": 900,
+        "accessibilityColumnAtFontScale": 1.25,
+        "benefitCount": 3,
+        "contentInset": 20,
+        "compactContentInset": 16,
+        "planMinHeight": 174,
+        "compactPlanMinHeight": 140,
+        "planGap": 8,
+        "maxSheetWidth": 620,
+        "tallSheetMaxHeight": 850,
+        "newControlMinTarget": {
+          "ios": 44,
+          "android": 48
+        },
+        "ctaHeightByViewport": [
+          {
+            "maxHeight": 820,
+            "height": 48
+          },
+          {
+            "maxHeight": 900,
+            "height": 50
+          },
+          {
+            "aboveHeight": 900,
+            "height": 52
+          }
+        ]
+      },
+      "trialColors": {
+        "light": {
+          "accent": "#176747",
+          "surface": "#E6F5ED"
+        },
+        "dark": {
+          "accent": "#6CE3BC",
+          "surface": "#133D31"
+        }
+      },
+      "readingOrder": [
+        "Hero",
+        "Three short benefits",
+        "All benefits disclosure and eligible trial switch",
+        "Cancellation reassurance",
+        "Equal monthly/yearly/weekly cards",
+        "Scrollable subscription management",
+        "Pinned purchase action, complete billing disclosure, restore/terms/privacy"
+      ],
+      "rules": [
+        "One primary purchase CTA; distinct secondary disclosures, management and dock links.",
+        "Native offer metadata owns eligibility, trial duration, localized billing periods, prices and annual total; annual equivalent remains subordinate.",
+        "Large text stacks cards and secondary groups; scroll preserves all content and insight routes.",
+        "Preserve five-second dismissal, Back/backdrop, purchase/restore/manage/legal, scroll reporting and abandoned-offer handlers."
+      ],
+      "evidence": {
+        "rendered": "Actual React Native source via temporary RN Web harness; native surface/image/SVG stand-ins; illustrative store fixtures. See design/paywall-v3/.",
+        "coverage": "Ordinary and compact phones, tablet, light/dark/PRO six accents, Arabic RTL, German large text, paid eligibility.",
+        "unverified": "Native iOS/Android rendering, real Dynamic Type, purchase/restore runtime and device touch behavior. No simulator/emulator/device launch authorized.",
+        "provenance": "Approved concept retained. Seed stdout not preserved. Pre-build hero reproduction checkpoint missed; hero-repro.png is retrospective."
+      }
+    }
   },
   "components": [
     {
@@ -77,7 +622,7 @@
       "refersTo": "button-primary",
       "description": "High-contrast native action used once per focused state.",
       "html": "<button class=\"ds-btn-primary\">Continue</button>",
-      "css": ".ds-btn-primary { min-height: 52px; padding: 14px 16px; border: 0; border-radius: 10px; background: #202129; color: #FFFFFF; font: 600 14px/20px Inter, sans-serif; letter-spacing: 0.4px; transition: opacity 120ms ease, transform 120ms ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 2px; }"
+      "css": ".ds-btn-primary { min-height: 52px; padding: 14px 16px; border: 0; border-radius: 10px; background: #1F2230; color: #FFFFFF; font: 600 14px/20px Inter, sans-serif; letter-spacing: 0.4px; transition: opacity 120ms ease, transform 120ms ease; } .ds-btn-primary:hover { opacity: 0.9; } .ds-btn-primary:active { transform: scale(0.97); } .ds-btn-primary:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 2px; }"
     },
     {
       "name": "Savings Action",
@@ -100,15 +645,15 @@
       "kind": "chip",
       "description": "Two-state destination selector with one filled active pill.",
       "html": "<nav class=\"ds-segment\" aria-label=\"Budget destination\"><button class=\"ds-segment-active\">Savings</button><button class=\"ds-segment-idle\">Debt</button></nav>",
-      "css": ".ds-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: #ECEEF2; } .ds-segment button { min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: 999px; font: 600 14px/18px Inter, sans-serif; transition: background 180ms ease, color 180ms ease; } .ds-segment-active { background: #202129; color: #F5F6F8; } .ds-segment-idle { background: transparent; color: #202129; } .ds-segment button:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 1px; }"
+      "css": ".ds-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: #ECEEF2; } .ds-segment button { min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: 999px; font: 600 14px/18px Inter, sans-serif; transition: background 180ms ease, color 180ms ease; } .ds-segment-active { background: #1F2230; color: #F5F6FA; } .ds-segment-idle { background: transparent; color: #1F2230; } .ds-segment button:focus-visible { outline: 3px solid rgba(53,106,154,0.36); outline-offset: 1px; }"
     },
     {
       "name": "Focus Card",
       "kind": "card",
       "refersTo": "card",
       "description": "Single-destination card containing progress art, amount, and supporting metrics.",
-      "html": "<section class=\"ds-focus-card\"><h3>Savings</h3><div class=\"ds-focus-art\" aria-hidden=\"true\"></div><strong>36,800 ₽</strong><span>transferred</span></section>",
-      "css": ".ds-focus-card { padding: 14px; border: 1px solid #D8DCE3; border-radius: 16px; background: #FFFFFF; color: #202129; box-shadow: 0 6px 12px rgba(25,27,34,0.05); font-family: Inter, sans-serif; } .ds-focus-card h3 { margin: 0 0 12px; font-size: 21px; font-weight: 900; } .ds-focus-card strong { font-size: 27px; font-variant-numeric: tabular-nums; } .ds-focus-card span { margin-left: 7px; color: #626774; font-size: 15px; font-weight: 600; } .ds-focus-art { height: 182px; margin-bottom: 12px; border-radius: 16px; background: #F5F6F8; }"
+      "html": "<section class=\"ds-focus-card\"><h3>Savings</h3><strong>36,800 ₽</strong><span>transferred</span></section>",
+      "css": ".ds-focus-card { padding: 14px; border: 1px solid #DDE1EA; border-radius: 16px; background: #FFFFFF; color: #1F2230; box-shadow: 0 6px 12px rgba(25,27,34,0.05); font-family: Inter, sans-serif; } .ds-focus-card h3 { margin: 0 0 12px; font-size: 21px; font-weight: 900; } .ds-focus-card strong { font-size: 27px; font-variant-numeric: tabular-nums; } .ds-focus-card span { margin-left: 7px; color: #687083; font-size: 15px; font-weight: 600; } "
     },
     {
       "name": "Money Input",
@@ -116,19 +661,47 @@
       "refersTo": "input",
       "description": "Bordered numeric field used in transfer and debt setup sheets.",
       "html": "<label class=\"ds-field\"><span>Amount</span><input inputmode=\"decimal\" value=\"7,200\" aria-label=\"Amount\"></label>",
-      "css": ".ds-field { display: grid; gap: 7px; color: #202129; font: 700 13px/17px Inter, sans-serif; } .ds-field input { min-height: 48px; padding: 0 14px; border: 1px solid #D8DCE3; border-radius: 10px; background: #FFFFFF; color: #202129; font: 700 17px/22px Inter, sans-serif; font-variant-numeric: tabular-nums; } .ds-field input:focus-visible { border-color: #356A9A; outline: 3px solid rgba(53,106,154,0.18); outline-offset: 1px; }"
+      "css": ".ds-field { display: grid; gap: 7px; color: #1F2230; font: 700 13px/17px Inter, sans-serif; } .ds-field input { min-height: 48px; padding: 0 14px; border: 1px solid #DDE1EA; border-radius: 10px; background: #FFFFFF; color: #1F2230; font: 700 17px/22px Inter, sans-serif; font-variant-numeric: tabular-nums; } .ds-field input:focus-visible { border-color: #356A9A; outline: 3px solid rgba(53,106,154,0.18); outline-offset: 1px; }"
     },
     {
       "name": "Bottom Proof Sheet",
       "kind": "custom",
       "description": "Scrollable native sheet for the bank handoff, amount, and screenshot verification.",
       "html": "<section class=\"ds-sheet\"><div class=\"ds-sheet-handle\"></div><h2>Confirm transfer</h2><p>Transfer in your bank, then add proof.</p></section>",
-      "css": ".ds-sheet { padding: 10px 16px 16px; border: 1px solid #D8DCE3; border-radius: 20px 20px 0 0; background: #FFFFFF; color: #202129; font-family: Inter, sans-serif; box-shadow: 0 -10px 30px rgba(17,19,24,0.14); } .ds-sheet-handle { width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 999px; background: #D8DCE3; } .ds-sheet h2 { margin: 0 0 8px; font-size: 21px; line-height: 26px; font-weight: 900; } .ds-sheet p { margin: 0; color: #626774; font-size: 13px; line-height: 19px; }"
+      "css": ".ds-sheet { padding: 10px 16px 16px; border: 1px solid #DDE1EA; border-radius: 20px 20px 0 0; background: #FFFFFF; color: #1F2230; font-family: Inter, sans-serif; box-shadow: 0 -10px 30px rgba(17,19,24,0.14); } .ds-sheet-handle { width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 999px; background: #DDE1EA; } .ds-sheet h2 { margin: 0 0 8px; font-size: 21px; line-height: 26px; font-weight: 900; } .ds-sheet p { margin: 0; color: #687083; font-size: 13px; line-height: 19px; }"
+    },
+    {
+      "name": "Floating Header Utility",
+      "kind": "button",
+      "description": "28px painted utility within a transparent 48px target; native glass has themed fallbacks.",
+      "html": "<button class=\"ds-header\" aria-label=\"Back\"><span><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M15 5l-7 7 7 7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg></span></button>",
+      "css": ".ds-header {width:48px;height:48px;border:0;background:transparent;display:grid;place-items:center;color:#1F2230;} .ds-header span {width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.7);border:1px solid #DDE1EA;backdrop-filter:blur(12px);} .ds-header:hover span {background:#FFFFFF;} .ds-header:active {opacity:.8;} .ds-header:focus-visible {outline:2px solid #485ED7;outline-offset:1px;}"
+    },
+    {
+      "name": "Inline Preference",
+      "kind": "chip",
+      "description": "Quiet compact selected label inside the larger platform press region.",
+      "html": "<button class=\"ds-preference\" aria-pressed=\"true\"><span>English</span></button>",
+      "css": ".ds-preference {min-height:48px;display:flex;align-items:center;border:0;background:transparent;padding:0;color:#485ED7;} .ds-preference span {min-height:28px;padding:5px 10px;border-radius:8px;background:#E6E8FF;font:500 12px sans-serif;display:grid;place-items:center;} .ds-preference:hover {opacity:.9;} .ds-preference:active {opacity:.8;} .ds-preference:focus-visible {outline:2px solid #485ED7;outline-offset:1px;}"
+    },
+    {
+      "name": "Care Item Row",
+      "kind": "card",
+      "description": "Full-width compact row with contextual item information; native handlers and gating remain in source.",
+      "html": "<button class=\"ds-care-row\"><strong>Care item</strong><span>Benefit · availability</span></button>",
+      "css": ".ds-care-row {width:100%;min-height:64px;padding:9px 12px;display:grid;gap:3px;text-align:start;border:1px solid #DDE1EA;border-radius:16px;background:#FFFFFF;color:#1F2230;} .ds-care-row strong {font:700 15px/18px Inter,sans-serif;} .ds-care-row span {font:400 12px/15px Inter,sans-serif;color:#687083;} .ds-care-row:hover {background:#EBEDF4;} .ds-care-row:active {opacity:.86;} .ds-care-row:focus-visible {outline:2px solid #485ED7;outline-offset:1px;}"
+    },
+    {
+      "name": "Premium Offer Plan Card",
+      "kind": "card",
+      "description": "Illustrative translation of the native annual offer card; sample values are placeholders, not real store metadata. Exact native layout and offer behavior remain in source.",
+      "html": "<button class=\"ds-paywall-plan\" aria-pressed=\"true\"><span class=\"ds-paywall-ribbon\">Eligible trial duration</span><span class=\"ds-paywall-name\">Yearly</span><strong class=\"ds-paywall-price\">Store price</strong><span class=\"ds-paywall-period\">Billing period</span><span class=\"ds-paywall-equivalent\">Monthly equivalent</span><span class=\"ds-paywall-radio\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m6 12 4 4 8-8\"/></svg></span></button>",
+      "css": ".ds-paywall-plan {width:180px;min-height:174px;padding:0 7px 10px;display:flex;flex-direction:column;align-items:center;border:1.5px solid #176747;border-radius:14px;background:#E6F5ED;color:#1F2230;font-family:Inter,sans-serif;cursor:pointer;transition:opacity 120ms ease;} .ds-paywall-ribbon {align-self:stretch;margin-top:-8px;min-height:34px;padding:3px 2px;display:grid;place-items:center;border-radius:10px;background:#176747;color:#FFFFFF;font:600 11px/13px Inter,sans-serif;text-align:center;} .ds-paywall-name {margin-top:7px;font:600 15px/19px Inter,sans-serif;} .ds-paywall-price {margin-top:8px;font:800 22px/27px Inter,sans-serif;text-align:center;} .ds-paywall-period {font:400 12px/16px Inter,sans-serif;color:#687083;} .ds-paywall-equivalent {min-height:24px;margin-bottom:8px;display:grid;place-items:center;font:400 11px/14px Inter,sans-serif;color:#687083;} .ds-paywall-radio {width:25px;height:25px;margin-top:auto;display:grid;place-items:center;border:1.5px solid #176747;border-radius:13px;background:#176747;color:#FFFFFF;} .ds-paywall-plan:hover {opacity:.92;} .ds-paywall-plan:active {opacity:.82;} .ds-paywall-plan:focus-visible {outline:3px solid #485ED7;outline-offset:3px;}"
     }
   ],
   "narrative": {
     "northStar": "The Verified Step",
-    "overview": "Almost should feel like a calm, credible companion at the moment a user turns an intention into action. The interface uses cool neutral grounds, bright semantic surfaces, decisive type hierarchy, and a small number of recognizable product assets. It is supportive without posing as a bank, and expressive without letting illustration compete with the task. The visual system is native, compact, and behavior-first. Each screen presents one dominant state or action, then uses secondary cards and lightweight line icons to explain what happens next. Light, dark, and PRO are equal product modes rather than recolored afterthoughts.",
+    "overview": "Almost should feel like a calm, credible companion at the moment a user turns an intention into action. The interface uses cool neutral grounds, bright semantic surfaces, decisive type hierarchy, and a small number of recognizable product assets. It is supportive without posing as a bank, and expressive without letting illustration compete with the task.\n\nThe visual system is native, compact, and behavior-first. Each screen presents one dominant state or action, then uses secondary cards and lightweight line icons to explain what happens next. Light, dark, and PRO are equal product modes rather than recolored afterthoughts.",
     "keyCharacteristics": [
       "Cool neutral backgrounds with clear, bright content surfaces.",
       "Heavy Inter numerals and titles paired with quieter explanatory text.",
@@ -137,20 +710,52 @@
       "Existing Almost assets used as progress objects or helpers, never as unrelated decoration."
     ],
     "rules": [
-      { "name": "The Semantic Destination Rule", "body": "Green means savings and verified accumulation; red means debt payment or debt burden. Do not swap them for novelty.", "section": "colors" },
-      { "name": "The Theme Role Rule", "body": "Components consume semantic theme roles rather than hardcoding a light-only palette.", "section": "colors" },
-      { "name": "The Number Leads Rule", "body": "On money surfaces, the amount is the strongest text; its qualifier stays adjacent and subordinate.", "section": "typography" },
-      { "name": "The Sentence Case Rule", "body": "Use sentence case for actions and labels. Uppercase is reserved for existing compact status patterns, not page hierarchy.", "section": "typography" },
-      { "name": "The Tonal-First Rule", "body": "Establish hierarchy with semantic surfaces and borders before adding shadow.", "section": "elevation" }
+      {
+        "name": "The Semantic Destination Rule",
+        "body": "Green means savings and verified accumulation; red means debt payment or debt burden. Do not swap them for novelty.",
+        "section": "colors"
+      },
+      {
+        "name": "The Theme Role Rule",
+        "body": "Components consume semantic theme roles rather than hardcoding a light-only palette.",
+        "section": "colors"
+      },
+      {
+        "name": "The Number Leads Rule",
+        "body": "On money surfaces, the amount is the strongest text; its qualifier stays adjacent and subordinate.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Use sentence case for actions and labels. Uppercase is reserved for existing compact status patterns, not page hierarchy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tonal-First Rule",
+        "body": "Establish hierarchy with semantic surfaces and borders before adding shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Honest Track Rule",
+        "body": "Progress tracks show the real clamped value; zero has no visible fill.",
+        "section": "components"
+      },
+      {
+        "name": "The Honest Offer Rule",
+        "body": "Trial, billing and eligibility presentation derives from the actual native offer; no illustrative concept value becomes production subscription copy.",
+        "section": "components"
+      }
     ],
     "dos": [
       "Do use one clear focal action per state and show the real-world handoff before asking for proof.",
       "Do reuse the semantic theme roles in light, dark, and PRO, including every configured PRO accent.",
       "Do keep money values tabular, prominent, localized, and paired with an explicit meaning.",
       "Do use existing Almost art when it explains progress or provides contextual help.",
+      "Do distinguish painted control size from interactive target size and show an empty track for zero progress.",
       "Do preserve reduced motion, RTL, Dynamic Type, screen-reader labels, and native dismissal behavior."
     ],
     "donts": [
+      "Don't propagate inherited eyebrow labels, glyph navigation icons or unassigned native display faces as new house-style rules; their presence is retained implementation debt, not authority for future surfaces.",
       "Don't introduce a Budget action to spend; Budget has savings and debt destinations only.",
       "Don't imply Almost holds or transfers money. The user's external bank or deposit service performs the transaction.",
       "Don't replace product assets and semantic surfaces with random glossy fintech art, generic charts, or unrelated gradients.",

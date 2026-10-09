@@ -1,0 +1,17 @@
+appId: com.sasarei.almostclean
+name: Dark paywall benefits restore exit
+---
+- assertVisible: Unlock Unlimited goals with Premium
+- takeScreenshot: dark-paywall-header
+- tapOn: All benefits
+- takeScreenshot: dark-expanded-benefits
+- tapOn: Restore purchases
+- waitForAnimationToEnd
+- takeScreenshot: android-restore-response
+- runFlow:
+    when:
+      visible: OK
+    commands:
+      - tapOn: OK
+- tapOn: Continue with limited version
+- takeScreenshot: dark-offer-closed

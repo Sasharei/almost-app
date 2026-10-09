@@ -1,0 +1,27 @@
+appId: com.sasarei.almostclean
+name: Quick entry exact amount and scrolling categories
+---
+- tapOn: Today
+- tapOn: How much?
+- assertVisible: Slide the coin and pick a category.
+- doubleTapOn:
+    text: '^\$[0-9.,]+$'
+    below: 'Slide the coin and pick a category.'
+    delay: 100
+- assertVisible: Enter custom amount
+- tapOn: Enter amount
+- eraseText
+- inputText: '0'
+- tapOn: Remember
+- assertVisible: Enter a valid amount
+- takeScreenshot: manual-error
+- tapOn: Cancel
+- assertVisible: Slide the coin and pick a category.
+- swipe:
+    start: 85%,83%
+    end: 15%,83%
+    duration: 400
+- takeScreenshot: category-scroll
+- tapOn: Cancel
+- assertVisible:
+    id: today-savings-details

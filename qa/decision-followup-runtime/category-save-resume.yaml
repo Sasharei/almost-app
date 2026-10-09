@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    point: '50%,63%'
+- inputText: QA New Category
+- hideKeyboard
+- takeScreenshot: category-filled
+- tapOn: Save
+- assertVisible: Categories
+- scrollUntilVisible:
+    element:
+      text: '.*QA New Category.*'
+    direction: DOWN
+- takeScreenshot: category-created
+- tapOn: Done
+- tapOn: Pause
+- tapOn: '.*QA Pause Timer.*'
+- takeScreenshot: pause-detail

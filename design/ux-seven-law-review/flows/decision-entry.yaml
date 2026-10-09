@@ -1,0 +1,32 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: Today
+    timeout: 90000
+- runFlow:
+    when:
+      visible: '.*Error reading persisted server.*'
+    commands:
+      - tapOn: '.*Error reading persisted server.*'
+      - tapOn: Dismiss
+- runFlow:
+    when:
+      visible: Dismiss
+    commands:
+      - tapOn: Dismiss
+- tapOn: Today
+- tapOn: Make a decision
+- assertVisible:
+    id: decision-amount-input
+- assertVisible:
+    id: decision-edit-card
+- takeScreenshot: restored-slider
+- tapOn:
+    id: decision-amount-input
+- eraseText
+- inputText: '12.34'
+- hideKeyboard
+- takeScreenshot: exact-amount
+- tapOn:
+    id: decision-edit-card
+- takeScreenshot: card-editor

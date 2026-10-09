@@ -1,0 +1,34 @@
+appId: com.sasarei.almostclean
+name: Theme state navigation
+---
+- stopApp
+- launchApp
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: settings-theme
+    direction: UP
+- tapOn:
+    id: settings-theme
+- tapOn:
+    id: settings-choice-dark
+- takeScreenshot: profile-dark
+- tapOn: Today
+- takeScreenshot: today-dark
+- tapOn: Progress
+- takeScreenshot: progress-dark
+- tapOn: Pause
+- runFlow:
+    when:
+      visible: Got it
+    commands:
+      - tapOn: Got it
+- takeScreenshot: pause-dark
+- tapOn: Budget
+- takeScreenshot: budget-dark
+- tapOn: Profile
+- tapOn:
+    id: settings-theme
+- tapOn:
+    id: settings-choice-pro
+- takeScreenshot: pro-state

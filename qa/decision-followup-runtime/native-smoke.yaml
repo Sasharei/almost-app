@@ -1,0 +1,17 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 180000
+- tapOn:
+    text: "OK"
+    optional: true
+- assertVisible:
+    id: today-awaiting-decisions
+- takeScreenshot: qa/artifacts/decision-followup-runtime/ready-today
+- tapOn:
+    id: today-make-decision
+- assertVisible:
+    id: decision-card-wheel
+- takeScreenshot: qa/artifacts/decision-followup-runtime/ready-wheel

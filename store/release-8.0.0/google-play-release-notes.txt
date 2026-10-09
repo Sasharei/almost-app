@@ -1,0 +1,55 @@
+<en-US>
+Almost 8.0 is here! A complete redesign: refreshed screens, clearer navigation and easier controls. New automatic expense imports from selected bank/payment-app notifications with Premium and notification access. Redesigned widgets, clearer reports, renewed onboarding and improved savings decisions. Shop less, follow your goals and enjoy the new Almost Savings!
+</en-US>
+
+<ru-RU>
+Встречайте Almost 8.0! Полный редизайн: новые экраны, понятная навигация и удобные действия. Новое: автоматический импорт расходов из уведомлений выбранных банковских и платёжных приложений с Premium и доступом к уведомлениям. Обновлённые виджеты, отчёты, знакомство с приложением и решения о сбережениях. Покупайте осознаннее и приближайтесь к своим целям с новым Almost Savings!
+</ru-RU>
+
+<es-ES>
+¡Llega Almost 8.0! Rediseño completo: nuevas pantallas, navegación más clara y controles más cómodos. Nueva importación automática de gastos desde las notificaciones de las apps bancarias o de pagos que elijas, con Premium y acceso a notificaciones. Widgets renovados, informes más claros, nueva bienvenida y mejores decisiones de ahorro. ¡Compra menos y avanza hacia tus metas con el nuevo Almost Savings!
+</es-ES>
+
+<es-419>
+¡Llega Almost 8.0! Rediseño completo: nuevas pantallas, navegación más clara y controles más cómodos. Nueva importación automática de gastos desde las notificaciones de las apps bancarias o de pagos que elijas, con Premium y acceso a notificaciones. Widgets renovados, informes más claros, nueva bienvenida y mejores decisiones de ahorro. ¡Compra menos y avanza hacia tus metas con el nuevo Almost Savings!
+</es-419>
+
+<fr-FR>
+Almost 8.0 est là ! Refonte complète : nouveaux écrans, navigation plus claire et commandes plus simples. Nouvel import automatique des dépenses depuis les notifications des apps bancaires ou de paiement choisies, avec Premium et accès aux notifications. Widgets repensés, rapports plus clairs, nouvelle prise en main et décisions d’épargne améliorées. Achetez moins et avancez vers vos objectifs avec le nouvel Almost Savings !
+</fr-FR>
+
+<de-DE>
+Almost 8.0 ist da! Komplettes Redesign: neue Ansichten, klarere Navigation und einfachere Bedienung. Neu: automatischer Ausgabenimport aus Mitteilungen ausgewählter Bank- und Zahlungs-Apps mit Premium und Mitteilungszugriff. Neue Widgets, klarere Berichte, neue Einführung und verbesserte Sparentscheidungen. Kaufe bewusster ein und erreiche deine Ziele mit dem neuen Almost Savings!
+</de-DE>
+
+<it-IT>
+È arrivato Almost 8.0! Design completamente nuovo: schermate rinnovate, navigazione più chiara e comandi più semplici. Nuova importazione automatica delle spese dalle notifiche delle app bancarie o di pagamento scelte, con Premium e accesso alle notifiche. Widget rinnovati, report più chiari, nuova introduzione e migliori decisioni di risparmio. Compra meno e avvicinati ai tuoi obiettivi con il nuovo Almost Savings!
+</it-IT>
+
+<pt-PT>
+Chegou o Almost 8.0! Design totalmente novo: novos ecrãs, navegação mais clara e controlos mais simples. Nova importação automática de despesas das notificações de aplicações bancárias ou de pagamentos escolhidas, com Premium e acesso às notificações. Widgets renovados, relatórios mais claros, nova introdução e melhores decisões de poupança. Compre menos e avance para os seus objetivos com o novo Almost Savings!
+</pt-PT>
+
+<pt-BR>
+Chegou o Almost 8.0! Design totalmente novo: novas telas, navegação mais clara e controles mais simples. Nova importação automática de despesas das notificações dos apps bancários ou de pagamentos escolhidos, com Premium e acesso às notificações. Widgets renovados, relatórios mais claros, nova introdução e melhores decisões para economizar. Compre menos e avance para suas metas com o novo Almost Savings!
+</pt-BR>
+
+<ar>
+وصل Almost 8.0! تصميم جديد بالكامل: شاشات جديدة وتنقّل أوضح وتحكّم أسهل. جديد: استيراد المصروفات تلقائيًا من إشعارات التطبيقات البنكية وتطبيقات الدفع التي تختارها، مع Premium والوصول إلى الإشعارات. أدوات جديدة للشاشة الرئيسية وتقارير أوضح وتجربة بداية جديدة وقرارات ادخار محسّنة. تسوّق بوعي واقترب من أهدافك مع Almost Savings الجديد!
+</ar>
+
+<zh-CN>
+Almost 8.0 重磅登场！全面焕新：全新页面、更清晰的导航、更顺手的操作。新功能：自动从你选择的银行及支付 App 通知中导入支出，需要 Premium 和通知访问权限。还有重新设计的小组件、更清晰的报告、全新入门体验及更完善的储蓄决策流程。购物更理性，目标更接近，欢迎使用全新的 Almost Savings！
+</zh-CN>
+
+<zh-TW>
+Almost 8.0 隆重登場！全面改版：全新頁面、更清楚的導覽、更順手的操作。新功能：自動從你選擇的銀行與支付 App 通知中匯入支出，需要 Premium 和通知存取權限。還有重新設計的小工具、更清楚的報告、全新入門體驗及更完善的儲蓄決策流程。購物更有意識，目標更接近，歡迎使用全新的 Almost Savings！
+</zh-TW>
+
+<ja-JP>
+Almost 8.0登場！全面リニューアル：新しい画面、分かりやすいナビゲーション、使いやすい操作。新機能：選んだ銀行・決済アプリの通知から支出を自動で取り込み。Premiumと通知へのアクセスが必要です。新しいウィジェット、見やすいレポート、新しい初回ガイド、改善された節約の決断フローも。もっと賢く買い物をして、目標に近づこう。新しいAlmost Savingsへようこそ！
+</ja-JP>
+
+<ko-KR>
+Almost 8.0 출시! 완전한 디자인 개편: 새로운 화면, 더 명확한 탐색, 편리한 조작. 새 기능: 선택한 은행·결제 앱 알림에서 지출을 자동으로 가져와요. Premium과 알림 접근 권한이 필요해요. 새로운 위젯, 더 명확한 보고서, 새로운 시작 안내, 개선된 절약 결정 흐름도 만나보세요. 더 현명하게 쇼핑하고 목표에 가까워지는 새로운 Almost Savings!
+</ko-KR>

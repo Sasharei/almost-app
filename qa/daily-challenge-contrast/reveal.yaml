@@ -1,0 +1,12 @@
+appId: com.sasarei.almostclean
+name: Daily challenge reveal contrast
+---
+- extendedWaitUntil:
+    visible: "Ежедневный челлендж"
+    timeout: 60000
+- tapOn:
+    point: "50%,50%"
+- extendedWaitUntil:
+    visible: "Принять"
+    timeout: 15000
+- takeScreenshot: revealed

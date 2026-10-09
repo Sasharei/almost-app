@@ -1,0 +1,41 @@
+appId: com.sasarei.almostclean
+name: Round three native review
+---
+- launchApp
+- tapOn:
+    text: Today
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: today-cat-care
+    timeout: 120000
+- takeScreenshot: today-light
+- tapOn:
+    id: today-cat-care
+- extendedWaitUntil:
+    visible:
+      id: tamagotchi-back-button
+    timeout: 30000
+- takeScreenshot: care-food-light
+- tapOn: Games
+- takeScreenshot: care-games-light
+- tapOn: Clean
+- takeScreenshot: care-clean-light
+- tapOn:
+    id: tamagotchi-back-button
+- assertVisible:
+    id: today-cat-care
+- tapOn: Profile
+- assertVisible:
+    id: profile-edit-avatar
+- takeScreenshot: profile-light
+- tapOn: Progress
+- extendedWaitUntil:
+    visible:
+      id: progress-insights
+    timeout: 30000
+- takeScreenshot: progress-light
+- tapOn:
+    id: progress-insights
+- assertVisible: Insights
+- takeScreenshot: insights-light

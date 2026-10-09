@@ -1,0 +1,185 @@
+{
+  "version": "8.0.0",
+  "build": "128",
+  "app_id": "6756276744",
+  "package": "com.sasarei.almostclean",
+  "operation": "prepare draft only; no submission or rollout",
+  "localizations": [
+    {
+      "language": "en",
+      "apple_locale": "en-US",
+      "google_locale": "en-US",
+      "apple_label": "English (U.S.)",
+      "whats_new": "Almost 8.0 is here — a complete redesign and a new way to shop less!\n\nWe rebuilt the entire experience: refreshed screens, clearer navigation, easier everyday controls and a new look for your goals, budget, progress and Almi. Your next step is easier to find, from the first decision to your next milestone.\n\nNEW: Shopping Pause on iPhone. Block selected shopping apps with Screen Time, record savings toward your target and unlock one app for a 30-minute visit when you reach it. You choose the apps and stay in control.\n\nNEW: Apple Pay expense tracking. Set up a Wallet automation in Shortcuts to automatically import supported payments, see them in your spending history and budget, correct categories and review expenses. Almi can celebrate a received payment with a Live Activity.\n\nRedesigned widgets, clearer reports, improved savings decisions and renewed onboarding bring it all together. Welcome to the new Almost Savings!\n\nShopping Pause requires iOS 16+. Apple Pay import requires iOS 17+, Almost Premium and a user-enabled Wallet automation; only payments delivered by that automation are imported.",
+      "release_notes": "Almost 8.0 is here! A complete redesign: refreshed screens, clearer navigation and easier controls. New automatic expense imports from selected bank/payment-app notifications with Premium and notification access. Redesigned widgets, clearer reports, renewed onboarding and improved savings decisions. Shop less, follow your goals and enjoy the new Almost Savings!",
+      "apple_chars": 1110,
+      "google_chars": 363
+    },
+    {
+      "language": "ru",
+      "apple_locale": "ru",
+      "google_locale": "ru-RU",
+      "apple_label": "Russian",
+      "whats_new": "Встречайте Almost 8.0 — полный редизайн и новый подход к осознанным покупкам!\n\nМы полностью переосмыслили интерфейс: обновили экраны, навигацию, повседневные действия, цели, бюджет, прогресс и облик Алми. Теперь проще найти следующий шаг — от первого решения до нового достижения.\n\nНОВОЕ: блокировка шоппинговых приложений на iPhone. Выберите магазины через «Экранное время», записывайте сэкономленное и достигайте своей цели, чтобы открыть одно приложение на 30 минут. Вы сами управляете паузой.\n\nНОВОЕ: автоматический учёт расходов Apple Pay. Настройте автоматизацию Wallet в «Командах»: поддерживаемые платежи появятся в истории расходов и бюджете. Проверяйте записи, исправляйте категории, а Алми может показать подтверждение полученного платежа в Live Activity.\n\nОбновлённые виджеты, понятные отчёты, улучшенные решения о сбережениях и новое знакомство с приложением. Добро пожаловать в новый Almost Savings!\n\nБлокировка доступна с iOS 16. Импорт Apple Pay требует iOS 17+, Almost Premium и включённой пользователем автоматизации Wallet; импортируются только переданные ею платежи.",
+      "release_notes": "Встречайте Almost 8.0! Полный редизайн: новые экраны, понятная навигация и удобные действия. Новое: автоматический импорт расходов из уведомлений выбранных банковских и платёжных приложений с Premium и доступом к уведомлениям. Обновлённые виджеты, отчёты, знакомство с приложением и решения о сбережениях. Покупайте осознаннее и приближайтесь к своим целям с новым Almost Savings!",
+      "apple_chars": 1086,
+      "google_chars": 380
+    },
+    {
+      "language": "es",
+      "apple_locale": "es-ES",
+      "google_locale": "es-ES",
+      "apple_label": "Spanish (Spain)",
+      "whats_new": "¡Llega Almost 8.0: un rediseño completo y una nueva forma de comprar menos!\n\nRenovamos toda la experiencia: pantallas, navegación más clara, controles más cómodos y una nueva imagen para tus metas, presupuesto, progreso y Almi. Ahora es más fácil encontrar el siguiente paso, desde tu primera decisión hasta tu próximo logro.\n\nNUEVO: pausa de compras en iPhone. Bloquea las apps de compras que elijas con Tiempo de uso, registra ahorros para tu meta y desbloquea una app durante 30 minutos al alcanzarla. Tú decides y mantienes el control.\n\nNUEVO: registro de gastos de Apple Pay. Configura una automatización de Wallet en Atajos para importar automáticamente los pagos compatibles y verlos en tu historial y presupuesto. Revisa gastos y corrige categorías. Almi puede confirmar un pago recibido con una Actividad en directo.\n\nWidgets renovados, informes más claros, mejores decisiones de ahorro y una nueva bienvenida. ¡Descubre el nuevo Almost Savings!\n\nLa pausa de compras requiere iOS 16+. La importación de Apple Pay requiere iOS 17+, Almost Premium y una automatización de Wallet activada por ti; solo se importan los pagos que esta envía.",
+      "release_notes": "¡Llega Almost 8.0! Rediseño completo: nuevas pantallas, navegación más clara y controles más cómodos. Nueva importación automática de gastos desde las notificaciones de las apps bancarias o de pagos que elijas, con Premium y acceso a notificaciones. Widgets renovados, informes más claros, nueva bienvenida y mejores decisiones de ahorro. ¡Compra menos y avanza hacia tus metas con el nuevo Almost Savings!",
+      "apple_chars": 1145,
+      "google_chars": 406
+    },
+    {
+      "language": "es",
+      "apple_locale": "es-MX",
+      "google_locale": "es-419",
+      "apple_label": "Spanish (Mexico)",
+      "whats_new": "¡Llega Almost 8.0: un rediseño completo y una nueva forma de comprar menos!\n\nRenovamos toda la experiencia: pantallas, navegación más clara, controles más cómodos y una nueva imagen para tus metas, presupuesto, progreso y Almi. Ahora es más fácil encontrar el siguiente paso, desde tu primera decisión hasta tu próximo logro.\n\nNUEVO: pausa de compras en iPhone. Bloquea las apps de compras que elijas con Tiempo de uso, registra ahorros para tu meta y desbloquea una app durante 30 minutos al alcanzarla. Tú decides y mantienes el control.\n\nNUEVO: registro de gastos de Apple Pay. Configura una automatización de Wallet en Atajos para importar automáticamente los pagos compatibles y verlos en tu historial y presupuesto. Revisa gastos y corrige categorías. Almi puede confirmar un pago recibido con una Actividad en directo.\n\nWidgets renovados, informes más claros, mejores decisiones de ahorro y una nueva bienvenida. ¡Descubre el nuevo Almost Savings!\n\nLa pausa de compras requiere iOS 16+. La importación de Apple Pay requiere iOS 17+, Almost Premium y una automatización de Wallet activada por ti; solo se importan los pagos que esta envía.",
+      "release_notes": "¡Llega Almost 8.0! Rediseño completo: nuevas pantallas, navegación más clara y controles más cómodos. Nueva importación automática de gastos desde las notificaciones de las apps bancarias o de pagos que elijas, con Premium y acceso a notificaciones. Widgets renovados, informes más claros, nueva bienvenida y mejores decisiones de ahorro. ¡Compra menos y avanza hacia tus metas con el nuevo Almost Savings!",
+      "apple_chars": 1145,
+      "google_chars": 406
+    },
+    {
+      "language": "fr",
+      "apple_locale": "fr-FR",
+      "google_locale": "fr-FR",
+      "apple_label": "French",
+      "whats_new": "Almost 8.0 est là : une refonte complète pour acheter moins !\n\nNous avons repensé toute l’expérience : écrans renouvelés, navigation plus claire, commandes plus simples et nouveau look pour vos objectifs, votre budget, vos progrès et Almi. Chaque prochaine étape devient plus facile à trouver.\n\nNOUVEAU : la pause shopping sur iPhone. Bloquez les apps de shopping choisies avec Temps d’écran, notez vos économies et atteignez votre objectif pour ouvrir une app pendant 30 minutes. Vous gardez le contrôle.\n\nNOUVEAU : le suivi des dépenses Apple Pay. Configurez une automatisation Wallet dans Raccourcis pour importer les paiements compatibles dans votre historique et votre budget. Vérifiez les dépenses et corrigez les catégories. Almi peut confirmer un paiement reçu avec une activité en direct.\n\nWidgets repensés, rapports plus clairs, décisions d’épargne améliorées et nouvelle prise en main. Bienvenue dans le nouvel Almost Savings !\n\nLa pause shopping nécessite iOS 16+. L’import Apple Pay nécessite iOS 17+, Almost Premium et une automatisation Wallet activée par vos soins ; seuls les paiements qu’elle transmet sont importés.",
+      "release_notes": "Almost 8.0 est là ! Refonte complète : nouveaux écrans, navigation plus claire et commandes plus simples. Nouvel import automatique des dépenses depuis les notifications des apps bancaires ou de paiement choisies, avec Premium et accès aux notifications. Widgets repensés, rapports plus clairs, nouvelle prise en main et décisions d’épargne améliorées. Achetez moins et avancez vers vos objectifs avec le nouvel Almost Savings !",
+      "apple_chars": 1134,
+      "google_chars": 428
+    },
+    {
+      "language": "de",
+      "apple_locale": "de-DE",
+      "google_locale": "de-DE",
+      "apple_label": "German",
+      "whats_new": "Almost 8.0 ist da – komplett neu gestaltet, für bewussteres Einkaufen!\n\nWir haben das gesamte Erlebnis überarbeitet: neue Ansichten, klarere Navigation, einfachere Bedienung und ein neuer Look für Ziele, Budget, Fortschritt und Almi. Dein nächster Schritt ist jetzt leichter zu finden.\n\nNEU: Einkaufspause auf dem iPhone. Sperre ausgewählte Shopping-Apps mit Bildschirmzeit, erfasse Einsparungen und erreiche dein Ziel, um eine App für 30 Minuten zu öffnen. Du behältst die Kontrolle.\n\nNEU: Apple Pay-Ausgaben erfassen. Richte in Kurzbefehle eine Wallet-Automation ein, um unterstützte Zahlungen automatisch in Verlauf und Budget zu übernehmen. Prüfe Ausgaben und korrigiere Kategorien. Almi kann einen eingegangenen Betrag per Live-Aktivität bestätigen.\n\nNeue Widgets, übersichtlichere Berichte, verbesserte Sparentscheidungen und eine neue Einführung. Willkommen im neuen Almost Savings!\n\nDie Einkaufspause erfordert iOS 16+. Der Apple Pay-Import erfordert iOS 17+, Almost Premium und eine von dir aktivierte Wallet-Automation; nur von ihr übermittelte Zahlungen werden importiert.",
+      "release_notes": "Almost 8.0 ist da! Komplettes Redesign: neue Ansichten, klarere Navigation und einfachere Bedienung. Neu: automatischer Ausgabenimport aus Mitteilungen ausgewählter Bank- und Zahlungs-Apps mit Premium und Mitteilungszugriff. Neue Widgets, klarere Berichte, neue Einführung und verbesserte Sparentscheidungen. Kaufe bewusster ein und erreiche deine Ziele mit dem neuen Almost Savings!",
+      "apple_chars": 1083,
+      "google_chars": 383
+    },
+    {
+      "language": "it",
+      "apple_locale": "it",
+      "google_locale": "it-IT",
+      "apple_label": "Italian",
+      "whats_new": "È arrivato Almost 8.0: un design completamente nuovo per comprare meno!\n\nAbbiamo ripensato tutta l’esperienza: nuove schermate, navigazione più chiara, comandi più semplici e un nuovo look per obiettivi, budget, progressi e Almi. Il prossimo passo è più facile da trovare.\n\nNOVITÀ: pausa shopping su iPhone. Blocca le app di shopping che scegli con Tempo di utilizzo, registra i risparmi e raggiungi il tuo obiettivo per aprire un’app per 30 minuti. Il controllo resta a te.\n\nNOVITÀ: monitoraggio delle spese Apple Pay. Configura un’automazione Wallet in Comandi Rapidi per importare i pagamenti supportati nella cronologia e nel budget. Controlla le spese e correggi le categorie. Almi può confermare un pagamento ricevuto con un’attività in tempo reale.\n\nWidget rinnovati, report più chiari, decisioni di risparmio migliorate e una nuova introduzione. Benvenuto nel nuovo Almost Savings!\n\nLa pausa shopping richiede iOS 16+. L’importazione Apple Pay richiede iOS 17+, Almost Premium e un’automazione Wallet attivata da te; vengono importati solo i pagamenti che trasmette.",
+      "release_notes": "È arrivato Almost 8.0! Design completamente nuovo: schermate rinnovate, navigazione più chiara e comandi più semplici. Nuova importazione automatica delle spese dalle notifiche delle app bancarie o di pagamento scelte, con Premium e accesso alle notifiche. Widget rinnovati, report più chiari, nuova introduzione e migliori decisioni di risparmio. Compra meno e avvicinati ai tuoi obiettivi con il nuovo Almost Savings!",
+      "apple_chars": 1074,
+      "google_chars": 419
+    },
+    {
+      "language": "pt",
+      "apple_locale": "pt-PT",
+      "google_locale": "pt-PT",
+      "apple_label": "Portuguese (Portugal)",
+      "whats_new": "Chegou o Almost 8.0: um design totalmente novo para comprar menos!\n\nRenovámos toda a experiência: novos ecrãs, navegação mais clara, controlos mais simples e um novo visual para os objetivos, orçamento, progresso e Almi. Agora é mais fácil encontrar o próximo passo.\n\nNOVO: pausa nas compras no iPhone. Bloqueie as aplicações de compras escolhidas com Tempo de ecrã, registe as poupanças e atinja o objetivo para abrir uma aplicação durante 30 minutos. Mantém o controlo.\n\nNOVO: registo de despesas Apple Pay. Configure uma automatização Wallet nos Atalhos para importar pagamentos compatíveis para o histórico e orçamento. Reveja despesas e corrija categorias. O Almi pode confirmar um pagamento recebido com uma atividade em direto.\n\nWidgets renovados, relatórios mais claros, melhores decisões de poupança e uma nova introdução. Descubra o novo Almost Savings!\n\nA pausa nas compras requer iOS 16+. A importação Apple Pay requer iOS 17+, Almost Premium e uma automatização Wallet ativada por si; só são importados os pagamentos que esta envia.",
+      "release_notes": "Chegou o Almost 8.0! Design totalmente novo: novos ecrãs, navegação mais clara e controlos mais simples. Nova importação automática de despesas das notificações de aplicações bancárias ou de pagamentos escolhidas, com Premium e acesso às notificações. Widgets renovados, relatórios mais claros, nova introdução e melhores decisões de poupança. Compre menos e avance para os seus objetivos com o novo Almost Savings!",
+      "apple_chars": 1045,
+      "google_chars": 415
+    },
+    {
+      "language": "pt-BR",
+      "apple_locale": "pt-BR",
+      "google_locale": "pt-BR",
+      "apple_label": "Portuguese (Brazil)",
+      "whats_new": "Chegou o Almost 8.0: um design totalmente novo para comprar menos!\n\nRenovamos toda a experiência: novas telas, navegação mais clara, controles mais simples e um novo visual para metas, orçamento, progresso e Almi. Agora é mais fácil encontrar o próximo passo.\n\nNOVO: pausa nas compras no iPhone. Bloqueie os apps de compras escolhidos com Tempo de Uso, registre suas economias e alcance a meta para abrir um app por 30 minutos. Você mantém o controle.\n\nNOVO: registro de despesas Apple Pay. Configure uma automação Wallet no Atalhos para importar pagamentos compatíveis para o histórico e orçamento. Revise despesas e corrija categorias. Almi pode confirmar um pagamento recebido com uma Atividade ao Vivo.\n\nWidgets renovados, relatórios mais claros, melhores decisões para economizar e uma nova introdução. Descubra o novo Almost Savings!\n\nA pausa nas compras exige iOS 16+. A importação Apple Pay exige iOS 17+, Almost Premium e uma automação Wallet ativada por você; somente os pagamentos enviados por ela são importados.",
+      "release_notes": "Chegou o Almost 8.0! Design totalmente novo: novas telas, navegação mais clara e controles mais simples. Nova importação automática de despesas das notificações dos apps bancários ou de pagamentos escolhidos, com Premium e acesso às notificações. Widgets renovados, relatórios mais claros, nova introdução e melhores decisões para economizar. Compre menos e avance para suas metas com o novo Almost Savings!",
+      "apple_chars": 1024,
+      "google_chars": 407
+    },
+    {
+      "language": "ar",
+      "apple_locale": "ar-SA",
+      "google_locale": "ar",
+      "apple_label": "Arabic",
+      "whats_new": "وصل Almost 8.0 — تصميم جديد بالكامل وطريقة جديدة للتسوق بوعي!\n\nأعدنا تصميم التجربة بالكامل: شاشات جديدة، وتنقّل أوضح، وتحكّم أسهل، ومظهر جديد لأهدافك وميزانيتك وتقدّمك وألمي. أصبح العثور على خطوتك التالية أسهل، من أول قرار إلى إنجازك القادم.\n\nجديد: إيقاف التسوق مؤقتًا على iPhone. احظر تطبيقات التسوق التي تختارها عبر مدة استخدام الجهاز، وسجّل ما وفّرته حتى تبلغ هدفك وتفتح تطبيقًا واحدًا لمدة 30 دقيقة. الاختيار والتحكّم بيدك.\n\nجديد: تتبّع مصروفات Apple Pay. أعدّ أتمتة Wallet في تطبيق الاختصارات لاستيراد المدفوعات المدعومة تلقائيًا إلى سجل المصروفات والميزانية. راجع المصروفات وصحّح فئاتها. يمكن لألمي تأكيد استلام دفعة عبر نشاط مباشر.\n\nأدوات جديدة للشاشة الرئيسية، وتقارير أوضح، وقرارات ادخار محسّنة، وتجربة بداية جديدة. أهلًا بك في Almost Savings الجديد!\n\nيتطلب إيقاف التسوق iOS 16 أو أحدث. يتطلب استيراد Apple Pay نظام iOS 17 أو أحدث وAlmost Premium وأتمتة Wallet تفعّلها بنفسك؛ تُستورد فقط المدفوعات التي ترسلها الأتمتة.",
+      "release_notes": "وصل Almost 8.0! تصميم جديد بالكامل: شاشات جديدة وتنقّل أوضح وتحكّم أسهل. جديد: استيراد المصروفات تلقائيًا من إشعارات التطبيقات البنكية وتطبيقات الدفع التي تختارها، مع Premium والوصول إلى الإشعارات. أدوات جديدة للشاشة الرئيسية وتقارير أوضح وتجربة بداية جديدة وقرارات ادخار محسّنة. تسوّق بوعي واقترب من أهدافك مع Almost Savings الجديد!",
+      "apple_chars": 927,
+      "google_chars": 333
+    },
+    {
+      "language": "zh",
+      "apple_locale": "zh-Hans",
+      "google_locale": "zh-CN",
+      "apple_label": "Chinese (Simplified)",
+      "whats_new": "Almost 8.0 重磅登场：全面焕新，让购物更理性！\n\n我们重新设计了整个体验：焕新的页面、更清晰的导航、更顺手的操作，以及目标、预算、进度和 Almi 的全新外观。从第一次做决定到下一个里程碑，每一步都更清楚。\n\n新功能：iPhone 购物暂停。通过“屏幕使用时间”屏蔽你选择的购物 App，记录节省金额，达到目标后即可解锁一个 App，使用 30 分钟。选择与控制权始终在你手中。\n\n新功能：Apple Pay 支出记录。在“快捷指令”中设置 Wallet 自动化，即可自动导入支持的付款，查看支出历史与预算、检查记录并修改分类。Almi 还可通过实时活动确认收到的付款。\n\n重新设计的小组件、更清晰的报告、更完善的储蓄决策流程，以及全新的入门体验。欢迎使用全新的 Almost Savings！\n\n购物暂停需要 iOS 16 或更高版本。Apple Pay 导入需要 iOS 17 或更高版本、Almost Premium，以及由你启用的 Wallet 自动化；仅导入该自动化传递的付款。",
+      "release_notes": "Almost 8.0 重磅登场！全面焕新：全新页面、更清晰的导航、更顺手的操作。新功能：自动从你选择的银行及支付 App 通知中导入支出，需要 Premium 和通知访问权限。还有重新设计的小组件、更清晰的报告、全新入门体验及更完善的储蓄决策流程。购物更理性，目标更接近，欢迎使用全新的 Almost Savings！",
+      "apple_chars": 449,
+      "google_chars": 159
+    },
+    {
+      "language": "zh-Hant",
+      "apple_locale": "zh-Hant",
+      "google_locale": "zh-TW",
+      "apple_label": "Chinese (Traditional)",
+      "whats_new": "Almost 8.0 隆重登場：全面改版，讓購物更有意識！\n\n我們重新設計了整個體驗：全新頁面、更清楚的導覽、更順手的操作，以及目標、預算、進度和 Almi 的新面貌。從第一次做決定到下一個里程碑，每一步都更清楚。\n\n新功能：iPhone 購物暫停。透過「螢幕使用時間」封鎖你選擇的購物 App，記錄省下的金額，達到目標後即可解鎖一個 App，使用 30 分鐘。選擇與控制權始終在你手中。\n\n新功能：Apple Pay 支出記錄。在「捷徑」中設定 Wallet 自動化，即可自動匯入支援的付款，查看支出紀錄與預算、檢查記錄並修改分類。Almi 還可透過即時動態確認收到的付款。\n\n重新設計的小工具、更清楚的報告、更完善的儲蓄決策流程，以及全新的入門體驗。歡迎使用全新的 Almost Savings！\n\n購物暫停需要 iOS 16 或以上版本。Apple Pay 匯入需要 iOS 17 或以上版本、Almost Premium，以及由你啟用的 Wallet 自動化；僅匯入該自動化傳送的付款。",
+      "release_notes": "Almost 8.0 隆重登場！全面改版：全新頁面、更清楚的導覽、更順手的操作。新功能：自動從你選擇的銀行與支付 App 通知中匯入支出，需要 Premium 和通知存取權限。還有重新設計的小工具、更清楚的報告、全新入門體驗及更完善的儲蓄決策流程。購物更有意識，目標更接近，歡迎使用全新的 Almost Savings！",
+      "apple_chars": 447,
+      "google_chars": 160
+    },
+    {
+      "language": "ja",
+      "apple_locale": "ja",
+      "google_locale": "ja-JP",
+      "apple_label": "Japanese",
+      "whats_new": "Almost 8.0登場！全面リニューアルで、もっと賢く買い物を。\n\n体験を一から見直しました。新しい画面、分かりやすいナビゲーション、使いやすい操作、目標・予算・進捗・Almiの新しいデザイン。最初の決断から次の達成まで、次にすることが見つけやすくなりました。\n\n新機能：iPhoneのショッピング休止。スクリーンタイムで選んだ買い物アプリをブロック。節約額を記録して目標を達成すると、1つのアプリを30分間使えます。選択も管理もあなた自身で。\n\n新機能：Apple Payの支出記録。ショートカットでWalletのオートメーションを設定すると、対応する支払いを自動で取り込み、支出履歴と予算で確認できます。記録の確認やカテゴリの修正も可能。Almiがライブアクティビティで受信した支払いをお知らせすることもできます。\n\n新しいウィジェット、見やすいレポート、改善された節約の決断フロー、新しい初回ガイド。新しいAlmost Savingsへようこそ！\n\nショッピング休止はiOS 16以降に対応。Apple Payの取り込みにはiOS 17以降、Almost Premium、ユーザーが有効にしたWalletオートメーションが必要です。取り込むのは、そのオートメーションが送信した支払いのみです。",
+      "release_notes": "Almost 8.0登場！全面リニューアル：新しい画面、分かりやすいナビゲーション、使いやすい操作。新機能：選んだ銀行・決済アプリの通知から支出を自動で取り込み。Premiumと通知へのアクセスが必要です。新しいウィジェット、見やすいレポート、新しい初回ガイド、改善された節約の決断フローも。もっと賢く買い物をして、目標に近づこう。新しいAlmost Savingsへようこそ！",
+      "apple_chars": 550,
+      "google_chars": 189
+    },
+    {
+      "language": "ko",
+      "apple_locale": "ko",
+      "google_locale": "ko-KR",
+      "apple_label": "Korean",
+      "whats_new": "Almost 8.0 출시! 완전히 새로워진 디자인으로 더 현명하게 쇼핑하세요.\n\n모든 경험을 새롭게 설계했어요. 새로운 화면, 더 명확한 탐색, 편리한 조작, 목표·예산·진행 상황과 Almi의 새로운 모습까지. 첫 결정부터 다음 성취까지, 다음에 할 일을 더 쉽게 찾을 수 있어요.\n\n새 기능: iPhone 쇼핑 일시 중지. 스크린 타임으로 선택한 쇼핑 앱을 차단하고 절약한 금액을 기록하세요. 목표를 달성하면 앱 하나를 30분 동안 열 수 있어요. 선택과 관리는 언제나 직접 할 수 있어요.\n\n새 기능: Apple Pay 지출 기록. 단축어에서 Wallet 자동화를 설정하면 지원되는 결제를 자동으로 가져와 지출 내역과 예산에 표시해요. 지출을 검토하고 카테고리를 수정할 수 있어요. Almi가 실시간 현황으로 수신한 결제를 알려줄 수도 있어요.\n\n새로운 위젯, 더 명확한 보고서, 개선된 절약 결정 흐름, 새로운 시작 안내까지. 새로운 Almost Savings를 만나보세요!\n\n쇼핑 일시 중지는 iOS 16 이상이 필요해요. Apple Pay 가져오기는 iOS 17 이상, Almost Premium, 직접 활성화한 Wallet 자동화가 필요하며 해당 자동화가 전달한 결제만 가져와요.",
+      "release_notes": "Almost 8.0 출시! 완전한 디자인 개편: 새로운 화면, 더 명확한 탐색, 편리한 조작. 새 기능: 선택한 은행·결제 앱 알림에서 지출을 자동으로 가져와요. Premium과 알림 접근 권한이 필요해요. 새로운 위젯, 더 명확한 보고서, 새로운 시작 안내, 개선된 절약 결정 흐름도 만나보세요. 더 현명하게 쇼핑하고 목표에 가까워지는 새로운 Almost Savings!",
+      "apple_chars": 610,
+      "google_chars": 208
+    }
+  ],
+  "source_evidence": {
+    "redesign": [
+      "App.js",
+      "src/components/OnboardingRedesign.js",
+      "src/components/NativeMaterialNavigation.js"
+    ],
+    "shopping_pause": [
+      "SHOPPING_PAUSE.md",
+      "src/shoppingBlocker",
+      "ios/ShoppingBlockerMonitor",
+      "ios/ShoppingBlockerShield",
+      "ios/ShoppingBlockerAction"
+    ],
+    "apple_pay": [
+      "qa/apple-pay-completion-2026-10-08/README.md",
+      "src/components/BankExpensesPanel.js",
+      "ios/Almost/BankExpenses.swift",
+      "ios/Almost/AlmostApplePayAutomation.shortcut"
+    ],
+    "android_import": [
+      "android/app/src/main/java/com/sasarei/almostclean/expenses",
+      "src/bankExpenses"
+    ],
+    "prior_release_qa": [
+      "qa/release-fixes-2026-10-08/REPORT.md",
+      "ATTRIBUTION_RELEASE_GATE.md"
+    ]
+  },
+  "limits": {
+    "app_store_whats_new": 4000,
+    "google_play_release_notes": 500
+  },
+  "links": {
+    "apple_limits": "https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information",
+    "google_release_notes": "https://support.google.com/googleplay/android-developer/answer/9859348"
+  }
+}

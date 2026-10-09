@@ -1,0 +1,31 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Keep saving
+- assertVisible:
+    id: decision-amount-input
+    text: '17.5'
+- tapOn: I bought this
+- tapOn:
+    id: almost-pay-confirm
+- tapOn:
+    id: almost-pay-confirm
+- extendedWaitUntil:
+    visible:
+      id: today-make-decision
+    timeout: 20000
+- takeScreenshot: spend-completed-home
+- runFlow:
+    when:
+      visible: Got it
+    commands:
+      - tapOn: Got it
+- scrollUntilVisible:
+    element:
+      id: today-tools-toggle
+    direction: DOWN
+- takeScreenshot: five-history-and-tools
+- tapOn:
+    id: today-tools-toggle
+- takeScreenshot: tools-expanded
+- tapOn:
+    id: today-tools-toggle

@@ -27,10 +27,11 @@ const appSource = fs.readFileSync(path.join(__dirname, "../../App.js"), "utf8");
 
 // Run the actual app confirmation callback with controlled transaction and modal
 // boundaries to cover partial confirmation without launching React Native.
-const createReviewSession = (entries, spentIds = {}, overrides = {}) => {
+const createReviewSession = (entries, spentIds = {}, overrides = {}, accepted = true) => {
   const actions = [];
   const snoozes = [];
   const summaries = [];
+  const confirmations = [];
   let limitChecks = 0;
   const context = vm.createContext({
     useCallback: (callback) => callback,
@@ -44,12 +45,16 @@ const createReviewSession = (entries, spentIds = {}, overrides = {}) => {
     TYCOON_CONFIRM_ALL_REVIEW_STREAK: 3,
     savedTotalUSD: 0,
     profile: { currency: "USD" },
+    t: (key) => key,
+    formatAlmostPayAmount: (amount) => `$${amount.toFixed(2)}`,
+    confirmAlmostPay: async (details) => { confirmations.push(details); return accepted; },
     enforceMonetizationTrialActionLimit: () => { limitChecks += 1; return false; },
     resolveTemplateCard: (id) => ({ id }),
     clampTransactionAmountUSD: (amount) => Math.max(0, Number(amount) || 0),
     resolveNonEmptyString: (value) => value || "",
     getTycoonAutosaveEventDayKey,
     handleTemptationAction: async (type, card, options) => {
+      assert.equal(options.skipAlmostPayConfirmation, true);
       actions.push({ type, id: card.id, amount: options.amountUSD });
       return { committed: true, type, savedAmountUSD: options.amountUSD, coinReward: 2 };
     },
@@ -98,7 +103,7 @@ const createReviewSession = (entries, spentIds = {}, overrides = {}) => {
     const source = appSource.slice(callbackStart, callbackEnd).replace(`const ${name}`, alias);
     vm.runInContext(`${source}\n  });`, context);
   }
-  return { context, actions, snoozes, summaries, limitChecks: () => limitChecks };
+  return { context, actions, snoozes, summaries, confirmations, limitChecks: () => limitChecks };
 };
 
 const reviewEntry = (id) => ({
@@ -126,6 +131,27 @@ test("partial auto-collect confirmation records two spends and two saves while N
   assert.equal(session.summaries[0].savedAmountUSD, 20);
   assert.equal(session.summaries[0].coinReward, 4);
   assert.equal(session.context.tycoonAutosaveAmountOverrides.later, 25);
+  assert.equal(session.confirmations.length, 1);
+  assert.deepEqual(Array.from(session.confirmations[0].summaryLines),
+    ["almostPaySave: $20.00", "almostPaySpend: $20.00"]);
+});
+
+test("canceling Almost Pay leaves batch decisions, ledger, amounts and counters unchanged", async () => {
+  const entries = [reviewEntry("save"), reviewEntry("spend")];
+  const session = createReviewSession(entries, { spend: true }, { save: 12.34 }, false);
+  const before = JSON.stringify({ ledger: session.context.tycoonLedger,
+    selection: session.context.tycoonSpentSelection, amounts: session.context.tycoonAutosaveAmountOverrides,
+    stats: session.context.tycoonConfirmStats });
+  await session.context.confirmReview();
+  assert.equal(session.confirmations.length, 1);
+  assert.deepEqual(Array.from(session.confirmations[0].summaryLines),
+    ["almostPaySave: $12.34", "almostPaySpend: $10.00"]);
+  assert.deepEqual(session.actions, []);
+  assert.deepEqual(session.summaries, []);
+  assert.deepEqual(session.snoozes, []);
+  assert.equal(JSON.stringify({ ledger: session.context.tycoonLedger,
+    selection: session.context.tycoonSpentSelection, amounts: session.context.tycoonAutosaveAmountOverrides,
+    stats: session.context.tycoonConfirmStats }), before);
 });
 
 test("all-undecided confirmation only snoozes, without transactions, rewards or trial limits", async () => {
@@ -137,6 +163,7 @@ test("all-undecided confirmation only snoozes, without transactions, rewards or 
   assert.deepEqual(session.snoozes, [["later"]]);
   assert.equal(session.limitChecks(), 0);
   assert.equal(session.context.tycoonLedger, entries);
+  assert.equal(session.confirmations.length, 0);
 });
 
 test("partial saving does not trigger the misleading saved-all review warning", async () => {
@@ -505,4 +532,38 @@ test("auto-collect summary avoids a goal recap when any saved amount was not app
 
   assert.equal(summary.savedAmountUSD, 16);
   assert.equal(summary.singleGoal, null);
+});
+
+// Execute the real render-time declarations in their source order, including the
+// dependency arrays. Evaluating the callback alone misses temporal-dead-zone bugs.
+test("pending autosaves render after hydration and relaunch with remembered amounts", () => {
+  const parser = require("@babel/parser");
+  const ast = parser.parse(appSource, { sourceType: "module", plugins: ["jsx"] });
+  const app = ast.program.body.find((node) => node.type === "FunctionDeclaration" && node.id.name === "AppContent");
+  const names = new Set(["temptationInteractions", "temptationInteractionsHydrated", "resolveTycoonAutosaveEventSnapshot", "tycoonPendingEvents"]);
+  const declarations = app.body.body.filter((node) => node.type === "VariableDeclaration" && node.declarations.some(({ id }) =>
+    names.has(id.name || id.elements?.[0]?.name)
+  ));
+  assert.equal(declarations.length, 4);
+  const source = declarations.map((node) => appSource.slice(node.start, node.end)).join("\n");
+  for (const [hydrated, editedAmount] of [[false, null], [true, null], [true, 7.25]]) {
+    const context = vm.createContext({
+      useState: (initial) => [typeof initial === "boolean" ? hydrated : { tea: { averageAmountUSD: 12 } }, () => {}],
+      useMemo: (fn) => fn(), useCallback: (fn) => fn,
+      currentDayKey: "2026-10-02",
+      tycoonLedger: hydrated ? [{ id: "pending", cardId: "tea", status: "pending", dayKey: "2026-10-02", amountUSD: 5, amountOverrideUSD: editedAmount }] : [],
+      resolveTemplateCard: () => ({ id: "tea", emoji: "☕", priceUSD: 5 }),
+      resolveNonEmptyString: (value) => value || "", resolveTemptationTitle: () => "Tea",
+      normalizeEmojiValue: (value) => value, DEFAULT_TEMPTATION_EMOJI: "☕",
+      clampTransactionAmountUSD: (value) => value,
+      resolveRememberedAmount: require("../../src/utils/decisionAmountMemory").resolveRememberedAmount,
+      getTemptationPrice: (card) => card.priceUSD, getTemptationPricePrecision: () => 2,
+      getTycoonAutosaveEventDayKey, isManualTycoonInteractionInDay,
+      decisionAmountStats: {}, catalogOverrides: {}, emojiOverrides: {}, titleOverrides: {}, pricePrecisionOverrides: {},
+      language: "en", profile: { currency: "USD" }, DEFAULT_PROFILE: { currency: "USD" },
+    });
+    const result = vm.runInContext(`${source}\n tycoonPendingEvents`, context);
+    assert.equal(result.length, hydrated ? 1 : 0);
+    if (hydrated) assert.equal(result[0].amountUSD, editedAmount || 12);
+  }
 });

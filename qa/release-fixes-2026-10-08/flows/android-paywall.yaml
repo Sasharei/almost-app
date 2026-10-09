@@ -1,0 +1,18 @@
+appId: com.sasarei.almostclean
+name: Dark contextual goal paywall contrast and dismissal
+---
+- tapOn: Progress
+- tapOn:
+    id: progress-goal-open
+- scrollUntilVisible:
+    element: New goal
+    direction: DOWN
+    visibilityPercentage: 100
+- tapOn: New goal
+- assertVisible: Unlock Unlimited goals with Premium
+- takeScreenshot: dark-unlimited-header
+- tapOn: All benefits
+- takeScreenshot: dark-expanded-benefits
+- tapOn: Continue with limited version
+- assertNotVisible: Unlock Unlimited goals with Premium
+- takeScreenshot: dark-paywall-dismissed

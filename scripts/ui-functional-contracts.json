@@ -3,6 +3,30 @@
   "policy": "These contracts may only be weakened or removed after explicit user approval for the corresponding behavior change.",
   "contracts": [
     {
+      "id": "decision-visible-create-shortcuts",
+      "description": "Focused decisions expose the existing creation form from a large floating plus, remove the duplicate header plus and shift help/report into its space. Existing decision, edit, back, capacity, validation and cancel handlers remain intact.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"decision-add-temptation\"",
+        "onPress={() => { Keyboard.dismiss(); handleFabNewTemptation(); }}",
+        "reserveAdd={!decisionFocusVisible}",
+        "activeTab === \"feed\" && !decisionFocusVisible ? <HeaderGlassButton",
+        "addLabel={t(\"redesignTodayAdd\")} onAdd={onAdd}"
+      ]
+    },
+    {
+      "id": "decision-wheel-trailing-create",
+      "description": "The trailing create row is a labelled explicit action, never a synthetic decision entry or an automatic creation on scroll; real card selection and search remain intact.",
+      "file": "src/components/DecisionCardWheel.js",
+      "requiredFragments": [
+        "testID=\"decision-wheel-add\"",
+        "accessibilityLabel={addLabel}",
+        "onAdd();",
+        "entries.map((item, index) =>",
+        "onInteractionChange?.(false);"
+      ]
+    },
+    {
       "id": "main-tab-navigation",
       "description": "The main tab bar keeps routing through the existing tab-change handler.",
       "file": "App.js",
@@ -62,15 +86,14 @@
     },
     {
       "id": "feed-savings-intro-actions",
-      "description": "The post-onboarding savings explainer remains a one-time modal with CTA, backdrop, and platform Back dismissal paths, persists its shown state, and records every dismissal source.",
+      "description": "User requested replacing passive pages/backdrop dismissal with a practical spotlight. One-time completion, visible skip, platform Back exit and tracked dismissal sources remain; no advance by tapping the dark backdrop.",
       "file": "App.js",
       "requiredFragments": [
         "const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal(",
-        "onRequestClose={() => handleClose(\"system_back\")}",
-        "onPress={() => handleClose(\"backdrop\")}",
-        "onPress={() => handleClose(\"cta\")}",
-        "onClose?.(source);",
+        "onSkip={onClose}",
+        "onFinish={() => onClose?.(\"cta\")}",
         "AsyncStorage.setItem(STORAGE_KEYS.FEED_INTRO_SHOWN, \"1\")",
+        "AsyncStorage.setItem(PRACTICE_TUTORIAL_STORAGE_KEY, \"1\")",
         "logEvent(\"screen_intro_closed\", { screen: \"feed\", source });"
       ]
     },
@@ -88,30 +111,24 @@
     },
     {
       "id": "feed-home-hero-actions",
-      "description": "The Home hierarchy redesign preserves Almi, level, streak, saving rating, Today tabs and swipe navigation, history, goal, daily reward, challenge, Budget, Subscriptions, category filters, and income-prompt actions.",
+      "description": "The Home hierarchy redesign preserves Almi, level, streak, saving rating, Today tabs and swipe navigation, history, goal, daily reward, challenge, Budget, Subscriptions, category filters, and income-prompt actions. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
       "file": "App.js",
       "requiredFragments": [
         "onPress={onMascotPress}",
-        "idleAnimationsEnabled={shouldAnimateVisibleHero}",
+        "onMascotPress={onMascotPress}",
         "const shouldUseStaticPreview = !idleAnimationsEnabled;",
-        "onPress={toggleHeroLevelExpanded}",
-        "onPress={handleUsageStreakPress}",
-        "onPress={() => savingsHeroRef?.current?.openSavingRatingModal?.()}",
-        "onRecentEventsPress={openHistoryModal}",
-        "onGoalJarPress={openGoalJarDetail}",
+        "{ key: \"levelWidgetTitle\", onPress: toggleHeroLevelExpanded }",
+        "{ key: \"usageStreakSubtitle\", onPress: handleUsageStreakPress }",
+        "{ key: \"homeSavingRatingLabel\", onPress: () => setTodayRatingVisible(true) }",
+        "{ key: \"historyTitle\", onPress: openHistoryModal }",
+        "{ key: \"redesignProgressMainGoal\", onPress: openGoalJarDetail }",
         "visible={dailyRewardModalVisible}",
-        "onDailyRewardOpen={",
-        "onDailyRewardClose={",
+        "{ key: \"dailyRewardModalTitle\", onPress: openDailyRewardModal }",
+        "onClose={handleDailyRewardModalClosed}",
         "onDailyRewardClaim={onDailyRewardClaim}",
-        "onActiveChallengePress={onActiveChallengePress}",
-        "onPress={isBudgetPressable ? onBudgetHeroPress : undefined}",
-        "onPress={isClone ? null : handleHomeSubscriptionPress}",
-        "const handleHeroCarouselTabPress = useCallback(",
-        "onPress={() => handleHeroCarouselTabPress(index)}",
-        "onScrollBeginDrag={handleHeroCarouselScrollBegin}",
-        "onMomentumScrollEnd={handleHeroCarouselScrollEnd}",
-        "if (heroCarouselExpansionTransitionRef.current || heroExpandedRef.current) {",
-        "onExpandedChange={isClone ? null : handleHeroExpandedChange}",
+        "onPress: () => onActiveChallengePress?.(activeChallenge.id)",
+        "{ key: \"redesignProgressPlan\", onPress: onBudgetHeroPress }",
+        "{ key: \"subscriptionWidgetTitle\", onPress: handleHomeSubscriptionPress }",
         "onPress={() => handleFeedCategoryFilterPress(option.id)}",
         "onPress={handleDayTwoIncomePromptPress}",
         "onPress={handleDayTwoIncomePromptDismiss}"
@@ -174,25 +191,19 @@
     },
     {
       "id": "profile-edit-settings-actions",
-      "description": "Profile overview, Reports, Settings, History, edit/save/cancel, and Settings navigation remain wired.",
+      "description": "User explicitly retired the duplicate legacy Profile/Settings shell. Redesigned overview, Reports, Settings, History, editing, save/cancel, payday and theme selection remain wired.",
       "file": "App.js",
       "requiredFragments": [
-        "const showProfileActions = isEditing || !!onReportsPress;",
         "const isEditingProfile = editMode === \"profile\";",
         "const isEditingSettings = editMode === \"settings\";",
-        "const isCurrentSectionEditing =",
-        "{ id: \"overview\", label: t(\"profileOverviewTab\"), icon: \"overview\" },",
-        "{ id: \"reports\", label: t(\"reportsButton\"), icon: \"reports\" },",
-        "{ id: \"settings\", label: t(\"profileSettingsTab\"), icon: \"settings\" },",
-        "{ id: \"history\", label: t(\"profileHistoryTab\"), icon: \"history\" },",
-        "onPress={() => handleProfileSectionSelect(section.id)}",
-        "profileSection === \"settings\" ? \"settings\" : \"profile\"",
+        "onReportsPress={() => openReportsSection(\"profile_overview\")}",
+        "onHistoryPress={() => handleProfileSectionSelect(\"history\")}",
+        "onSettingsPress={() => handleProfileSectionSelect(\"settings\")}",
         "onPress={() => onEditPress?.(\"settings\")}",
         "onPress={onCancelEdit}",
-        "onPress={() => setProfileSection(\"settings\")}",
         "onPress={() => onFieldChange?.(\"incomePayday\", day)}",
         "{t(\"incomePaydayValue\", { day: incomePayday })}",
-        "onThemeToggle(option.id"
+        "onThemeToggle?.(option.id"
       ]
     },
     {
@@ -212,6 +223,9 @@
       "requiredFragments": [
         "const HistoryTimeline = React.memo(function HistoryTimeline({",
         "HISTORY_SORT_MODES.CATEGORY",
+        "searchQuery.trim().toLocaleLowerCase()",
+        "placeholder={t(\"redesignHistorySearch\")}",
+        "setSortOptionsVisible((current) => !current)",
         "setSortMode(option.id)",
         "setFilterMode(option.id)",
         "onPress={handleLoadMore}",
@@ -229,12 +243,12 @@
         "const ProfileReportsSection = React.memo(function ProfileReportsSection({",
         "lockedAccent={reportsPremiumAccent}",
         "resolvePremiumUiAccent({ isDark: isDarkTheme })",
-        "const reportsContentAccent = reportsLockedState ? reportsPremiumAccent : colors.text;",
+        "<ProfileReportsSection",
         "const reportAccent = isPremiumUser",
         "? colors.text",
-        "onPress={() => openReportsSection(\"profile_overview\")}",
+        "onReportsPress={() => openReportsSection(\"profile_overview\")}",
         "accessibilityLabel={t(\"reportsButton\")}",
-        "latestProfileReport?.label || t(\"reportsGenerating\")",
+        "reportsBadgeVisible={reportsBadgeVisible}",
         "backgroundColor: isActive ? reportAccent : \"transparent\"",
         "!isPremiumUser ? (",
         "onPress={() => selectReportTab(tab.id)}",
@@ -268,7 +282,7 @@
         "if (!tycoonAutosaveEnabled) {",
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.temptationAutoCollect);",
         "tycoonModeEnabled={tycoonAutosaveEnabled}",
-        "{tycoonModeLocked ? (",
+        "key === \"tycoonModeLabel\" && tycoonModeLocked",
         "{t(\"featureLockedPremiumLabel\")}",
         "setTycoonLedger((prev) => retireLegacyTycoonRewards(prev));",
         "cancelScheduledTycoonAutosaveNotifications({ dismissDelivered: true })",
@@ -285,7 +299,7 @@
         "{t(\"tycoonAutosaveConfirm\")}",
         "{t(\"tycoonAutosaveLater\")}",
         "{t(\"tycoonAutosaveClose\")}",
-        "expireStalePendingTycoonAutosaves(prev, currentDayKey, Date.now())",
+        "expireStalePendingTycoonAutosaves(tycoonLedger, currentDayKey, Date.now())",
         "getTycoonAutosaveEventDayKey(entry) === currentDayKey",
         "getTycoonAutosaveEventDayKey(entry) !== currentDayKey",
         "if (!windowDayKey || windowDayKey !== currentDayKey) continue;",
@@ -446,7 +460,7 @@
         "const filteredProducts = useMemo(",
         "const orderedProducts = useMemo(() => {",
         "const syncFeedScrollOffsetFromEvent = useCallback(",
-        "<DraggableFlatList",
+        "<FeedList",
         "data={feedEntries}",
         "ListEmptyComponent={feedEmptyState}",
         "ListFooterComponent={feedFooter}",
@@ -461,12 +475,13 @@
         "const useAndroidStableLayer = Platform.OS === \"android\";",
         "onScrollEndDrag={handleFeedScrollEnd}",
         "FEED_CARD_ORDER_STORAGE_KEY,\n      JSON.stringify(feedCardOrder)",
-        "const progress = reduceMotion ? (isActive ? 1 : 0) : onActiveAnim.value;"
+        "const progress = reduceMotion ? (isActive ? 1 : 0) : onActiveAnim.value;",
+        "const FeedList = redesignFeedMode === \"all\" ? DraggableFlatList : OverviewFeedScroll;"
       ]
     },
     {
       "id": "temptation-daily-series-experience",
-      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. Today's series progress is visible before the first card decision without starting persisted series state; the first due decision still starts that state, same-day history restores checked badges, and Continue after the completion ritual scrolls to the remaining feed. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation. Automatic soft paywall timing is independent of card decisions and series completion.",
+      "description": "The Feed is one continuous category-filtered surface: calendar-aware temptations due today stay first, checked-today temptations remain full actionable cards below the unfinished ones, and all other temptations continue underneath without a separate Today filter. Today's series progress is visible before the first card decision without starting persisted series state; the first due decision still starts that state, same-day history restores checked badges, and Continue after the completion ritual leaves the current screen and scroll position unchanged. Save rewards are credited to the balance immediately while the asset-backed chest remains a claim-once visual summary, so dismissing the chest or crossing midnight cannot lose earned coins. The flow still offers Skip and Not mine → Edit/Archive, asks for the next-check timer after the first save or spend on each temptation. Automatic soft paywall timing is independent of card decisions and series completion. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
       "file": "App.js",
       "requiredFragments": [
         "registerTemptationSeriesAction(item,",
@@ -488,7 +503,7 @@
         "temptationSeriesContinuationRequestTick={temptationSeriesContinuationRequestTick}",
         "onTemptationSeriesContinuationHandled={",
         "onTemptationSeriesContinuationHandled?.(requestTick);",
-        "setTemptationSeriesContinuationRequestTick((tick) => tick + 1);",
+        "// Stay on the user's current Today position after collecting a series.",
         "temptationSeriesRewardMode: seriesRewardResult.rewardMode,",
         "temptationSeriesPendingCoins:",
         "const creditedCoinReward = Math.max(",
@@ -713,6 +728,8 @@
         "onChangeText={(text) => onChange(\"amount\", text)}",
         "onChangeText={(text) => onChange(\"emoji\", limitEmojiInput(text))}",
         "onChange={(cat) => onChange(\"category\", cat)}",
+        "onChange(\"goalId\", goal.id)",
+        "assignTemptationGoal(newCustom.id, customData.goalId)",
         "onValueChange={(next) => onChange(\"frequency\", next)}",
         "onCustomChange={(next) => onChange(\"customFrequency\", next)}",
         "onReminderTimeChange={(next) => onChange(\"reminderTime\", next)}",
@@ -724,11 +741,14 @@
     },
     {
       "id": "coin-entry-modal-actions",
-      "description": "Coin entry keeps dismiss, save, spend, manual amount, and slider behavior wired.",
+      "description": "Coin entry keeps dismiss, save, spend, manual amount, and slider behavior wired while save and spend remain distinct modes.",
       "file": "App.js",
       "requiredFragments": [
-        "onPress={() => handleAction(\"spend\")}",
-        "onPress={() => handleAction(\"save\")}",
+        "entryMode === \"spend\" ? handleAction(\"spend\") : setEntryMode(\"spend\")",
+        "entryMode === \"save\" ? handleAction(\"save\") : setEntryMode(\"save\")",
+        "setEntryMode(preferredAction || \"save\");",
+        "accessibilityState={{ selected: entryMode === \"spend\" }}",
+        "accessibilityState={{ selected: entryMode === \"save\" }}",
         "onPress={handleDismiss}",
         "onPress={handleAmountDoubleTap}",
         "onAccessibilityTap={() => openManual(\"amount\")}",
@@ -748,10 +768,10 @@
     },
     {
       "id": "android-coin-entry-circular-transparency",
-      "description": "The quick-entry coin uses a blurred pre-modal Android screen snapshot beneath exact vector circles and a clip-path-free circular fill segment over a continuous sheet surface, preserving glass translucency without stale native-modal cutout buffers, polygonal SVG clip artifacts, or Android elevation outlines.",
+      "description": "The quick-entry coin retains exact vector circular fill and a continuous sheet on both platforms, with a local backdrop that excludes unrelated feed content. Native iOS glass reflects the local fill; Android avoids stale cutout buffers and elevation outlines.",
       "file": "App.js",
       "requiredFragments": [
-        "const useCoinSurfaceCutout = Platform.OS === \"ios\" && !reduceTransparency;",
+        "const useCoinSurfaceCutout = false;",
         "useCoinSurfaceCutout && coinCutoutFrame ? \"transparent\" : sheetSurfaceColor",
         "nextBackdropUri = await captureScreen({",
         "blurRadius={18}",
@@ -853,6 +873,8 @@
         "t(\"tamagotchiImmunityDescription\")",
         "t(\"tamagotchiPartyBenefit\", {",
         "tamagotchiCleanPanResponder.panHandlers",
+        "scrollEnabled={!tamagotchiCleanTouchActive}",
+        "tamagotchiCareScrollRef.current?.setNativeProps?.({ scrollEnabled: !next })",
         "onPress={handleTamagotchiHourlyRewardClaim}",
         "onPress={() => handleTamagotchiTabPress(tab.id)}",
         "{renderTamagotchiTabContent()}",
@@ -922,7 +944,7 @@
         ": tamagotchiMenuSpeech || tamagotchiMood.label",
         "tamagotchiActionSpeechVisible && !!tamagotchiActionSpeech",
         "const tamagotchiDirtVisualIntensity = Math.pow(",
-        "styles.tamagotchiMascotDirtVeil",
+        "imageStyle={{ width: \"100%\", height: \"100%\" }}",
         "desaturation={tamagotchiDirtVisualIntensity * 0.78}"
       ],
       "requiredPatterns": [
@@ -998,6 +1020,8 @@
         "onScrollPastThreshold = () => {},",
         "onScrollPastThreshold({ offsetY });",
         "onScroll={handleMainScroll}",
+        "isTransactionAbandonedOffer",
+        "(resolvePlanKind(plan) || normalizePlanId(plan?.id)) === \"monthly\"",
         "<AbandonedOfferWheel",
         "source: \"abandoned_wheel_claim\"",
         "onClose(\"abandoned_wheel_declined\")"
@@ -1026,16 +1050,33 @@
       ]
     },
     {
+      "id": "premium-abandoned-offer-monthly-only",
+      "description": "A cancelled monthly checkout alone opens the abandoned-offer wheel, whose purchase path uses only the dedicated monthly package on both platforms.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (targetPlanId === \"monthly\") {",
+        "premiumTransactionAbandonedOfferPendingSourceRef.current = \"\";",
+        "if (isTransactionAbandonedPurchase && planId !== \"monthly\") return;",
+        "card.id === \"monthly\" && !!pkg",
+        "mapOfferingPackagesByPlan({ current: preferredOffering }).monthly",
+        "mapOfferingPackagesByPlan({ current: offer }).monthly || null"
+      ]
+    },
+    {
       "id": "premium-trial-terms-visibility",
-      "description": "The active yearly trial keeps its exact duration on the yearly plan card, uses generic trial copy on the toggle and CTA, and preserves post-trial price, renewal, cancellation, and charge-avoidance terms next to the purchase action.",
+      "description": "The active yearly trial keeps its exact duration on the yearly plan card, preselects the eligible trial on opening, shows the exact duration on the highlighted toggle and next to the CTA, keeps manual plan/toggle choices stable, and preserves post-trial price, renewal, cancellation, and charge-avoidance terms next to the purchase action.",
       "file": "src/components/PremiumPaywallModalV2.js",
       "requiredFragments": [
         "copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle",
         "plan?.trialDurationLabel ||",
         "selectedPlan?.ctaTrialLabel ||",
+        "source: \"eligible_trial_default\", trialEnabled: true",
+        "trialSelectionInitializedRef.current = true;",
+        "freeTrialDisplayPlan?.trialDurationLabel ||",
+        "selectedTrialPriceLine",
         "styles.trialDisclosureBlock",
-        "{selectedPlanTrialNotice}",
-        "!!billingNotice && !selectedPlanHasActiveTrial"
+        "selectedPlanTrialNotice || billingNotice",
+        "selectedPlanTrialNotice || billingNotice"
       ]
     },
     {
@@ -1095,6 +1136,8 @@
         "onPress={closeTransfer}",
         "onPress={() => handlePickTransferProof(\"camera\")}",
         "onPress={() => handlePickTransferProof(\"library\")}",
+        "disabled={!canSubmitTransfer}",
+        "accessibilityState={{ disabled: !canSubmitTransfer }}",
         "onPress={submitTransfer}",
         "onRequestClose={closeDebtSettings}",
         "onPress={closeDebtSettings}",
@@ -1110,6 +1153,8 @@
         "if (transferDraft.type === \"debt\" && debtRemainingUSD > 0 && amountUSD > debtRemainingUSD + 0.01) {",
         "if (!transferDraft.proofImageUri) {",
         "if (transferDraft.verifyingProof) {",
+        "const canSubmitTransfer =",
+        "const transferUnavailableReason =",
         "const proofAmountMismatch =",
         "proofImageUri: \"\"",
         "proofMatchedAmount: null",
@@ -1264,7 +1309,7 @@
         "onChange={handlePotentialForecastPeriodChange}",
         "accessibilityLabel={potentialAccessibilityLabel}",
         "onRequestClose={closePotentialDetails}",
-        "<TouchableWithoutFeedback onPress={closePotentialDetails}>",
+        "<TouchableWithoutFeedback accessible={false} onPress={closePotentialDetails}>",
         "onPress={closePotentialDetails}"
       ]
     },
@@ -1302,12 +1347,12 @@
     },
     {
       "id": "subscription-watch-actions",
-      "description": "The Subscription Watch redesign keeps home and Insights entry points, automatic discovery, manual creation, modal dismissal, import confirmation, and open analytics wired to the existing behavior.",
+      "description": "The Subscription Watch redesign keeps home and Insights entry points, automatic discovery, manual creation, modal dismissal, import confirmation, and open analytics wired to the existing behavior. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
       "file": "App.js",
       "requiredFragments": [
         "<HomeSubscriptionWidgetCard",
-        "onPress={isClone ? null : handleHomeSubscriptionPress}",
-        "onEmptyPress={isClone ? null : handleHomeSubscriptionCreatePress}",
+        "{ key: \"subscriptionWidgetTitle\", onPress: handleHomeSubscriptionPress }",
+        "onEmptyPress={handleSubscriptionCreateTemptation}",
         "onPress={openSubscriptionModal}",
         "onEmptyPress={handleSubscriptionCreateTemptation}",
         "accessible={hasEntries || typeof onEmptyPress !== \"function\"}",
@@ -1350,6 +1395,7 @@
         "setSubscriptionDueSessionVersion((version) => version + 1);",
         "onRequestClose={ignoreSubscriptionDueCloseRequest}",
         "decisionPending={subscriptionDueDecisionPending}",
+        "if (subscriptionDueDecisionPendingRef.current) return;",
         "onDecision={handleSubscriptionDuePromptDecision}",
         "styles.subscriptionDueEyebrow",
         "accessibilityRole=\"header\"",
@@ -1440,13 +1486,35 @@
       "requiredFragments": [
         "onBudgetAutoLocked={handleBudgetAutoLocked}",
         "onProgressSectionChange={handleProgressSectionChange}",
-        "const handleOverviewInsightsPress = useCallback(() => {",
-        "onProgressSectionChange?.(\"insights\");",
-        "onPress={handleOverviewInsightsPress}",
-        "onPress={() => onProgressSectionChange?.(\"goals\")}",
+        "testID=\"progress-insights\"",
+        "onInsightsPress={() => onProgressSectionChange?.(\"insights\")}",
+        "onGoalsPress={() => onProgressSectionChange?.(\"goals\")}",
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.budgetAuto);",
         "ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.impulseMap);",
-        "onPress={() => {\n            if (!activeGoalWish || !onGoalEdit) return;\n            onGoalEdit(activeGoalWish);"
+        "onEditPress={activeGoalWish && onGoalEdit ? () => onGoalEdit(activeGoalWish) : null}"
+      ]
+    },
+    {
+      "id": "feed-decision-before-series",
+      "description": "Daily series is shown below the Today Hero, including empty catalogs; chest opening and real-card continuation stay wired. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
+      "file": "App.js",
+      "requiredFragments": [
+        "{!focus ? seriesCard : null}",
+        "seriesCard={<TemptationSeriesProgressCard",
+        "...partition.other.map((entry, index) => ({",
+        "onOpenChest={onTemptationSeriesOpenChest}"
+      ]
+    },
+    {
+      "id": "fridge-empty-create-action",
+      "description": "Empty Fridge states offer a localized, accessible action to create a temptation through the existing guarded creation flow, while the door handle remains available.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onNewTemptation={handleFabNewTemptation}",
+        "onPress={onNewTemptation}",
+        "accessibilityLabel={t(\"quickCustomTitle\")}",
+        "{renderFridgeEmptyAction()}",
+        "onPress={handleToggleFridge}"
       ]
     },
     {
@@ -1477,16 +1545,19 @@
     },
     {
       "id": "fridge-spend-transaction-and-content",
-      "description": "Canceling a Fridge spend keeps the item, confirmed spend removes it only after the transaction commits, the editor uses temptation copy, and the summary preserves the exact amount.",
+      "description": "Canceling a Fridge save or spend keeps the item. Confirmed decisions remove it after the transaction commits; moving to a goal remains immediate. The editor and summary preserve temptation copy and exact amount.",
       "file": "App.js",
       "requiredFragments": [
-        "if (decision !== \"spend\") {",
+        "if (decision === \"want\") {",
         "pendingResolutionId: pendingItem.id",
         "const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });",
         "if (!spendCommitted) return;",
         "entry.id !== pendingResolutionId",
         "titleText={newPendingModal.pendingId ? t(\"temptationEditTitle\") : null}",
-        "const totalPendingLabel = formatCurrency(\n    convertToCurrency(totalPendingUSD, currency),\n    currency\n  );"
+        "const totalPendingLabel = formatCurrency(\n    convertToCurrency(totalPendingUSD, currency),\n    currency\n  );",
+        "if (item?.pendingResolutionId) {",
+        "entry.id !== item.pendingResolutionId",
+        "if (!savingConfirmed) return { cancelled: true };"
       ]
     },
     {
@@ -1695,7 +1766,7 @@
     },
     {
       "id": "rating-prompt-actions",
-      "description": "The localized, app-owned rating prompt becomes eligible after the second successful save or spend in any order, or after the first claimed temptation-series reward, appears at most once per app session after blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
+      "description": "On iOS the native Apple rating sheet replaces the custom prompt at the same eligibility point. On Android the localized, app-owned rating prompt becomes eligible after the second successful save or spend in any order, or after the first claimed temptation-series reward, appears at most once per app session after blocking UI has finished, keeps Later reachable, routes four or five stars to the store without a native review sheet, and routes one to three stars to a five-character feedback form addressed to support.",
       "file": "App.js",
       "requiredFragments": [
         "applyRatingPromptDecisionAction(ratingPromptStateRef.current",
@@ -1724,16 +1795,35 @@
         "`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`",
         "setRatingPromptFeedbackError(\"ratingPromptFeedbackSendError\")",
         "parsedLastAction === \"rate\" || parsedLastAction === \"feedback\"",
+        "requestStoreReviewWhenReady(\"rating_prompt_native\")",
+        "await StoreReview.isAvailableAsync()",
         "requestStoreReviewWhenReady(\"rating_prompt_modal\")",
         "{t(\"ratingPromptLater\")}",
         "{t(\"ratingPromptContinue\")}",
         "{t(\"ratingPromptFeedbackSend\")}"
       ],
       "requiredPatterns": [
-        "^(?![\\s\\S]*(?:expo-store-review|\\.requestReview\\())",
+        "StoreReview\\.requestReview\\(\\)",
         "^(?![\\s\\S]*ratingPromptActionGateReady)",
         "^(?![\\s\\S]*RATING_PROMPT_SESSION_ID)",
         "canTriggerStoreReviewNowRef\\.current = \\(\\) => \\{(?:(?!canShowRatingPromptNowRef\\.current|postActionPromptSlotRef\\.current)[\\s\\S])*?return true;"
+      ]
+    },
+    {
+      "id": "review-before-paywall-handoff",
+      "description": "Pending rating takes priority over paywalls. Native iOS review reserves presentation beyond requestReview resolution, until interaction returns to the app followed by one second. Queued review remains reserved during InteractionManager deferral; unavailable/error paths release it. Existing rating, feedback, purchase and dismissal actions remain intact.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const STORE_REVIEW_PAYWALL_DELAY_MS = 1000;",
+        "const storeReviewAwaitingInteractionRef = useRef(false);",
+        "storeReviewAwaitingInteractionRef.current = true;",
+        "storeReviewAwaitingInteractionRef.current = false;",
+        "if (ratingPromptQueuedRef.current) return false;",
+        "resumeAfterNativeStoreReview();",
+        "queueStoreReviewModalGuard(STORE_REVIEW_PAYWALL_DELAY_MS);"
+      ],
+      "requiredPatterns": [
+        "const show = \\(\\) => \\{[\\s\\S]*?ratingPromptQueuedRef\\.current \\|\\|[\\s\\S]*?storeReviewAwaitingInteractionRef\\.current \\|\\|"
       ]
     },
     {
@@ -1876,7 +1966,7 @@
         "onCancel={handleCoinEntryClose}",
         "const handleSaveOverlayPress = useCallback(",
         "handleSaveOverlayPress(\"primary\")",
-        "onPress={() => isEditingIdentity && onPickImage?.()}"
+        "onPress={onPickImage}"
       ]
     },
     {
@@ -1887,8 +1977,8 @@
         "const handleSupportPress = useCallback(",
         "const canOpenSupportMail = await Linking.canOpenURL(supportUrl);",
         "Alert.alert(t(\"supportLink\"), t(\"supportHint\")",
-        "onPress={handleSupportPress}",
-        "onThemeToggle(option.id, {",
+        "onSupportPress={handleSupportPress}",
+        "onThemeToggle?.(option.id, {",
         "proAccentId: option.proAccentId",
         "accessibilityLabel: `${t(\"themePro\")}: ${resolveProAccentLabel(option, language)}`",
         "accessibilityLabel={option.accessibilityLabel || option.label}",
@@ -2010,8 +2100,8 @@
         "appearance.stackedItemPositioning = .fill",
         "title: model.title,",
         "item.accessibilityLabel = model.title",
-        "item.titlePositionAdjustment = UIOffset(horizontal: 0, vertical: 5)",
-        "item.imageInsets = UIEdgeInsets(top: -4, left: 0, bottom: 4, right: 0)",
+        "item.titlePositionAdjustment = .zero",
+        "item.imageInsets = .zero",
         "item.badgeValue = model.badgeValue",
         ".foregroundColor: inactiveColor,",
         ".foregroundColor: activeColor,",
@@ -2041,12 +2131,13 @@
     },
     {
       "id": "premium-paywall-compact-scroll-flow",
-      "description": "The compact paywall preserves the full hero artwork, keeps every secondary action in document flow, and overlays only the opaque purchase control above a measured transparent scroll tail.",
+      "description": "The approved paywall has an illustrated opening, three primary benefits with all original insights reachable via expansion, reassurance before three parallel plan columns, exact yearly trial duration and total pricing, and preserved purchase/restore/manage/legal/dismiss callbacks. Large text stacks the plan columns.",
       "file": "src/components/PremiumPaywallModalV2.js",
       "requiredFragments": [
-        "heroHeight: 144,",
+        "heroHeight: 96,",
         "resizeMode=\"contain\"",
-        "style={styles.planList}",
+        "styles.planTrialLabel",
+        "color: palette.trialAccent",
         "<View style={styles.scrollFooter}>",
         "onRestorePress({ source: \"restore_button\" })",
         "onManagePress({ source: \"manage_button\" })",
@@ -2064,14 +2155,12 @@
         "isAccessibilityText ? styles.secondaryButtonsColumn : null",
         "height: compactTier.ctaHeight,",
         "maxFontSizeMultiplier={PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER}",
-        "isAccessibilityText ? styles.planTitleRowAccessibility : null",
-        "isAccessibilityText ? styles.planValueBadgeAccessibility : null",
-        "isAccessibilityText ? styles.planMainRowAccessibility : null",
-        "isAccessibilityText ? styles.planPriceBlockAccessibility : null",
-        "maxFontSizeMultiplier={1}",
-        "minimumFontScale={0.9}",
         "adjustsFontSizeToFit",
-        "onPress={handlePrimaryPress}"
+        "onPress={handlePrimaryPress}",
+        "styles.offerPlans",
+        "isAccessibilityText ? styles.offerPlansAccessible : null",
+        "setBenefitsExpanded((value) => !value)",
+        "onFeatureInsightPress(sourceRow.featureKey, { rowId: sourceRow.id })"
       ]
     },
     {
@@ -2104,14 +2193,12 @@
     },
     {
       "id": "compact-feed-expanded-hero-fab",
-      "description": "Expanding the Saved hero reports its state to the app so the global FAB stays hidden until collapse without changing hero or FAB actions.",
+      "description": "User retired the expandable Today carousel on 2026-10-02. Level and rating now open native modals above global navigation; Back and explicit close remain available.",
       "file": "App.js",
       "requiredFragments": [
-        "onHeroExpandedChange = null,",
-        "heroExpandedChangeRef.current?.(expanded);",
-        "const [feedHeroExpanded, setFeedHeroExpanded] = useState(false);",
-        "onHeroExpandedChange={handleFeedHeroExpandedChange}",
-        "activeTab === \"feed\" && feedHeroExpanded"
+        "visible={heroLevelExpanded || todayRatingVisible}",
+        "onRequestClose={() => { setHeroLevelExpanded(false); setTodayRatingVisible(false); }}",
+        "{ key: \"levelWidgetTitle\", onPress: toggleHeroLevelExpanded }"
       ]
     },
     {
@@ -2156,14 +2243,13 @@
     },
     {
       "id": "compact-profile-theme-nav-clearance",
-      "description": "On short devices Profile places theme controls before the taller income block so Dynamic Type targets remain fully above the floating navigation without changing theme actions.",
+      "description": "User requested retirement of the legacy Settings screen; dedicated scrollable choices retain theme selection with bottom navigation clearance.",
       "file": "App.js",
       "requiredFragments": [
-        "IS_SHORT_DEVICE && !isEditingSettings ? styles.profileSettingsLeadCompact : null",
-        "flexDirection: \"column-reverse\",",
-        "onThemeToggle(option.id, {",
-        "accessibilityLabel={option.accessibilityLabel || option.label}",
-        "accessibilityState={{ selected: active }}"
+        "const RedesignSettingsChoiceScreen",
+        "paddingBottom: Math.max(110, contentBottomPadding)",
+        "onThemeToggle?.(option.id, {",
+        "accessibilityState={{ selected: option.selected }}"
       ]
     },
     {
@@ -2377,28 +2463,23 @@
     },
     {
       "id": "compact-feed-tab-dynamic-type",
-      "description": "The Feed widget rail keeps localized labels within two balanced lines at accessibility sizes while preserving each tab action.",
+      "description": "The Feed widget rail keeps localized labels within two balanced lines at accessibility sizes while preserving each tab action. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
       "file": "App.js",
       "requiredFragments": [
-        "onPress={() => handleHeroCarouselTabPress(index)}",
         "numberOfLines={2}",
         "minimumFontScale={0.68}",
-        "maxFontSizeMultiplier={1.1}",
         "ellipsizeMode=\"clip\""
       ]
     },
     {
       "id": "profile-language-selected-card-containment",
-      "description": "The localized language rail measures and centers the selected card with stable LTR scroll coordinates while retaining every language action and selected state.",
+      "description": "User requested retirement of the legacy Settings screen; the replacement language list retains every supported language, native label, selected state and selection callback.",
       "file": "App.js",
       "requiredFragments": [
-        "const profileLanguageScrollRef = useRef(null);",
-        "const scrollProfileLanguageIntoView = useCallback((languageCode, animated = true) => {",
-        "profileLanguageScrollRef.current?.scrollTo?.({ x, animated });",
-        "ref={profileLanguageScrollRef}",
-        "onPress={() => onLanguageChange(lng)}",
-        "accessibilityState={{ selected: active }}",
-        "styles.settingLanguageScrollContent"
+        "SUPPORTED_LANGUAGES.map((id)",
+        "LANGUAGE_NATIVE_LABELS[id]",
+        "onLanguageChange?.(option.id)",
+        "accessibilityState={{ selected: option.selected }}"
       ]
     },
     {
@@ -2480,7 +2561,7 @@
       "file": "src/components/OnboardingRedesign.js",
       "requiredFragments": [
         "onPress={() => onLanguageChange?.(option.id)}",
-        "onPress={() => onCurrencyChange?.(currency)}",
+        "onCurrencyChange={onCurrencyChange}",
         "onPrimary={onAgree}",
         "onSecondary={onSkip}",
         "onPress={() => onChange?.(\"gender\", id)}",
@@ -2551,6 +2632,1363 @@
       ],
       "requiredPatterns": [
         "if \\(undecided\\.length\\) \\{[\\s\\S]*?handleTycoonAutosaveSnooze\\(undecided\\);"
+      ]
+    },
+    {
+      "id": "redesign-today-action-routing",
+      "description": "The redesigned Today overview opens a focused purchase decision, keeps all legacy cards reachable, and dispatches save, spend, and pause through the existing action handler.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignTodayHeader",
+        "onFocus={(entry) => { setRedesignFocusId(entry.id); setRedesignFeedMode(\"focus\"); }}",
+        "onAll={() => setRedesignFeedMode(\"all\")}",
+        "onAction={async (type, item, actionOptions) => { const result = await onTemptationAction(type, item, actionOptions); if (result?.cancelled) return;",
+        "[[\"redesignTodayLater\", \"maybe\"], [\"redesignTodaySpent\", \"spend\"]]",
+        "onAction(\"save\", focusEntry.item)"
+      ]
+    },
+    {
+      "id": "redesign-progress-route-parity",
+      "description": "The redesigned Progress overview routes to goals, rewards, insights, the monthly plan, and Budget.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignProgressOverview",
+        "testID=\"progress-goal-open\"",
+        "onPress={onOpenGoal}",
+        "onOpenGoal={() => goalTargetUSD > 0 ? setRedesignGoalDetailVisible(true) : onCreateGoal?.()}",
+        "onBudgetPress={() => goToTab(\"purchases\")}",
+        "onGoalsPress={() => onProgressSectionChange?.(\"goals\")}",
+        "onRewardsPress={() => onProgressSectionChange?.(\"rewards\")}",
+        "onInsightsPress={() => onProgressSectionChange?.(\"insights\")}",
+        "onPlanPress={() => onProgressSectionChange?.(\"insights\")}"
+      ]
+    },
+    {
+      "id": "redesign-pause-action-parity",
+      "description": "The redesigned Pause list keeps the purchase detail, decline, spend, extension options, edit, delete, add, and Premium shelf actions reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignPauseScreen",
+        "onResolve(selected, \"decline\")",
+        "onResolve(selected, \"spend\")",
+        "setExtendItemId(selected.id)",
+        "onExtend?.(extendItem, { durationMs: extendOption.durationMs, freezeOptionId: extendOption.id",
+        "onEdit?.(selected)",
+        "onDelete?.(selected)",
+        "onPress={onNewTemptation}",
+        "onPress={onPremiumShelvesPress}"
+      ]
+    },
+    {
+      "id": "redesign-budget-route-parity",
+      "description": "The redesigned Budget overview preserves savings and debt selection, transfer confirmation, debt plan editing, details, and Premium access.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignBudgetOverview",
+        "onPaneChange={setPane}",
+        "onTransferPress={() => openTransfer(pane === \"debt\" ? \"debt\" : \"savings\")}",
+        "onDebtSettingsPress={openDebtSettings}",
+        "onDetailsPress={() => setRedesignBudgetDetails(true)}",
+        "<RedesignBudgetLockedScreen",
+        "onPress={handleBudgetAutoLocked}"
+      ]
+    },
+    {
+      "id": "redesign-profile-route-parity",
+      "description": "The redesigned Profile overview keeps Almi care, reports, history, settings, and identity editing reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignProfileOverview",
+        "onMascotPress={openTamagotchiOverlay}",
+        "onReportsPress={() => openReportsSection(\"profile_overview\")}",
+        "onHistoryPress={() => handleProfileSectionSelect(\"history\")}",
+        "onSettingsPress={() => handleProfileSectionSelect(\"settings\")}",
+        "onEditPress={() => onEditPress?.(\"profile\")}"
+      ]
+    },
+    {
+      "id": "redesign-rewards-route-parity",
+      "description": "The redesigned Rewards overview keeps claiming, the daily challenge, all achievements, and Almi care reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const claimableReward = rewardsLocked",
+        "onRewardClaim?.(claimableReward)",
+        "onProgressSectionChange?.(\"challenges\")",
+        "setRedesignRewardsDetails(true)",
+        "onMascotPress={openTamagotchiOverlay}"
+      ]
+    },
+    {
+      "id": "redesign-settings-action-parity",
+      "description": "The redesigned Settings overview directly exposes category management, personal toggles, Premium, privacy, and support while retaining detailed controls.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onCategoriesPress={openManageCategoriesModal}",
+        "onSpendReductionToggle={onSpendReductionToggle}",
+        "onTycoonModeToggle={onTycoonModeToggle}",
+        "onPremiumPress={onReportsPremiumPress}",
+        "onPrivacyPress={handlePrivacyPolicyOpen}",
+        "onSupportPress={handleSupportPress}",
+        "onInstagramPress={handleInstagramPress} onResetData={onResetData}"
+      ]
+    },
+    {
+      "id": "redesign-locked-reports-parity",
+      "description": "The redesigned locked Reports screen keeps its Premium action and return route, while unlocked reports retain the full report component.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignReportsLockedScreen",
+        "onBack={() => setProfileSection(\"overview\")}",
+        "onPremiumPress={onReportsPremiumPress}",
+        "<ProfileReportsSection"
+      ]
+    },
+    {
+      "id": "redesign-premium-paywall-parity",
+      "description": "The redesigned Premium presentation retains plan selection, purchase, restore, management, legal links, and the five-second dismissal gate.",
+      "file": "src/components/PremiumPaywallModalV2.js",
+      "requiredFragments": [
+        "PAYWALL_DISMISS_COOLDOWN_MS",
+        "onPlanSelect(",
+        "onPlanPress(",
+        "onRestorePress(",
+        "onManagePress(",
+        "onTermsPress(",
+        "onPrivacyPress(",
+        "const canDismiss = dismissible && dismissCooldownComplete;"
+      ]
+    },
+    {
+      "id": "redesign-history-empty-route",
+      "description": "Empty History offers one clear next step to Today and retains the full timeline when events exist.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignHistoryEmptyScreen",
+        "onTodayPress={() => goToTab(\"feed\")}",
+        "onBack={() => setProfileSection(\"overview\")}",
+        "<HistoryTimeline"
+      ]
+    },
+    {
+      "id": "redesign-goal-detail-parity",
+      "description": "The redesigned main goal detail routes an empty goal to Today and a funded goal to Budget while keeping editing, all goals, and goal creation reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignGoalDetail",
+        "goalWishId={activeGoalWish?.id}",
+        "entry?.meta?.goalId === goalWishId",
+        "onTodayPress={onTodayPress}",
+        "const primaryAction = hasSavings ? onBudgetPress : onTodayPress;",
+        "onBudgetPress={onBudgetPress}",
+        "onEditPress={activeGoalWish && onGoalEdit ? () => onGoalEdit(activeGoalWish) : null}",
+        "onAllGoalsPress={() => { setRedesignGoalDetailVisible(false); onProgressSectionChange?.(\"goals\"); }}",
+        "onCreateGoal={onCreateGoal}",
+        "onSetActiveGoal?.(goalId)"
+      ]
+    },
+    {
+      "id": "redesign-all-goals-parity",
+      "description": "The redesigned all-goals list preserves active goal selection, editing, completed goal repeat, long press selection, and goal creation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignGoalsList",
+        "goals={listData}",
+        "onSetActiveGoal?.(goalId)",
+        "onGoalEdit?.(wish)",
+        "t(\"goalRepeatTitle\")",
+        "onGoalLongPress={(wish) => onSetActiveGoal?.(wish.goalId || wish.id)}",
+        "onOpenActiveGoal={activeGoalWish ? () => { onProgressSectionChange?.(\"overview\"); setRedesignGoalDetailVisible(true); } : null}",
+        "onCreateGoal={onCreateGoal}"
+      ]
+    },
+    {
+      "id": "redesign-insights-route-parity",
+      "description": "The redesigned Insights summary keeps the detailed metrics and potential trend reachable, with saved and spent amounts shown separately.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<RedesignInsightsOverview",
+        "savedUSD={progressBalanceStats.savedUSD}",
+        "spentUSD={progressBalanceStats.spentUSD}",
+        "row(\"redesignInsightsCategories\", onDetailsPress)",
+        "onPotentialPress={openPotentialTrendModal}",
+        "onDetailsPress={() => setRedesignInsightsDetails(true)}",
+        "setRedesignInsightsDetails(false)"
+      ]
+    },
+    {
+      "id": "redesign-today-utility-discoverability",
+      "description": "Today names series, Almi, subscriptions, savings, budget, and history routes. Series is independent of decorative detail disclosure; category filtering is outside it.",
+      "file": "App.js",
+      "requiredFragments": [
+        "tools={[",
+        "{ key: \"temptationSeriesTitle\", onPress: () => setRedesignFeedMode(\"all\") }",
+        "{ key: \"subscriptionWidgetTitle\", onPress: handleHomeSubscriptionPress }",
+        "{ key: \"historyTitle\", onPress: openHistoryModal }",
+        "{ key: \"savingsBreakdownTitle\", onPress: onSavingsBreakdownPress }"
+      ],
+      "requiredPatterns": [
+        "seriesCard=\\{<TemptationSeriesProgressCard[\\s\\S]*?onOpenChest=\\{onTemptationSeriesOpenChest\\}",
+        "<View style=\\{styles.feedTemptationHeader\\}>[\\s\\S]*?<View style=\\{styles.feedCategoryToolbar\\}>[\\s\\S]*?handleFeedCategoryFilterPress\\(option.id\\)"
+      ]
+    },
+    {
+      "id": "redesign-direct-progress-tool-routes",
+      "description": "Monthly plan opens its existing editor/income prerequisite; subscriptions open their existing modal; free-day log/rescue remain reachable from Progress. External focus requests no longer scroll to unmounted views.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onMonthlyPlanPress={handleBudgetWidgetPress}",
+        "onSubscriptionsPress={openSubscriptionModal}",
+        "onFreeDaysPress={() => setRedesignFreeDayDetails(true)}",
+        "sectionFocusRequest={pendingProgressScrollTarget}",
+        "if (sectionFocusRequest === \"subscription\") openSubscriptionModal();",
+        "else if (sectionFocusRequest === \"budget\") handleBudgetWidgetPress();",
+        "else if (sectionFocusRequest === \"free_day\") setRedesignFreeDayDetails(true);",
+        "onSectionFocusHandled?.();"
+      ],
+      "requiredPatterns": [
+        "redesignFreeDayDetails \\? <ScrollView[\\s\\S]*?<FreeDayCard[\\s\\S]*?onLog=\\{onFreeDayLog\\}[\\s\\S]*?onRescue=\\{onFreeDayRescue\\}"
+      ]
+    },
+    {
+      "id": "redesign-platform-surface-accessibility",
+      "description": "Native glass retains action hosts, refs, accessibility and exact selected control colors; nested content uses material and reduced transparency stays opaque.",
+      "file": "src/components/PlatformSurface.js",
+      "requiredFragments": [
+        "const SurfaceDepth = createContext(false);",
+        "useMotionPreferences();",
+        "pointerEvents=\"none\"",
+        "accessibilityElementsHidden",
+        "importantForAccessibility=\"no-hide-descendants\"",
+        "(parentHasMaterial && surfaceRole !== \"control\" && surfaceRole !== \"filter\")",
+        "ref={ref}",
+        "surfaceRole === \"control\" ? 1",
+        "typeof children === \"function\" ? children(state) : children",
+        "<TouchableOpacity {...props}"
+      ]
+    },
+    {
+      "id": "redesign-native-material-navigation",
+      "description": "Material navigation delivers the original tab handler, including re-selection. React retains selection ownership so gated or intercepted taps cannot select an inaccessible destination.",
+      "file": "android/app/src/main/java/com/sasarei/almostclean/design/MaterialNavigationPackage.kt",
+      "requiredFragments": [
+        "BottomNavigationView(ContextThemeWrapper",
+        "navigation.setOnItemSelectedListener",
+        "navigation.setOnItemReselectedListener",
+        "UIManagerHelper.getEventDispatcherForReactTag",
+        "@ReactProp(name = \"selectedKey\")",
+        "navigation.selectedItemId = itemId",
+        "navigation.itemActiveIndicatorColor",
+        "getOrCreateBadge(itemId)"
+      ]
+    },
+    {
+      "id": "redesign-swiftui-material",
+      "description": "SwiftUI materials retain platform availability fallback, use the supplied theme and tint, avoid receiving touches, and are hosted without additional safe area padding.",
+      "file": "ios/Almost/LiquidGlassNativeViewManager.swift",
+      "requiredFragments": [
+        "import SwiftUI",
+        "if #available(iOS 26.0, *)",
+        "glassEffect(.regular, in: shape)",
+        ".environment(\\.colorScheme, dark ? .dark : .light)",
+        ".allowsHitTesting(false)",
+        ".accessibilityHidden(true)",
+        "controller.safeAreaRegions = []"
+      ]
+    },
+    {
+      "id": "material-navigation-inset-ownership",
+      "description": "React owns safe-area padding; Material must not consume it again inside the 80dp icon and label area. Native children retain explicit layout under Fabric.",
+      "file": "android/app/src/main/java/com/sasarei/almostclean/design/MaterialNavigationPackage.kt",
+      "requiredFragments": [
+        "ViewCompat.setOnApplyWindowInsetsListener(navigation)",
+        "view.setPadding(0, 0, 0, 0)",
+        "override fun onLayout(changed: Boolean",
+        "layoutNavigation(right - left, bottom - top)",
+        "navigation.measure(",
+        "navigation.layout(0, 0, childWidth, childHeight)"
+      ]
+    },
+    {
+      "id": "material-navigation-safe-area",
+      "description": "The native Android navigation reserves the actual safe area rather than a fallback inset for the legacy floating bar.",
+      "file": "src/components/LiquidGlassTabBar.js",
+      "requiredFragments": [
+        "paddingBottom: Math.max(0, Number(safeAreaBottom) || 0)",
+        "style={{ height: 80, alignSelf: \"stretch\" }}"
+      ]
+    },
+    {
+      "id": "seven-law-shared-control-parity",
+      "description": "Accessible hosts preserve callbacks, refs, existing states and style callbacks; backdrop-only surfaces keep their geometry and switch tracks stay unchanged.",
+      "file": "src/components/AccessibleControls.js",
+      "requiredFragments": [
+        "{...props}",
+        "ref={ref}",
+        "typeof props.onPress === \"function\" && hasContent(children)",
+        "props.accessibilityRole || (interactive ? \"button\" : undefined)",
+        "...props.accessibilityState",
+        "typeof style === \"function\" ? (state) => controlStyle(style(state), interactive, role)",
+        "{children}",
+        "props.hitSlop ?? (role === \"switch\" ? 12 : undefined)"
+      ]
+    },
+    {
+      "id": "seven-law-pause-extension-recovery",
+      "description": "Pause extension remains reachable with all duration choices and original confirmation; compact/large-text sheets scroll and cancel via backdrop or platform Back.",
+      "file": "App.js",
+      "requiredFragments": [
+        "maxHeight: pauseViewportHeight - pauseInsets.top - 16",
+        "paddingBottom: Math.max(20, pauseInsets.bottom + 16)",
+        "onExtend?.(extendItem, { durationMs: extendOption.durationMs, freezeOptionId: extendOption.id, source: \"pause_detail\" })"
+      ],
+      "requiredPatterns": [
+        "<RNModal visible=\\{!!extendItem\\}[\\s\\S]*?onRequestClose=\\{\\(\\) => setExtendItemId\\(null\\)\\}[\\s\\S]*?style=\\{StyleSheet.absoluteFill\\}[\\s\\S]*?onPress=\\{\\(\\) => setExtendItemId\\(null\\)\\}[\\s\\S]*?<ScrollView[\\s\\S]*?extendOptions.map[\\s\\S]*?redesignPauseExtendConfirm[\\s\\S]*?frequencyCustomCancel[\\s\\S]*?</ScrollView>"
+      ]
+    },
+    {
+      "id": "seven-law-modal-accessibility-recovery",
+      "description": "Transparent dialogs expose each field and action separately to VoiceOver while retaining backdrop cancel; header utilities retain enlarged hit targets in a compact shared header row and dark switches remain visible.",
+      "file": "App.js",
+      "requiredFragments": [
+        "accessibilityViewIsModal={!!visible}",
+        "<TouchableWithoutFeedback accessible={false} onPress={() => dismissKeyboardOrRun(onCancel)}>",
+        "thumbColor={checked ? colors.onPrimary : colors.muted}",
+        "hitSlop={hitSlop} style={[placement, { width: target, height: target"
+      ]
+    },
+    {
+      "id": "decision-arbitrary-amount-and-edit",
+      "description": "Focus decisions preserve save/spend/pause and restore slider, exact entry and the full existing editor.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const onAction = (type, item) => onDecision(type, item, { amountUSD });",
+        "testID=\"decision-amount-input\"",
+        "<TycoonAutosaveAmountSlider value={amountValid ? amountUSD : 0}",
+        "onEdit={onTemptationEditToggle}",
+        "onPress={() => { Keyboard.dismiss(); onEdit(focusEntry.item); }}",
+        "disabled={!amountValid || sliderInteracting || wheelInteracting}",
+        "if (!savingConfirmed) return { cancelled: true };",
+        "onConfirm={handleSpendConfirm}",
+        "<AlmostPayConfirmControl active={visible} onConfirm={onConfirm}"
+      ]
+    },
+    {
+      "id": "almost-pay-cancel-and-native-feedback",
+      "description": "The explicit simulated confirmation keeps cancel and real callbacks, with native haptics and single-completion sequence.",
+      "file": "src/components/AlmostPay.js",
+      "requiredFragments": [
+        "Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)",
+        "Haptics.impactAsync",
+        "createAlmostPaySequence",
+        "sequence.current?.dispose()",
+        "onRequestClose={onCancel}",
+        "pending.current?.(false)",
+        "testID=\"almost-pay-cancel\"",
+        "t('almostPayNoCharge')"
+      ]
+    },
+    {
+      "id": "editor-modal-legibility-and-focus",
+      "description": "Editing excludes underlying content from accessibility, keeps keyboard actions tappable and uses opaque sheet material.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<View accessibilityViewIsModal style={[styles.temptationEditOverlay",
+        "importantForAccessibility={editOverlayVisible ? \"no-hide-descendants\" : \"auto\"}",
+        "keyboardDismissMode=\"on-drag\""
+      ]
+    },
+    {
+      "id": "decision-keyboard-and-card-entry",
+      "description": "The unified decision button opens the existing focus, card selection preserves all entries, and numeric entry exposes a localized Done action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"decision-amount-done\"",
+        "onPress={Keyboard.dismiss}",
+        "testID=\"today-make-decision\""
+      ]
+    },
+    {
+      "id": "almost-pay-spend-cancel-resolution",
+      "description": "Spend cancellation retains the pending focus and amount; only approved spend commits and resolves the waiting action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const spendDecisionResolverRef = useRef(null);",
+        "spendDecisionResolverRef.current?.({ cancelled: true });",
+        "closeSpendPrompt({ confirmed: true });",
+        "return await new Promise((resolve) => {",
+        "spendDecisionResolverRef.current?.(spendCommitted ? { committed: true } : { cancelled: true });"
+      ]
+    },
+    {
+      "id": "almost-pay-progressive-budget-preview",
+      "description": "All budget forecasts remain available behind an accessible disclosure, leaving payment confirmation prominent.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"almost-pay-budget-preview\"",
+        "accessibilityState={{ expanded: previewExpanded }}",
+        "showPreview && previewExpanded ? ("
+      ]
+    },
+    {
+      "id": "almost-pay-batch-and-pending-integrity",
+      "description": "Batch review has one explicit confirmation; pending saved items are removed only after the committed save.",
+      "file": "App.js",
+      "requiredFragments": [
+        "skipAlmostPayConfirmation = false",
+        "skipAlmostPayConfirmation: true",
+        "actionLabel: t(\"tycoonAutosaveConfirm\"),",
+        "pendingResolutionDaysWaited: daysWaited",
+        "setPendingList((prev) => prev.filter((entry) => entry.id !== item.pendingResolutionId));"
+      ]
+    },
+    {
+      "id": "decision-result-and-hydration-integrity",
+      "description": "Results show the current exact amount and repeated storage hydration does not add the same lifetime snapshot twice.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const depositedValue = payload?.depositAmountLabel || savedValue;",
+        "+ {depositedValue}",
+        "interactionStorageHydrationGenerationRef.current !== resetCounterAtStart",
+        "interactionStorageHydrationGenerationRef.current = resetCounterAtStart;"
+      ]
+    },
+    {
+      "id": "almost-pay-system-biometric-confirmation",
+      "description": "Enrolled device biometrics use the system scan; failed/canceled scans cannot record decisions. An explicit screen confirmation stays available. No system power-button or payment API is hijacked.",
+      "file": "src/components/AlmostPay.js",
+      "requiredFragments": [
+        "LocalAuthentication.hasHardwareAsync()",
+        "LocalAuthentication.isEnrolledAsync()",
+        "LocalAuthentication.supportedAuthenticationTypesAsync()",
+        "LocalAuthentication.authenticateAsync({",
+        "disableDeviceFallback: true",
+        "return result.success;",
+        "testID=\"almost-pay-use-screen\"",
+        "disabled={busy || checking || !active || !preferenceReady}"
+      ]
+    },
+    {
+      "id": "followup-global-glass-utilities",
+      "description": "All main tabs retain help and bug reporting in distinct accessible circular targets; Today also keeps new-temptation creation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"header-help\"",
+        "testID=\"header-bug-report\"",
+        "testID=\"header-add-temptation\"",
+        "onPress={handleFabNewTemptation}",
+        "label={resolveHelpGuideCopy(language, activeTab).buttonLabel}",
+        "label={resolveBugReportCopy(language).buttonLabel}"
+      ]
+    },
+    {
+      "id": "followup-profile-identity-editor",
+      "description": "Dedicated redesigned identity editor retains image selection, all identity fields, save, cancel, and focused keyboard scrolling.",
+      "file": "App.js",
+      "requiredFragments": [
+        "{isEditingProfile ? <ScrollView",
+        "testID=\"profile-pick-image\" onPress={onPickImage}",
+        "testID=\"profile-save\" onPress={onSaveEdit}",
+        "onPress={onCancelEdit}",
+        "onFieldChange(\"firstName\", text)",
+        "onFieldChange(\"lastName\", text)",
+        "onFieldChange(\"bio\", text)",
+        "scrollProfileInputToKeyboard(event, 24)",
+        "onChoicePress={(kind) => { handleProfileSectionSelect(\"settings\"); setRedesignSettingsChoice(kind); }}"
+      ]
+    },
+    {
+      "id": "followup-today-catalog-separation",
+      "description": "Today offers the three persona starter targets before manual timers exist and stops offering unscheduled decisions after four deliberate schedules; All Temptations remains reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "countExplicitSchedules(redesignCardEntries)",
+        "shouldIncludeUnscheduledInToday({ scheduledCount, isStarter: entry.seriesTarget, isActiveSeries: normalizedTemptationSeries.status === TEMPTATION_SERIES_STATUS.ACTIVE, isCustom: isCustomTemptation(entry.item), interaction })",
+        "onAll={() => setRedesignFeedMode(\"all\")}",
+        "speechText={showTamagotchiBubble ? tamagotchiSpeechDisplayText : null}"
+      ]
+    },
+    {
+      "id": "round2-today-details-and-inline-preferences",
+      "description": "Today savings opens the existing breakdown sheet; profile exposes actual selectors and retains full choice routes, native coin samples a continuous task surface and future timers use explicit date classification.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-savings-details\" onPress={onSavingsBreakdownPress}",
+        "<RedesignInlinePreferences",
+        "onLanguageChange?.(id)",
+        "onCurrencyChange?.(id)",
+        "onThemeToggle?.(id)",
+        "const scheduleState = classifyScheduledDecision({ dueAt, now, dayEnd: dayEnd.getTime() });",
+        "const useCoinSurfaceCutout = false;",
+        "const coinSolidFallback = colors.surfaceMuted || colors.card;",
+        "const prepareIosCutout = false;",
+        "const hasAndroidBackdropSnapshot = false;"
+      ]
+    },
+    {
+      "id": "round3-decision-care-schedule-and-insights",
+      "description": "Cat care, stable slider parent lock, scheduled date and direct insights actions remain connected. User requires the incumbent right-column speech bubble and cat composition, with direct mascot care.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-cat-care\"",
+        "event.stopPropagation(); onMascotPress?.();",
+        "onSliderInteractionChange={handleRedesignSliderInteraction}",
+        "onSliderInteractionChange?.(active)",
+        "testID=\"decision-next-check\"",
+        "resolveScheduledDecisionAt(interaction, intervalMs)",
+        "!isDecisionRecordedToday(interaction, now)",
+        "testID=\"progress-insights\"",
+        "onBalancePress={openBalanceTrendModal}",
+        "onWeeklyPress={onWeeklySpendPress}"
+      ]
+    },
+    {
+      "id": "round5-decision-context-and-glass-coverage",
+      "description": "The decision keeps real lifetime stats, all tools retain labelled overflow access, and Today/Pause scheduled rows use decorative glass without losing callbacks. 2026-10-02: user explicitly retired the old Today carousel/tools entry and post-series auto-scroll; utility destinations are preserved on the redesigned Today/Progress surfaces.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"decision-lifetime-stats\"",
+        "focusStats={redesignFocusEntry ?",
+        "{ key: \"homeSavingRatingLabel\", onPress: () => setTodayRatingVisible(true) }",
+        "<PlatformPressable surfaceRole=\"row\" key={entry.id} onPress={() => onFocus(entry)}",
+        "<PlatformPressable surfaceRole=\"row\"\n        key={item.id}\n        onPress={() => setSelectedId(item.id)}",
+        "const depositedValue = payload?.depositAmountLabel || savedValue;",
+        "savedTotalForCardUSD: totalSavedForCardUSD,"
+      ]
+    },
+    {
+      "id": "approved-almi-care-actions",
+      "description": "Approved compact Almi care keeps rewards, care tabs, cleaning gestures, outfits, reports and exit reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleTamagotchiHourlyRewardClaim}",
+        "onPress={handleTamagotchiDailyRewardPress}",
+        "onPress={openSkinPicker}",
+        "onPress={handleTamagotchiDailySummaryPress}",
+        "onPress={closeTamagotchiOverlay}",
+        "onAccessibilityTap={",
+        "tamagotchiCleanPanResponder.panHandlers",
+        "{renderTamagotchiTabContent()}",
+        "disabled={tamagotchiIsFull}",
+        "onPress={startParty}"
+      ]
+    },
+    {
+      "id": "round6-decision-focus-and-history",
+      "description": "Focused decisions hide only the explicitly unwanted global FAB, reset scroll, preserve amounts and delete history through its accounting rollback handler.",
+      "file": "App.js",
+      "requiredFragments": [
+        "!(activeTab === \"feed\" && decisionFocusVisible)",
+        "onDecisionFocusChange={setDecisionFocusVisible}",
+        "}, [redesignFeedMode]);",
+        "titleOverride={resolveTemptationLabel(spendPrompt.item, t(\"defaultDealTitle\"))}",
+        "testID=\"recent-event-delete\" onPress={() => handleHistoryDelete(entry)}",
+        "<RewardBurst active={opened} color={glow} />"
+      ]
+    },
+    {
+      "id": "round6-reward-motion-accessibility",
+      "description": "Reward effects are decorative finite native-driver animation, disabled by reduced motion and cleaned up on unmount.",
+      "file": "src/components/RewardBurst.js",
+      "requiredFragments": [
+        "if (!active || reduceMotion) return null;",
+        "useNativeDriver: true, isInteraction: false",
+        "return () => animation.stop();",
+        "pointerEvents=\"none\"",
+        "accessibilityElementsHidden"
+      ]
+    },
+    {
+      "id": "decision-average-memory-shared",
+      "description": "Decision recording, legacy history recovery, displayed cards and autosave use the shared amount memory.",
+      "file": "App.js",
+      "requiredFragments": [
+        "buildDecisionAmountStats(historyEvents)",
+        "...recordAmountSample(prevEntry, resolvedAmount, decisionAmountStats[primaryKey])",
+        "priceUSD: resolveRememberedAmount(temptationInteractions[card.id], decisionAmountStats[card.id]",
+        "const amountBase = resolveRememberedAmount(interaction, decisionAmountStats[templateId]"
+      ]
+    },
+    {
+      "id": "progress-visible-financial-previews",
+      "description": "Week spending and savings forecast previews open the existing detail handlers directly.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"progress-week-preview\"",
+        "testID=\"progress-forecast-preview\"",
+        "onPotentialPress={openPotentialTrendModal} onWeeklyPress={onWeeklySpendPress}"
+      ]
+    },
+    {
+      "id": "profile-report-and-identity-discovery",
+      "description": "Profile propagates unread reports and exposes edit next to the name.",
+      "file": "App.js",
+      "requiredFragments": [
+        "reportsBadgeVisible={reportsBadgeVisible}",
+        "testID=\"profile-report-ready\"",
+        "testID=\"profile-edit-name\"",
+        "testID=\"profile-open-reports\""
+      ]
+    },
+    {
+      "id": "pause-empty-create-matches-floating-add",
+      "description": "The empty Pause primary action opens the same duration-aware form as the Pause floating add; ordinary temptation creation remains on Today.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onNewTemptation={openNewPendingModal}",
+        "if (activeTab === \"pending\") {\n      return openNewPendingModal();",
+        "onNewTemptation={handleFabNewTemptation}"
+      ]
+    },
+    {
+      "id": "rewards-list-back-and-discovery",
+      "description": "Rewards stay discoverable from the top of Progress; list Back returns to Rewards before leaving for Progress. Challenge swipe cancel keeps an opaque foreground.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"progress-rewards\"",
+        "testID=\"rewards-list-back\"",
+        "if (!redesignRewardsDetails) return false;",
+        "backgroundColor: colors.card, borderRadius: 16",
+        "onSelect={onProgressSectionChange}"
+      ]
+    },
+    {
+      "id": "redesign-consistency-oct2",
+      "description": "Opaque reward sheets, one scrolling guide body, visible Subscription Watch, and migrated Today level/rating utilities retain callbacks.",
+      "file": "App.js",
+      "requiredFragments": [
+        "subscriptionWidget={<HomeSubscriptionWidgetCard",
+        "onEmptyPress={handleSubscriptionCreateTemptation}",
+        "<PlatformSurface opaque surfaceRole=\"card\"",
+        "visible={heroLevelExpanded || todayRatingVisible}",
+        "key={selectedTab}"
+      ]
+    },
+    {
+      "id": "unified-decision-entry-and-tools",
+      "description": "Unified entry keeps card selection, amount input, existing decisions and collapsed tools reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-make-decision\"",
+        "testID=\"decision-card-picker\"",
+        "filteredDecisionEntries.map(renderScheduledRow)",
+        "testID=\"today-tools-toggle\"",
+        "accessibilityState={{ expanded: toolsExpanded }}",
+        "testID=\"decision-amount-input\"",
+        "onAction(\"save\", focusEntry.item)",
+        "testID=\"decision-spend\"",
+        "testID=\"decision-later\"",
+        "testID=\"decision-edit-card\"",
+        "buildDecisionQueue(redesignTodayGroups, redesignCardEntries)",
+        "const amountGestureCallbacks = useRef({});"
+      ]
+    },
+    {
+      "id": "decision-wheel-history-and-native-drag",
+      "description": "Decision wheel and full picker select the same card; recent history stays reachable; native drag retains ownership outside the slider and unlocks scrolling on finalization.",
+      "file": "App.js",
+      "requiredFragments": [
+        "<DecisionCardWheel tutorial={practiceTutorial} onEngage={() => practiceTutorial?.event(\"CARD\")} entries={decisionEntries} selectedId={focusEntry.id} onSelect={onFocus}",
+        "testID=\"today-recent-history\"",
+        "onHistory={openHistoryModal}",
+        ".slice(0, 5)",
+        "<TycoonAutosaveAmountSlider value={amountValid ? amountUSD : 0} nativeDrag",
+        ".shouldCancelWhenOutside(false)",
+        ".onUpdate((event) => gestureCallbacks.current.moveDrag(event.absoluteX, event.absoluteY))",
+        "if (!wasDragging) gestureCallbacks.current.onAdjustmentComplete?.();"
+      ],
+      "requiredPatterns": [
+        "\\.onFinalize\\(\\(\\) => \\{[\\s\\S]*?gestureCallbacks\\.current\\.setInteractionState\\(false\\);"
+      ]
+    },
+    {
+      "id": "decision-wheel-independent-scroll",
+      "description": "The wheel has its own native scroll surface and explicit end spacers so nested virtualized-list context cannot shift the selected row or steal scroll commands.",
+      "file": "src/components/DecisionCardWheel.js",
+      "requiredFragments": [
+        "<Animated.ScrollView ref={list}",
+        "contentInsetAdjustmentBehavior=\"never\"",
+        "<View style={{ height: ROW_HEIGHT }} />",
+        "snapToInterval={ROW_HEIGHT}",
+        "onMomentumScrollEnd={({ nativeEvent }) => settle(nativeEvent.contentOffset.y)}",
+        "accessibilityRole=\"adjustable\""
+      ]
+    },
+    {
+      "id": "decision-category-awaits-confirmation",
+      "description": "Category selection keeps the decision mounted until the resumed action commits; category and payment cancellation preserve manual input.",
+      "file": "App.js",
+      "requiredFragments": [
+        "return await openCategoryPrompt(item, type, options);",
+        "categoryDecisionResolverRef.current?.({ cancelled: true });",
+        "const resolveDecision = categoryDecisionResolverRef.current;",
+        "resolveDecision?.(result);",
+        "if ((type === \"save\" || type === \"spend\") && !result?.committed) return;"
+      ]
+    },
+    {
+      "id": "wheel-search-status-and-responsive-selection",
+      "description": "Search scrolls with the leading row; each card exposes schedule and completed-today state; releasing a drag unlocks actions immediately and repeated selection does not reset the amount.",
+      "file": "src/components/DecisionCardWheel.js",
+      "requiredFragments": [
+        "testID=\"decision-wheel-search\"",
+        "onSearch?.()",
+        "statusFor?.(item)",
+        "status.checked ? \"✓ \" : \"○ \"",
+        "selectAt(nativeEvent.targetContentOffset?.y ?? nativeEvent.contentOffset.y);",
+        "if (entry.id !== selected) select(entry);",
+        "coasting.current = false;"
+      ]
+    },
+    {
+      "id": "today-due-and-calendar-status",
+      "description": "User approved moving the actual due count into the decision button; deadlines, picker and calendar labels remain connected.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-awaiting-decisions\"",
+        "dueEntries={redesignTodayGroups.due}",
+        "useDeadlineTicker(nextDecisionDeadline, true)",
+        "t(\"redesignTodayLabel\")"
+      ]
+    },
+    {
+      "id": "progress-sections-disclosure",
+      "description": "Sections are initially collapsed while every existing destination remains wired.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const [sectionsExpanded, setSectionsExpanded] = useState(false);",
+        "testID=\"progress-sections-toggle\"",
+        "accessibilityState={{ expanded: sectionsExpanded }}",
+        "row(\"redesignProgressGoals\"",
+        "row(\"redesignProgressRewards\"",
+        "row(\"redesignProgressInsights\"",
+        "row(\"redesignProgressPlan\"",
+        "row(\"subscriptionWidgetTitle\"",
+        "row(\"freeDayCardTitle\""
+      ]
+    },
+    {
+      "id": "new-settings-unique-actions",
+      "description": "Retired Settings actions are reachable on the new surface, including payday editing, income, reset and Instagram.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onIncomePress={() => onIncomeEntryOpen?.(\"profile\")}",
+        "incomePaydaySection={incomePaydaySection}",
+        "onSaveEdit={onSaveEdit} onCancelEdit={onCancelEdit}",
+        "row(\"instagramLink\", \"\", onInstagramPress)",
+        "row(\"developerReset\", \"\", onResetData)"
+      ]
+    },
+    {
+      "id": "free-profile-access-banner",
+      "description": "Free users have a distinct full-access entry and existing paywall handler; premium users keep reports as the main action.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"profile-full-access\"",
+        "onPremiumPress={onReportsPremiumPress}",
+        "{t(\"profileGetFullAccess\")}"
+      ]
+    },
+    {
+      "id": "settings-draft-navigation-and-category-reveal",
+      "description": "Preference choices open during payday editing without queuing surprise navigation; selecting a category reveals its editor; payday targets meet native minimums.",
+      "file": "App.js",
+      "requiredFragments": [
+        "profileSection === \"settings\" && redesignSettingsChoice ?",
+        "ref={categoryManagerScrollRef}",
+        "categoryManagerScrollRef.current?.scrollTo({ y: 0, animated: !reduceMotion })",
+        "incomeCalendarDay: {\n    width: \"14.2857%\",\n    minWidth: UI_TOUCH_TARGET.current,\n    minHeight: UI_TOUCH_TARGET.current,"
+      ]
+    },
+    {
+      "id": "shopping-pause-entry-and-settings",
+      "description": "Shopping pause is discoverable from Today and settings without replacing existing actions. Its modal blocks competing automatic overlays.",
+      "file": "App.js",
+      "requiredFragments": [
+        "shoppingBlockerEntry={<ShoppingBlockerEntry formatLocalAmount={formatCurrency}",
+        "onShoppingBlockerPress={() => shoppingBlocker.openSettings()}",
+        "shoppingBlocker.visible ||",
+        "<ShoppingBlockerPanel controller={shoppingBlocker}",
+        "const stopped = await shoppingBlocker.stop();"
+      ]
+    },
+    {
+      "id": "shopping-pause-actions",
+      "description": "Selection, activation, cancel, permission recovery, earned one-store pass and retry remain reachable. Per user request, stop is settings-only; limits support weekly edits and next-cycle setup.",
+      "file": "src/components/ShoppingBlockerPanel.js",
+      "requiredFragments": [
+        "onRequestClose={close}",
+        "controller.selectApps()",
+        "controller.start(amountUSD, currency, value)",
+        "controller.authorize",
+        "controller.unlock",
+        "controller.stop()",
+        "controller.refresh",
+        "parseShoppingGoal(goal)",
+        "onPress={dismissPrompt}",
+        "controller.settings && status?.active ? action(\"blockStop\", stop)",
+        "controller.updateGoal(amountUSD, currency, value)",
+        "t(\"blockGoalEditLocked\", { date:",
+        "status?.needsNextGoal"
+      ]
+    },
+    {
+      "id": "shopping-pause-automatic-offer",
+      "description": "The once-only shopping invitation waits for action feedback, onboarding, other modals and handoffs.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (!shoppingOfferPending) return undefined;",
+        "onboardingStep === \"done\"",
+        "visibleModalHostCount === 0",
+        "!queuedModalType && !queuedModalActiveRef.current",
+        "getModalCloseSettleRemainingMs() === 0",
+        "if (ready) presentShoppingOffer();",
+        "return () => clearTimeout(timer);"
+      ]
+    },
+    {
+      "id": "shopping-pause-category-selection",
+      "description": "Apple category expansion preserves individual app blocking and a one-app pass. Selection remains cancellable.",
+      "file": "ios/Almost/ShoppingBlocker.swift",
+      "requiredFragments": [
+        "FamilyActivitySelection(includeEntireCategory: true)",
+        "apps.applicationTokens = selection.applicationTokens",
+        "state.selection = apps",
+        "self?.draft = apps",
+        ".disabled(selection.applicationTokens.isEmpty)",
+        "completion(nil)",
+        "current.selection.applicationTokens.contains(token)"
+      ]
+    },
+    {
+      "id": "shopping-pause-offer-opt-out",
+      "description": "Invitation accepts or declines without forcing system permission, and persists the once-only state.",
+      "file": "src/shoppingBlocker/useShoppingBlocker.js",
+      "requiredFragments": [
+        "almost.shoppingPause.offerShown.v2",
+        "AsyncStorage.multiGet([OFFER_KEY, COHORT_KEY, STORAGE_KEYS.ONBOARDING])",
+        "AsyncStorage.setItem(OFFER_KEY, \"1\")",
+        "hasShoppingDecision(history)",
+        "if (offeredRef.current) return;",
+        "acceptOffer",
+        "declineOffer"
+      ]
+    },
+    {
+      "id": "shopping-pause-series-position-and-illustrated-offer",
+      "description": "Shopping pause stays directly after Today Series outside tools and keeps an illustrated explanation, setup action and dismissal.",
+      "file": "App.js",
+      "requiredFragments": [
+        "{!focus ? seriesCard : null}\n      {!focus ? shoppingBlockerEntry : null}",
+        "shoppingBlockerEntry={shoppingBlockerEntry}"
+      ]
+    },
+    {
+      "id": "shopping-pause-art-and-offer-footer",
+      "description": "The explanation covers selection, recorded-savings goal and a 30-minute visit; the primary footer and opt-out remain reachable.",
+      "file": "src/components/ShoppingBlockerPanel.js",
+      "requiredFragments": [
+        "assets/shopping-pause/hero.png",
+        "blockExplainApps",
+        "blockExplainGoal",
+        "blockExplainVisit",
+        "controller.acceptOffer",
+        "controller.declineOffer",
+        "styles.offerFooter",
+        "onPress={dismissPrompt}"
+      ]
+    },
+    {
+      "id": "today-compact-layout-and-shopping-progress",
+      "description": "User approved compact Today. Active pause shows actual progress, remaining amount and earned unlock; management/stop stays in profile settings, with permission and selection recovery on Today.",
+      "file": "src/components/ShoppingBlockerPanel.js",
+      "requiredFragments": [
+        "testID=\"today-shopping-pause\"",
+        "controller.authorize",
+        "controller.selectApps",
+        "controller.unlock",
+        "t(\"blockProgress\"",
+        "\"blockRemaining\"",
+        "Math.min(100, Math.max(0,",
+        "onPress={dismissPrompt}"
+      ]
+    },
+    {
+      "id": "today-compact-summary-actions",
+      "description": "The approved compact overview preserves savings details, mascot speech/care, real series progress, chest rewards and decision focus. Series explanation moves behind a tap; mascot speech remains visible; other screens keep their existing density.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-series-compact\"",
+        "ready || claimed ? onOpenChest",
+        "t(\"temptationSeriesIntro\")",
+        "seriesCard={<TemptationSeriesProgressCard compact",
+        "testID=\"today-savings-details\"",
+        "testID=\"today-cat-care\"",
+        "event.stopPropagation(); onMascotPress?.();",
+        "testID=\"today-awaiting-decisions\"",
+        "onPress={() => onFocus(dueEntries[0] || leadEntry)}",
+        "onShoppingBlockerPress={() => shoppingBlocker.openSettings()}",
+        "testID=\"today-cat-speech\""
+      ]
+    },
+    {
+      "id": "post-onboarding-current-version-guide",
+      "description": "User explicitly replaced four passive Next/Back pages with an actual in-app tour. Real controls own all decisions; amount validity and committed results gate progress, cancelled/blocked actions return to the decision.",
+      "file": "App.js",
+      "requiredFragments": [
+        "usePracticeTutorial(feedIntroVisible)",
+        "id=\"practice-open\"",
+        "id=\"practice-amount\"",
+        "id=\"practice-action\"",
+        "id=\"practice-result\"",
+        "emitPracticeEvent?.(\"ACTION_STARTED\")",
+        "emitPracticeEvent?.(\"ACTION_RESULT\"",
+        "if (practiceTutorial?.active && !result?.committed) return;",
+        "return { committed: true, type: \"pause\", pendingId: pendingEntry.id };"
+      ]
+    },
+    {
+      "id": "daily-challenge-offer-actions-preserved",
+      "description": "Daily challenge draw, accept, later, backdrop dismissal and completion remain available through contrast changes.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onPress={handleDailyChallengeAccept}",
+        "onPress={handleDailyChallengeLater}",
+        "onPress={handleDailyChallengeDismiss}",
+        "onRequestClose={handleDailyChallengeDismiss}",
+        "onPress={handleDailyChallengeCompleteClose}"
+      ]
+    },
+    {
+      "id": "practice-spotlight-native-touches-and-exit",
+      "file": "src/components/PracticeTutorial.js",
+      "description": "The tutorial is a normal overlay, forwards opening gestures to the real control, blocks the rest, has visible skip/recovery and platform Back, and cleans all measurement/keyboard listeners.",
+      "requiredFragments": [
+        "testID=\"practice-tutorial-overlay\"",
+        "testID=\"practice-skip\"",
+        "testID=\"practice-retry\"",
+        "testID=\"practice-finish\"",
+        "onStartShouldSetResponder={() => true}",
+        "clearTimeout(deadline); clearInterval(interval);",
+        "show.remove(); hide.remove();",
+        "onSkip(\"system_back\")",
+        "fillRule=\"evenodd\"",
+        "<View pointerEvents=\"none\" accessible={false} style={StyleSheet.absoluteFill}>",
+        "zIndex: 900, elevation: 900"
+      ]
+    },
+    {
+      "id": "shopping-pause-durable-selection",
+      "description": "Approved reauthorization retains selection, picker resumes durable apps, and start can survive JS/native restart. Revocation still requires fresh selection.",
+      "file": "ios/Almost/ShoppingBlocker.swift",
+      "requiredFragments": [
+        "if AuthorizationCenter.shared.authorizationStatus != .approved",
+        "initialSelection = try ShoppingBlockerStore.transaction",
+        "let selection = draft ?? state.selection",
+        "state.selection = selection",
+        "_selection = State(initialValue: initialSelection)"
+      ]
+    },
+    {
+      "id": "shopping-pause-earned-feedback",
+      "description": "An earned goal opens the management panel after existing modal/feedback safety gates settle, at most once per active cycle in the session.",
+      "file": "App.js",
+      "requiredFragments": [
+        "shoppingReadyNotified.current === shoppingReadyCycle",
+        "if (ready && !almostPay.request)",
+        "shoppingReadyNotified.current = shoppingReadyCycle",
+        "shoppingBlocker.setVisible(true);"
+      ]
+    },
+    {
+      "id": "almost-pay-persistent-opt-out",
+      "description": "Explicit opt-out requires rationale and a second choice, persists across confirmation controls, and never commits a canceled authentication.",
+      "file": "src/components/AlmostPay.js",
+      "requiredFragments": [
+        "Alert.alert(tr('almostPayOptOutTitle'), tr('almostPayOptOutBody')",
+        "await disableAlmostPayBiometrics()",
+        "!screenOnly && !checking && method && !useScreen",
+        "onPress={explainOptOut}",
+        "if (disposed) return false;"
+      ]
+    },
+    {
+      "id": "subscription-next-payment-amount",
+      "description": "Next subscription shows its per-payment amount alongside title and deadline, preserving totals and create/import routes.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"subscription-next-amount\"",
+        "{nextSubscription.amountLabel}"
+      ]
+    },
+    {
+      "id": "shopping-pause-weekly-limits",
+      "description": "Native durable weekly edit enforcement, next-cycle selection and legacy decoding preserve credit and active passes.",
+      "file": "ios/ShoppingBlockerShared/ShoppingBlockerStore.swift",
+      "requiredFragments": [
+        "var awaitingNextGoal: Bool?",
+        "var lastGoalChangeAt: Double?",
+        "guard needsNextGoal || now >= goalChangeAvailableAt",
+        "if !needsNextGoal { lastGoalChangeAt = now }",
+        "active && !needsNextGoal && ShoppingSavings.earned",
+        "\"needsNextGoal\": state.needsNextGoal"
+      ]
+    },
+    {
+      "id": "bank-expenses-settings-entry",
+      "description": "Automatic expense imports remain opt-in and reachable from profile settings. User requested Apple Pay receipts to feed ordinary spending history and category budget accounting.",
+      "file": "App.js",
+      "requiredFragments": [
+        "bankExpenses?.supported ? <Pressable key=\"automaticExpenses\" onPress={bankExpenses.open}",
+        "bankExpenses={bankExpenses}",
+        "<BankExpensesPanel controller={bankExpenses}",
+        "await bankExpenses.reset();"
+      ]
+    },
+    {
+      "id": "bank-expenses-review-and-control",
+      "description": "Users can select sources, enable or pause import, edit unclear or saved receipts, save corrections, cancel/back, delete mistaken records and load every page. User requested replacing iOS bank-notification shortcuts with Wallet Transaction import; Android notification access and receipt actions remain.",
+      "file": "src/components/BankExpensesPanel.js",
+      "requiredFragments": [
+        "expenses-select-sources",
+        "expenses-enable",
+        "expenses-disable",
+        "expenses-permission",
+        "expenses-wallet-setup",
+        "expenses-save",
+        "c.configure(false)",
+        "c.selected.includes(item.id)",
+        "const close = () =>",
+        "c.update(item.id, \"\", \"\", true)",
+        "c.hasMore ? button(copy.more, c.more)"
+      ]
+    },
+    {
+      "id": "bank-expenses-source-isolation",
+      "description": "Android background capture processes only authorized user-selected source apps and future individual purchase notifications.",
+      "file": "android/app/src/main/java/com/sasarei/almostclean/expenses/ExpenseNotifications.kt",
+      "requiredFragments": [
+        "prefs.getBoolean(\"enabled\", false)",
+        "prefs.getStringSet(\"sources\", emptySet())",
+        "Notification.FLAG_GROUP_SUMMARY",
+        "sbn.postTime < prefs.getLong(\"enabledAt\", Long.MAX_VALUE)",
+        "worker.execute"
+      ]
+    },
+    {
+      "id": "currency-picker-shared-actions",
+      "description": "The shared currency picker keeps all supported choices reachable, selection and return, search and clear, accessible selected state, and modal Android Back wired. Replaces the previous inline currency callback with the same action in the shared component.",
+      "file": "src/components/CurrencyPicker.js",
+      "requiredFragments": [
+        "onPress={() => onSelect(option.code)}",
+        "onSelect?.(code); onBack?.();",
+        "onChangeText={setQuery}",
+        "onPress={clear}",
+        "onPress={onBack}",
+        "accessibilityState={{ selected: option.selected }}",
+        "keyboardShouldPersistTaps=\"handled\"",
+        "onSelect={onCurrencyChange}",
+        "onRequestClose={close}",
+        "onDismiss={restoreFocus}"
+      ]
+    },
+    {
+      "id": "currency-picker-settings-route",
+      "description": "Settings still applies the existing currency handler and returns through the existing Back route; the complete app currency catalog is passed to the shared picker.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (kind === \"currency\") {",
+        "codes={CURRENCIES} colors={colors}",
+        "onSelect={onCurrencyChange} onBack={onBack}"
+      ]
+    },
+    {
+      "id": "currency-picker-onboarding-route",
+      "description": "Onboarding retains the current currency, full catalog, and original currency change callback in the picker field while preserving Continue and Terms.",
+      "file": "src/components/OnboardingRedesign.js",
+      "requiredFragments": [
+        "<CurrencySelectorField",
+        "language={selectedLanguage}",
+        "currency={selectedCurrency}",
+        "codes={availableCurrencies}",
+        "onCurrencyChange={onCurrencyChange}",
+        "onPrimary={onContinue}",
+        "onPress={onShowTerms}"
+      ]
+    },
+    {
+      "id": "autocollect-stable-review-range",
+      "description": "Amount drags retain a fixed per-card review range and commit the locally previewed amount on release. Manual entry can expand it. Existing confirmation, snooze, exclusion, close and accessible adjustments remain available.",
+      "file": "App.js",
+      "requiredFragments": [
+        "sliderRangesRef.current[entry.id] = maximum;",
+        "sliderBaseAmountUSD: cardAmountUSD || clampTransactionAmountUSD(entry?.amountUSD)",
+        "onAdjustmentComplete={commitSliderEdit}",
+        "if (!isInteracting) commitSliderEdit();",
+        "pendingSliderEditRef.current = { id: entry.id, amountUSD: normalizedUSD };"
+      ]
+    },
+    {
+      "id": "time-wheel-exact-target-and-settle",
+      "description": "The time wheel uses the actual accessible row height for snapping and waits for native momentum to stop without interrupting its own selected value.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const TIME_WHEEL_ITEM_HEIGHT = 48;",
+        "snapToInterval={TIME_WHEEL_ITEM_HEIGHT}",
+        "wheelMomentumRef.current = true;",
+        "if (!wheelMomentumRef.current && !wheelDraggingRef.current) commitSettledValue",
+        "scrollToRawIndex(index, false, { suppressTick: true });",
+        "changeTimePart(\"hour\", nextHour)",
+        "changeTimePart(\"minute\", nextMinute)"
+      ]
+    },
+    {
+      "id": "today-honest-unfinished-context",
+      "description": "Today includes both overdue and later-today unfinished checks, excludes actual same-day decisions, and only uses finishing encouragement after actual progress.",
+      "file": "App.js",
+      "requiredFragments": [
+        "laterEntries={redesignTodayGroups.later}",
+        "const remainingEntries = [...dueEntries, ...laterEntries]",
+        "!isDecisionRecordedToday(entry.interaction, now)",
+        "completedToday > 0 && remainingEntries.length === 1",
+        "getDayKey(entry.seriesResolution?.firstAt) === getDayKey(now)"
+      ]
+    },
+    {
+      "id": "settings-entitlement-badge-state",
+      "description": "Premium lock badges disappear in settings and accessibility after entitlement becomes active; expense import and purchase routes remain reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "accessibilityLabel={isPremiumUser ? bankExpenses.copy.title :",
+        "{!isPremiumUser ? <View testID=\"settings-expenses-premium-badge\"",
+        "isPremiumUser={isPremiumUser}",
+        "onPress={bankExpenses.open}"
+      ]
+    },
+    {
+      "id": "expenses-entitlement-badge-state",
+      "description": "Expense panel lock badge is limited to non-Premium state while enable, review, cancel and retry actions remain intact.",
+      "file": "src/components/BankExpensesPanel.js",
+      "requiredFragments": [
+        "{!c.isPremium ? <Text testID=\"expenses-premium-badge\"",
+        "expenses-upgrade",
+        "expenses-enable",
+        "expenses-save",
+        "c.refresh",
+        "onRequestClose={close}"
+      ]
+    },
+    {
+      "id": "income-entry-scroll-and-actions",
+      "description": "Income entry retains amount/day editing, submit, skip, backdrop and platform dismissal inside a keyboard-scrollable form.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"income-entry-scroll\"",
+        "onSubmit?.(draft)",
+        "onPress={onSkip}",
+        "onRequestClose={onDismiss}",
+        "onChangeText={(text) => setDraft((prev) => ({ ...prev, amount: text }))}",
+        "onPress={() => setDraft((prev) => ({ ...prev, payday: day }))}"
+      ]
+    },
+    {
+      "id": "pro-accent-scroll-and-actions",
+      "description": "The full PRO accent catalog remains reachable at large text and on short screens, preserving selection and every dismissal route.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"pro-accent-scroll\"",
+        "handleProThemeAccentSelect(option.id, { close: false })",
+        "onRequestClose={closeProThemeAccentPicker}",
+        "onPress={closeProThemeAccentPicker}"
+      ]
+    },
+    {
+      "id": "bank-expenses-ios-wallet-input",
+      "description": "User requested removing the standalone bank-notification shortcut. Wallet automation records the supplied decimal amount and ISO currency in the background; missing input cannot ask for a manual payment amount or fall back to the phone currency.",
+      "file": "ios/Almost/BankExpenses.swift",
+      "requiredFragments": [
+        "struct ImportApplePayTransactionIntent: LiveActivityIntent",
+        "var amount: String?",
+        "var currency: String?",
+        "inputConnectionBehavior: .connectToPreviousIntentResult",
+        "guard let amount, let currency, let normalized = ExpenseParser.parseAmount(amount, currency: currency)",
+        "else { throw BankExpenseError.walletInputRequired }",
+        "openAppWhenRun = false",
+        "BankExpenseStore.captureWallet(amount: value, currency: currency"
+      ]
+    },
+    {
+      "id": "bank-expenses-ios-honest-setup-state",
+      "description": "Wallet setup is focused, version-gated and cancellable. Connection is confirmed only by a received payment; setup stays reachable after confirmation.",
+      "file": "src/components/BankExpensesPanel.js",
+      "requiredFragments": [
+        "copy.walletSetupPending",
+        "copy.walletUnavailable",
+        "c.status?.walletAvailable",
+        "expenses-wallet-setup",
+        "expenses-wallet-open-automation",
+        "c.openWalletAutomation",
+        "copy.walletReadyUnavailable",
+        "!walletTemplateAvailable",
+        "else if (walletSetup) setWalletSetup(false)"
+      ]
+    },
+    {
+      "id": "modal-redesign-level-and-reward-actions",
+      "description": "Level sharing and all existing reward dismissal/claim handlers survive the modal redesign. Cosmetic success UI never grants a reward.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onSharePress(levelNumber)",
+        "onSharePress={handleLevelSharePress}",
+        "onPress={dismissOverlay}",
+        "onDismiss={dismissOverlay}",
+        "onPress={handleDailyRewardCollect}",
+        "onPress={onDismiss}",
+        "onPress={onClose}"
+      ]
+    },
+    {
+      "id": "result-dialog-primary-and-secondary",
+      "description": "Result dialogs retain accessible primary continuation, separate backdrop dismissal, scrollable content, and the caller-provided secondary action without claiming rewards.",
+      "file": "src/components/ResultDialog.js",
+      "requiredFragments": [
+        "onPress={onClose}",
+        "accessibilityRole=\"button\"",
+        "<ScrollView",
+        "{children}",
+        "accessibilityViewIsModal",
+        "colors.onPrimary",
+        "useSafeAreaInsets()"
+      ]
+    },
+    {
+      "id": "cat-care-and-series-bugfix-actions",
+      "description": "Readable care speech and concealed closed-chest amounts preserve care, reward opening, claimed reward review, series explanation, and party controls.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"tamagotchi-care-speech\"",
+        "<PlatformSurface surfaceRole=\"card\" opaque",
+        "onPress={startParty}",
+        "onPress={handleTamagotchiHourlyRewardClaim}",
+        "onPress={ready || claimed ? onOpenChest : () => Alert.alert(t(\"temptationSeriesTitle\"), t(\"temptationSeriesIntro\"))}",
+        "accessibilityLabel={t(ready ? \"temptationSeriesOpenChest\" : claimed ? \"temptationSeriesViewReward\" : \"temptationSeriesTitle\")}"
+      ],
+      "requiredPatterns": [
+        "\\{claimed \\? <View[\\s\\S]*?temptationSeriesChestBalance[\\s\\S]*?</View> : null\\}"
+      ]
+    },
+    {
+      "id": "ios-almi-scene-guardian",
+      "description": "User approved 2026-10-07: temporary cat-only speech scene replaces metrics/actions; all normal widget actions return after native TTL in every family.",
+      "file": "ios/Almost Widget/Almost_Widget.swift",
+      "requiredFragments": [
+        "private func almiWidgetState",
+        "entries.append(loadEntry(at: end, forceBalance: true))",
+        "entry.almiScene == \"balance\" && dailySummaryReady",
+        "if entry.almiScene != \"balance\"",
+        "almiSceneView",
+        ".accessibilityLabel(entry.almiCaption + \". \" + entry.almiOpenLabel)"
+      ]
+    },
+    {
+      "id": "android-almi-all-sizes",
+      "description": "Native scene bypasses the normal layout only while eligible; normal providers and quick-entry wiring remain intact.",
+      "file": "android/app/src/main/java/com/sasarei/almostclean/widget/AlmostWidgetProvider.kt",
+      "requiredFragments": [
+        "AlmiWidgetGuardian.render(context, appWidgetManager, appWidgetId, size, widgetData)",
+        "appWidgetManager.updateAppWidget(appWidgetId, almiScene)",
+        "val isMedium = size == WidgetSize.MEDIUM"
+      ]
+    },
+    {
+      "id": "almi-context-local-only",
+      "description": "Local widget snapshot and real foreground activity; event timestamps are never replaced by render timestamps.",
+      "file": "App.js",
+      "requiredFragments": [
+        "buildAlmiWidgetContext({",
+        "copy: ALMI_WIDGET_COPY[copyLanguage] || ALMI_WIDGET_COPY.en",
+        "setWidgetDataSafely({ almiLastOpenedAt: normalized });"
+      ]
+    },
+    {
+      "id": "wallet-native-spend-history",
+      "description": "User requested Wallet expenses to participate in spending and budget calculations, without replaying duplicate deliveries. Native receipts remain authoritative and deletions target that receipt.",
+      "file": "App.js",
+      "requiredFragments": [
+        "walletHistoryEvents(walletReceipts",
+        "mergeWalletHistory(",
+        "entry.meta?.source !== \"apple-pay\"",
+        "bankExpenses.update(entry.meta.receiptId, \"\", \"\", true)"
+      ]
+    },
+    {
+      "id": "wallet-category-and-connected-controls",
+      "description": "Received payments confirm connection; category correction, save, close and setup remain reachable.",
+      "file": "src/components/BankExpensesPanel.js",
+      "requiredFragments": [
+        "c.status?.walletConnected",
+        "copy.walletConnected",
+        "expenses-category",
+        "expenses-review",
+        "classifyMerchant(item.merchant)",
+        "expenses-separate-payment",
+        "c.separateDuplicate(editing.id)"
+      ]
+    },
+    {
+      "id": "amount-slider-currency-steps-and-fine-drag",
+      "description": "Both amount slider surfaces retain native ownership, positive reachable endpoints, currency-aligned steps, tremor deadband, thumb-relative pickup, fine vertical adjustment and per-step haptics. Manual entry and confirmation contracts remain in force.",
+      "file": "App.js",
+      "requiredFragments": [
+        "const amountStep = resolveAmountSliderStep(maximumLocal, getCurrencyFineStep(currency), minimumLocal);",
+        ".onTouchesUp(() => {",
+        "if (!isInteractingRef.current) gestureCallbacks.current.onAdjustmentComplete?.();",
+        "const amountSliderCurrencyStep = resolveAmountSliderStep(",
+        "amountSliderRawDragRef.current +",
+        "top: (72 - amountSliderThumbSize) / 2,",
+        "snapAmountSliderValue(rawRatioRef.current * maximumLocal,",
+        "amountSliderDragDelta(pageX - previous.x,",
+        "if (Math.abs(pageX - thumbX) > 28) updateFromPageX(pageX);",
+        "if (Math.abs(nextUSD - currentAmountRef.current) < 1e-9) return;",
+        "hapticTimeRef.current = now;",
+        "onValueChange?.(nextUSD);",
+        ".onEnd((event) => gestureCallbacks.current.moveDrag(event.absoluteX, event.absoluteY))"
+      ]
+    },
+    {
+      "id": "release-qa-goal-ime-back",
+      "description": "System Back dismisses the keyboard before closing the goal editor; save/cancel wiring is preserved.",
+      "file": "App.js",
+      "requiredFragments": [
+        "onRequestClose={() => dismissKeyboardOrRun(closeGoalEditorPrompt)}"
+      ]
+    },
+    {
+      "id": "release-qa-pause-count",
+      "description": "Both Pause summaries use the same locale-aware count key; count comes from persisted queue entries.",
+      "file": "App.js",
+      "requiredFragments": [
+        "t(pauseCountTranslationKey(language, sorted.length), { count: sorted.length })"
+      ]
+    },
+    {
+      "id": "release-qa-persona-image-resize",
+      "description": "All persona choices remain rendered and selectable with a native resize request to avoid full-size Android bitmap allocations.",
+      "file": "src/components/OnboardingRedesign.js",
+      "requiredFragments": [
+        "resizeMethod=\"resize\""
+      ]
+    },
+    {
+      "id": "reports-pattern-summary-and-adaptive-entry",
+      "description": "Reports keep existing actions and detailed daily data while showing evidence-based patterns first; profile entry sizes to localized content with safe padding and a usable target.",
+      "file": "App.js",
+      "requiredFragments": [
+        "redesignStyles.profileReportButton",
+        "maxWidth: \"100%\", minHeight: 48, paddingHorizontal: 22",
+        "patternInsights: deriveReportInsights(report, built[index + 1])",
+        "reportCalendarDayCount(effectiveStartMs, effectiveEndMs)",
+        "t(\"reportsPatternScope\")",
+        "activeReport.daily.map((day) => ("
       ]
     }
   ]

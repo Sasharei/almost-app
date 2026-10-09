@@ -1,0 +1,11 @@
+appId: com.sasarei.almostclean
+---
+- scrollUntilVisible:
+    element:
+      text: '.*QA New Category.*'
+    direction: DOWN
+- takeScreenshot: category-created
+- tapOn: Done
+- tapOn: Pause
+- tapOn: '.*QA Pause Timer.*'
+- takeScreenshot: pause-detail

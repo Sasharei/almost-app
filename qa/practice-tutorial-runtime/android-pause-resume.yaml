@@ -1,0 +1,16 @@
+appId: com.sasarei.almostclean
+---
+- inputText: '7'
+- tapOn:
+    id: decision-amount-done
+- assertVisible: 'What happened to the purchase\?'
+- tapOn:
+    id: decision-later
+- extendedWaitUntil:
+    visible: 'The purchase is paused.*'
+    timeout: 20000
+- takeScreenshot: pause-result
+- tapOn:
+    id: practice-finish
+- assertNotVisible:
+    id: practice-skip

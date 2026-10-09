@@ -1,0 +1,25 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible: Try it with your purchase
+    timeout: 60000
+- tapOn:
+    point: 20%,10%
+- assertVisible: Try it with your purchase
+- assertNotVisible: Choose a purchase
+- tapOn:
+    id: today-make-decision
+- assertVisible: Choose a purchase
+- tapOn: '.*,.*Not checked today.*'
+- assertVisible: Check the price
+- takeScreenshot: slider-before
+- swipe:
+    start: "50%,57%"
+    end: "70%,57%"
+    duration: 700
+- assertVisible: 'What happened to the purchase\?'
+- takeScreenshot: slider-after
+- tapOn:
+    id: practice-skip
+- assertNotVisible:
+    id: practice-skip

@@ -1,0 +1,20 @@
+appId: com.sasarei.almostclean
+---
+- tapOn: Не сейчас
+- tapOn:
+    id: decision-card-picker
+- tapOn: '.*, QA Coffee,.*'
+- swipe:
+    start: 50%,40%
+    end: 50%,35%
+    duration: 350
+- tapOn:
+    id: decision-card-picker
+- tapOn: '.*, QA Snack,.*'
+- tapOn:
+    id: decision-card-picker
+- tapOn: '.*, QA Cigarettes,.*'
+- assertVisible:
+    id: decision-amount-input
+    text: '18'
+- takeScreenshot: returned-wheel-selection
