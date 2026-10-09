@@ -90,7 +90,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 130,
+      "versionCode": 131,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",
