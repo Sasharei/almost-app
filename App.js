@@ -97,6 +97,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { startCloudNotifications, openCloudAnnouncement } from "./src/notifications/cloudNotifications";
+import { createNotificationPolicy, nextTime, explicitKey, family } from "./src/notifications/notificationPolicy";
 import * as NavigationBar from "expo-navigation-bar";
 import * as FileSystem from "expo-file-system/legacy";
 import { StatusBar } from "expo-status-bar";
@@ -1165,6 +1166,7 @@ const normalizeNotificationTriggerInput = (trigger, content = null) => {
 
 const safeNotifications = (() => {
   const api = Notifications || {};
+  const notificationPolicy = createNotificationPolicy({ api, storage: AsyncStorage });
   const isFn = (value) => typeof value === "function";
   let asyncQueue = Promise.resolve();
   const SCHEDULED_LIST_CACHE_TTL_MS = 1200;
@@ -1235,6 +1237,11 @@ const safeNotifications = (() => {
 	      scheduledListInFlight = request;
 	      return request;
 	    },
+    reconcileAutomaticNotificationsAsync: async () => {
+      const result = await safeAsyncQueued("notifications automatic policy", notificationPolicy.reconcile);
+      clearScheduledListCache();
+      return result;
+    },
     getPresentedNotificationsAsync: async () =>
       safeAsyncQueued("notifications presented list", api.getPresentedNotificationsAsync),
 	    scheduleNotificationAsync: async (payload) => {
@@ -1246,19 +1253,19 @@ const safeNotifications = (() => {
         : payload;
       const result = await safeAsyncQueued(
         "notifications schedule",
-        api.scheduleNotificationAsync,
+        notificationPolicy.schedule,
         normalizedPayload
       );
       clearScheduledListCache();
       return result;
     },
     cancelScheduledNotificationAsync: async (id) => {
-      const result = await safeAsyncQueued("notifications cancel", api.cancelScheduledNotificationAsync, id);
+      const result = await safeAsyncQueued("notifications cancel", notificationPolicy.cancel, id);
       clearScheduledListCache();
       return result;
     },
     cancelAllScheduledNotificationsAsync: async () => {
-      const result = await safeAsyncQueued("notifications cancel all", api.cancelAllScheduledNotificationsAsync);
+      const result = await safeAsyncQueued("notifications cancel all", notificationPolicy.cancelAll);
       clearScheduledListCache();
       return result;
     },
@@ -53149,7 +53156,8 @@ function AppContent() {
     dailyChallenge.status === DAILY_CHALLENGE_STATUS.COMPLETED &&
     !dailyChallenge.completionDismissed;
   const dailyNudgeIdsRef = useRef({});
-  const dailyNudgeLegacyCleanupDoneRef = useRef(false);
+  const dailyNudgeScheduleQueueRef = useRef(Promise.resolve());
+  const dailyNudgeScheduleRevisionRef = useRef(0);
   const smartRemindersRef = useRef([]);
   const smartReminderScheduleTailRef = useRef(0);
   const requestQueuedModalProcess = useCallback(() => {
@@ -56691,54 +56699,8 @@ function AppContent() {
   const notificationContentDedupeRef = useRef(new Map());
   const notificationScheduleQueueRef = useRef(Promise.resolve());
   const resolveNotificationTriggerTime = useCallback((trigger, nowTs = Date.now()) => {
-    if (!trigger) return nowTs;
-    if (trigger instanceof Date) return trigger.getTime();
-    if (typeof trigger === "number") return trigger;
-    if (typeof trigger === "string") {
-      const parsed = Date.parse(trigger);
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-    if (typeof trigger === "object") {
-      if (typeof trigger.seconds === "number") {
-        return nowTs + trigger.seconds * 1000;
-      }
-      if (typeof trigger.value === "number") return trigger.value;
-      if (typeof trigger.value === "string") {
-        const parsedValue = Date.parse(trigger.value);
-        if (!Number.isNaN(parsedValue)) return parsedValue;
-      }
-      const calendarSource = trigger.dateComponents || trigger;
-      const nowDate = new Date(nowTs);
-      if (
-        typeof calendarSource.hour === "number" &&
-        typeof calendarSource.minute === "number"
-      ) {
-        const next = new Date(nowDate);
-        next.setHours(calendarSource.hour, calendarSource.minute, calendarSource.second || 0, 0);
-        if (next.getTime() <= nowTs) {
-          next.setDate(next.getDate() + 1);
-        }
-        return next.getTime();
-      }
-      if (
-        typeof calendarSource.year === "number" ||
-        typeof calendarSource.month === "number" ||
-        typeof calendarSource.day === "number"
-      ) {
-        const computed = new Date(
-          typeof calendarSource.year === "number" ? calendarSource.year : nowDate.getFullYear(),
-          typeof calendarSource.month === "number" ? Math.max(0, calendarSource.month - 1) : nowDate.getMonth(),
-          typeof calendarSource.day === "number" ? calendarSource.day : nowDate.getDate(),
-          typeof calendarSource.hour === "number" ? calendarSource.hour : 0,
-          typeof calendarSource.minute === "number" ? calendarSource.minute : 0,
-          typeof calendarSource.second === "number" ? calendarSource.second : 0,
-          0
-        );
-        const ts = computed.getTime();
-        return Number.isFinite(ts) ? ts : null;
-      }
-    }
-    return null;
+    const at = nextTime(trigger, nowTs);
+    return Number.isFinite(at) ? at : null;
   }, []);
   const readScheduledNotificationTimes = useCallback(async () => {
     try {
@@ -56871,7 +56833,8 @@ function AppContent() {
         const entry = entries[idx];
         const id = entry?.identifier || entry?.id || null;
         if (!id) continue;
-        const signature = buildNotificationContentSignature(entry?.content);
+        const signature = explicitKey(entry?.content?.data) ||
+          entry?.content?.data?.dedupeKey || buildNotificationContentSignature(entry?.content);
         if (!signature) continue;
         const triggerTs = resolveNotificationTriggerTime(entry?.trigger, nowTs);
         if (!Number.isFinite(triggerTs)) continue;
@@ -57036,20 +56999,31 @@ function AppContent() {
         const triggerInput = request.trigger;
         const repeats = triggerInput && typeof triggerInput === "object" && triggerInput.repeats;
         let finalTrigger = triggerInput ?? null;
-        let scheduledFor = resolveNotificationTriggerTime(triggerInput);
+        let scheduledFor = triggerInput == null ? Date.now() : resolveNotificationTriggerTime(triggerInput);
         const requestedTime = Number.isFinite(scheduledFor) ? scheduledFor : Date.now();
         const contentSignature = buildNotificationContentSignature(request?.content);
         if (dedupeKey) {
           const existing = await findScheduledNotificationByDedupeKey(dedupeKey);
-          if (existing) {
+          if (existing && contentSignature === buildNotificationContentSignature(existing?.content) &&
+              ((existing.identifier || existing.id || "").startsWith("almost-reminder:") ||
+                existing.content?.data?.notificationPolicyVersion)) {
             const existingScheduledFor = resolveNotificationTriggerTime(existing?.trigger);
             return {
               id: existing?.identifier || existing?.id || null,
               scheduledFor: Number.isFinite(existingScheduledFor) ? existingScheduledFor : null,
             };
           }
+          if (existing) {
+            const existingId = existing.identifier || existing.id;
+            if (family(existing.content) === null) {
+              // Replace this exact user deadline atomically, including legacy IDs.
+              requestPayload.identifier = existingId;
+            } else if (existingId) {
+              await safeNotifications.cancelScheduledNotificationAsync(existingId);
+            }
+          }
         }
-        if (contentSignature) {
+        if (contentSignature && !dedupeKey) {
           const existing = await findScheduledNotificationByContentSignature(
             contentSignature,
             requestedTime
@@ -57076,12 +57050,14 @@ function AppContent() {
             }
           }
           if (adjustedTime !== scheduledFor) {
-            finalTrigger = new Date(adjustedTime);
+            finalTrigger = triggerInput == null && adjustedTime <= Date.now() + 1000
+              ? null
+              : new Date(adjustedTime);
           }
           scheduledFor = adjustedTime;
         }
         const finalTargetTime = Number.isFinite(scheduledFor) ? scheduledFor : Date.now();
-        if (contentSignature) {
+        if (contentSignature && !dedupeKey) {
           const existing = await findScheduledNotificationByContentSignature(
             contentSignature,
             finalTargetTime
@@ -64269,6 +64245,7 @@ function AppContent() {
   }, [refreshMoodForToday]);
   useEffect(() => startCloudNotifications({
     channelName: t("notificationChannelAnnouncements"),
+    scheduleNotification: safeNotifications.scheduleNotificationAsync,
   }), [language, t, notificationPermissionGranted]);
 
   const ensureNotificationPermission = useCallback(async ({ request = true } = {}) => {
@@ -65186,6 +65163,7 @@ function AppContent() {
   }, [notificationPermissionGranted, pushOptInHydrated]);
   useEffect(() => {
     if (notificationPermissionGranted === null) return;
+    safeNotifications.reconcileAutomaticNotificationsAsync();
     cleanupStaleEventNotifications();
     cleanupDuplicateScheduledNotifications();
     cleanupLegacyTycoonCardNotifications();
@@ -65872,6 +65850,7 @@ function AppContent() {
             data: {
               kind: "pending_decision",
               pendingId: meta?.pendingId || null,
+              dueAt: dueTimestamp,
               templateId: meta?.templateId || null,
               title: meta?.title || title,
               emoji: meta?.emoji || null,
@@ -68104,11 +68083,11 @@ function AppContent() {
 
   const clearLegacyDailyNudges = useCallback(async () => {
     try {
-      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync();
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync({ force: true });
       if (!Array.isArray(scheduled) || !scheduled.length) return;
       const identifiers = scheduled
         .filter((entry) => isKnownDailyNudgeNotification(entry?.content))
-        .map((entry) => entry?.identifier)
+        .map((entry) => entry?.identifier || entry?.id)
         .filter(Boolean);
       if (!identifiers.length) return;
       await Promise.all(
@@ -68166,75 +68145,102 @@ function AppContent() {
   }, []);
 
   const rescheduleDailyNudgeNotifications = useCallback(async ({ force = false } = {}) => {
-    if (!dailyNudgesHydrated || !DAILY_NUDGE_REMINDERS.length) return;
-    const signatureVersion = NOTIFICATION_COPY_REVISION;
-    const signaturePayload = {
-      version: signatureVersion,
-      language,
-      reminders: DAILY_NUDGE_REMINDERS.map((def) => ({
-        id: def.id,
-        hour: def.hour,
-        minute: def.minute,
-        titleKey: def.titleKey,
-        bodyKey: def.bodyKey,
-      })),
-    };
-    const signature = JSON.stringify(signaturePayload);
-    const existingIds = Object.values(dailyNudgeIdsRef.current || {}).filter(Boolean);
-    const storedSignature = await AsyncStorage.getItem(
-      STORAGE_KEYS.DAILY_NUDGE_SCHEDULE_SIGNATURE
-    ).catch(() => null);
-    if (!force && storedSignature === signature && existingIds.length) {
-      return;
-    }
-    const permitted = await ensureNotificationPermission({ request: false });
-    if (!permitted) return;
-    const existing = Object.values(dailyNudgeIdsRef.current || {});
-    if (existing.length) {
-      await Promise.all(
-        existing.map((notificationId) =>
-          safeNotifications.cancelScheduledNotificationAsync(notificationId)
-        )
+    if (!languageHydrated || !dailyNudgesHydrated || !DAILY_NUDGE_REMINDERS.length) return;
+    const revision = ++dailyNudgeScheduleRevisionRef.current;
+    const isCurrent = () => revision === dailyNudgeScheduleRevisionRef.current;
+    const run = async () => {
+      if (!isCurrent()) return;
+      const signatureVersion = NOTIFICATION_COPY_REVISION;
+      const signaturePayload = {
+        version: signatureVersion,
+        language,
+        reminders: DAILY_NUDGE_REMINDERS.map((def) => ({
+          id: def.id,
+          hour: def.hour,
+          minute: def.minute,
+          titleKey: def.titleKey,
+          bodyKey: def.bodyKey,
+        })),
+      };
+      const signature = JSON.stringify(signaturePayload);
+      const existingIds = Object.values(dailyNudgeIdsRef.current || {}).filter(Boolean);
+      const storedSignature = await AsyncStorage.getItem(
+        STORAGE_KEYS.DAILY_NUDGE_SCHEDULE_SIGNATURE
+      ).catch(() => null);
+      if (!isCurrent()) return;
+      const scheduled = await safeNotifications.getAllScheduledNotificationsAsync({ force: true });
+      if (!isCurrent()) return;
+      const nudges = (Array.isArray(scheduled) ? scheduled : []).filter((entry) =>
+        isKnownDailyNudgeNotification(entry?.content)
       );
-    }
-    if (!dailyNudgeLegacyCleanupDoneRef.current) {
-      await clearLegacyDailyNudges();
-      dailyNudgeLegacyCleanupDoneRef.current = true;
-    }
-    const nextMap = {};
-    for (const def of DAILY_NUDGE_REMINDERS) {
-      try {
-        const isStreakNudge = typeof def.id === "string" && def.id.startsWith("streak_");
-        if (isStreakNudge && usageStreakLoggedToday) {
-          continue;
-        }
-        const trigger = isStreakNudge
-          ? buildDailyNudgeTrigger(def.hour, def.minute, { repeats: false, allowPast: false })
-          : buildDailyNudgeTrigger(def.hour, def.minute);
-        if (!trigger) continue;
-        const scheduledEntry = await scheduleNotificationWithCooldown({
-          content: {
-            title: tVariant(def.titleKey),
-            body: tVariant(def.bodyKey),
-            data: { type: DAILY_NUDGE_NOTIFICATION_TAG, locale: language },
-            ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
-          },
-          trigger,
-        });
-        if (scheduledEntry?.id) {
-          nextMap[def.id] = scheduledEntry.id;
-        }
-      } catch (error) {
-        console.warn("daily nudge schedule", error);
+      const scheduleMatches = existingIds.length > 0 && nudges.length >= existingIds.length &&
+        existingIds.every((id) => nudges.some((entry) => (entry.identifier || entry.id) === id)) &&
+        nudges.every((entry) => (existingIds.includes(entry.identifier || entry.id) ||
+          existingIds.includes(entry.content?.data?.notificationPolicyRoot)) &&
+          entry.content?.data?.locale === language);
+      if (!force && storedSignature === signature && scheduleMatches) {
+        return;
       }
-    }
-    setDailyNudgeNotificationIds(nextMap);
-    AsyncStorage.setItem(STORAGE_KEYS.DAILY_NUDGE_SCHEDULE_SIGNATURE, signature).catch(() => {});
+      const permitted = await ensureNotificationPermission({ request: false });
+      if (!permitted || !isCurrent()) return;
+      const existing = Object.values(dailyNudgeIdsRef.current || {});
+      if (existing.length) {
+        await Promise.all(
+          existing.map((notificationId) =>
+            safeNotifications.cancelScheduledNotificationAsync(notificationId)
+          )
+        );
+      }
+      // Sweep the OS queue on every replacement, including orphaned IDs and other locales.
+      await clearLegacyDailyNudges();
+      if (!isCurrent()) return;
+      const nextMap = {};
+      for (const def of DAILY_NUDGE_REMINDERS) {
+        if (!isCurrent()) return;
+        try {
+          const isStreakNudge = typeof def.id === "string" && def.id.startsWith("streak_");
+          if (isStreakNudge && usageStreakLoggedToday) {
+            continue;
+          }
+          const trigger = isStreakNudge
+            ? buildDailyNudgeTrigger(def.hour, def.minute, { repeats: false, allowPast: false })
+            : buildDailyNudgeTrigger(def.hour, def.minute);
+          if (!trigger) continue;
+          const scheduledEntry = await scheduleNotificationWithCooldown({
+            content: {
+              title: tVariant(def.titleKey),
+              body: tVariant(def.bodyKey),
+              data: { type: DAILY_NUDGE_NOTIFICATION_TAG, locale: language, reminderId: def.id },
+              ...(Platform.OS === "android" ? { channelId: ANDROID_DAILY_NUDGE_CHANNEL_ID } : null),
+            },
+            trigger,
+          });
+          if (scheduledEntry?.id) {
+            if (!isCurrent()) {
+              await safeNotifications.cancelScheduledNotificationAsync(scheduledEntry.id);
+              return;
+            }
+            nextMap[def.id] = scheduledEntry.id;
+          }
+        } catch (error) {
+          console.warn("daily nudge schedule", error);
+        }
+      }
+      if (!isCurrent()) return;
+      // Publish before releasing the queue; React's state effect may run later.
+      dailyNudgeIdsRef.current = nextMap;
+      setDailyNudgeNotificationIds(nextMap);
+      await AsyncStorage.setItem(STORAGE_KEYS.DAILY_NUDGE_SCHEDULE_SIGNATURE, signature).catch(() => {});
+    };
+    const queued = dailyNudgeScheduleQueueRef.current.then(run, run);
+    dailyNudgeScheduleQueueRef.current = queued.catch(() => {});
+    return queued;
   }, [
     clearLegacyDailyNudges,
     dailyNudgesHydrated,
     ensureNotificationPermission,
     language,
+    languageHydrated,
     scheduleNotificationWithCooldown,
     tVariant,
     usageStreakLoggedToday,
@@ -72718,6 +72724,7 @@ useEffect(() => {
                 sound: false,
                 data: {
                   kind: "frequency_reminder",
+                  userRequested: allowSameTime,
                   templateId,
                   dedupeKey,
                 },
@@ -86967,7 +86974,7 @@ useEffect(() => {
             setNoGoalSavePromptHydrated(true);
             setDailyNudgeNotificationIds({});
             dailyNudgeIdsRef.current = {};
-            dailyNudgeLegacyCleanupDoneRef.current = false;
+            dailyNudgeScheduleRevisionRef.current += 1;
             setDailyNudgesHydrated(true);
             pushOptInLoggedRef.current = false;
             pushDayThreePromptShownRef.current = false;

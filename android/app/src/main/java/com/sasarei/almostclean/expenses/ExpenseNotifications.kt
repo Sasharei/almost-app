@@ -41,6 +41,10 @@ class ExpenseNotifications : NotificationListenerService() {
   private fun showReceiptNotice() {
     if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
     val prefs = getSharedPreferences("bank-expenses", MODE_PRIVATE)
+    val now = System.currentTimeMillis()
+    val lastNoticeAt = prefs.getLong("lastReceiptNoticeAt", 0)
+    // Captures are never throttled: only the banner is limited across restarts.
+    if (lastNoticeAt > 0 && now - lastNoticeAt in 0 until 30 * 60 * 1000L) return
     val title = prefs.getString("noticeTitle", null) ?: return
     val body = prefs.getString("noticeBody", null) ?: return
     val manager = getSystemService(NotificationManager::class.java)
@@ -49,7 +53,8 @@ class ExpenseNotifications : NotificationListenerService() {
       .setData(android.net.Uri.parse("com.sasarei.almostclean://bank-expenses"))
     val pending = PendingIntent.getActivity(this, 7802, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "bank-expenses") else Notification.Builder(this)
-    manager.notify(7802, builder.setSmallIcon(R.drawable.notification_icon).setContentTitle(title)
+    prefs.edit().putLong("lastReceiptNoticeAt", now).apply()
+    manager.notify(7802, builder.setOnlyAlertOnce(true).setSmallIcon(R.drawable.notification_icon).setContentTitle(title)
       .setContentText(body).setVisibility(Notification.VISIBILITY_PRIVATE).setContentIntent(pending).setAutoCancel(true).build())
   }
 

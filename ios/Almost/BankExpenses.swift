@@ -15,6 +15,7 @@ enum BankExpenseError: Error, LocalizedError {
 // App Intents live in the application target and use the same serialized local database as RN.
 enum BankExpenseStore {
   static let queue = DispatchQueue(label: "com.sasarei.almost.expenses")
+  static let noticeQueue = DispatchQueue(label: "com.sasarei.almost.expenses.notices")
   static let defaults = UserDefaults.standard
   static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -191,10 +192,23 @@ enum BankExpenseStore {
     guard let title = defaults.string(forKey: "expenseNoticeTitle"), let body = defaults.string(forKey: "expenseNoticeBody") else { return }
     UNUserNotificationCenter.current().getNotificationSettings { settings in
       guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
-      let content = UNMutableNotificationContent(); content.title = title; content.body = defaults.string(forKey: "expenseWalletLastAmount") ?? body
-      if content.title.isEmpty { content.title = title }
-      content.userInfo = ["url": "com.sasarei.almostclean://bank-expenses", "kind": "bank_expense"]
-      UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "bank-expenses", content: content, trigger: nil))
+      noticeQueue.async {
+        let now = Date().timeIntervalSince1970
+        let last = defaults.double(forKey: "expenseLastNoticeAt")
+        // Keep every receipt. Coalesce only banners, including concurrent Wallet callbacks.
+        guard last <= 0 || now < last || now - last >= 30 * 60 else { return }
+        let content = UNMutableNotificationContent(); content.title = title; content.body = defaults.string(forKey: "expenseWalletLastAmount") ?? body
+        content.userInfo = ["url": "com.sasarei.almostclean://bank-expenses", "kind": "bank_expense"]
+        defaults.set(now, forKey: "expenseLastNoticeAt")
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "bank-expenses", content: content, trigger: nil)) { error in
+          guard error != nil else { return }
+          noticeQueue.async {
+            if defaults.double(forKey: "expenseLastNoticeAt") == now {
+              defaults.removeObject(forKey: "expenseLastNoticeAt")
+            }
+          }
+        }
+      }
     }
   }
   static func changed() {

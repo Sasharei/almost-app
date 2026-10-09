@@ -52,7 +52,7 @@ test("Android foreground shows one banner and preserves custom data", async () =
   assert.equal(state.calls.tokens, 1);
   assert.equal(state.calls.scheduled.length, 1);
   assert.equal(state.calls.scheduled[0].trigger.channelId, "app-announcements");
-  assert.deepEqual(state.calls.scheduled[0].content.data, { kind: "app_update" });
+  assert.deepEqual(state.calls.scheduled[0].content.data, { kind: "app_update", notificationSource: "cloud" });
   await state.receive({ data: { command: "untrusted" } });
   assert.equal(state.calls.scheduled.length, 1);
   stop();
@@ -168,5 +168,30 @@ test("Android allows later announcements but retains a previously shown message 
   now += 24 * 60 * 60 * 1000;
   await state.receive(message);
   assert.equal(state.calls.scheduled.length, 3);
+  stop();
+});
+
+test("Android foreground uses the injected shared anti-spam gate without a direct-SDK fallback", async () => {
+  const state = load("android");
+  const requests = [];
+  const stop = state.startCloudNotifications({ channelName: "News", scheduleNotification: async (request) => {
+    requests.push(request);
+    return null; // The shared budget suppresses this banner.
+  } });
+  await flush();
+  await state.receive({ messageId: "guarded", notification: { title: "Release", body: "8.0.0" }, data: { kind: "app_update" } });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].content.data.kind, "app_update");
+  assert.equal(state.calls.scheduled.length, 0);
+  stop();
+});
+
+test("revoking OS permission suppresses Android foreground banners from an existing FCM registration", async () => {
+  const state = load("android");
+  const stop = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  state.setPermission(false);
+  await state.receive({ messageId: "revoked", notification: { title: "Release", body: "8.0.0" } });
+  assert.equal(state.calls.scheduled.length, 0);
   stop();
 });

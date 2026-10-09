@@ -66,7 +66,7 @@ export function configureCloudNotificationBackgroundHandler() {
 }
 
 // Reuse the existing permission flow; never prompt on startup or depend on analytics/ATT.
-export function startCloudNotifications({ channelName }) {
+export function startCloudNotifications({ channelName, scheduleNotification = Notifications.scheduleNotificationAsync }) {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return undefined;
   let api;
   let messaging;
@@ -118,15 +118,21 @@ export function startCloudNotifications({ channelName }) {
   const unsubscribeMessage = api.onMessage(messaging, async (message) => {
     // iOS presents its remote banner natively; creating another would duplicate it.
     if (stopped || Platform.OS !== "android" || !message.notification) return;
+    try {
+      const permission = await Notifications.getPermissionsAsync();
+      if (stopped || !permission.granted) return;
+    } catch {
+      return;
+    }
     const releaseReservation = reserveForegroundAnnouncement(message);
     if (!releaseReservation) return;
     try {
-      await Notifications.scheduleNotificationAsync({
+      await scheduleNotification({
         identifier: message.messageId,
         content: {
           title: message.notification.title,
           body: message.notification.body,
-          data: message.data || {},
+          data: { ...message.data, notificationSource: "cloud" },
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
           seconds: 1, channelId: ANNOUNCEMENTS_CHANNEL_ID },

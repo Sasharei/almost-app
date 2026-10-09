@@ -114,3 +114,96 @@ test("OS cancellation failure leaves the existing reminder available without cre
   assert.equal(state.scheduled.filter((entry) => entry.content.data.dedupeKey === state.group.dedupeKey).length, 1);
   assert.equal(state.scheduled[0].identifier, "old");
 });
+
+function dailyFixture() {
+  const scheduled = [{ identifier: "unrelated", content: { data: { kind: "purchase" } } }];
+  const state = { current: {} };
+  const queue = { current: Promise.resolve() };
+  const revisionRef = { current: 0 };
+  let signature = null;
+  let sequence = 0;
+  let pauseNext = false;
+  let release;
+  const scheduler = find(ast, "rescheduleDailyNudgeNotifications").arguments[0];
+  const cleaner = find(ast, "clearLegacyDailyNudges").arguments[0];
+  const safeNotifications = {
+    getAllScheduledNotificationsAsync: async () => scheduled.slice(),
+    cancelScheduledNotificationAsync: async (id) => {
+      const index = scheduled.findIndex((entry) => (entry.identifier || entry.id) === id);
+      if (index >= 0) scheduled.splice(index, 1);
+    },
+  };
+  const common = {
+    console, dailyNudgesHydrated: true, languageHydrated: true,
+    dailyNudgeIdsRef: state, dailyNudgeScheduleQueueRef: queue, dailyNudgeScheduleRevisionRef: revisionRef,
+    NOTIFICATION_COPY_REVISION: revision, DAILY_NUDGE_NOTIFICATION_TAG: "daily_nudge",
+    DAILY_NUDGE_REMINDERS: [
+      { id: "daytime", hour: 12, minute: 30, titleKey: "dailyNudgeDayTitle", bodyKey: "dailyNudgeDayBody" },
+      { id: "afternoon", hour: 15, minute: 30, titleKey: "dailyNudgeAfternoonTitle", bodyKey: "dailyNudgeAfternoonBody" },
+    ],
+    STORAGE_KEYS: { DAILY_NUDGE_SCHEDULE_SIGNATURE: "signature" },
+    AsyncStorage: { getItem: async () => signature, setItem: async (_, value) => { signature = value; } },
+    safeNotifications, isKnownDailyNudgeNotification: (content) => content?.data?.type === "daily_nudge",
+    ensureNotificationPermission: async () => true,
+    Platform: { OS: "ios" }, usageStreakLoggedToday: false,
+    buildDailyNudgeTrigger: (hour, minute) => ({ hour, minute, repeats: true }),
+    // Deliberately do not synchronize the ref through a React state effect.
+    setDailyNudgeNotificationIds: () => {},
+    scheduleNotificationWithCooldown: async (payload) => {
+      if (pauseNext) {
+        pauseNext = false;
+        await new Promise((resolve) => { release = resolve; });
+      }
+      const id = `new-${++sequence}`;
+      scheduled.push({ identifier: id, ...payload });
+      return { id };
+    },
+  };
+  common.clearLegacyDailyNudges = vm.runInNewContext(`(${app.slice(cleaner.start, cleaner.end)})`, common);
+  const run = (language, options = {}, hydrated = true) => {
+    const context = { ...common, language, languageHydrated: hydrated,
+      tVariant: (key) => translations[language][key][0] };
+    return vm.runInNewContext(`(${app.slice(scheduler.start, scheduler.end)})`, context)(options);
+  };
+  return { run, scheduled, state, pause: () => { pauseNext = true; }, release: () => release() };
+}
+
+test("fresh install concurrent daily effects produce one set in the selected language", async () => {
+  const fixture = dailyFixture();
+  await Promise.all([fixture.run("ru"), fixture.run("ru", { force: true })]);
+  assert.equal(fixture.scheduled.length, 3);
+  assert.equal(Object.keys(fixture.state.current).length, 2);
+  assert.ok(fixture.scheduled.slice(1).every((entry) => entry.content.data.locale === "ru"));
+});
+
+test("daily replacement sweeps orphaned other-language pushes even with a current signature", async () => {
+  const fixture = dailyFixture();
+  await fixture.run("ru");
+  fixture.scheduled.push({ id: "orphan-es", content: { data: { type: "daily_nudge", locale: "es" } } });
+  await fixture.run("ru");
+  assert.equal(fixture.scheduled.length, 3);
+  assert.equal(fixture.scheduled.some((entry) => entry.id === "orphan-es"), false);
+  await fixture.run("ru");
+  assert.equal(fixture.scheduled.length, 3);
+});
+
+test("language hydration schedules nothing until ready", async () => {
+  const fixture = dailyFixture();
+  await fixture.run("en", {}, false);
+  assert.equal(fixture.scheduled.length, 1);
+  await fixture.run("ru");
+  assert.equal(fixture.scheduled.length, 3);
+});
+
+test("language changes during an OS scheduling wait cannot leave an old-language daily push", async () => {
+  const fixture = dailyFixture();
+  fixture.pause();
+  const first = fixture.run("fr");
+  await new Promise((resolve) => setImmediate(resolve));
+  const second = fixture.run("es");
+  const latest = fixture.run("ru");
+  fixture.release();
+  await Promise.all([first, second, latest]);
+  assert.equal(fixture.scheduled.length, 3);
+  assert.ok(fixture.scheduled.slice(1).every((entry) => entry.content.data.locale === "ru"));
+});
