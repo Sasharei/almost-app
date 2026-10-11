@@ -1,0 +1,11 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-cat-care
+    timeout: 120000
+- tapOn:
+    id: today-cat-care
+- assertVisible:
+    id: tamagotchi-back-button
+- takeScreenshot: before-top

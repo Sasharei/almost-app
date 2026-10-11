@@ -1,0 +1,7 @@
+appId: com.apple.springboard
+---
+- takeScreenshot: ios-small
+- swipe:
+    start: 15%,70%
+    end: 85%,70%
+- takeScreenshot: ios-large-medium

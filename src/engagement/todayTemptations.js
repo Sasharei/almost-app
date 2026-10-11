@@ -307,15 +307,13 @@ const buildTodayTemptationPlan = ({
     const missedToday =
       Number(interaction?.lastMissedCheckAt) > 0 &&
       getLocalDayKey(interaction.lastMissedCheckAt) === bounds.dayKey;
+    // A timer edit changes future reminders, not the unfinished daily series.
     const dueToday = isScheduledForDay({
       item,
       interaction,
       referenceDate,
       dayEnd: bounds.end,
-    }) || missedToday || starterIds.has(id) || (
-      continuingIds.has(id) && interaction?.frequencyReminderManualConfigured !== true &&
-      item?.frequencyReminderManualConfigured !== true
-    );
+    }) || missedToday || starterIds.has(id) || continuingIds.has(id);
     if (!checkedToday && !dueToday) return;
     seenTargets.add(id);
     targetIds.push(id);

@@ -1,0 +1,79 @@
+appId: com.sasarei.almostclean
+---
+- extendedWaitUntil:
+    visible:
+      id: today-cat-care
+    timeout: 60000
+- tapOn:
+    id: today-cat-care
+    waitToSettleTimeoutMs: 0
+- assertVisible:
+    id: tamagotchi-back-button
+- takeScreenshot: before-top
+- tapOn:
+    text: Games
+    waitToSettleTimeoutMs: 0
+- scrollUntilVisible:
+    element:
+      text: 'Party ×25'
+    direction: DOWN
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: before-games
+- assertVisible: 'Party ×25'
+- tapOn:
+    point: 50%, 94%
+    waitToSettleTimeoutMs: 0
+    retryTapIfNoChange: false
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 150
+    waitToSettleTimeoutMs: 0
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 150
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: immediate-top
+- assertVisible: 'Daily bonus. Collect'
+- assertVisible: '.*23:59:.*'
+- assertVisible:
+    id: tamagotchi-immunity-card
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: after-top
+- tapOn:
+    id: tamagotchi-immunity-card
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: protection-expanded
+- tapOn:
+    id: tamagotchi-immunity-card
+    waitToSettleTimeoutMs: 0
+- tapOn:
+    text: Food
+    waitToSettleTimeoutMs: 0
+- scrollUntilVisible:
+    element:
+      text: 'Party ×25'
+    direction: DOWN
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: after-food
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 150
+    waitToSettleTimeoutMs: 0
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 150
+    waitToSettleTimeoutMs: 0
+- tapOn:
+    text: Clean
+    waitToSettleTimeoutMs: 0
+- swipe:
+    start: 50%, 90%
+    end: 50%, 35%
+    duration: 250
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: after-clean

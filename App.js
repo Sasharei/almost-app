@@ -536,7 +536,7 @@ const { formatDecisionCountdown } = require("./src/utils/decisionCountdown");
 const { resolveReconciledIntervalMs } = require("./src/engagement/temptationSchedule");
 const { buildDecisionQueue, shouldIncludeUnscheduledInToday, countExplicitSchedules, classifyScheduledDecision, isDecisionRecordedToday, resolveScheduledDecisionAt, mergeDecisionTimestamps, resolveTodayQueueNow } = require("./src/engagement/todayOverview");
 import { CurrencyPicker } from "./src/components/CurrencyPicker";
-import PlatformSurface, { AnimatedPlatformSurface, PlatformPressable, PlatformTouchableOpacity } from "./src/components/PlatformSurface";
+import PlatformSurface, { AnimatedPlatformSurface, PlatformPressable, PlatformTouchableOpacity, SurfaceThemeProvider } from "./src/components/PlatformSurface";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -583,6 +583,7 @@ const {
   getTemptationSeriesSummary,
   getUncreditedTemptationSeriesCoins,
   reconcileTemptationSeriesTargets,
+  repairPrematureTemptationSeriesClaim,
   normalizeTemptationSeriesState,
   normalizeTemptationId,
   resetTemptationSeriesForDay,
@@ -6549,8 +6550,10 @@ const resolveTamagotchiUsageState = (lastActiveAt = 0, now = Date.now()) => {
 const getTamagotchiMood = (
   state = TAMAGOTCHI_START_STATE,
   language = DEFAULT_LANGUAGE,
-  usageState = TAMAGOTCHI_USAGE_STATES.ACTIVE
+  usageState = TAMAGOTCHI_USAGE_STATES.ACTIVE,
+  timestamp = Date.now()
 ) => {
+  const hungerProtected = Number(state?.hungerImmunityUntil) > timestamp;
   const hunger = Math.min(TAMAGOTCHI_MAX_HUNGER, Math.max(0, Number(state?.hunger) || 0));
   const mood = normalizeTamagotchiStateValue(state?.mood, TAMAGOTCHI_START_STATE.mood);
   const cleanliness = normalizeTamagotchiStateValue(
@@ -6670,9 +6673,9 @@ const getTamagotchiMood = (
 	  },
 	  };
   const dict = texts[resolveMonetizationLanguage(language)] || texts.en;
-  const hungerPressure = Math.max(0, 100 - hunger);
-  const playPressure = Math.max(0, 100 - mood);
-  const cleanPressure = Math.max(0, 100 - cleanliness);
+  const hungerPressure = hungerProtected ? 0 : Math.max(0, 100 - hunger);
+  const playPressure = hungerProtected ? 0 : Math.max(0, 100 - mood);
+  const cleanPressure = hungerProtected ? 0 : Math.max(0, 100 - cleanliness);
   let need = "none";
   let topPressure = hungerPressure;
   if (playPressure > topPressure) {
@@ -6687,9 +6690,9 @@ const getTamagotchiMood = (
     need = "food";
   }
   let tone = "happy";
-  if (topPressure >= 72 || hunger <= 20) {
+  if (topPressure >= 72 || (!hungerProtected && hunger <= 20)) {
     tone = "urgent";
-  } else if (topPressure >= 50 || mood <= TAMAGOTCHI_LOW_MOOD_THRESHOLD) {
+  } else if (topPressure >= 50 || (!hungerProtected && mood <= TAMAGOTCHI_LOW_MOOD_THRESHOLD)) {
     tone = "sad";
   } else if (topPressure >= 28) {
     tone = "calm";
@@ -6736,10 +6739,11 @@ const resolveTamagotchiCarePressure = (state = TAMAGOTCHI_START_STATE, timestamp
   const hungerProtected = Number(source.hungerImmunityUntil) > now;
   const hungry = !hungerProtected && hunger <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD;
   const starving = !hungerProtected && hunger <= TAMAGOTCHI_NEED_URGENT_THRESHOLD;
-  const neglected = mood <= TAMAGOTCHI_LOW_MOOD_THRESHOLD || (hasPlayedAt && !playedRecently);
-  const neglectedUrgent =
-    mood <= TAMAGOTCHI_NEED_URGENT_THRESHOLD ||
-    (hasPlayedAt && now - lastPlayedAt >= TAMAGOTCHI_PLAY_NEGLECT_MS * 2);
+  const neglected = !hungerProtected &&
+    (mood <= TAMAGOTCHI_LOW_MOOD_THRESHOLD || (hasPlayedAt && !playedRecently));
+  const neglectedUrgent = !hungerProtected &&
+    (mood <= TAMAGOTCHI_NEED_URGENT_THRESHOLD ||
+      (hasPlayedAt && now - lastPlayedAt >= TAMAGOTCHI_PLAY_NEGLECT_MS * 2));
   const dominantNeed =
     hungry && (!neglected || hunger <= mood) ? "food" : neglected ? "play" : "none";
   return {
@@ -32596,22 +32600,28 @@ const FeedScreen = React.memo(
     ? formatSaveCountValue(tierInfo.nextTargetCount, language)
     : "";
   const heroLevelProgress = Math.min(Math.max(tierProgress, 0), 1);
+  const tamagotchiSpeechImmunityUntilRef = useRef(tamagotchiHungerImmunityUntil);
+  tamagotchiSpeechImmunityUntilRef.current = tamagotchiHungerImmunityUntil;
   const buildTamagotchiSpeech = useCallback(
     (reason = "unknown") => {
       tamagotchiSpeechCandidateKindRef.current = null;
-      const tone = tamagotchiMood?.tone || "calm";
+      const now = Date.now();
+      // Read current protection even from an already-running speech timer.
+      const hungerImmunityUntil = Number(tamagotchiSpeechImmunityUntilRef.current) || 0;
+      const careProtected = hungerImmunityUntil > now;
+      const tone = careProtected ? "happy" : tamagotchiMood?.tone || "calm";
       const foodEmoji = tamagotchiDesiredFood?.emoji || t("tamagotchiHungryBubble");
       const baseToyEmoji = tamagotchiDesiredToy?.emoji || "🧶";
-      const needsPlay = !!tamagotchiNeedsPlay;
-      const needsCleaning = !!tamagotchiNeedsCleaning;
-      const now = Date.now();
+      const needsPlay = !careProtected && !!tamagotchiNeedsPlay;
+      const needsCleaning = !careProtected && !!tamagotchiNeedsCleaning;
       const lastHungrySpeechAt = Math.max(
         0,
         Number(tamagotchiHungrySpeechLastAtRef.current) || 0
       );
       const canMentionHunger =
-        lastHungrySpeechAt <= 0 ||
-        now - lastHungrySpeechAt >= TAMAGOTCHI_HUNGRY_SPEECH_COOLDOWN_MS;
+        !careProtected &&
+        (lastHungrySpeechAt <= 0 ||
+          now - lastHungrySpeechAt >= TAMAGOTCHI_HUNGRY_SPEECH_COOLDOWN_MS);
       const pickHungrySpeech = (key, replacements = {}) => {
         tamagotchiSpeechCandidateKindRef.current = "hunger";
         return pickVariantText(key, replacements);
@@ -32676,7 +32686,8 @@ const FeedScreen = React.memo(
         0,
         Math.min(100, Number(tamagotchiMood?.cleanliness) || 0)
       );
-      const weakestStatPercent = Math.min(hungerPercent, moodPercent, cleanlinessPercent);
+      const weakestStatPercent = careProtected ? TAMAGOTCHI_MAX_HUNGER :
+        Math.min(hungerPercent, moodPercent, cleanlinessPercent);
       const speechToyTier = resolveTamagotchiToyTier(moodPercent);
       const speechToyId =
         needsPlay && Math.random() < 0.55
@@ -32701,10 +32712,11 @@ const FeedScreen = React.memo(
             ? 0.54
             : 0.34
           : 0;
-      const dominantNeed = tamagotchiMood?.need || "none";
-      const needsFood = dominantNeed === "food" || hungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD;
+      const dominantNeed = careProtected ? "none" : tamagotchiMood?.need || "none";
+      const needsFood = !careProtected &&
+        (dominantNeed === "food" || hungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD);
       const carePressure = resolveTamagotchiCarePressure(
-        { hunger: hungerPercent, mood: moodPercent, lastPlayedAt: null },
+        { hunger: hungerPercent, mood: moodPercent, lastPlayedAt: null, hungerImmunityUntil },
         now
       );
       const hungrySpeechKey = carePressure.hungry
@@ -32990,7 +33002,7 @@ const FeedScreen = React.memo(
         if (carePressure.dominantNeed === "play") {
           return pickVariantText("tamagotchiSpeechNeedPlaySnarky", { toy: toyEmoji });
         }
-        if (canMentionHunger) {
+        if (needsFood && canMentionHunger) {
           return pickHungrySpeech(hungrySpeechKey, { food: foodEmoji });
         }
       }
@@ -33050,10 +33062,20 @@ const FeedScreen = React.memo(
       tamagotchiMood?.cleanliness,
       tamagotchiMood?.need,
       tamagotchiMood?.tone,
+      tamagotchiHungerImmunityUntil,
       focusTemplateId,
       tierInfo?.level,
     ]
   );
+  const previousSpeechImmunityUntilRef = useRef(0);
+  useEffect(() => {
+    const previousUntil = previousSpeechImmunityUntilRef.current;
+    previousSpeechImmunityUntilRef.current = tamagotchiHungerImmunityUntil;
+    if (tamagotchiHungerImmunityUntil <= Date.now() || tamagotchiHungerImmunityUntil <= previousUntil) return;
+    // Replace a primed/visible care request after protection activates or hydrates.
+    const text = getNextTamagotchiSpeech("unknown");
+    if (text) showTamagotchiSpeech(text);
+  }, [getNextTamagotchiSpeech, showTamagotchiSpeech, tamagotchiHungerImmunityUntil]);
   const triggerTamagotchiSpeech = useCallback(
     (reason = "unknown", options = {}) => {
       const forceImmediate = !!options?.forceImmediate;
@@ -55977,32 +55999,38 @@ function AppContent() {
     () => getTamagotchiDirtyVisualLevel(tamagotchiCleanlinessPercent),
     [tamagotchiCleanlinessPercent]
   );
-  const tamagotchiNeedsPlay = tamagotchiMoodPercent <= TAMAGOTCHI_LOW_MOOD_THRESHOLD;
-  const tamagotchiNeedsCleaning = tamagotchiCleanlinessPercent <= TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD;
+  const tamagotchiCareProtected = Number(tamagotchiState.hungerImmunityUntil) > Date.now();
+  const tamagotchiNeedsPlay = !tamagotchiCareProtected && tamagotchiMoodPercent <= TAMAGOTCHI_LOW_MOOD_THRESHOLD;
+  const tamagotchiNeedsCleaning = !tamagotchiCareProtected && tamagotchiCleanlinessPercent <= TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD;
   const tamagotchiMood = useMemo(
     () => getTamagotchiMood(tamagotchiState, language, tamagotchiUsageState),
     [language, tamagotchiState, tamagotchiUsageState]
   );
   const buildTamagotchiMenuSpeech = useCallback(() => {
     const candidates = [];
+    const careProtected = Number(
+      tamagotchiCurrentStateRef.current.hungerImmunityUntil ?? tamagotchiState.hungerImmunityUntil
+    ) > Date.now();
     const foodEmoji = tamagotchiDesiredFood?.emoji || t("tamagotchiHungryBubble");
     const toyEmoji = tamagotchiDesiredToy?.emoji || "🧶";
 
-    if (tamagotchiCleanlinessPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
-      candidates.push({ key: "tamagotchiSpeechNeedClean", replacements: {} });
-    }
-    if (tamagotchiHungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
-      candidates.push(
-        { key: "tamagotchiSpeechHungry", replacements: { food: foodEmoji } },
-        { key: "tamagotchiSpeechHungrySoft", replacements: { food: foodEmoji } },
-        { key: "tamagotchiSpeechHungrySnarky", replacements: { food: foodEmoji } }
-      );
-    }
-    if (tamagotchiMoodPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
-      candidates.push(
-        { key: "tamagotchiSpeechNeedPlay", replacements: { toy: toyEmoji } },
-        { key: "tamagotchiSpeechNeedPlaySnarky", replacements: { toy: toyEmoji } }
-      );
+    if (!careProtected) {
+      if (tamagotchiCleanlinessPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+        candidates.push({ key: "tamagotchiSpeechNeedClean", replacements: {} });
+      }
+      if (tamagotchiHungerPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+        candidates.push(
+          { key: "tamagotchiSpeechHungry", replacements: { food: foodEmoji } },
+          { key: "tamagotchiSpeechHungrySoft", replacements: { food: foodEmoji } },
+          { key: "tamagotchiSpeechHungrySnarky", replacements: { food: foodEmoji } }
+        );
+      }
+      if (tamagotchiMoodPercent <= TAMAGOTCHI_NEED_ATTENTION_THRESHOLD) {
+        candidates.push(
+          { key: "tamagotchiSpeechNeedPlay", replacements: { toy: toyEmoji } },
+          { key: "tamagotchiSpeechNeedPlaySnarky", replacements: { toy: toyEmoji } }
+        );
+      }
     }
     candidates.push({ key: "tamagotchiSpeechGeneral", replacements: {} });
 
@@ -56033,6 +56061,7 @@ function AppContent() {
     tamagotchiDesiredToy?.emoji,
     tamagotchiHungerPercent,
     tamagotchiMoodPercent,
+    tamagotchiState.hungerImmunityUntil,
   ]);
   useEffect(() => {
     if (!tamagotchiVisible) {
@@ -63911,6 +63940,7 @@ function AppContent() {
     : t("progressHeroLevel", { level: dailyRewardUnlockLevel });
   const dailyRewardButtonTitle = t("dailyRewardButtonLabel");
   const dailyRewardButtonAccent = SAVE_ACTION_COLOR;
+  const dailyRewardButtonTextColor = blendColors(colors.success, colors.text, 0.42);
   useEffect(() => {
     if (!canUpdateWidgetStorage()) return;
     if (!profileHydrated || !historyHydrated || !incomeEntriesHydrated || !wishesHydrated) {
@@ -78300,6 +78330,7 @@ useEffect(() => {
   const tamagotchiImmunitySurfaceColor = isAndroidTamagotchiSurface
     ? blendColors(colors.card || "#FFFFFF", tamagotchiImmunityAccent, isDarkTheme ? 0.18 : 0.08)
     : colorWithAlpha(tamagotchiImmunityAccent, isDarkTheme ? 0.15 : 0.08);
+  const tamagotchiImmunityMutedColor = blendColors(colors.muted, colors.text, 0.12);
   const tamagotchiImmunityBorderColor = colorWithAlpha(
     tamagotchiImmunityAccent,
     isDarkTheme ? 0.58 : 0.34
@@ -80146,19 +80177,38 @@ useEffect(() => {
   );
   useEffect(() => {
     if (!temptationSeriesHydrated || !temptationInteractionsHydrated || !historyHydrated) return;
+    if (!healthHydrated || !quickTemptationsHydrated || !hiddenTemptationsHydrated || !archivedTemptationsHydrated) return;
     const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
-    const reconciled = reconcileTemptationSeriesTargets(current, {
+    const reconciliationOptions = {
       dayKey: todayTemptationPlan.dayKey,
       targetIds: todayTemptationPlan.targetIds,
       eligibleIds: products.map((item) => resolveTemptationTemplateId(item) || item?.id),
       historyResolutions: todayTemptationPlan.resolutions,
       timestamp: todayTemptationMinuteTick || Date.now(),
-    });
+    };
+    const repair = repairPrematureTemptationSeriesClaim(current, reconciliationOptions, healthPoints);
+    const reconciled = reconcileTemptationSeriesTargets(repair.state, reconciliationOptions);
     if (JSON.stringify(current) === JSON.stringify(reconciled)) return;
     updateTemptationSeries(reconciled);
+    if (repair.repaired) {
+      const nextBalance = Math.max(0, healthPoints - repair.debitCoins);
+      // The existing serialized persistence queue writes the repair marker,
+      // wallet and its backup together and retries failed writes as a batch.
+      queuePersist(STORAGE_KEYS.HEALTH, String(nextBalance));
+      queuePersist(STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(nextBalance));
+      setHealthPoints((balance) => Math.max(0, balance - repair.debitCoins));
+      setTemptationSeriesModalVisible(false);
+      temptationSeriesReadyPresentedRef.current = null;
+    }
   }, [
+    archivedTemptationsHydrated,
+    healthHydrated,
+    healthPoints,
+    hiddenTemptationsHydrated,
     historyHydrated,
     products,
+    queuePersist,
+    quickTemptationsHydrated,
     temptationInteractionsHydrated,
     temptationSeriesHydrated,
     todayTemptationMinuteTick,
@@ -88405,6 +88455,7 @@ useEffect(() => {
   const isExtraIncomeEntry = incomeEntryModeRef.current === INCOME_ENTRY_TYPES.EXTRA;
 
   return (
+    <SurfaceThemeProvider value={colors.card}>
     <StatusGlassContext.Provider value={statusGlassModalOverlayConfig}>
       <FormattingLanguageContext.Provider value={normalizedLanguageValue}>
         <SavingsProvider value={{ savedTotalUSD }}>
@@ -91203,6 +91254,23 @@ useEffect(() => {
                         imageStyle={{ width: "100%", height: "100%" }}
                         style={[styles.tamagotchiMascotLarge, { width: tamagotchiCareCatSize, height: tamagotchiCareCatSize }]}
                       />
+                      {/* Celebration tint belongs to the mascot, never to readable controls. */}
+                      {partyActive && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.partyGlowOverlay,
+                      { borderRadius: tamagotchiCareCatSize / 2 },
+                      {
+                        opacity: partyGlow.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.1, 0.4],
+                        }),
+                        backgroundColor: isDarkTheme ? "rgba(110,155,255,0.6)" : "rgba(255,210,120,0.7)",
+                      },
+                    ]}
+                  />
+                      )}
                       {tamagotchiToyFlightId && (
                         <Animated.View
                           pointerEvents="none"
@@ -91416,9 +91484,7 @@ useEffect(() => {
                                   styles.tamagotchiStickyRewardText,
                                   {
                                     color: dailyRewardReady
-                                      ? isDarkTheme
-                                        ? "#BFFFE0"
-                                        : dailyRewardButtonAccent
+                                      ? dailyRewardButtonTextColor
                                       : colors.muted,
                                   },
                                 ]}
@@ -91519,7 +91585,7 @@ useEffect(() => {
                               {t("tamagotchiImmunityActiveLabel")}
                             </Text>
                             <Text
-                              style={[styles.tamagotchiImmunityDescription, { color: colors.muted }]}
+                              style={[styles.tamagotchiImmunityDescription, { color: tamagotchiImmunityMutedColor }]}
                             >
                               {t("tamagotchiImmunityDescription")}
                             </Text>
@@ -91609,7 +91675,7 @@ useEffect(() => {
                             ]}
                           >
                             <Text
-                              style={[styles.tamagotchiImmunityDetailsText, { color: colors.muted }]}
+                              style={[styles.tamagotchiImmunityDetailsText, { color: tamagotchiImmunityMutedColor }]}
                             >
                               {t("tamagotchiImmunityDetails", {
                                 hours: tamagotchiImmunityDurationHours,
@@ -91971,19 +92037,7 @@ useEffect(() => {
                     explosionSpeed={520}
                     fallSpeed={3600}
                   />
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.partyGlowOverlay,
-                      {
-                        opacity: partyGlow.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.1, 0.4],
-                        }),
-                        backgroundColor: isDarkTheme ? "rgba(110,155,255,0.6)" : "rgba(255,210,120,0.7)",
-                      },
-                    ]}
-                  />
+
                 </>
               )}
             </Animated.View>
@@ -94290,6 +94344,7 @@ useEffect(() => {
         </SavingsProvider>
       </FormattingLanguageContext.Provider>
     </StatusGlassContext.Provider>
+    </SurfaceThemeProvider>
   );
 }
 

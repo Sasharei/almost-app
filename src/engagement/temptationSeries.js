@@ -56,6 +56,7 @@ const createInitialTemptationSeriesState = () => ({
   resolutions: {},
   pendingCoins: 0,
   creditedCoins: 0,
+  deferredCoins: 0,
   claimedCoins: 0,
   startedAt: null,
   completedAt: null,
@@ -115,10 +116,11 @@ const normalizeTemptationSeriesState = (value) => {
       ? TEMPTATION_SERIES_STATUS.ACTIVE
       : status;
   const pendingCoins = Math.max(0, Number(value.pendingCoins) || 0);
+  const deferredCoins = Math.min(pendingCoins, Math.max(0, Number(value.deferredCoins) || 0));
   const storedVersion = Math.max(0, Math.floor(Number(value.version) || 0));
   const creditedCoins =
     storedVersion >= TEMPTATION_SERIES_VERSION
-      ? Math.min(pendingCoins, Math.max(0, Number(value.creditedCoins) || 0))
+      ? Math.min(pendingCoins - deferredCoins, Math.max(0, Number(value.creditedCoins) || 0))
       : 0;
   return {
     version: TEMPTATION_SERIES_VERSION,
@@ -134,6 +136,7 @@ const normalizeTemptationSeriesState = (value) => {
     resolutions,
     pendingCoins,
     creditedCoins,
+    deferredCoins,
     claimedCoins: Math.max(0, Number(value.claimedCoins) || 0),
     startedAt,
     completedAt:
@@ -179,7 +182,9 @@ const resetTemptationSeriesForDay = (
 
 const getUncreditedTemptationSeriesCoins = (value) => {
   const state = normalizeTemptationSeriesState(value);
-  return Math.max(0, state.pendingCoins - state.creditedCoins);
+  // Reclaimed chest coins stay withheld during hydration, including after a
+  // restart. Only a valid final claim may put them back into the balance.
+  return Math.max(0, state.pendingCoins - state.creditedCoins - state.deferredCoins);
 };
 
 const getTemptationSeriesProgress = (value) => {
@@ -266,7 +271,11 @@ const reconcileTemptationSeriesTargets = (
     if ((!eligible || eligible.has(id)) && getLocalDayKey(resolution.firstAt) === todayKey) ids.push(id);
     return ids;
   }, []);
-  const nextTargetIds = normalizeTemptationIds([...targetIds, ...resolvedTodayIds]);
+  // The live catalog identifies cards that still exist. Keep their unfinished
+  // daily commitments when editing a schedule moves the next check forward.
+  // Callers without a catalog can still narrow legacy all-card snapshots.
+  const continuingIds = eligible ? state.targetIds.filter((id) => eligible.has(id)) : [];
+  const nextTargetIds = normalizeTemptationIds([...targetIds, ...continuingIds, ...resolvedTodayIds]);
   if (!nextTargetIds.length) return state;
 
   const completed = nextTargetIds.reduce(
@@ -297,6 +306,40 @@ const reconcileTemptationSeriesTargets = (
     resolutions,
     status,
     completedAt,
+  };
+};
+
+const repairPrematureTemptationSeriesClaim = (value, options = {}, coinBalance = 0) => {
+  const state = resetTemptationSeriesForDay(value, options);
+  const unchanged = { state, debitCoins: 0, repaired: false };
+  // Require the hydrated live catalog; a partial startup plan is not evidence
+  // that a previously collected chest was premature.
+  if (state.status !== TEMPTATION_SERIES_STATUS.CLAIMED || !Array.isArray(options.eligibleIds)) {
+    return unchanged;
+  }
+  const reopened = reconcileTemptationSeriesTargets({
+    ...state,
+    status: TEMPTATION_SERIES_STATUS.ACTIVE,
+    completedAt: null,
+    claimedAt: null,
+  }, options);
+  if (getTemptationSeriesProgress(reopened).remaining === 0) return unchanged;
+
+  // Never create a negative wallet or later reimburse coins that were not
+  // actually removed (the user may already have spent part of the reward).
+  const availableBalance = Number.isFinite(Number(coinBalance)) ? Math.max(0, Number(coinBalance)) : 0;
+  const debitCoins = Math.min(availableBalance, state.claimedCoins);
+  return {
+    state: {
+      ...reopened,
+      status: TEMPTATION_SERIES_STATUS.ACTIVE,
+      pendingCoins: debitCoins,
+      creditedCoins: 0,
+      deferredCoins: debitCoins,
+      claimedCoins: 0,
+    },
+    debitCoins,
+    repaired: true,
   };
 };
 
@@ -363,7 +406,9 @@ const applyTemptationSeriesAction = (
     };
   }
 
-  const targetIds = normalizeTemptationIds([...state.targetIds, id]);
+  // Include today's current plan before deciding whether this is the final
+  // action; reconciliation in a later render is too late for the reward modal.
+  const targetIds = normalizeTemptationIds([...state.targetIds, ...availableIds, id]);
   const previousResolution = state.resolutions[id] || null;
   const isSeriesTarget = targetIds.includes(id);
   const resolutions = {
@@ -387,18 +432,18 @@ const applyTemptationSeriesAction = (
     (count, targetId) => count + Number(Boolean(resolutions[targetId])),
     0
   );
-  const becameReady =
-    state.status === TEMPTATION_SERIES_STATUS.ACTIVE &&
+  const ready =
     targetIds.length >= TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS &&
     nextProgress >= targetIds.length;
+  const becameReady = state.status === TEMPTATION_SERIES_STATUS.ACTIVE && ready;
   const nextState = {
     ...state,
     targetIds,
-    status: becameReady ? TEMPTATION_SERIES_STATUS.READY : state.status,
+    status: ready ? TEMPTATION_SERIES_STATUS.READY : TEMPTATION_SERIES_STATUS.ACTIVE,
     resolutions,
     pendingCoins: state.pendingCoins + normalizedReward,
     creditedCoins: state.creditedCoins + normalizedReward,
-    completedAt: becameReady ? occurredAt : state.completedAt,
+    completedAt: ready ? state.completedAt || occurredAt : null,
   };
 
   return {
@@ -423,13 +468,14 @@ const claimTemptationSeries = (value, timestamp = Date.now()) => {
     return { state, payoutCoins: 0, claimed: false };
   }
   const totalCoins = Math.max(0, Number(state.pendingCoins) || 0);
-  const payoutCoins = getUncreditedTemptationSeriesCoins(state);
+  const payoutCoins = getUncreditedTemptationSeriesCoins(state) + state.deferredCoins;
   return {
     state: {
       ...state,
       status: TEMPTATION_SERIES_STATUS.CLAIMED,
       pendingCoins: 0,
       creditedCoins: 0,
+      deferredCoins: 0,
       claimedCoins: totalCoins,
       claimedAt,
     },
@@ -468,6 +514,7 @@ module.exports = {
   getUncreditedTemptationSeriesCoins,
   getTemptationSeriesSummary,
   reconcileTemptationSeriesTargets,
+  repairPrematureTemptationSeriesClaim,
   normalizeTemptationSeriesState,
   normalizeTemptationId,
   resetTemptationSeriesForDay,

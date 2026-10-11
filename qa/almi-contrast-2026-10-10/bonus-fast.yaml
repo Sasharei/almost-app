@@ -1,0 +1,22 @@
+appId: com.sasarei.almostclean
+---
+- tapOn:
+    point: 50%, 94%
+    waitToSettleTimeoutMs: 0
+    retryTapIfNoChange: false
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 100
+    waitToSettleTimeoutMs: 0
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 100
+    waitToSettleTimeoutMs: 0
+- swipe:
+    start: 50%, 25%
+    end: 50%, 90%
+    duration: 100
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: bonus-active

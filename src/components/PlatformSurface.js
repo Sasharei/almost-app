@@ -8,6 +8,8 @@ import { useMotionPreferences } from "../hooks/useMotionPreferences";
 let SwiftUISurface;
 const SurfaceDepth = createContext(false);
 const SurfaceAppearance = createContext(null);
+const SurfaceBackground = createContext("#FFFFFF");
+export const SurfaceThemeProvider = SurfaceBackground.Provider;
 function resolveSwiftUISurface() {
   if (Platform.OS !== "ios") return null;
   if (SwiftUISurface) return SwiftUISurface;
@@ -38,6 +40,22 @@ function resolveMaterialTint(background) {
   };
 }
 
+// A translucent semantic tint is not a dark/light canvas. Composite it onto
+// the themed parent once, so moving particles, sheets and native glass cannot
+// change the background behind a foreground whose color React already chose.
+function resolveStableSurfaceColor(background, parentBackground) {
+  const tint = resolveMaterialTint(background);
+  if (!background || background === "transparent") return parentBackground;
+  if (!tint.hex || tint.alpha === 1) return background;
+  const base = resolveMaterialTint(parentBackground).hex || "#FFFFFF";
+  const front = parseInt(tint.hex.slice(1), 16);
+  const back = parseInt(base.slice(1), 16);
+  return `#${[16, 8, 0].map((shift) =>
+    Math.round(((front >> shift) & 255) * tint.alpha + ((back >> shift) & 255) * (1 - tint.alpha))
+      .toString(16).padStart(2, "0")
+  ).join("")}`;
+}
+
 function resolveSurfaceAppearance(background, parentAppearance) {
   if (!background || background === "transparent") return parentAppearance ?? false;
   const tint = resolveMaterialTint(background);
@@ -55,11 +73,13 @@ const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole
   const { reduceTransparency } = useMotionPreferences();
   const parentHasMaterial = useContext(SurfaceDepth);
   const parentIsDark = useContext(SurfaceAppearance);
+  const parentBackground = useContext(SurfaceBackground);
   const flat = StyleSheet.flatten(style) || {};
   const background = flat.backgroundColor;
   if (!background || background === "transparent" || flat.display === "none") return null;
   const tint = resolveMaterialTint(background);
-  const isDark = resolveSurfaceAppearance(background, parentIsDark);
+  const stableBackground = resolveStableSurfaceColor(background, parentBackground);
+  const isDark = resolveSurfaceAppearance(stableBackground, parentIsDark);
   const radius = flat.borderRadius || 0;
   const shape = {
     borderRadius: radius,
@@ -69,7 +89,7 @@ const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole
     borderBottomRightRadius: flat.borderBottomRightRadius ?? radius,
     overflow: "hidden",
   };
-  const solid = Platform.OS !== "ios" || reduceTransparency;
+  const solid = Platform.OS !== "ios" || reduceTransparency || tint.alpha < 1;
   const NativeSurface = !solid && tint.hex && resolveSwiftUISurface();
   const glass = !solid && nativeGlassAvailable();
   // Sheets retain a dense translucent backing; content cards use native material.
@@ -81,7 +101,7 @@ const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole
   const tintOpacity = surfaceRole === "control" ? 1 : surfaceRole === "filter" ? 1 : surfaceRole === "sheet" ? 0.82 : nestedContent ? 0.4 : 0.32;
   return (
     <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFillObject, shape]}>
-      {solid ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: background }]} /> : NativeSurface ? (
+      {solid ? <View style={[StyleSheet.absoluteFillObject, { backgroundColor: stableBackground }]} /> : NativeSurface ? (
         <NativeSurface style={StyleSheet.absoluteFillObject} cornerRadius={radius} tintColorHex={tint.hex} darkAppearance={isDark} tintOpacity={tintOpacity * tint.alpha} />
       ) : <>
         {glass ? <GlassView style={StyleSheet.absoluteFillObject} glassEffectStyle="regular" colorScheme={isDark ? "dark" : "light"} isInteractive={false} /> : <BlurView style={StyleSheet.absoluteFillObject} tint={isDark ? "dark" : "light"} intensity={36} />}
@@ -103,33 +123,36 @@ function resolveSurfaceStyle(style, surfaceRole) {
 
 const PlatformSurface = forwardRef(function PlatformSurface({ style, children, surfaceRole = "card", opaque = false, ...props }, ref) {
   const parentAppearance = useContext(SurfaceAppearance);
+  const parentBackground = useContext(SurfaceBackground);
   const materialStyle = resolveSurfaceStyle(style, surfaceRole);
   const flat = StyleSheet.flatten(materialStyle) || {};
-  if (opaque) return <View {...props} ref={ref} style={style}><SurfaceAppearance.Provider value={resolveSurfaceAppearance(flat.backgroundColor, parentAppearance)}><SurfaceDepth.Provider value={false}>{children}</SurfaceDepth.Provider></SurfaceAppearance.Provider></View>;
+  if (opaque) return <View {...props} ref={ref} style={style}><SurfaceAppearance.Provider value={resolveSurfaceAppearance(resolveStableSurfaceColor(flat.backgroundColor, parentBackground), parentAppearance)}><SurfaceBackground.Provider value={resolveStableSurfaceColor(flat.backgroundColor, parentBackground) || parentBackground}><SurfaceDepth.Provider value={false}>{children}</SurfaceDepth.Provider></SurfaceBackground.Provider></SurfaceAppearance.Provider></View>;
   return <View {...props} ref={ref} style={[materialStyle, flat.backgroundColor && { backgroundColor: "transparent" }]}>
     <SurfaceMaterial style={materialStyle} surfaceRole={surfaceRole} />
-    <SurfaceAppearance.Provider value={resolveSurfaceAppearance(flat.backgroundColor, parentAppearance)}><SurfaceDepth.Provider value={!!flat.backgroundColor}>{children}</SurfaceDepth.Provider></SurfaceAppearance.Provider>
+    <SurfaceAppearance.Provider value={resolveSurfaceAppearance(resolveStableSurfaceColor(flat.backgroundColor, parentBackground), parentAppearance)}><SurfaceBackground.Provider value={resolveStableSurfaceColor(flat.backgroundColor, parentBackground) || parentBackground}><SurfaceDepth.Provider value={!!flat.backgroundColor}>{children}</SurfaceDepth.Provider></SurfaceBackground.Provider></SurfaceAppearance.Provider>
   </View>;
 });
 
 export const PlatformPressable = forwardRef(function PlatformPressable({ style, children, surfaceRole = "control", android_ripple, ...props }, ref) {
   const parentAppearance = useContext(SurfaceAppearance);
+  const parentBackground = useContext(SurfaceBackground);
   const resolveStyle = (state) => resolveSurfaceStyle(typeof style === "function" ? style(state) : style, surfaceRole);
   return <Pressable {...props} ref={ref} android_ripple={android_ripple || (Platform.OS === "android" ? { color: "rgba(128,128,128,0.16)", foreground: true } : undefined)} style={(state) => {
     const resolved = resolveStyle(state);
     const flat = StyleSheet.flatten(resolved) || {};
     return [resolved, flat.backgroundColor && { backgroundColor: "transparent" }, state.pressed && !props.disabled && { opacity: 0.86 }];
   }}>
-    {(state) => <><SurfaceMaterial style={resolveStyle(state)} surfaceRole={surfaceRole} /><SurfaceAppearance.Provider value={resolveSurfaceAppearance(StyleSheet.flatten(resolveStyle(state))?.backgroundColor, parentAppearance)}><SurfaceDepth.Provider value={!!StyleSheet.flatten(resolveStyle(state))?.backgroundColor}>{typeof children === "function" ? children(state) : children}</SurfaceDepth.Provider></SurfaceAppearance.Provider></>}
+    {(state) => <><SurfaceMaterial style={resolveStyle(state)} surfaceRole={surfaceRole} /><SurfaceAppearance.Provider value={resolveSurfaceAppearance(resolveStableSurfaceColor(StyleSheet.flatten(resolveStyle(state))?.backgroundColor, parentBackground), parentAppearance)}><SurfaceBackground.Provider value={resolveStableSurfaceColor(StyleSheet.flatten(resolveStyle(state))?.backgroundColor, parentBackground) || parentBackground}><SurfaceDepth.Provider value={!!StyleSheet.flatten(resolveStyle(state))?.backgroundColor}>{typeof children === "function" ? children(state) : children}</SurfaceDepth.Provider></SurfaceBackground.Provider></SurfaceAppearance.Provider></>}
   </Pressable>;
 });
 
 export const PlatformTouchableOpacity = forwardRef(function PlatformTouchableOpacity({ style, children, surfaceRole = "control", ...props }, ref) {
   const parentAppearance = useContext(SurfaceAppearance);
+  const parentBackground = useContext(SurfaceBackground);
   const resolved = resolveSurfaceStyle(style, surfaceRole);
   const flat = StyleSheet.flatten(resolved) || {};
   return <TouchableOpacity {...props} ref={ref} style={[resolved, flat.backgroundColor && { backgroundColor: "transparent" }]}>
-    <SurfaceMaterial style={resolved} surfaceRole={surfaceRole} /><SurfaceAppearance.Provider value={resolveSurfaceAppearance(flat.backgroundColor, parentAppearance)}><SurfaceDepth.Provider value={!!flat.backgroundColor}>{children}</SurfaceDepth.Provider></SurfaceAppearance.Provider>
+    <SurfaceMaterial style={resolved} surfaceRole={surfaceRole} /><SurfaceAppearance.Provider value={resolveSurfaceAppearance(resolveStableSurfaceColor(flat.backgroundColor, parentBackground), parentAppearance)}><SurfaceBackground.Provider value={resolveStableSurfaceColor(flat.backgroundColor, parentBackground) || parentBackground}><SurfaceDepth.Provider value={!!flat.backgroundColor}>{children}</SurfaceDepth.Provider></SurfaceBackground.Provider></SurfaceAppearance.Provider>
   </TouchableOpacity>;
 });
 

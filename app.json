@@ -27,7 +27,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "130",
+      "buildNumber": "132",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

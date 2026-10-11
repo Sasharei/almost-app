@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 
 const {
   TEMPTATION_SERIES_STATUS,
@@ -12,10 +15,206 @@ const {
   getUncreditedTemptationSeriesCoins,
   normalizeTemptationSeriesState,
   reconcileTemptationSeriesTargets,
+  repairPrematureTemptationSeriesClaim,
 } = require("../../src/engagement/temptationSeries");
 
 const DAY_ONE = new Date(2026, 7, 14, 9, 0, 0).getTime();
 const DAY_TWO = new Date(2026, 7, 15, 9, 0, 0).getTime();
+
+const buildPrematureClaim = () => {
+  let state = null;
+  for (const temptationId of ["coffee", "snack", "dessert"]) {
+    state = applyTemptationSeriesAction(state, {
+      availableIds: ["coffee", "snack", "dessert"], temptationId,
+      action: "save", rewardCoins: 4, timestamp: DAY_ONE,
+    }).state;
+  }
+  return claimTemptationSeries(state, DAY_ONE + 1_000).state;
+};
+
+test("the actual app recovery waits for hydration and persists one debit with the reopened series", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../../App.js"), "utf8");
+  const start = source.indexOf("  useEffect(() => {\n    if (!temptationSeriesHydrated || !temptationInteractionsHydrated || !historyHydrated) return;");
+  const end = source.indexOf("  const registerTemptationSeriesAction", start);
+  assert.ok(start >= 0 && end > start);
+  const storage = new Map();
+  const claimed = buildPrematureClaim();
+  const ids = [...claimed.targetIds, "delivery", "games", "taxi", "shopping", "subscription"];
+  const keys = { TEMPTATION_SERIES: "series", HEALTH: "wallet", HEALTH_BACKUP: "backup" };
+  const gates = ["temptationSeriesHydrated", "temptationInteractionsHydrated", "historyHydrated",
+    "healthHydrated", "quickTemptationsHydrated", "hiddenTemptationsHydrated", "archivedTemptationsHydrated"];
+  const context = {
+    ...Object.fromEntries(gates.map(key => [key, true])),
+    normalizeTemptationSeriesState, repairPrematureTemptationSeriesClaim, reconcileTemptationSeriesTargets,
+    products: ids.map(id => ({ id })), resolveTemptationTemplateId: item => item.id,
+    temptationSeriesRef: { current: claimed }, healthPoints: 50,
+    todayTemptationPlan: { dayKey: getLocalDayKey(DAY_ONE), targetIds: ids, resolutions: {} },
+    todayTemptationMinuteTick: DAY_ONE + 2_000,
+    STORAGE_KEYS: keys, serializeCoinBalanceBackup: value => JSON.stringify({ balance: value }),
+    temptationSeriesReadyPresentedRef: { current: claimed.seriesId }, modalVisible: true,
+    useEffect: callback => callback(),
+    queuePersist: (key, value) => storage.set(key, value),
+    updateTemptationSeries: state => {
+      context.temptationSeriesRef.current = normalizeTemptationSeriesState(state);
+      storage.set(keys.TEMPTATION_SERIES, JSON.stringify(state));
+    },
+    setHealthPoints: updater => { context.healthPoints = updater(context.healthPoints); },
+    setTemptationSeriesModalVisible: value => { context.modalVisible = value; },
+  };
+  for (const gate of gates) {
+    context[gate] = false;
+    vm.runInNewContext(source.slice(start, end), context);
+    assert.equal(storage.size, 0);
+    assert.equal(context.healthPoints, 50);
+    context[gate] = true;
+  }
+  vm.runInNewContext(source.slice(start, end), context);
+  assert.equal(context.healthPoints, 38);
+  assert.equal(storage.get(keys.HEALTH), "38");
+  assert.equal(JSON.parse(storage.get(keys.HEALTH_BACKUP)).balance, 38);
+  assert.equal(context.modalVisible, false);
+  assert.equal(context.temptationSeriesReadyPresentedRef.current, null);
+  const persisted = normalizeTemptationSeriesState(JSON.parse(storage.get(keys.TEMPTATION_SERIES)));
+  assert.equal(persisted.deferredCoins, 12);
+  assert.equal(getUncreditedTemptationSeriesCoins(persisted), 0);
+  context.temptationSeriesRef.current = persisted;
+  vm.runInNewContext(source.slice(start, end), context);
+  assert.equal(context.healthPoints, 38);
+});
+
+test("a premature collected chest is withheld once, survives restart and is repaid only at real completion", () => {
+  const claimed = buildPrematureClaim();
+  const ids = [...claimed.targetIds, "delivery", "games", "taxi", "shopping", "subscription"];
+  const options = { targetIds: ids, eligibleIds: ids, timestamp: DAY_ONE + 2_000 };
+  const repair = repairPrematureTemptationSeriesClaim(claimed, options, 50);
+  assert.equal(repair.repaired, true);
+  assert.equal(repair.debitCoins, 12);
+  assert.deepEqual(getTemptationSeriesProgress(repair.state), { completed: 3, total: 8, remaining: 5 });
+  assert.equal(repair.state.status, TEMPTATION_SERIES_STATUS.ACTIVE);
+  assert.equal(repair.state.claimedCoins, 0);
+  assert.equal(repair.state.claimedAt, null);
+  assert.equal(repair.state.completedAt, null);
+  assert.equal(repair.state.deferredCoins, 12);
+  assert.equal(claimTemptationSeries(repair.state, DAY_ONE + 3_000).payoutCoins, 0);
+
+  let restored = normalizeTemptationSeriesState(JSON.parse(JSON.stringify(repair.state)));
+  assert.equal(getUncreditedTemptationSeriesCoins(restored), 0);
+  assert.equal(repairPrematureTemptationSeriesClaim(restored, options, 38).debitCoins, 0);
+  let balance = 50 - repair.debitCoins;
+  ids.slice(3).forEach((temptationId, index) => {
+    const action = applyTemptationSeriesAction(restored, {
+      availableIds: ids, temptationId, action: "save", rewardCoins: 2,
+      timestamp: DAY_ONE + 4_000 + index * 1_000,
+    });
+    restored = action.state;
+    balance += action.creditCoins;
+    assert.equal(getUncreditedTemptationSeriesCoins(restored), 0);
+    assert.equal(action.becameReady, index === 4);
+  });
+  const finalClaim = claimTemptationSeries(restored, DAY_ONE + 10_000);
+  assert.equal(finalClaim.claimed, true);
+  assert.equal(finalClaim.payoutCoins, 12);
+  assert.equal(finalClaim.state.deferredCoins, 0);
+  assert.equal(balance + finalClaim.payoutCoins, 60);
+  assert.equal(claimTemptationSeries(finalClaim.state, DAY_ONE + 11_000).payoutCoins, 0);
+  assert.equal(repairPrematureTemptationSeriesClaim(finalClaim.state, options, 60).repaired, false);
+});
+
+test("repair preserves valid claims, waits for the catalog, and never reopens yesterday", () => {
+  const claimed = buildPrematureClaim();
+  const timestamp = DAY_ONE + 2_000;
+  assert.equal(repairPrematureTemptationSeriesClaim(claimed, {
+    targetIds: claimed.targetIds, eligibleIds: claimed.targetIds, timestamp,
+  }, 50).repaired, false);
+  assert.equal(repairPrematureTemptationSeriesClaim(claimed, {
+    targetIds: [...claimed.targetIds, "delivery"], timestamp,
+  }, 50).repaired, false);
+  const yesterday = repairPrematureTemptationSeriesClaim(claimed, {
+    targetIds: ["delivery"], eligibleIds: ["delivery"], timestamp: DAY_TWO,
+  }, 50);
+  assert.equal(yesterday.debitCoins, 0);
+  assert.equal(yesterday.repaired, false);
+  assert.equal(yesterday.state.status, TEMPTATION_SERIES_STATUS.IDLE);
+});
+
+test("a spent chest never makes the wallet negative or repays more than was reclaimed", () => {
+  const claimed = buildPrematureClaim();
+  const ids = [...claimed.targetIds, "delivery"];
+  const options = { targetIds: ids, eligibleIds: ids, timestamp: DAY_ONE + 2_000 };
+  for (const balance of [0, 5]) {
+    const repair = repairPrematureTemptationSeriesClaim(claimed, options, balance);
+    assert.equal(repair.debitCoins, balance);
+    assert.equal(repair.state.deferredCoins, balance);
+    const complete = applyTemptationSeriesAction(repair.state, {
+      availableIds: ids, temptationId: "delivery", action: "skip", timestamp: DAY_ONE + 3_000,
+    });
+    assert.equal(claimTemptationSeries(complete.state, DAY_ONE + 4_000).payoutCoins, balance);
+  }
+});
+
+test("repair restores decisions logged after a premature claim without counting them twice", () => {
+  const claimed = buildPrematureClaim();
+  const ids = [...claimed.targetIds, "delivery", "games"];
+  const timestamp = DAY_ONE + 2_000;
+  const repair = repairPrematureTemptationSeriesClaim(claimed, {
+    targetIds: ids, eligibleIds: ids, timestamp,
+    historyResolutions: { delivery: {
+      firstAction: "spend", lastAction: "spend", firstAt: timestamp, lastAt: timestamp, actionCount: 1,
+    } },
+  }, 50);
+  assert.deepEqual(getTemptationSeriesProgress(repair.state), { completed: 4, total: 5, remaining: 1 });
+  assert.equal(repair.debitCoins, 12);
+});
+
+test("rescheduling cannot close an eight-card series with five unchecked cards", () => {
+  const ids = Array.from({ length: 8 }, (_, index) => `card-${index}`);
+  let state = null;
+  ids.slice(0, 3).forEach((temptationId, index) => {
+    state = applyTemptationSeriesAction(state, {
+      availableIds: ids, temptationId, action: "save", rewardCoins: 4,
+      timestamp: DAY_ONE + index * 1_000,
+    }).state;
+  });
+  // A schedule refresh must not discard the unresolved snapshot, even when
+  // the new calendar plan only includes today's three recorded decisions.
+  let refreshed = reconcileTemptationSeriesTargets(state, {
+    targetIds: ids.slice(0, 3), eligibleIds: ids, timestamp: DAY_ONE + 4_000,
+  });
+  assert.deepEqual(getTemptationSeriesProgress(refreshed), { completed: 3, total: 8, remaining: 5 });
+  assert.equal(refreshed.status, TEMPTATION_SERIES_STATUS.ACTIVE);
+  assert.equal(refreshed.completedAt, null);
+  assert.deepEqual(refreshed.resolutions, state.resolutions);
+  assert.equal(refreshed.pendingCoins, 12);
+  assert.equal(refreshed.creditedCoins, 12);
+  assert.equal(claimTemptationSeries(refreshed, DAY_ONE + 5_000).claimed, false);
+
+  let lastResult;
+  ids.slice(3).forEach((temptationId, index) => {
+    lastResult = applyTemptationSeriesAction(refreshed, {
+      availableIds: ids, temptationId, action: "skip", timestamp: DAY_ONE + 6_000 + index * 1_000,
+    });
+    refreshed = lastResult.state;
+    assert.equal(lastResult.becameReady, index === 4);
+  });
+  assert.equal(claimTemptationSeries(lastResult.state, DAY_ONE + 12_000).claimed, true);
+});
+
+test("newly due cards join the checklist before a decision can complete it", () => {
+  let state = null;
+  for (const temptationId of ["coffee", "snack"]) {
+    state = applyTemptationSeriesAction(state, {
+      availableIds: ["coffee", "snack", "dessert"], temptationId,
+      action: "skip", timestamp: DAY_ONE,
+    }).state;
+  }
+  const result = applyTemptationSeriesAction(state, {
+    availableIds: ["coffee", "snack", "dessert", "delivery"],
+    temptationId: "dessert", action: "skip", timestamp: DAY_ONE + 1_000,
+  });
+  assert.equal(result.becameReady, false);
+  assert.equal(result.state.status, TEMPTATION_SERIES_STATUS.ACTIVE);
+  assert.deepEqual(getTemptationSeriesProgress(result.state), { completed: 3, total: 4, remaining: 1 });
+});
 
 test("idle series exposes its pre-action progress without starting persisted state", () => {
   const idleState = createInitialTemptationSeriesState();

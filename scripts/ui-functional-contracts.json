@@ -542,6 +542,22 @@
       ]
     },
     {
+      "id": "temptation-premature-claim-recovery",
+      "description": "Hydrated daily cards can reopen a premature collected chest. The reclaimed balance and backup are persisted alongside the repaired series, the premature modal closes, and its presentation marker is cleared for the real completion.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (!healthHydrated || !quickTemptationsHydrated || !hiddenTemptationsHydrated || !archivedTemptationsHydrated) return;",
+        "const repair = repairPrematureTemptationSeriesClaim(current, reconciliationOptions, healthPoints);",
+        "const reconciled = reconcileTemptationSeriesTargets(repair.state, reconciliationOptions);",
+        "queuePersist(STORAGE_KEYS.HEALTH, String(nextBalance));",
+        "queuePersist(STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(nextBalance));",
+        "setHealthPoints((balance) => Math.max(0, balance - repair.debitCoins));"
+      ],
+      "requiredPatterns": [
+        "if \\(repair\\.repaired\\) \\{[\\s\\S]*?setTemptationSeriesModalVisible\\(false\\);[\\s\\S]*?temptationSeriesReadyPresentedRef\\.current = null;"
+      ]
+    },
+    {
       "id": "temptation-daily-series-state-machine",
       "description": "The persisted series reducer snapshots today's target temptations, reconciles legacy all-card snapshots with today's schedule and history without changing its economy, counts each target only once, and records repeat actions. Every new reward is marked credited immediately; midnight resets only the visual series. Legacy pending rewards are recoverable exactly once, the chest never double-pays already credited rewards, and a later day starts a fresh visual series.",
       "file": "src/engagement/temptationSeries.js",
@@ -550,7 +566,8 @@
         "const targetIds = normalizeTemptationIds([...(availableIds || []), temptationId]);",
         "const reconcileTemptationSeriesTargets = (",
         "const resetTemptationSeriesForDay = (",
-        "const nextTargetIds = normalizeTemptationIds([...targetIds, ...resolvedTodayIds]);",
+        "const continuingIds = eligible ? state.targetIds.filter((id) => eligible.has(id)) : [];",
+        "const nextTargetIds = normalizeTemptationIds([...targetIds, ...continuingIds, ...resolvedTodayIds]);",
         "actionCount: previousResolution.actionCount + 1,",
         "isFirstResolution: isSeriesTarget && !previousResolution,",
         "pendingCoins: state.pendingCoins + normalizedReward,",
@@ -558,10 +575,15 @@
         "creditCoins: normalizedReward,",
         "const getUncreditedTemptationSeriesCoins = (value) => {",
         "const TEMPTATION_SERIES_MIN_DISTINCT_TEMPTATIONS = 3;",
-        "const targetIds = normalizeTemptationIds([...state.targetIds, id]);",
+        "const targetIds = normalizeTemptationIds([...state.targetIds, ...availableIds, id]);",
+        "status: ready ? TEMPTATION_SERIES_STATUS.READY : TEMPTATION_SERIES_STATUS.ACTIVE,",
         "state.status !== TEMPTATION_SERIES_STATUS.READY ||",
         "pendingCoins: 0,",
-        "const payoutCoins = getUncreditedTemptationSeriesCoins(state);",
+        "const payoutCoins = getUncreditedTemptationSeriesCoins(state) + state.deferredCoins;",
+        "state.pendingCoins - state.creditedCoins - state.deferredCoins",
+        "const repairPrematureTemptationSeriesClaim = (value, options = {}, coinBalance = 0) => {",
+        "const debitCoins = Math.min(availableBalance, state.claimedCoins);",
+        "deferredCoins: debitCoins,",
         "rewardMode: normalizedReward > 0 ? \"direct\" : \"none\"",
         "claimedDayKey === todayKey"
       ]

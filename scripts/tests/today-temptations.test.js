@@ -14,6 +14,25 @@ const TODAY_MORNING = new Date(2026, 7, 14, 9, 0, 0).getTime();
 const TODAY_EVENING = new Date(2026, 7, 14, 20, 0, 0).getTime();
 const TOMORROW = new Date(2026, 7, 15, 9, 0, 0).getTime();
 
+test("editing a manual timer preserves the unchecked cards of an active daily series", () => {
+  const ids = Array.from({ length: 8 }, (_, index) => `card-${index}`);
+  const interactions = Object.fromEntries(ids.map(id => [id, {
+    frequencyReminderManualConfigured: true, nextCheckAt: TODAY_EVENING,
+  }]));
+  interactions[ids[3]].nextCheckAt = TOMORROW;
+  const plan = buildTodayTemptationPlan({
+    products: ids.map(id => ({ id })), interactionStats: interactions,
+    activeTargetIds: ids, timestamp: TODAY,
+    historyEvents: ids.slice(0, 3).map(templateId => ({
+      kind: "refuse_spend", timestamp: TODAY_MORNING, meta: { templateId },
+    })),
+  });
+  assert.deepEqual(plan.targetIds, ids);
+  assert.deepEqual(plan.checkedIds, ids.slice(0, 3));
+  assert.deepEqual(plan.dueIds, ids.slice(3));
+  assert.equal(interactions[ids[3]].nextCheckAt, TOMORROW);
+});
+
 const buildPlan = ({ products, interactions = {}, history = [] }) =>
   buildTodayTemptationPlan({
     products,

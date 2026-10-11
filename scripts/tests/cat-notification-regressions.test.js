@@ -33,13 +33,15 @@ const pressureContext = {
 };
 const pressure = evaluate("resolveTamagotchiCarePressure", pressureContext);
 
-test("party protection suppresses hunger copy through its exact expiry without hiding play needs", () => {
+test("party protection suppresses hunger copy through its exact expiry for every care need", () => {
   const state = { hunger: 0, mood: 100, hungerImmunityUntil: now + 12 * hour };
   assert.equal(pressure(state, now).hungry, false);
   assert.equal(pressure(state, now).starving, false);
   assert.equal(pressure(state, state.hungerImmunityUntil - 1).hungry, false);
   assert.equal(pressure(state, state.hungerImmunityUntil).hungry, true);
-  assert.equal(pressure({ ...state, mood: 0 }, now).neglected, true);
+  assert.equal(pressure({ ...state, mood: 0 }, now).neglected, false);
+  assert.equal(pressure({ ...state, mood: 0 }, now).neglectedUrgent, false);
+  assert.equal(pressure({ ...state, mood: 0, lastPlayedAt: new Date(now - 72 * hour).toISOString() }, now).urgent, false);
   assert.equal(pressure({ ...state, hungerImmunityUntil: 0 }, now).starving, true);
 });
 
@@ -101,10 +103,10 @@ test("a party activated during an OS scheduling wait cancels the stale push inst
   assert.equal(fixture.events.some((event) => event.ids), false);
 });
 
-test("miss-you push chooses neutral or play copy during protection, hungry copy after expiration", async () => {
+test("miss-you push chooses neutral copy during protection, hungry copy after expiration", async () => {
   for (const [duration, mood, expected] of [
     [12 * hour, 100, "tamagotchiMissYouNotificationBody"],
-    [12 * hour, 0, "tamagotchiMissYouNotificationBodyNeglected"],
+    [12 * hour, 0, "tamagotchiMissYouNotificationBody"],
     [0, 100, "tamagotchiMissYouNotificationBodyHungry"],
   ]) {
     let payload;
@@ -296,4 +298,114 @@ test("failed immediate scheduling permits a queued retry", async () => {
   const results = await Promise.all([fixture.run(content), fixture.run(content)]);
   assert.deepEqual(results, [false, true]);
   assert.equal(fixture.events.length, 2);
+});
+
+const moodForState = evaluate("getTamagotchiMood", {
+  ...pressureContext, DEFAULT_LANGUAGE: "en",
+  TAMAGOTCHI_USAGE_STATES: { ACTIVE: "active", MISSING: "missing" },
+  resolveMonetizationLanguage: (language) => language,
+});
+test("party immunity suppresses every care need without changing actual stats", () => {
+  const state = { hunger: 0, mood: 100, cleanliness: 100, hungerImmunityUntil: now + hour };
+  const happy = moodForState(state, "en", "active", now);
+  assert.equal(happy.need, "none");
+  assert.equal(happy.tone, "happy");
+  assert.equal(happy.hunger, 0, "protection must not rewrite actual fullness");
+  assert.equal(moodForState({ ...state, mood: 0 }, "en", "active", now).need, "none");
+  assert.equal(moodForState({ ...state, mood: 0 }, "en", "active", now).tone, "happy");
+  assert.equal(moodForState({ ...state, cleanliness: 0 }, "en", "active", now).need, "none");
+  assert.equal(moodForState({ ...state, hunger: 100, mood: 0 }, "en", "active", now + hour).need, "play");
+  assert.equal(moodForState({ ...state, hunger: 100, cleanliness: 0 }, "en", "active", now + hour).need, "clean");
+  assert.equal(moodForState(state, "en", "active", now + hour).need, "food");
+});
+
+function homeSpeechFixture({ until = now + hour, mood = 100, cleanliness = 100, random = 0 } = {}) {
+  const immunity = { current: until };
+  const context = {
+    ...pressureContext, Math: Object.assign(Object.create(Math), { random: () => random }),
+    tamagotchiSpeechImmunityUntilRef: immunity,
+    tamagotchiSpeechCandidateKindRef: { current: null }, tamagotchiHungrySpeechLastAtRef: { current: 0 },
+    tamagotchiMood: { hunger: 0, mood, cleanliness, need: "food", tone: "urgent" },
+    tamagotchiDesiredFood: { emoji: "food" }, tamagotchiDesiredToy: { emoji: "toy" },
+    tamagotchiNeedsPlay: mood <= 30, tamagotchiNeedsCleaning: cleanliness <= 30,
+    TAMAGOTCHI_HUNGRY_SPEECH_COOLDOWN_MS: hour, lastVisitAt: now - 48 * hour,
+    lastVisitAtSnapshot: 0, tamagotchiGreetingDayKey: "", getDayKey: (at) => Math.floor(at / (24 * hour)),
+    DAY_MS: 24 * hour, TAMAGOTCHI_MISS_YOU_INACTIVITY_MS: 6 * hour,
+    TAMAGOTCHI_GREETING_SOON_MS: hour, TAMAGOTCHI_GREETING_WARM_MS: 3 * hour,
+    latestSaveEvent: null, latestSpendEvent: null, recentActivity: [], focusTemplateId: null,
+    shortenSpeechTitle: (value) => value, activeChallenge: null,
+    heroLevelHasNext: false, tierInfo: { level: 1 }, resolveTamagotchiToyTier: () => 1,
+    pickTamagotchiToyByTier: () => null,
+    TAMAGOTCHI_TOY_MAP: {}, TAMAGOTCHI_NEED_REQUEST_CHANCE_URGENT: 1,
+    TAMAGOTCHI_NEED_REQUEST_CHANCE_ATTENTION: 1, TAMAGOTCHI_NEED_REQUEST_CHANCE_RELAXED: 0,
+    resolveTamagotchiCarePressure: pressure, TAMAGOTCHI_ACTION_SPEECH_REASONS: new Set(),
+    resolvedBudgetSpeechDataRef: { current: null }, isGoalComplete: false, heroHasActiveGoal: false,
+    t: (key) => key, pickVariantText: (key) => key,
+  };
+  return { run: evaluate("buildTamagotchiSpeech", context, true), immunity, context };
+}
+test("ready/resume greetings and random dialogue suppress hunger during immunity and resume at expiry", () => {
+  for (const random of [0, 0.3, 0.6, 0.99]) {
+    const fixture = homeSpeechFixture({ random });
+    for (const reason of ["ready", "resume", "unknown"]) {
+      assert.doesNotMatch(fixture.run(reason), /Hungry/, `${reason}/${random}`);
+    }
+    fixture.immunity.current = now;
+    assert.match(fixture.run("resume"), /Hungry/);
+  }
+  assert.doesNotMatch(homeSpeechFixture({ mood: 0 }).run("resume"), /NeedPlay/);
+  assert.doesNotMatch(homeSpeechFixture({ cleanliness: 0 }).run("unknown"), /NeedClean/);
+  assert.match(homeSpeechFixture({ until: 0, cleanliness: 0 }).run("unknown"), /NeedClean/);
+});
+test("an existing home speech timer reads newly activated protection", () => {
+  const fixture = homeSpeechFixture({ until: 0 });
+  assert.match(fixture.run("resume"), /Hungry/);
+  fixture.immunity.current = now + hour;
+  assert.doesNotMatch(fixture.run("resume"), /Hungry/);
+});
+test("Almi menu speech uses current immunity even from a previously created interval", () => {
+  const state = { current: { hungerImmunityUntil: 0 } };
+  const run = evaluate("buildTamagotchiMenuSpeech", {
+    ...pressureContext, Math: Object.assign(Object.create(Math), { random: () => 0 }),
+    tamagotchiCurrentStateRef: state, tamagotchiCleanlinessPercent: 0,
+    tamagotchiHungerPercent: 0, tamagotchiMoodPercent: 0,
+    tamagotchiDesiredFood: { emoji: "food" }, tamagotchiDesiredToy: { emoji: "toy" },
+    tamagotchiMenuSpeechLastTextRef: { current: "" }, t: (key) => key, tVariant: (key) => key,
+  }, true);
+  assert.match(run(), /NeedClean/);
+  state.current.hungerImmunityUntil = now + hour;
+  assert.equal(run(), "tamagotchiSpeechGeneral");
+  state.current.hungerImmunityUntil = now;
+  assert.match(run(), /NeedClean/);
+});
+
+test("production decay freezes fullness, mood and cleanliness until the shared party timer expires", () => {
+  const decay = evaluate("computeTamagotchiDecay", {
+    ...pressureContext,
+    normalizeTamagotchiToolSupplies: (value) => value || {},
+    resolveTamagotchiCareCooldowns: () => ({
+      hunger: { until: 0, multiplier: 1 }, mood: { until: 0, multiplier: 1 },
+      cleanliness: { until: 0, multiplier: 1 }, fields: {},
+    }),
+    TAMAGOTCHI_DECAY_INTERVAL_MS: hour, TAMAGOTCHI_DECAY_STEP: 10,
+    TAMAGOTCHI_DECAY_CLEANLINESS_STEP: 5, TAMAGOTCHI_DECAY_MOOD_STEP: 5,
+    TAMAGOTCHI_HUNGER_LOW_THRESHOLD: 30, TAMAGOTCHI_DECAY_MOOD_HUNGER_PENALTY_THRESHOLD: 30,
+    TAMAGOTCHI_DECAY_MOOD_CLEAN_PENALTY_THRESHOLD: 30, TAMAGOTCHI_COIN_DECAY_TICKS: 10,
+    TAMAGOTCHI_DEFAULT_FOOD_ID: "food", TAMAGOTCHI_DEFAULT_TOY_ID: "toy",
+    computeTamagotchiProtectedDecayUnits: (ticks) => ticks,
+    resolveTamagotchiFoodTier: () => 1, resolveTamagotchiToyTier: () => 1,
+    resolveNextTamagotchiFoodId: () => "food", resolveNextTamagotchiToyId: () => "toy",
+  });
+  const state = { hunger: 80, mood: 70, cleanliness: 60, lastDecayAt: now,
+    hungerImmunityUntil: now + 12 * hour, desiredFoodId: "food", desiredToyId: "toy" };
+  for (const at of [now + hour, now + 12 * hour - 1, now + 12 * hour]) {
+    const result = decay(state, at).state;
+    assert.equal(result.hunger, 80);
+    assert.equal(result.mood, 70);
+    assert.equal(result.cleanliness, 60);
+  }
+  const expired = decay(state, now + 13 * hour).state;
+  assert.ok(expired.hunger < state.hunger);
+  assert.ok(expired.mood < state.mood);
+  assert.ok(expired.cleanliness < state.cleanliness);
 });

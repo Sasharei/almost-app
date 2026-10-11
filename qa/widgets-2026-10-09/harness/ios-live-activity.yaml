@@ -1,0 +1,12 @@
+appId: com.apple.springboard
+---
+- tapOn: Allow
+- takeScreenshot: ios-live-lock
+- swipe:
+    start: 50%,95%
+    end: 50%,20%
+- longPressOn:
+    point: 50%,4%
+- takeScreenshot: ios-live-expanded
+- tapOn:
+    point: 50%,35%

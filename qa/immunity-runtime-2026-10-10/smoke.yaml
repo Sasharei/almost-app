@@ -1,0 +1,7 @@
+appId: com.sasarei.almostclean
+env:
+  LANG: en
+  THEME: light
+  ACCENT: indigo
+---
+- runFlow: case.yaml

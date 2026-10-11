@@ -1,0 +1,578 @@
+appId: com.sasarei.almostclean
+---
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: en
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: es
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: fr
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ru
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: de
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: pt
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: it
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ar
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: zh-Hant
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ko
+      THEME: pro
+      ACCENT: aqua
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: light
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: dark
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: indigo
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: emerald
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: sunset
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: gold
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: violet
+- runFlow:
+    file: case.yaml
+    env:
+      LANG: ja
+      THEME: pro
+      ACCENT: aqua

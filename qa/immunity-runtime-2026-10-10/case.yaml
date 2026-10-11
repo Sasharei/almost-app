@@ -1,0 +1,31 @@
+appId: com.sasarei.almostclean
+---
+- runScript:
+    file: seed.js
+- extendedWaitUntil:
+    visible:
+      id: today-cat-care
+    timeout: 60000
+- assertNotVisible: ${output.badSpeech}
+- runFlow:
+    when:
+      true: ${THEME == "light"}
+    commands:
+      - takeScreenshot: ${output.caseName}-home
+- tapOn:
+    id: today-cat-care
+    waitToSettleTimeoutMs: 0
+- assertVisible:
+    id: tamagotchi-immunity-card
+- assertNotVisible: ${output.badSpeech}
+- tapOn:
+    id: tamagotchi-immunity-card
+    waitToSettleTimeoutMs: 0
+- assertNotVisible: ${output.badSpeech}
+- takeScreenshot: ${output.caseName}-expanded
+- scrollUntilVisible:
+    element:
+      text: ${output.party}
+    direction: DOWN
+    waitToSettleTimeoutMs: 0
+- takeScreenshot: ${output.caseName}-party

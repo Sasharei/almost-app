@@ -52,14 +52,17 @@ These rules are mandatory for every Codex change in this repository.
 - For non-trivial changes, run `npm run verify` after the targeted checks.
 - In the final response, mention the functional parity check, localization check, theme check, and any visual theme review that was run or could not be run.
 
-## QA and Test Cleanup (Recommended)
+## QA and Test Cleanup (Mandatory)
 
-This section is a recommendation, not a mandatory completion gate.
+Cleanup is a mandatory completion gate after every test, QA, build or debugging task, including failed checks. Disposable artifacts must not be retained by default.
 
-- Before finishing a task, clean up disposable artifacts created for its QA, tests or debugging: redundant screenshots and recordings, raw logs, temporary fixtures and workspaces, generated bundles, task-specific caches and build outputs. Check both the repository and temporary directories so these files do not accumulate on the Mac.
-- Keep a concise verification summary and only the evidence needed for review, reproduction of unresolved failures, or explicitly requested deliverables. Preserve files linked in the final report, or update the report before removing them.
-- Delete only files confirmed to belong to this task and no longer needed. Preserve user files, source changes, useful backups and artifacts belonging to other tasks. Do not indiscriminately clear shared caches, dependencies, simulator data or system directories.
-- Stop temporary servers, watchers and other background processes started solely for the completed checks when they are no longer needed. Preserve sessions the user requested to keep available.
+- Before starting checks, identify their temporary output locations in both the repository and system temporary directories. Prefer a dedicated task directory so cleanup cannot affect other work.
+- After checks finish and before completing the task, delete all unnecessary task-generated screenshots, recordings, accessibility dumps, raw logs, temporary fixtures and backups, exported test data, bundles, coverage output, temporary workspaces, task-specific caches and build intermediates. An ignored file is still subject to cleanup; adding it to `.gitignore` is not cleanup.
+- Keep only a concise text verification summary with commands, outcomes and any unresolved failure details. Do not retain raw QA evidence solely because it was used for review or a failed check. Remove or update references to deleted evidence. Retain an artifact only when the user explicitly requests it or it is still required for an active release, upload or other unfinished work; remove it when that work finishes.
+- Preserve application source, assets, localization resources, permanent automated tests and their intentional fixtures, signing material, user data and release-critical symbol files needed for crash symbolication. Temporary test fixtures are disposable; maintained regression fixtures are source files.
+- Delete only confirmed disposable files owned by the task. Do not interrupt or delete outputs of another active task, indiscriminately clear shared caches or dependencies, or erase simulator/device data. Identify older artifacts from other tasks as cleanup candidates without assuming they are unused.
+- Stop temporary servers, watchers and other background processes started solely for the completed checks before removing their files. Preserve sessions the user requested to keep available.
+- Confirm that temporary output directories were removed or emptied, and report cleanup completion and any retained artifact with its reason. If a required cleanup cannot be performed, report the exact blocker instead of silently leaving files behind.
 
 
 ## Mandatory seven-law UX review (all application work)

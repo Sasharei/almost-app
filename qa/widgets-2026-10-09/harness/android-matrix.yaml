@@ -1,0 +1,17 @@
+appId: com.google.android.apps.nexuslauncher
+---
+- takeScreenshot: android-large
+- swipe:
+    start: 15%,70%
+    end: 85%,70%
+- takeScreenshot: android-medium
+- swipe:
+    start: 15%,70%
+    end: 85%,70%
+- takeScreenshot: android-small
+- swipe:
+    start: 85%,70%
+    end: 15%,70%
+- swipe:
+    start: 85%,70%
+    end: 15%,70%
