@@ -1,0 +1,173 @@
+{
+  "app_id": "6756276744",
+  "bundle_id": "com.sasarei.almostclean",
+  "platform": "IOS",
+  "version": "8.0.1",
+  "build": "133",
+  "version_id": "672e197f-e7ed-46ee-be62-163737c736c8",
+  "operation": "Upload corrected iOS paywall build and resubmit with existing localized promotional text, release notes, Header and Search Results; manual release after approval",
+  "baseline_at_utc": "2026-10-12T10:43:03.682207+00:00",
+  "source_head": "e25c9e3e92a1e34e301c4ec374cdc191d61230c0",
+  "source_sha256": {
+    "App.js": "485fd7ec845618444f4bfa1d6791bab7e76d2b89b6703e2d64e162f9d6528992",
+    "src/components/PremiumPaywallModalV2.js": "53c457e29b2cdf830169ee85ee6757732877cc3e1a2dcc7f8cb9268c5995b7e2",
+    "src/constants/localizedUiCopy.js": "278785222d71248ac7a7fcec2d8fb3863be2911adc831bb164f3d4585660d0bf",
+    "src/monetization/paywallOffer.js": "db652943ac68729eb2b57527286f143c6bdff623be611506a47061aff52ab447",
+    "scripts/tests/ios-paywall-offer.test.js": "84f204aeb62c8cb8aa5174b52c62a77ba6fd4ed3887e47bb8c22eb7eb870d927",
+    "ios/Almost.xcodeproj/project.pbxproj": "903e1e79066e7693c5f5128685abee4b45284965cb6e0e96a5770e8c522ff1e8",
+    "app.json": "be6a0f6311398a56aeff2b06fc00b39c9950d2fbf3d6f25ba5abd9dc9fdef849"
+  },
+  "metadata": {
+    "locales": [
+      "es-MX",
+      "ru",
+      "ar-SA",
+      "en-US",
+      "pt-BR",
+      "pt-PT",
+      "es-ES",
+      "ja",
+      "it",
+      "de-DE",
+      "zh-Hant",
+      "fr-FR",
+      "ko",
+      "zh-Hans"
+    ],
+    "promotionalText": "preserve byte-identical for all 14 locales",
+    "whatsNew": "preserve byte-identical for all 14 locales",
+    "validated_limits": true,
+    "readbackByteIdentical": true,
+    "localesVerified": 14
+  },
+  "assets": [
+    {
+      "id": "cd400019-2b49-8a08-8016-ac664286a4d7",
+      "name": "ASO 2026-10-09 savings-header",
+      "size": "3840x1646",
+      "role": "Header",
+      "operation": "retain version association; resubmit with app version",
+      "observed_state": "In Review",
+      "submitted_state": "WAITING_FOR_REVIEW",
+      "last_modified_utc": "2026-10-12T11:28:47.491762Z",
+      "file_name": "savings-header.png"
+    },
+    {
+      "id": "56400019-2b49-8a08-8002-364a73411f34",
+      "name": "ASO 2026-10-09 savings-search",
+      "role": "Search Results",
+      "operation": "retain version association; resubmit with app version",
+      "observed_state": "In Review",
+      "submitted_state": "WAITING_FOR_REVIEW",
+      "last_modified_utc": "2026-10-12T11:28:47.491762Z",
+      "file_name": "savings-search.png",
+      "size": "1920x1280"
+    }
+  ],
+  "verification": {
+    "npm run verify": "PASS after iOS build 133 bump",
+    "npm run check:applovin-cost": "PASS using configured release environment",
+    "paywall_offer_tests": 7,
+    "visual": "Approved browser preview in light/dark/pro and all 6 PRO accents; 12 app languages; compact and large-text layouts. Native device/StoreKit purchase not run.",
+    "archive_and_export": "PASS",
+    "final_ipa_signatures_entitlements": "PASS: App Store distribution, app and 4 extensions",
+    "archive_native_analytics": "PASS",
+    "final_ipa_size": "PASS: 96,449,956 bytes under 100 MB"
+  },
+  "android": "unchanged; no upload",
+  "release_type": "MANUAL",
+  "ipa_sha256": "b0bcb689b033609c8170c59deade835b58925abc9358d4808b5f8ad239ad450b",
+  "ipa_bytes": 96449956,
+  "signatures": [
+    {
+      "bundle": "com.sasarei.almostclean",
+      "signature": "PASS",
+      "family_controls": true,
+      "push": "production",
+      "distribution_profile": "PASS",
+      "sdk": "iphoneos26.5",
+      "xcode_build": "17F113"
+    },
+    {
+      "bundle": "com.sasarei.almostclean.Almost-Widget",
+      "signature": "PASS",
+      "family_controls": null,
+      "push": null,
+      "distribution_profile": "PASS",
+      "sdk": "iphoneos26.5",
+      "xcode_build": "17F113"
+    },
+    {
+      "bundle": "com.sasarei.almostclean.ShoppingBlockerAction",
+      "signature": "PASS",
+      "family_controls": true,
+      "push": null,
+      "distribution_profile": "PASS",
+      "sdk": "iphoneos26.5",
+      "xcode_build": "17F113"
+    },
+    {
+      "bundle": "com.sasarei.almostclean.ShoppingBlockerMonitor",
+      "signature": "PASS",
+      "family_controls": true,
+      "push": null,
+      "distribution_profile": "PASS",
+      "sdk": "iphoneos26.5",
+      "xcode_build": "17F113"
+    },
+    {
+      "bundle": "com.sasarei.almostclean.ShoppingBlockerShield",
+      "signature": "PASS",
+      "family_controls": true,
+      "push": null,
+      "distribution_profile": "PASS",
+      "sdk": "iphoneos26.5",
+      "xcode_build": "17F113"
+    }
+  ],
+  "build_flags": {
+    "SWIFT_ENABLE_EXPLICIT_MODULES": "NO",
+    "SWIFT_PRECOMPILE_BRIDGING_HEADER": "NO"
+  },
+  "uploaded": true,
+  "processing": "VALID",
+  "failed_attempts": [
+    {
+      "build": "132",
+      "delivery_uuid": "e753b397-c12d-40aa-83f7-8157c5dfbeab",
+      "uploaded": true,
+      "processing": "VALID",
+      "submission": "blocked: beta Xcode 27.1 SDK is not allowed for App Store submission",
+      "symbols": "/Users/sasarei/Library/Developer/Xcode/Archives/2026-10-12/Almost-8.0.1-132-symbols"
+    }
+  ],
+  "build_toolchain": {
+    "developer_dir": "/Applications/Xcode.app/Contents/Developer",
+    "xcode": "26.6",
+    "xcode_build": "17F113"
+  },
+  "archive": "/Users/sasarei/Library/Developer/Xcode/Archives/2026-10-12/Almost-8.0.1-133.xcarchive",
+  "archive_retention": "Active App Review release archive with dSYMs, retained for re-export and crash symbolication",
+  "delivery_uuid": "f71458a6-874f-4d75-b948-8e032854e9d1",
+  "previous_submission": {
+    "id": "23910b92-3483-4b7f-97ee-5dd621e51aab",
+    "state": "COMPLETE",
+    "canceled": true,
+    "reason": "Apple server returned HTTP 500 when resolving the previous rejected review item"
+  },
+  "submission_id": "dc4d8e82-87cb-4c82-8936-8358bbd72825",
+  "submission_state": "WAITING_FOR_REVIEW",
+  "submitted_at": "2026-10-12T11:28:45.777Z",
+  "selected_build_id": "f71458a6-874f-4d75-b948-8e032854e9d1",
+  "app_store_state": "WAITING_FOR_REVIEW",
+  "verified_at_utc": "2026-10-12T11:29:29.155Z",
+  "cleanup": {
+    "temporary_output": "removed",
+    "preserved": [
+      "Approved HTML design source",
+      "Active build 133 Release archive with dSYMs for App Review/re-export/crash symbolication",
+      "Build 132 dSYMs because the uploaded TestFlight build exists"
+    ],
+    "older_artifacts": "preserved"
+  }
+}

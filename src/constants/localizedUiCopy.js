@@ -246,3 +246,67 @@ export const TEMPTATION_DUPLICATE_HINTS = {
   ko: "복사본이 이미 생성되었습니다. 이름과 세부 정보를 수정하세요.",
   ja: "コピーを作成しました。名前と詳細を編集してください。",
 };
+
+// iOS paid offers: the localized price includes the actual billing period.
+export const PAYWALL_PAID_NOTICE_TEMPLATE_BY_LANGUAGE = {
+  ru: "{{price}}. Автоматическое продление. Отмена в {{store}}.",
+  en: "{{price}}. Automatically renews. Cancel in {{store}}.",
+  es: "{{price}}. Se renueva automáticamente. Cancela en {{store}}.",
+  fr: "{{price}}. Renouvellement automatique. Annulez via {{store}}.",
+  de: "{{price}}. Automatische Verlängerung. In {{store}} kündigen.",
+  pt: "{{price}}. Renovação automática. Cancele em {{store}}.",
+  it: "{{price}}. Rinnovo automatico. Annulla su {{store}}.",
+  ar: "{{price}}. يتجدد تلقائياً. ألغِ عبر {{store}}.",
+  "zh-Hant": "{{price}}。自動續訂。可透過 {{store}} 取消。",
+  zh: "{{price}}。自动续订。可通过 {{store}} 取消。",
+  ko: "{{price}}. 자동 갱신됩니다. {{store}}에서 취소하세요.",
+  ja: "{{price}}。自動更新されます。{{store}}で解約できます。",
+};
+
+export const PAYWALL_PAID_CTA_BY_LANGUAGE = {
+  ru: "Оформить подписку",
+  en: "Subscribe",
+  es: "Suscribirse",
+  fr: "S’abonner",
+  de: "Abonnieren",
+  pt: "Subscrever",
+  it: "Abbonati",
+  ar: "اشترك",
+  "zh-Hant": "訂閱",
+  zh: "订阅",
+  ko: "구독하기",
+  ja: "登録する",
+};
+
+
+// Short visual footer labels; full action names remain available to VoiceOver.
+export const PAYWALL_DOCK_COPY_BY_LANGUAGE = {
+  ru: { manage: "Подписка", restore: "Восстановить", terms: "Условия", privacy: "Приватность" },
+  en: { manage: "Manage", restore: "Restore", terms: "Terms", privacy: "Privacy" },
+  es: { manage: "Suscripción", restore: "Restaurar", terms: "Términos", privacy: "Privacidad" },
+  fr: { manage: "Abonnement", restore: "Restaurer", terms: "Conditions", privacy: "Vie privée" },
+  de: { manage: "Verwalten", restore: "Käufe laden", terms: "AGB", privacy: "Datenschutz" },
+  pt: { manage: "Subscrição", restore: "Restaurar", terms: "Termos", privacy: "Privacidade" },
+  it: { manage: "Abbonamento", restore: "Ripristina", terms: "Termini", privacy: "Privacy" },
+  ar: { manage: "الاشتراك", restore: "استعادة", terms: "الشروط", privacy: "الخصوصية" },
+  "zh-Hant": { manage: "管理訂閱", restore: "恢復購買", terms: "條款", privacy: "隱私" },
+  zh: { manage: "管理订阅", restore: "恢复购买", terms: "条款", privacy: "隐私" },
+  ko: { manage: "구독 관리", restore: "구매 복원", terms: "약관", privacy: "개인정보" },
+  ja: { manage: "購読を管理", restore: "購入を復元", terms: "利用規約", privacy: "プライバシー" },
+};
+
+
+export const PAYWALL_IOS_TRIAL_NOTICE_BY_LANGUAGE = {
+  ru: "{{trial}}, затем {{price}}.",
+  en: "{{trial}}, then {{price}}.",
+  es: "{{trial}}, después {{price}}.",
+  fr: "{{trial}}, puis {{price}}.",
+  de: "{{trial}}, danach {{price}}.",
+  pt: "{{trial}}, depois {{price}}.",
+  it: "{{trial}}, poi {{price}}.",
+  ar: "{{trial}}، ثم {{price}}.",
+  "zh-Hant": "{{trial}}，之後 {{price}}。",
+  zh: "{{trial}}，之后 {{price}}。",
+  ko: "{{trial}}, 이후 {{price}}.",
+  ja: "{{trial}}、その後は{{price}}。",
+};

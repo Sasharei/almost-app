@@ -1086,7 +1086,7 @@
     },
     {
       "id": "premium-trial-terms-visibility",
-      "description": "The active yearly trial keeps its exact duration on the yearly plan card, preselects the eligible trial on opening, shows the exact duration on the highlighted toggle and next to the CTA, keeps manual plan/toggle choices stable, and preserves post-trial price, renewal, cancellation, and charge-avoidance terms next to the purchase action.",
+      "description": "The active yearly trial keeps its exact duration on the yearly plan card, preselects the eligible trial on opening, shows the exact duration next to the CTA, keeps manual plan choices stable and the Android toggle intact; iOS automatically includes eligible trial and has no toggle, and keeps the post-trial renewal price next to the purchase action. iOS uses only duration and price as explicitly requested on 2026-10-12; Android preserves its original renewal/cancellation/charge-avoidance notice.",
       "file": "src/components/PremiumPaywallModalV2.js",
       "requiredFragments": [
         "copy?.v2FreeTrialToggleTitle || localizedUi.freeTrialToggleTitle",
@@ -1098,7 +1098,9 @@
         "selectedTrialPriceLine",
         "styles.trialDisclosureBlock",
         "selectedPlanTrialNotice || billingNotice",
-        "selectedPlanTrialNotice || billingNotice"
+        "const shouldShowFreeTrialToggle = Platform.OS !== \"ios\" &&",
+        "resolvePaywallTrialEnabled({",
+        "{subscriptionNotice}"
       ]
     },
     {
@@ -2153,7 +2155,7 @@
     },
     {
       "id": "premium-paywall-compact-scroll-flow",
-      "description": "The approved paywall has an illustrated opening, three primary benefits with all original insights reachable via expansion, reassurance before three parallel plan columns, exact yearly trial duration and total pricing, and preserved purchase/restore/manage/legal/dismiss callbacks. Large text stacks the plan columns.",
+      "description": "The paywall keeps compact iOS cards with one-line trial badges and inline billing periods, management in the compact footer, and pricing before benefits on small iOS screens. Android retains its existing layout. The paywall has an illustrated opening, three primary benefits with all original insights reachable via expansion, reassurance before three parallel plan columns, exact yearly trial duration and total pricing, and preserved purchase/restore/manage/legal/dismiss callbacks. Large text stacks the plan columns.",
       "file": "src/components/PremiumPaywallModalV2.js",
       "requiredFragments": [
         "heroHeight: 96,",
@@ -2175,10 +2177,15 @@
         "key={dynamicTypeLayoutKey}",
         "maxFontSizeMultiplier={PAYWALL_CONTENT_MAX_FONT_SIZE_MULTIPLIER}",
         "isAccessibilityText ? styles.secondaryButtonsColumn : null",
-        "height: compactTier.ctaHeight,",
+        "height: Platform.OS === \"ios\" ? Math.max(56, compactTier.ctaHeight) : compactTier.ctaHeight,",
         "maxFontSizeMultiplier={PAYWALL_CONTROL_MAX_FONT_SIZE_MULTIPLIER}",
         "adjustsFontSizeToFit",
         "onPress={handlePrimaryPress}",
+        "styles.iosOfferPlanRibbon",
+        "iosOfferPlan: { minHeight: 100,",
+        "const planChoices = (",
+        "Platform.OS === \"ios\" && isCompactOffer ? planChoices : null",
+        "dockCopy.manage",
         "styles.offerPlans",
         "isAccessibilityText ? styles.offerPlansAccessible : null",
         "setBenefitsExpanded((value) => !value)",

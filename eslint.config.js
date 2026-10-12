@@ -17,6 +17,20 @@ module.exports = defineConfig([
   },
   ...expoConfig,
   {
+    // Maestro injects these globals into runScript files.
+    files: ["qa/immunity-runtime-2026-10-10/seed.js"],
+    languageOptions: {
+      globals: {
+        http: "readonly",
+        LANG: "readonly",
+        THEME: "readonly",
+        ACCENT: "readonly",
+        json: "readonly",
+        output: "readonly",
+      },
+    },
+  },
+  {
     linterOptions: {
       reportUnusedDisableDirectives: "off",
     },

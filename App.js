@@ -275,6 +275,7 @@ import {
   PAYWALL_DIGIT_FRAGMENT_REGEX,
   PAYWALL_ALERT_COPY,
 } from "./src/constants/paywallCopy";
+import { resolvePaywallPurchaseOffer } from "./src/monetization/paywallOffer";
 import {
   WEEKDAY_FULL_LABELS,
   HEALTH_COIN_LABELS,
@@ -2793,13 +2794,14 @@ const buildPaywallNowPriceLabel = ({
 };
 const buildPaywallTrialNotice = ({
   postTrialPriceLabel = "",
+  trialDays = null,
   language = "en",
   platform = Platform.OS,
 } = {}) => {
   const normalizedPriceLabel = String(postTrialPriceLabel || "").trim();
   if (!normalizedPriceLabel) return "";
   const lang = resolveMonetizationLanguage(language);
-  const trialLabel = buildPaywallTrialLabel({ language: lang });
+  const trialLabel = buildPaywallTrialLabel({ trialDays, language: lang });
   const storeLabel = platform === "ios" ? "App Store" : "Google Play";
   const template =
     PAYWALL_TRIAL_NOTICE_TEMPLATE_BY_LANGUAGE[lang] ||
@@ -60203,8 +60205,8 @@ function AppContent() {
       );
       const trialEligibleForProduct =
         Platform.OS !== "ios" ||
-        !trialProductIdentifier ||
-        premiumState.trialEligibilityByProductId?.[trialProductIdentifier] === true;
+        (!!trialProductIdentifier &&
+          premiumState.trialEligibilityByProductId?.[trialProductIdentifier] === true);
       const freeTrialDaysRaw =
         trialPackage && trialEligibleForProduct
           ? resolveFreeTrialDaysFromPackage(trialPackage)
@@ -60373,6 +60375,7 @@ function AppContent() {
           ? Math.max(1, Math.round(card.freeTrialDays))
           : null;
       const fallbackTrialDays =
+        Platform.OS !== "ios" &&
         card.id === premiumTrialPlanId &&
         card.trialPackage &&
         card.trialEligibleForProduct !== false
@@ -60644,7 +60647,15 @@ function AppContent() {
         secondaryLabel: secondaryLabel || null,
         secondaryKind,
         secondarySubLabel: secondarySubLabel || null,
-        periodEquivalentLabel: periodEquivalentLabel || null,
+        periodEquivalentLabel: Platform.OS === "ios" && hasTrial
+          ? Number.isFinite(trialAmountLocal) && trialAmountLocal > 0
+            ? normalizePaywallEquivalentLabel(`≈ ${normalizePaywallPriceLabel(
+                `${formatCurrency(trialAmountLocal / 12, trialCurrencyCode, {
+                  precisionOverride: Math.max(0, Math.min(2, trialCurrencyPrecision)),
+                })}${monthSuffix}`, trialCurrencyCode
+              )}`)
+            : null
+          : periodEquivalentLabel || null,
         billingLabel: billingLabel || null,
         equivalentLabel,
         ctaPriceLabel,
@@ -60676,6 +60687,7 @@ function AppContent() {
         trialNoticeLabel: hasTrial
           ? buildPaywallTrialNotice({
               postTrialPriceLabel: postTrialPriceLabel || "",
+              trialDays: Platform.OS === "ios" ? resolvedTrialDays : null,
               language: monetizationLanguage,
               platform: Platform.OS,
             })
@@ -62646,8 +62658,9 @@ function AppContent() {
       ) return;
       const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
-      const selectedTrialEnabled =
-        trialEnabled === true && targetPlanId === "yearly" && selectedCard?.hasTrial === true;
+      const { trialEnabled: selectedTrialEnabled } = resolvePaywallPurchaseOffer({
+        platform: Platform.OS, plan: selectedCard, trialEnabled,
+      });
       const trialDays =
         selectedTrialEnabled &&
         Number.isFinite(selectedCard?.trialDays) &&
@@ -62685,11 +62698,10 @@ function AppContent() {
       if (isTransactionAbandonedPurchase && planId !== "monthly") return;
       const targetPlanId = PREMIUM_PLAN_ORDER.includes(planId) ? planId : "monthly";
       const selectedCard = premiumPlanCards.find((entry) => entry.id === targetPlanId) || null;
-      const selectedTrialEnabled =
-        trialEnabled === true && targetPlanId === "yearly" && selectedCard?.hasTrial === true;
-      let selectedPackage = selectedTrialEnabled
-        ? selectedCard?.trialPackage || null
-        : selectedCard?.package || null;
+      const { trialEnabled: selectedTrialEnabled, package: offerPackage } = resolvePaywallPurchaseOffer({
+        platform: Platform.OS, plan: selectedCard, trialEnabled,
+      });
+      let selectedPackage = offerPackage;
       const selectedProduct = selectedPackage?.product || null;
       const currencyCode = String(
         resolveStoreProductCurrencyCode(
