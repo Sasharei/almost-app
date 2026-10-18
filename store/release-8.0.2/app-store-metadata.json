@@ -1,0 +1,72 @@
+[
+  {
+    "locale": "en-US",
+    "whatsNew": "We fixed many bugs and errors and improved app stability for a more reliable everyday experience. Thank you for using Almost Savings!",
+    "promotionalText": "Pause impulse purchases, track your savings goals and build mindful spending habits with Almost Savings. Now with improved stability and many bug fixes."
+  },
+  {
+    "locale": "ru",
+    "whatsNew": "Исправили множество багов и ошибок и повысили стабильность приложения, чтобы пользоваться Almost Savings каждый день было ещё удобнее. Спасибо, что вы с нами!",
+    "promotionalText": "Остановите импульсивные покупки, следите за целями и формируйте осознанные привычки с Almost Savings. Теперь стабильнее, с множеством исправлений."
+  },
+  {
+    "locale": "es-ES",
+    "whatsNew": "Hemos corregido numerosos fallos y errores y mejorado la estabilidad de la app para ofrecerte una experiencia diaria más fiable. ¡Gracias por usar Almost Savings!",
+    "promotionalText": "Frena las compras impulsivas, sigue tus metas y crea hábitos de gasto conscientes con Almost Savings. Ahora con mayor estabilidad y numerosos errores corregidos."
+  },
+  {
+    "locale": "es-MX",
+    "whatsNew": "Corregimos numerosos fallos y errores y mejoramos la estabilidad de la app para que tu experiencia diaria sea más confiable. ¡Gracias por usar Almost Savings!",
+    "promotionalText": "Frena las compras impulsivas, sigue tus metas y crea hábitos de gasto conscientes con Almost Savings. Ahora con mayor estabilidad y numerosos errores corregidos."
+  },
+  {
+    "locale": "fr-FR",
+    "whatsNew": "Nous avons corrigé de nombreux bugs et erreurs et amélioré la stabilité de l’app pour une expérience plus fiable au quotidien. Merci d’utiliser Almost Savings !",
+    "promotionalText": "Freinez les achats impulsifs et suivez vos objectifs avec Almost Savings. Adoptez des habitudes plus réfléchies avec une app plus stable et de nombreux bugs corrigés."
+  },
+  {
+    "locale": "de-DE",
+    "whatsNew": "Wir haben zahlreiche Fehler behoben und die Stabilität der App verbessert, damit du Almost Savings im Alltag noch zuverlässiger nutzen kannst. Danke, dass du dabei bist!",
+    "promotionalText": "Bremse Impulskäufe, verfolge deine Sparziele und gib bewusster Geld aus mit Almost Savings. Jetzt mit verbesserter Stabilität und zahlreichen Fehlerbehebungen."
+  },
+  {
+    "locale": "it",
+    "whatsNew": "Abbiamo corretto numerosi bug ed errori e migliorato la stabilità dell’app per un’esperienza quotidiana più affidabile. Grazie per aver scelto Almost Savings!",
+    "promotionalText": "Frena gli acquisti impulsivi, segui i tuoi obiettivi e spendi in modo consapevole con Almost Savings. Ora più stabile, con numerosi errori corretti."
+  },
+  {
+    "locale": "pt-BR",
+    "whatsNew": "Corrigimos diversos bugs e erros e melhoramos a estabilidade do app para uma experiência mais confiável no dia a dia. Obrigado por usar o Almost Savings!",
+    "promotionalText": "Reduza as compras por impulso, acompanhe suas metas e crie hábitos de consumo conscientes com Almost Savings. Agora mais estável e com diversos erros corrigidos."
+  },
+  {
+    "locale": "pt-PT",
+    "whatsNew": "Corrigimos vários erros e melhorámos a estabilidade da aplicação para uma experiência mais fiável no dia a dia. Obrigado por usar o Almost Savings!",
+    "promotionalText": "Reduza as compras por impulso, acompanhe as suas metas e crie hábitos de consumo conscientes com Almost Savings. Agora mais estável e com vários erros corrigidos."
+  },
+  {
+    "locale": "ar-SA",
+    "whatsNew": "أصلحنا العديد من الأخطاء وحسّنا استقرار التطبيق لتجربة يومية أكثر موثوقية. شكرًا لاستخدامك Almost Savings!",
+    "promotionalText": "تأنّ قبل الشراء الاندفاعي، وتابع أهداف الادخار وابنِ عادات إنفاق واعية مع Almost Savings. الآن باستقرار أفضل وإصلاحات عديدة للأخطاء."
+  },
+  {
+    "locale": "ja",
+    "whatsNew": "多数の不具合やエラーを修正し、アプリの安定性を向上させました。毎日さらに安心してお使いいただけます。Almost Savingsをご利用いただきありがとうございます！",
+    "promotionalText": "衝動買いを一度ストップ。Almost Savingsで貯蓄目標を確認し、お金の使い方を見直しましょう。安定性が向上し、多くの不具合を修正しました。"
+  },
+  {
+    "locale": "ko",
+    "whatsNew": "다양한 버그와 오류를 수정하고 앱 안정성을 개선하여 매일 더 안정적으로 사용할 수 있도록 했어요. Almost Savings를 이용해 주셔서 감사합니다!",
+    "promotionalText": "충동구매를 잠시 멈추고, 저축 목표를 확인하며 현명한 소비 습관을 만들어 보세요. Almost Savings가 안정성 개선과 다양한 오류 수정으로 더 좋아졌어요."
+  },
+  {
+    "locale": "zh-Hans",
+    "whatsNew": "我们修复了许多问题和错误，并提升了应用的稳定性，让日常使用更加可靠。感谢使用 Almost Savings！",
+    "promotionalText": "暂停冲动购物，追踪储蓄目标，与 Almost Savings 一起养成理性消费习惯。现已提升稳定性，并修复多项问题。"
+  },
+  {
+    "locale": "zh-Hant",
+    "whatsNew": "我們修復了許多問題和錯誤，並提升了 App 的穩定性，讓日常使用更加可靠。感謝使用 Almost Savings！",
+    "promotionalText": "暫停衝動購物，追蹤儲蓄目標，與 Almost Savings 一起養成理性消費習慣。現已提升穩定性，並修復多項問題。"
+  }
+]

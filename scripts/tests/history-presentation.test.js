@@ -1,6 +1,16 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
+test("expense source labels distinguish imported and legacy manual expenses without relabeling other events", () => {
+  const { historyExpenseSourceLabel } = require("../../src/utils/historyPresentation");
+  const t = (key) => key;
+  assert.equal(historyExpenseSourceLabel({ kind: "spend", meta: { source: "apple-pay" } }, t), "historySourceApplePay");
+  assert.equal(historyExpenseSourceLabel({ kind: "spend" }, t), "historySourceManual");
+  assert.equal(historyExpenseSourceLabel({ kind: "spend", meta: { source: "quick_entry" } }, t), "historySourceManual");
+  assert.equal(historyExpenseSourceLabel({ kind: "decline" }, t), "");
+  assert.equal(historyExpenseSourceLabel(null, t), "");
+});
+
 const {
   HISTORY_EVENT_BUCKETS,
   HISTORY_SORT_MODES,
@@ -52,4 +62,17 @@ test("history supports newest, oldest, and category sorting", () => {
     ),
     ["spent", "goal", "other", "saved"]
   );
+});
+
+
+test("only saved Wallet spend projections with a receipt identity offer receipt editing", () => {
+  const { isWalletHistoryEntry } = require("../../src/utils/historyPresentation");
+  const imported = { kind: "spend", meta: { source: "apple-pay", receiptId: "older-receipt" } };
+  assert.equal(isWalletHistoryEntry(imported), true);
+  for (const entry of [null, {}, { kind: "spend" },
+    { ...imported, kind: "decline" },
+    { ...imported, meta: { source: "quick_entry", receiptId: "older-receipt" } },
+    { ...imported, meta: { source: "apple-pay", receiptId: "" } }]) {
+    assert.equal(isWalletHistoryEntry(entry), false);
+  }
 });

@@ -409,3 +409,106 @@ test("production decay freezes fullness, mood and cleanliness until the shared p
   assert.ok(expired.mood < state.mood);
   assert.ok(expired.cleanliness < state.cleanliness);
 });
+
+const heroRewardStatus = evaluate("resolveTamagotchiHourlyRewardStatus", {
+  ...pressureContext, TAMAGOTCHI_HOURLY_REWARD_INTERVAL_MS: hour,
+  resolveTamagotchiHourlyRewardBlockReason: () => null,
+});
+const heroCareContext = {
+  ...pressureContext,
+  TAMAGOTCHI_START_STATE: { hunger: 100, mood: 100, cleanliness: 100 },
+  TAMAGOTCHI_NEED_ATTENTION_THRESHOLD: evaluate("TAMAGOTCHI_NEED_ATTENTION_THRESHOLD", {}),
+  TAMAGOTCHI_LOW_MOOD_THRESHOLD: evaluate("TAMAGOTCHI_LOW_MOOD_THRESHOLD", {}),
+  TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD: evaluate("TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD", {}),
+};
+const heroBadge = evaluate("resolveTamagotchiHeroBadge", {
+  ...heroCareContext, resolveTamagotchiHourlyRewardStatus: heroRewardStatus,
+  resolveTamagotchiCarePressure: evaluate("resolveTamagotchiCarePressure", heroCareContext),
+});
+test("Hero badge uses earned rewards, prioritizes collection over hunger and clears after care", () => {
+  const healthy = { hunger: 100, mood: 100, pendingHourlyReward: 0 };
+  assert.equal(heroBadge(healthy, now), null);
+  assert.equal(heroBadge({ ...healthy, rewardWindowStartAt: now - hour }, now), null,
+    "elapsed time alone must not promise an unearned reward");
+  const hungry = { ...healthy, hunger: heroCareContext.TAMAGOTCHI_NEED_ATTENTION_THRESHOLD };
+  assert.equal(heroBadge(hungry, now), "food");
+  assert.equal(heroBadge({ ...hungry, hunger: heroCareContext.TAMAGOTCHI_NEED_ATTENTION_THRESHOLD + 1 }, now), null);
+  const earned = { ...hungry, pendingHourlyReward: 5 };
+  assert.equal(heroBadge(earned, now), "reward");
+  assert.equal(heroBadge({ ...earned, pendingHourlyReward: 0 }, now), "food");
+  assert.equal(heroBadge({ ...earned, hunger: 100, pendingHourlyReward: 0 }, now), null);
+});
+test("Hero hunger badge respects party protection through expiry without hiding earned rewards", () => {
+  const protectedCat = { hunger: 0, mood: 100, hungerImmunityUntil: now + hour };
+  assert.equal(heroBadge(protectedCat, now), null);
+  assert.equal(heroBadge(protectedCat, now + hour - 1), null);
+  assert.equal(heroBadge(protectedCat, now + hour), "food");
+  assert.equal(heroBadge({ ...protectedCat, pendingHourlyReward: 5 }, now), "reward");
+});
+
+test("Hero shows play and clean needs at production thresholds, choosing the lowest stat", () => {
+  const healthy = { hunger: 100, mood: 100, cleanliness: 100 };
+  const mood = heroCareContext.TAMAGOTCHI_LOW_MOOD_THRESHOLD;
+  const cleanliness = heroCareContext.TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD;
+  assert.equal(heroBadge({ ...healthy, mood }, now), "play");
+  assert.equal(heroBadge({ ...healthy, mood: mood + 1 }, now), null);
+  assert.equal(heroBadge({ ...healthy, cleanliness }, now), "clean");
+  assert.equal(heroBadge({ ...healthy, cleanliness: cleanliness + 1 }, now), null);
+  const allNeeds = { hunger: 30, mood: 20, cleanliness: 10 };
+  assert.equal(heroBadge(allNeeds, now), "clean");
+  assert.equal(heroBadge({ ...allNeeds, cleanliness: 100 }, now), "play");
+  assert.equal(heroBadge({ ...allNeeds, mood: 100, cleanliness: 100 }, now), "food");
+  for (const state of [allNeeds, { ...healthy, lastPlayedAt: new Date(now - 72 * hour).toISOString() }]) {
+    assert.ok(heroBadge(state, now));
+    assert.equal(heroBadge({ ...state, hungerImmunityUntil: now + hour }, now), null);
+    assert.equal(heroBadge({ ...state, pendingHourlyReward: 5 }, now), "reward");
+  }
+});
+
+test("Hero dirt grows with actual cleanliness and is drawn only by the source silhouette", () => {
+  const dirtyLevel = evaluate("getTamagotchiDirtyVisualLevel", {
+    TAMAGOTCHI_MAX_STATE_VALUE: 100,
+    ...Object.fromEntries(["TAMAGOTCHI_DIRTY_SOFT_CLEANLINESS_THRESHOLD", "TAMAGOTCHI_DIRTY_SOFT_MAX_VISUAL", "TAMAGOTCHI_DIRTY_STEEP_CURVE_EXPONENT"].map((key) => [key, evaluate(key, {})])),
+  });
+  const code = babel.transformSync(`(${source("TamagotchiHeroImage", true)})`, {
+    configFile: false, babelrc: false, plugins: ["@babel/plugin-transform-react-jsx"],
+  }).code;
+  const render = vm.runInNewContext(code, {
+    React: { createElement: (type, props, ...children) => ({ type, props, children }) },
+    View: "view", Image: "image",
+  });
+  const imageSource = { uri: "cached-selected-skin.gif" };
+  let previousOpacity = -1;
+  for (const cleanliness of [100, 80, 60, 30, 15, 0]) {
+    const tree = render({ source: imageSource, size: 96, dirtyLevel: dirtyLevel(cleanliness) });
+    assert.equal(tree.props.pointerEvents, "none");
+    assert.equal(tree.props.style.backgroundColor, undefined);
+    const [base, dirt] = tree.children;
+    assert.equal(base.type, "image");
+    assert.equal(dirt.type, "image", "no rectangular color View may cover the mascot");
+    assert.equal(base.props.source, imageSource);
+    assert.equal(dirt.props.source, imageSource, "selected animated skin is also the alpha mask");
+    assert.equal(dirt.props.style.width, base.props.style.width);
+    assert.equal(dirt.props.style.height, base.props.style.height);
+    assert.equal(dirt.props.resizeMode, base.props.resizeMode);
+    assert.ok(dirt.props.style.tintColor);
+    assert.equal(dirt.props.style.backgroundColor, undefined);
+    assert.ok(dirt.props.style.opacity >= previousOpacity);
+    if (cleanliness === 100) assert.equal(dirt.props.style.opacity, 0);
+    if (cleanliness === 0) assert.ok(dirt.props.style.opacity > 0.5);
+    previousOpacity = dirt.props.style.opacity;
+  }
+});
+
+test("Hero care entry opens the matching tab while ordinary entries and reward collection retain Food", () => {
+  const tabs = [];
+  const run = evaluate("openTamagotchiOverlay", {
+    triggerHaptic: () => {}, Haptics: { ImpactFeedbackStyle: {} }, playSound: () => {},
+    setTamagotchiClosing: () => {}, setTamagotchiActiveTab: (tab) => tabs.push(tab),
+    setTamagotchiCleanToolArmed: () => {}, tamagotchiTabContentAnim: { setValue: () => {} },
+    tamagotchiTabSwitchingRef: {}, setTamagotchiModalMounted: () => {},
+    setTamagotchiVisible: (update) => assert.equal(update(false), true), logEvent: () => {},
+  }, true);
+  for (const target of ["food", "play", "clean", "reward", undefined, { nativeEvent: {} }]) run(target);
+  assert.deepEqual(tabs, ["food", "play", "clean", "food", "food", "food"]);
+});

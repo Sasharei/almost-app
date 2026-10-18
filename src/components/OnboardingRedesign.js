@@ -1530,12 +1530,12 @@ function BottomSheetScaffold({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Math.max(0, keyboardOffset)}
       >
-        <TouchableWithoutFeedback onPress={() => {
+        <TouchableWithoutFeedback accessible={false} onPress={() => {
           Keyboard.dismiss();
           onClose?.();
         }}>
           <View style={styles.sheetBackdrop}>
-            <TouchableWithoutFeedback onPress={() => {}}>
+            <TouchableWithoutFeedback accessible={false} onPress={() => {}}>
               <View
                 style={[
                   styles.sheet,

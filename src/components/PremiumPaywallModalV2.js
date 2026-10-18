@@ -1,3 +1,4 @@
+import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { expenseCopy } from "../bankExpenses/useBankExpenses";
 import PlatformSurface, { PlatformTouchableOpacity } from "./PlatformSurface";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -768,6 +769,7 @@ const PremiumPaywallModalV2 = ({
   premiumAccent = null,
   statusBarOverlay = null,
 }) => {
+  const { reduceMotion } = useMotionPreferences();
   const { height: viewportHeight, fontScale } = useWindowDimensions();
   const [benefitsExpanded, setBenefitsExpanded] = useState(false);
   const designCopy = PAYWALL_DESIGN_COPY[resolveLanguageKey(language)] || PAYWALL_DESIGN_COPY.en;
@@ -1284,7 +1286,7 @@ const PremiumPaywallModalV2 = ({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={reduceMotion ? "fade" : "slide"}
       statusBarTranslucent
       onRequestClose={() => {
         if (abandonedWheelActive) {

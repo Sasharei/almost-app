@@ -1,0 +1,76 @@
+# Same simulator-only real-component fixture as component-ios17.yaml / component-ios26.yaml.
+appId: com.sasarei.almostclean
+---
+- assertVisible: Native iOS share available
+- tapOn:
+    id: qa-theme-light
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-light
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-dark
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-dark
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-indigo
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-indigo
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-emerald
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-emerald
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-sunset
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-sunset
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-gold
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-gold
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-violet
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-violet
+- tapOn:
+    id: cloud-deletion-cancel
+- tapOn:
+    id: qa-theme-aqua
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- takeScreenshot: confirmation-aqua
+- tapOn:
+    id: cloud-deletion-cancel

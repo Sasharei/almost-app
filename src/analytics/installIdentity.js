@@ -36,3 +36,6 @@ export const ensurePremiumInstallId = () => {
   }
   return installIdInFlight;
 };
+
+// Privacy requests must not create a replacement identity.
+export const readExistingPremiumInstallId = () => AsyncStorage.getItem(STORAGE_KEYS.PREMIUM_INSTALL_ID);

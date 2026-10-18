@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E8BA00000000000000000081 /* WalletExpenseAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000080 /* WalletExpenseAttributes.swift */; };
 		024E8D6715014DC52798C3B3 /* ShoppingBlockerMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0A71B87D31A4000100AF0001 /* AdSupport.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A71B87D31A4000100AF0002 /* AdSupport.framework */; };
 		0AECE44331EC5EB8B7D01377 /* ShoppingBlockerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */; };
@@ -26,6 +25,7 @@
 		5DD5CA604AEACC019662741F /* ShoppingSavings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */; };
 		6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46AFD3CF6A027E5B2C13D5DB /* PrivacyInfo.xcprivacy */; };
 		960A46E13EED6344BDD90DBA /* ShoppingBlockerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = FDE257C01245D67F7C150F45 /* ShoppingBlockerBridge.m */; };
+		A14000000000000000000002 /* Almost/AlmostPrivacySharing.m in Sources */ = {isa = PBXBuildFile; fileRef = A14000000000000000000001 /* Almost/AlmostPrivacySharing.m */; };
 		A17A61000000000000000001 /* AlmostGlass.icon in Resources */ = {isa = PBXBuildFile; fileRef = A17A61000000000000000002 /* AlmostGlass.icon */; };
 		A19A00000000000000000003 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A19A00000000000000000002 /* InfoPlist.strings */; };
 		ACB290B1B3731D3D91BF824A /* ShoppingBlockerShield.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BDDF6E693A2C0B0823AE2147 /* ShoppingBlockerShield.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -42,14 +42,15 @@
 		D9355780CAD539F2CD910D19 /* ShoppingBlockerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */; };
 		E411526C05948DB9E78B1F5D /* ShoppingBlockerMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DAB3FFA34776C08E523DDAF /* ShoppingBlockerMonitor.swift */; };
 		E8AF6F8E5D854CA4BF694995 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 624F683552E75C24A4F0B14F /* Foundation.framework */; };
-		E8BA00000000000000000065 /* BankExpenses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000001 /* BankExpenses.swift */; };
-		E8BA00000000000000000066 /* BankExpensesBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000002 /* BankExpensesBridge.m */; };
-		E8BA00000000000000000067 /* ExpenseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000003 /* ExpenseParser.swift */; };
-		E8BA00000000000000000068 /* ExpensePatterns.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000004 /* ExpensePatterns.swift */; };
-		E8BA00000000000000000069 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000005 /* Localizable.xcstrings */; };
+		E8BA00000000000000000065 /* Almost/BankExpenses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000001 /* Almost/BankExpenses.swift */; };
+		E8BA00000000000000000066 /* Almost/BankExpensesBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000002 /* Almost/BankExpensesBridge.m */; };
+		E8BA00000000000000000067 /* Almost/ExpenseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000003 /* Almost/ExpenseParser.swift */; };
+		E8BA00000000000000000068 /* Almost/ExpensePatterns.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000004 /* Almost/ExpensePatterns.swift */; };
+		E8BA00000000000000000069 /* Almost/Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000005 /* Almost/Localizable.xcstrings */; };
 		E8BA0000000000000000006A /* AppShortcuts.strings in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000006 /* AppShortcuts.strings */; };
-		E8BA00000000000000000079 /* AlmostApplePayAction.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */; };
-		E8BA0000000000000000007A /* AlmostApplePayAutomation.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */; };
+		E8BA00000000000000000079 /* Almost/AlmostApplePayAction.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000015 /* Almost/AlmostApplePayAction.shortcut */; };
+		E8BA0000000000000000007A /* Almost/AlmostApplePayAutomation.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000016 /* Almost/AlmostApplePayAutomation.shortcut */; };
+		E8BA00000000000000000081 /* Almost Widget/WalletExpenseAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BA00000000000000000080 /* Almost Widget/WalletExpenseAttributes.swift */; };
 		ECA403849D38506028A1BAC6 /* ShoppingBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD0CFB81B9F9BC2BD4F33D8 /* ShoppingBlocker.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F29FE1207C3DAD8ABDAA8BBD /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 5470B128D5138A24963E87FA /* Localizable.strings */; };
@@ -105,7 +106,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		E8BA00000000000000000080 /* WalletExpenseAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Almost Widget/WalletExpenseAttributes.swift"; sourceTree = "<group>"; };
 		014B2D0DC888075F72840748 /* ShoppingBlockerMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShoppingBlockerMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0980DD33B165AAC6CA6C0482 /* ShoppingBlockerShield.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShoppingBlockerShield.swift; sourceTree = "<group>"; };
 		0A71B87D31A4000100AF0002 /* AdSupport.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AdSupport.framework; path = System/Library/Frameworks/AdSupport.framework; sourceTree = SDKROOT; };
@@ -139,6 +139,7 @@
 		848F000B85CA5B43A40D01BE /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Almost/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		860A31576FE4ACBEB571B99C /* pt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = pt; path = pt.lproj/Localizable.strings; sourceTree = "<group>"; };
 		912432696A9AFE5E5F0DF360 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = Almost/pt.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		A14000000000000000000001 /* Almost/AlmostPrivacySharing.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Almost/AlmostPrivacySharing.m; sourceTree = "<group>"; };
 		A17A61000000000000000002 /* AlmostGlass.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.icon; name = AlmostGlass.icon; path = Almost/AlmostGlass.icon; sourceTree = "<group>"; };
 		A1877ED83B4BBB6860E6DDEF /* de */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A19A00000000000000000001 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = Almost/ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -171,13 +172,14 @@
 		DD95BECD8918810B9E6BD6EA /* it */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E184C9BDEF3BBB6B48471387 /* Pods-Almost.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Almost.debug.xcconfig"; path = "Target Support Files/Pods-Almost/Pods-Almost.debug.xcconfig"; sourceTree = "<group>"; };
 		E1A5AC99A45D86014A21E9B4 /* libPods-Almost.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Almost.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		E8BA00000000000000000001 /* BankExpenses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/BankExpenses.swift; sourceTree = "<group>"; };
-		E8BA00000000000000000002 /* BankExpensesBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Almost/BankExpensesBridge.m; sourceTree = "<group>"; };
-		E8BA00000000000000000003 /* ExpenseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpenseParser.swift; sourceTree = "<group>"; };
-		E8BA00000000000000000004 /* ExpensePatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpensePatterns.swift; sourceTree = "<group>"; };
-		E8BA00000000000000000005 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Almost/Localizable.xcstrings; sourceTree = "<group>"; };
-		E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAction.shortcut; sourceTree = "<group>"; };
-		E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAutomation.shortcut; sourceTree = "<group>"; };
+		E8BA00000000000000000001 /* Almost/BankExpenses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/BankExpenses.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000002 /* Almost/BankExpensesBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Almost/BankExpensesBridge.m; sourceTree = "<group>"; };
+		E8BA00000000000000000003 /* Almost/ExpenseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpenseParser.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000004 /* Almost/ExpensePatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Almost/ExpensePatterns.swift; sourceTree = "<group>"; };
+		E8BA00000000000000000005 /* Almost/Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Almost/Localizable.xcstrings; sourceTree = "<group>"; };
+		E8BA00000000000000000015 /* Almost/AlmostApplePayAction.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAction.shortcut; sourceTree = "<group>"; };
+		E8BA00000000000000000016 /* Almost/AlmostApplePayAutomation.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = Almost/AlmostApplePayAutomation.shortcut; sourceTree = "<group>"; };
+		E8BA00000000000000000080 /* Almost Widget/WalletExpenseAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Almost Widget/WalletExpenseAttributes.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		ED40D8923F7192C1DC3C08BE /* ru */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Almost/AppDelegate.swift; sourceTree = "<group>"; };
@@ -187,7 +189,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		415746B52F48796B00EA9099 /* Exceptions for "Almost Widget" folder in "Almost WidgetExtension" target */ = {
+		415746B52F48796B00EA9099 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -197,18 +199,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		415746A12F48796A00EA9099 /* Almost Widget */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				415746B52F48796B00EA9099 /* Exceptions for "Almost Widget" folder in "Almost WidgetExtension" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = "Almost Widget";
-			sourceTree = "<group>";
-		};
+		415746A12F48796A00EA9099 /* Almost Widget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (415746B52F48796B00EA9099 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "Almost Widget"; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -269,14 +260,15 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				E8BA00000000000000000015 /* AlmostApplePayAction.shortcut */,
-				E8BA00000000000000000016 /* AlmostApplePayAutomation.shortcut */,
-				E8BA00000000000000000001 /* BankExpenses.swift */,
-				E8BA00000000000000000080 /* WalletExpenseAttributes.swift */,
-				E8BA00000000000000000002 /* BankExpensesBridge.m */,
-				E8BA00000000000000000003 /* ExpenseParser.swift */,
-				E8BA00000000000000000004 /* ExpensePatterns.swift */,
-				E8BA00000000000000000005 /* Localizable.xcstrings */,
+				E8BA00000000000000000015 /* Almost/AlmostApplePayAction.shortcut */,
+				E8BA00000000000000000016 /* Almost/AlmostApplePayAutomation.shortcut */,
+				A14000000000000000000001 /* Almost/AlmostPrivacySharing.m */,
+				E8BA00000000000000000001 /* Almost/BankExpenses.swift */,
+				E8BA00000000000000000080 /* Almost Widget/WalletExpenseAttributes.swift */,
+				E8BA00000000000000000002 /* Almost/BankExpensesBridge.m */,
+				E8BA00000000000000000003 /* Almost/ExpenseParser.swift */,
+				E8BA00000000000000000004 /* Almost/ExpensePatterns.swift */,
+				E8BA00000000000000000005 /* Almost/Localizable.xcstrings */,
 				E8BA00000000000000000006 /* AppShortcuts.strings */,
 				C0A1B2C3D4E5F67890123456 /* WidgetStorage.swift */,
 				C0A1B2C3D4E5F67890123457 /* WidgetStorageBridge.m */,
@@ -327,7 +319,6 @@
 				2A678EE0CF88BC0CACB39F99 /* ShoppingBlockerStore.swift */,
 				68560F1998BC37ED38E4C9F7 /* ShoppingSavings.swift */,
 			);
-			name = ShoppingBlockerShared;
 			path = ShoppingBlockerShared;
 			sourceTree = "<group>";
 		};
@@ -344,7 +335,6 @@
 			children = (
 				317F733DBA0830127E7685E2 /* ShoppingBlockerAction.swift */,
 			);
-			name = ShoppingBlockerAction;
 			path = ShoppingBlockerAction;
 			sourceTree = "<group>";
 		};
@@ -353,7 +343,6 @@
 			children = (
 				0DAB3FFA34776C08E523DDAF /* ShoppingBlockerMonitor.swift */,
 			);
-			name = ShoppingBlockerMonitor;
 			path = ShoppingBlockerMonitor;
 			sourceTree = "<group>";
 		};
@@ -402,7 +391,6 @@
 				0980DD33B165AAC6CA6C0482 /* ShoppingBlockerShield.swift */,
 				5470B128D5138A24963E87FA /* Localizable.strings */,
 			);
-			name = ShoppingBlockerShield;
 			path = ShoppingBlockerShield;
 			sourceTree = "<group>";
 		};
@@ -594,9 +582,9 @@
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				6F42D00884589F074EA5BF96 /* PrivacyInfo.xcprivacy in Resources */,
 				AEDB28E3630946E9AD9BD82C /* GoogleService-Info.plist in Resources */,
-				E8BA00000000000000000079 /* AlmostApplePayAction.shortcut in Resources */,
-				E8BA0000000000000000007A /* AlmostApplePayAutomation.shortcut in Resources */,
-				E8BA00000000000000000069 /* Localizable.xcstrings in Resources */,
+				E8BA00000000000000000079 /* Almost/AlmostApplePayAction.shortcut in Resources */,
+				E8BA0000000000000000007A /* Almost/AlmostApplePayAutomation.shortcut in Resources */,
+				E8BA00000000000000000069 /* Almost/Localizable.xcstrings in Resources */,
 				E8BA0000000000000000006A /* AppShortcuts.strings in Resources */,
 				A19A00000000000000000003 /* InfoPlist.strings in Resources */,
 			);
@@ -676,6 +664,8 @@
 				"$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "[CP-User] [RNFB] Crashlytics Configuration";
+			outputPaths = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "#!/usr/bin/env bash\n#\n# Copyright (c) 2016-present Invertase Limited & Contributors\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this library except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#   http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n#\nset -e\n\nif [[ ${PODS_ROOT} ]]; then\n  echo \"info: Exec FirebaseCrashlytics Run from Pods\"\n  \"${PODS_ROOT}/FirebaseCrashlytics/run\"\nelse\n  echo \"info: Exec FirebaseCrashlytics Run from framework\"\n  \"${PROJECT_DIR}/FirebaseCrashlytics.framework/run\"\nfi\n";
@@ -807,6 +797,8 @@
 				"$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "[CP-User] [RNFB] Core Configuration";
+			outputPaths = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "#!/usr/bin/env bash\n#\n# Copyright (c) 2016-present Invertase Limited & Contributors\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this library except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#   http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n#\n\n##########################################################################\n##########################################################################\n#\n#  NOTE THAT IF YOU CHANGE THIS FILE YOU MUST RUN pod install AFTERWARDS\n#\n#  This file is installed as an Xcode build script in the project file\n#  by cocoapods, and you will not see your changes until you pod install\n#\n##########################################################################\n##########################################################################\n\nset -e\n\n_MAX_LOOKUPS=2;\n_SEARCH_RESULT=''\n_RN_ROOT_EXISTS=''\n_CURRENT_LOOKUPS=1\n_JSON_ROOT=\"'react-native'\"\n_JSON_FILE_NAME='firebase.json'\n_JSON_OUTPUT_BASE64='e30=' # { }\n_CURRENT_SEARCH_DIR=${PROJECT_DIR}\n_PLIST_BUDDY=/usr/libexec/PlistBuddy\n_TARGET_PLIST=\"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}\"\n_DSYM_PLIST=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist\"\n\n# plist arrays\n_PLIST_ENTRY_KEYS=()\n_PLIST_ENTRY_TYPES=()\n_PLIST_ENTRY_VALUES=()\n\nfunction setPlistValue {\n  echo \"note:      setting plist entry '$1' of type '$2' in file '$4'\"\n  ${_PLIST_BUDDY} -c \"Add :$1 $2 '$3'\" $4 || echo \"note:      '$1' already exists\"\n}\n\nfunction getFirebaseJsonKeyValue () {\n  if [[ ${_RN_ROOT_EXISTS} ]]; then\n    ruby -Ku -e \"require 'rubygems';require 'json'; output=JSON.parse('$1'); puts output[$_JSON_ROOT]['$2']\"\n  else\n    echo \"\"\n  fi;\n}\n\nfunction jsonBoolToYesNo () {\n  if [[ $1 == \"false\" ]]; then\n    echo \"NO\"\n  elif [[ $1 == \"true\" ]]; then\n    echo \"YES\"\n  else echo \"NO\"\n  fi\n}\n\necho \"note: -> RNFB build script started\"\necho \"note: 1) Locating ${_JSON_FILE_NAME} file:\"\n\nif [[ -z ${_CURRENT_SEARCH_DIR} ]]; then\n  _CURRENT_SEARCH_DIR=$(pwd)\nfi;\n\nwhile true; do\n  _CURRENT_SEARCH_DIR=$(dirname \"$_CURRENT_SEARCH_DIR\")\n  if [[ \"$_CURRENT_SEARCH_DIR\" == \"/\" ]] || [[ ${_CURRENT_LOOKUPS} -gt ${_MAX_LOOKUPS} ]]; then break; fi;\n  echo \"note:      ($_CURRENT_LOOKUPS of $_MAX_LOOKUPS) Searching in '$_CURRENT_SEARCH_DIR' for a ${_JSON_FILE_NAME} file.\"\n  _SEARCH_RESULT=$(find \"$_CURRENT_SEARCH_DIR\" -maxdepth 2 -name ${_JSON_FILE_NAME} -print | /usr/bin/head -n 1)\n  if [[ ${_SEARCH_RESULT} ]]; then\n    echo \"note:      ${_JSON_FILE_NAME} found at $_SEARCH_RESULT\"\n    break;\n  fi;\n  _CURRENT_LOOKUPS=$((_CURRENT_LOOKUPS+1))\ndone\n\nif [[ ${_SEARCH_RESULT} ]]; then\n  _JSON_OUTPUT_RAW=$(cat \"${_SEARCH_RESULT}\")\n  if ! _RN_ROOT_EXISTS=$(ruby -Ku -e \"require 'json'; output=JSON.parse('$_JSON_OUTPUT_RAW'); puts output[$_JSON_ROOT]\"); then\n    echo \"error: Failed to parse firebase.json, check for syntax errors.\"\n    exit 1\n  fi\n\n  if [[ ${_RN_ROOT_EXISTS} ]]; then\n    if ! python3 --version >/dev/null 2>&1; then echo \"error: python3 not found, firebase.json file processing error.\" && exit 1; fi\n    _JSON_OUTPUT_BASE64=$(python3 -c 'import json,sys,base64;print(base64.b64encode(bytes(json.dumps(json.loads(open('\"'${_SEARCH_RESULT}'\"', '\"'rb'\"').read())['${_JSON_ROOT}']), '\"'utf-8'\"')).decode())' || echo \"e30=\")\n  fi\n\n  _PLIST_ENTRY_KEYS+=(\"firebase_json_raw\")\n  _PLIST_ENTRY_TYPES+=(\"string\")\n  _PLIST_ENTRY_VALUES+=(\"$_JSON_OUTPUT_BASE64\")\n\n  # config.app_data_collection_default_enabled\n  _APP_DATA_COLLECTION_ENABLED=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"app_data_collection_default_enabled\")\n  if [[ $_APP_DATA_COLLECTION_ENABLED ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FirebaseDataCollectionDefaultEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_APP_DATA_COLLECTION_ENABLED\")\")\n  fi\n\n  # config.analytics_auto_collection_enabled\n  _ANALYTICS_AUTO_COLLECTION=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_auto_collection_enabled\")\n  if [[ $_ANALYTICS_AUTO_COLLECTION ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FIREBASE_ANALYTICS_COLLECTION_ENABLED\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_AUTO_COLLECTION\")\")\n  fi\n\n  # config.analytics_collection_deactivated\n  _ANALYTICS_DEACTIVATED=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_collection_deactivated\")\n  if [[ $_ANALYTICS_DEACTIVATED ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_DEACTIVATED\")\")\n  fi\n\n  # config.analytics_idfv_collection_enabled\n  _ANALYTICS_IDFV_COLLECTION=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_idfv_collection_enabled\")\n  if [[ $_ANALYTICS_IDFV_COLLECTION ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_IDFV_COLLECTION_ENABLED\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_IDFV_COLLECTION\")\")\n  fi\n\n  # config.analytics_default_allow_analytics_storage\n  _ANALYTICS_STORAGE=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_default_allow_analytics_storage\")\n  if [[ $_ANALYTICS_STORAGE ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_STORAGE\")\")\n  fi\n\n  # config.analytics_default_allow_ad_storage\n  _ANALYTICS_AD_STORAGE=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_default_allow_ad_storage\")\n  if [[ $_ANALYTICS_AD_STORAGE ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_AD_STORAGE\")\")\n  fi\n\n  # config.analytics_default_allow_ad_user_data\n  _ANALYTICS_AD_USER_DATA=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_default_allow_ad_user_data\")\n  if [[ $_ANALYTICS_AD_USER_DATA ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_USER_DATA\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_AD_USER_DATA\")\")\n  fi\n\n  # config.analytics_default_allow_ad_personalization_signals\n  _ANALYTICS_PERSONALIZATION=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"analytics_default_allow_ad_personalization_signals\")\n  if [[ $_ANALYTICS_PERSONALIZATION ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_PERSONALIZATION\")\")\n  fi\n\n  # config.analytics_registration_with_ad_network_enabled\n  _ANALYTICS_REGISTRATION_WITH_AD_NETWORK=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"google_analytics_registration_with_ad_network_enabled\")\n  if [[ $_ANALYTICS_REGISTRATION_WITH_AD_NETWORK ]]; then\n    _PLIST_ENTRY_KEYS+=(\"GOOGLE_ANALYTICS_REGISTRATION_WITH_AD_NETWORK_ENABLED\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_REGISTRATION_WITH_AD_NETWORK\")\")\n  fi\n\n  # config.google_analytics_automatic_screen_reporting_enabled\n  _ANALYTICS_AUTO_SCREEN_REPORTING=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"google_analytics_automatic_screen_reporting_enabled\")\n  if [[ $_ANALYTICS_AUTO_SCREEN_REPORTING ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FirebaseAutomaticScreenReportingEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_ANALYTICS_AUTO_SCREEN_REPORTING\")\")\n  fi\n\n  # config.perf_auto_collection_enabled\n  _PERF_AUTO_COLLECTION=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"perf_auto_collection_enabled\")\n  if [[ $_PERF_AUTO_COLLECTION ]]; then\n    _PLIST_ENTRY_KEYS+=(\"firebase_performance_collection_enabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_PERF_AUTO_COLLECTION\")\")\n  fi\n\n  # config.perf_collection_deactivated\n  _PERF_DEACTIVATED=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"perf_collection_deactivated\")\n  if [[ $_PERF_DEACTIVATED ]]; then\n    _PLIST_ENTRY_KEYS+=(\"firebase_performance_collection_deactivated\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_PERF_DEACTIVATED\")\")\n  fi\n\n  # config.messaging_auto_init_enabled\n  _MESSAGING_AUTO_INIT=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"messaging_auto_init_enabled\")\n  if [[ $_MESSAGING_AUTO_INIT ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FirebaseMessagingAutoInitEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_MESSAGING_AUTO_INIT\")\")\n  fi\n\n  # config.in_app_messaging_auto_colllection_enabled\n  _FIAM_AUTO_INIT=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"in_app_messaging_auto_collection_enabled\")\n  if [[ $_FIAM_AUTO_INIT ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FirebaseInAppMessagingAutomaticDataCollectionEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_FIAM_AUTO_INIT\")\")\n  fi\n\n  # config.app_check_token_auto_refresh\n  _APP_CHECK_TOKEN_AUTO_REFRESH=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"app_check_token_auto_refresh\")\n  if [[ $_APP_CHECK_TOKEN_AUTO_REFRESH ]]; then\n    _PLIST_ENTRY_KEYS+=(\"FirebaseAppCheckTokenAutoRefreshEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"$(jsonBoolToYesNo \"$_APP_CHECK_TOKEN_AUTO_REFRESH\")\")\n  fi\n\n  # config.crashlytics_disable_auto_disabler - undocumented for now - mainly for debugging, document if becomes useful\n  _CRASHLYTICS_AUTO_DISABLE_ENABLED=$(getFirebaseJsonKeyValue \"$_JSON_OUTPUT_RAW\" \"crashlytics_disable_auto_disabler\")\n  if [[ $_CRASHLYTICS_AUTO_DISABLE_ENABLED == \"true\" ]]; then\n    echo \"Disabled Crashlytics auto disabler.\" # do nothing\n  else\n    _PLIST_ENTRY_KEYS+=(\"FirebaseCrashlyticsCollectionEnabled\")\n    _PLIST_ENTRY_TYPES+=(\"bool\")\n    _PLIST_ENTRY_VALUES+=(\"NO\")\n  fi\nelse\n  _PLIST_ENTRY_KEYS+=(\"firebase_json_raw\")\n  _PLIST_ENTRY_TYPES+=(\"string\")\n  _PLIST_ENTRY_VALUES+=(\"$_JSON_OUTPUT_BASE64\")\n  echo \"warning:   A firebase.json file was not found, whilst this file is optional it is recommended to include it to configure firebase services in React Native Firebase.\"\nfi;\n\necho \"note: 2) Injecting Info.plist entries: \"\n\n# Log out the keys we're adding\nfor i in \"${!_PLIST_ENTRY_KEYS[@]}\"; do\n  echo \"    ->  $i) ${_PLIST_ENTRY_KEYS[$i]}\" \"${_PLIST_ENTRY_TYPES[$i]}\" \"${_PLIST_ENTRY_VALUES[$i]}\"\ndone\n\nfor plist in \"${_TARGET_PLIST}\" \"${_DSYM_PLIST}\" ; do\n  if [[ -f \"${plist}\" ]]; then\n\n    # paths with spaces break the call to setPlistValue. temporarily modify\n    # the shell internal field separator variable (IFS), which normally\n    # includes spaces, to consist only of line breaks\n    oldifs=$IFS\n    IFS=\"\n\"\n\n    for i in \"${!_PLIST_ENTRY_KEYS[@]}\"; do\n      setPlistValue \"${_PLIST_ENTRY_KEYS[$i]}\" \"${_PLIST_ENTRY_TYPES[$i]}\" \"${_PLIST_ENTRY_VALUES[$i]}\" \"${plist}\"\n    done\n\n    # restore the original internal field separator value\n    IFS=$oldifs\n  else\n    echo \"warning:   A Info.plist build output file was not found (${plist})\"\n  fi\ndone\n\necho \"note: <- RNFB build script finished\"\n";
@@ -853,11 +845,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				E8BA00000000000000000065 /* BankExpenses.swift in Sources */,
-				E8BA00000000000000000081 /* WalletExpenseAttributes.swift in Sources */,
-				E8BA00000000000000000066 /* BankExpensesBridge.m in Sources */,
-				E8BA00000000000000000067 /* ExpenseParser.swift in Sources */,
-				E8BA00000000000000000068 /* ExpensePatterns.swift in Sources */,
+				A14000000000000000000002 /* Almost/AlmostPrivacySharing.m in Sources */,
+				E8BA00000000000000000065 /* Almost/BankExpenses.swift in Sources */,
+				E8BA00000000000000000081 /* Almost Widget/WalletExpenseAttributes.swift in Sources */,
+				E8BA00000000000000000066 /* Almost/BankExpensesBridge.m in Sources */,
+				E8BA00000000000000000067 /* Almost/ExpenseParser.swift in Sources */,
+				E8BA00000000000000000068 /* Almost/ExpensePatterns.swift in Sources */,
 				C0A1B2C3D4E5F67890123458 /* WidgetStorage.swift in Sources */,
 				C0A1B2C3D4E5F67890123459 /* WidgetStorageBridge.m in Sources */,
 				D1A2B3C4D5E6F70123456789 /* LiquidGlassNativeViewManager.swift in Sources */,
@@ -1002,7 +995,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AlmostGlass;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -1016,7 +1009,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -1040,7 +1033,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AlmostGlass;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Almost/Almost.entitlements;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = Almost/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
@@ -1049,7 +1042,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -1080,7 +1073,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_ENTITLEMENTS = "Almost Widget/Almost Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1096,7 +1089,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
@@ -1130,7 +1123,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Almost Widget/Almost Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -1146,7 +1139,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.sasarei.almostclean.Almost-Widget";
@@ -1169,7 +1162,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerAction/ShoppingBlockerAction.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerAction/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1178,7 +1171,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerAction;
 				PRODUCT_MODULE_NAME = ShoppingBlockerAction;
@@ -1197,7 +1190,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerMonitor/ShoppingBlockerMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerMonitor/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1206,7 +1199,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerMonitor;
 				PRODUCT_MODULE_NAME = ShoppingBlockerMonitor;
@@ -1226,7 +1219,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerShield/ShoppingBlockerShield.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerShield/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1235,7 +1228,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerShield;
 				PRODUCT_MODULE_NAME = ShoppingBlockerShield;
@@ -1372,7 +1365,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerShield/ShoppingBlockerShield.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerShield/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1381,7 +1374,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerShield;
 				PRODUCT_MODULE_NAME = ShoppingBlockerShield;
@@ -1401,7 +1394,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerAction/ShoppingBlockerAction.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerAction/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1410,7 +1403,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerAction;
 				PRODUCT_MODULE_NAME = ShoppingBlockerAction;
@@ -1430,7 +1423,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = ShoppingBlockerMonitor/ShoppingBlockerMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 133;
+				CURRENT_PROJECT_VERSION = 136;
 				DEVELOPMENT_TEAM = CGRYGJXPS2;
 				INFOPLIST_FILE = ShoppingBlockerMonitor/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1439,7 +1432,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 8.0.1;
+				MARKETING_VERSION = 8.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sasarei.almostclean.ShoppingBlockerMonitor;
 				PRODUCT_MODULE_NAME = ShoppingBlockerMonitor;

@@ -38,6 +38,15 @@ const resolveHistoryEventBucket = (entry) => {
   return HISTORY_EVENT_BUCKETS.OTHER;
 };
 
+const isWalletHistoryEntry = (entry) =>
+  entry?.kind === "spend" && entry.meta?.source === "apple-pay" &&
+  typeof entry.meta.receiptId === "string" && entry.meta.receiptId.length > 0;
+
+const historyExpenseSourceLabel = (entry, t) => {
+  if (entry?.kind !== "spend") return "";
+  return t(entry.meta?.source === "apple-pay" ? "historySourceApplePay" : "historySourceManual");
+};
+
 const resolveHistoryCategoryId = (entry) => {
   const meta = entry?.meta && typeof entry.meta === "object" ? entry.meta : {};
   const rawCategory =
@@ -80,4 +89,6 @@ module.exports = {
   resolveHistoryCategoryId,
   resolveHistoryEventBucket,
   sortHistoryEntries,
+  historyExpenseSourceLabel,
+  isWalletHistoryEntry,
 };

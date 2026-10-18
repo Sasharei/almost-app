@@ -2221,7 +2221,8 @@ export const buildPaywallCopy = ({
   benefitBullets.push({ id: "automaticExpenses", label: expenseCopy.title, featureKey: PREMIUM_FEATURE_KEYS.automaticExpenses, featureKeys: [PREMIUM_FEATURE_KEYS.automaticExpenses], interactive: false });
   const isFreshStartSoftPaywall =
     effectiveKind === "soft" &&
-    (normalizedTrigger === "first_action_after_onboarding" ||
+    (normalizedTrigger === "second_independent_decision" ||
+      normalizedTrigger === "first_action_after_onboarding" ||
       normalizedTrigger === "first_save_after_onboarding" ||
       normalizedTrigger === "onboarding_completed");
 

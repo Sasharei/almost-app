@@ -1,16 +1,17 @@
+import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AccessiblePressable as Pressable } from "./AccessibleControls";
-import { formatShoppingCycleAmount } from "../shoppingBlocker/amounts";
+import { formatShoppingCycleAmount, shoppingGoalInput } from "../shoppingBlocker/amounts";
 import { resolveForegroundForColor } from "../utils/themeColors";
 import { parseShoppingGoal } from "../shoppingBlocker/eligibleSavings";
 
-export function ShoppingBlockerEntry({ controller, t, colors, formatAmount, formatLocalAmount, language }) {
+export function ShoppingBlockerEntry({ controller, t, colors, currency, toLocalAmount, formatLocalAmount, language }) {
   if (Platform.OS !== "ios") return null;
   const { status, showPrompt, setVisible, dismissPrompt, busy, errorKey } = controller;
-  const cycleAmount = (amount) => formatShoppingCycleAmount(amount, status, formatLocalAmount, formatAmount);
+  const cycleAmount = (amount) => formatShoppingCycleAmount(amount, currency, toLocalAmount, formatLocalAmount);
   const rtl = language?.startsWith("ar");
   const direction = { textAlign: rtl ? "right" : "left", writingDirection: rtl ? "rtl" : "ltr" };
   const progress = Math.min(100, Math.max(0, (status?.progressUSD || 0) / (status?.goalUSD || 1) * 100));
@@ -81,8 +82,9 @@ export function ShoppingPauseIntroduction({ t, colors, language }) {
   </View>;
 }
 
-export default function ShoppingBlockerPanel({ controller, t, colors, currency, formatAmount, formatLocalAmount, toUSD, language }) {
+export default function ShoppingBlockerPanel({ controller, t, colors, currency, toLocalAmount, formatLocalAmount, toUSD, language }) {
   const { status, visible, busy, errorKey, offering } = controller;
+  const { reduceMotion } = useMotionPreferences();
   const [step, setStep] = useState("apps");
   const [goal, setGoal] = useState("");
   const [selectedCount, setSelectedCount] = useState(0);
@@ -94,7 +96,7 @@ export default function ShoppingBlockerPanel({ controller, t, colors, currency, 
     const count = status?.needsSelection ? 0 : status?.appCount || 0;
     setSelectedCount(count);
     setStep(count > 0 ? "goal" : "apps");
-  }, [visible, status?.appCount, status?.needsSelection, status?.needsNextGoal]);
+  }, [visible, status?.appCount, status?.needsSelection, status?.needsNextGoal, currency]);
   if (Platform.OS !== "ios") return null;
   const rtl = language?.startsWith("ar");
   const textStyle = { color: colors.text, textAlign: rtl ? "right" : "left", writingDirection: rtl ? "rtl" : "ltr" };
@@ -127,7 +129,7 @@ export default function ShoppingBlockerPanel({ controller, t, colors, currency, 
   ]); };
   const authorized = status?.authorized;
   const openPass = status?.unlockUntil > Date.now();
-  const cycleAmount = (amount) => formatShoppingCycleAmount(amount, status, formatLocalAmount, formatAmount);
+  const cycleAmount = (amount) => formatShoppingCycleAmount(amount, currency, toLocalAmount, formatLocalAmount);
   const canEditGoal = status?.needsNextGoal || Date.now() >= status?.goalChangeAvailableAt;
   const goalEditor = <>
     <Text style={[styles.heading, textStyle]}>{t(status?.needsNextGoal ? "blockNextGoal" : "blockGoal")} · {currency}</Text>
@@ -139,7 +141,7 @@ export default function ShoppingBlockerPanel({ controller, t, colors, currency, 
     {action(status?.active ? "blockSaveGoal" : "blockStart", start, true, !goal.trim() || (status?.active && !canEditGoal))}
     {status?.active && !status.needsNextGoal ? action("blockCancel", () => { setEditingGoal(false); setValidation(null); }) : null}
   </>;
-  return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
+  return <Modal visible={visible} animationType={reduceMotion ? "fade" : "slide"} presentationStyle="fullScreen" onRequestClose={close}>
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
@@ -193,7 +195,7 @@ export default function ShoppingBlockerPanel({ controller, t, colors, currency, 
             {goalEditor}
           </> : null}
           {status?.active && !editingGoal ? <>
-            {action("blockLimitSettings", () => { setGoal(String(status.goalAmount || "")); setValidation(null); setEditingGoal(true); }, false, !canEditGoal)}
+            {action("blockLimitSettings", () => { setGoal(shoppingGoalInput(status, currency, toLocalAmount)); setValidation(null); setEditingGoal(true); }, false, !canEditGoal)}
             <Text style={[styles.body, { color: colors.muted }, rtl && { textAlign: "right" }]}>{canEditGoal ? t("blockGoalEditHint") : t("blockGoalEditLocked", { date: new Date(status.goalChangeAvailableAt).toLocaleDateString(language) })}</Text>
           </> : null}
           {validation || errorKey ? <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.error }]}>{t(validation || errorKey)}</Text> : null}

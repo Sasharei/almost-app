@@ -395,17 +395,37 @@ class NativeEdgeBackGestureManager: RCTViewManager {
 @objc(NativeEdgeBackGesture)
 class NativeEdgeBackGesture: UIView {
   @objc var onBack: RCTBubblingEventBlock?
+  @objc var onEdgeBackProgress: RCTBubblingEventBlock?
+  @objc var isRTL: Bool = false {
+    didSet { edge.edges = isRTL ? .right : .left }
+  }
+  private lazy var edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdge(_:)))
   override init(frame: CGRect) {
     super.init(frame: frame)
     backgroundColor = .clear
-    let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdge(_:)))
     edge.edges = .left
     addGestureRecognizer(edge)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
   @objc private func handleEdge(_ gesture: UIScreenEdgePanGestureRecognizer) {
-    guard gesture.state == .ended else { return }
     let translation = gesture.translation(in: self)
-    if translation.x >= 64 && abs(translation.y) < 80 { onBack?([:]) }
+    switch gesture.state {
+    case .began:
+      onEdgeBackProgress?(["phase": "began", "translationX": translation.x])
+    case .changed:
+      onEdgeBackProgress?(["phase": "changed", "translationX": translation.x])
+    case .ended:
+      let direction: CGFloat = isRTL ? -1 : 1
+      let distance = translation.x * direction
+      let velocity = gesture.velocity(in: self).x * direction
+      if abs(translation.y) < 60 && (distance >= 60 || (distance > 20 && velocity > 500)) {
+        onBack?([:])
+      } else {
+        onEdgeBackProgress?(["phase": "cancelled", "translationX": translation.x, "velocityX": gesture.velocity(in: self).x])
+      }
+    case .cancelled, .failed:
+      onEdgeBackProgress?(["phase": "cancelled", "translationX": translation.x, "velocityX": gesture.velocity(in: self).x])
+    default: break
+    }
   }
 }

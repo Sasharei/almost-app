@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "8.0.1",
+  "version": "8.0.2",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -18,7 +18,7 @@
     "check:analytics-contract": "node scripts/check-analytics-contract.js",
     "check:native-analytics-config": "node scripts/check-native-analytics-config.js",
     "test:attribution": "node --test scripts/tests/attribution-state-machine.test.js",
-    "test:ui-session": "node --test scripts/tests/report-insights.test.js scripts/tests/amount-slider.test.js scripts/tests/ui-session-state.test.js scripts/tests/practice-tutorial.test.js scripts/tests/fab-tutorial-geometry.test.js scripts/tests/goal-progress.test.js scripts/tests/history-presentation.test.js scripts/tests/monthly-budget.test.js scripts/tests/control-geometry.test.js scripts/tests/almost-pay-sequence.test.js scripts/tests/almost-pay-title.test.js scripts/tests/decision-countdown.test.js scripts/tests/traditional-chinese.test.js scripts/tests/contextual-fixes.test.js scripts/tests/savings-spend-balance.test.js scripts/tests/currency-coverage.test.js scripts/tests/device-language.test.js scripts/tests/currency-selector.test.js scripts/tests/controls-context-regression.test.js scripts/tests/surface-contrast.test.js",
+    "test:ui-session": "node --test scripts/tests/report-insights.test.js scripts/tests/amount-slider.test.js scripts/tests/ui-session-state.test.js scripts/tests/practice-tutorial.test.js scripts/tests/fab-tutorial-geometry.test.js scripts/tests/goal-progress.test.js scripts/tests/history-presentation.test.js scripts/tests/monthly-budget.test.js scripts/tests/control-geometry.test.js scripts/tests/almost-pay-sequence.test.js scripts/tests/almost-pay-title.test.js scripts/tests/decision-countdown.test.js scripts/tests/traditional-chinese.test.js scripts/tests/contextual-fixes.test.js scripts/tests/savings-spend-balance.test.js scripts/tests/currency-coverage.test.js scripts/tests/device-language.test.js scripts/tests/currency-selector.test.js scripts/tests/controls-context-regression.test.js scripts/tests/surface-contrast.test.js scripts/tests/ui-design-regressions.test.js",
     "test:engagement": "node --test scripts/tests/ios-paywall-offer.test.js scripts/tests/automatic-soft-paywall.test.js scripts/tests/coin-balance.test.js scripts/tests/daily-challenge.test.js scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/temptation-price-override-storage.test.js scripts/tests/decision-amount-memory.test.js scripts/tests/temptation-lifetime-stats.test.js scripts/tests/subscription-watch.test.js scripts/tests/temptation-card-access.test.js scripts/tests/today-temptations.test.js scripts/tests/today-overview.test.js scripts/tests/next-decision-coach.test.js scripts/tests/action-reward-overlay.test.js scripts/tests/rating-prompt.test.js scripts/tests/tycoon-access.test.js scripts/tests/trial-and-review.test.js",
     "check:security-audit": "node scripts/check-security-audit.js",
     "check:applovin-cost": "node scripts/check-applovin-cost-import.js",
@@ -29,13 +29,15 @@
     "size:check": "node scripts/check-app-size.js",
     "typecheck": "tsc --noEmit --pretty false",
     "test:bank-expenses": "node --test scripts/tests/bank-expenses.test.js",
-    "verify": "npm run test:widgets && npm run test:bank-expenses && npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:cloud-notifications && npm run test:ui-session && npm run test:engagement && npm run test:shopping-blocker && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run test:security && npm run backend:test && npm run check:release",
+    "verify": "npm run test:privacy-deletion && npm run test:ios-lifecycle && npm run test:widgets && npm run test:bank-expenses && npm run check:functional-parity && npm run check:analytics-contract && npm run check:native-analytics-config && npm run test:attribution && npm run test:cloud-notifications && npm run test:ui-session && npm run test:engagement && npm run test:shopping-blocker && npm run check:security-audit && npm run typecheck && npm run lint && npm run check:localization && npm run check:themes && npm run test:security && npm run backend:test && npm run check:release",
     "release:gate": "npm run verify && npm run check:applovin-cost",
     "version:bump": "node scripts/bump-version.js",
     "test:security": "node --test scripts/tests/install-secret.test.js",
     "test:cloud-notifications": "node --test scripts/tests/cloud-notifications.test.js scripts/tests/push-copy-refresh.test.js scripts/tests/cat-notification-regressions.test.js scripts/tests/notification-policy.test.js",
     "test:shopping-blocker": "node --test scripts/tests/shopping-blocker.test.js",
-    "test:widgets": "node --test scripts/tests/almi-widget.test.js"
+    "test:widgets": "node --test scripts/tests/almi-widget.test.js",
+    "test:ios-lifecycle": "node --test scripts/tests/ios-scene-lifecycle.test.js",
+    "test:privacy-deletion": "node --test scripts/tests/cloud-deletion.test.cjs"
   },
   "dependencies": {
     "@amplitude/analytics-core": "2.41.1",

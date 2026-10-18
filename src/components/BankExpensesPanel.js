@@ -1,3 +1,4 @@
+import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { classifyMerchant } from "../bankExpenses/walletHistory";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, View } from "react-native";
@@ -9,6 +10,7 @@ export default function BankExpensesPanel({ controller: c, colors, language, cat
   const [walletSetup, setWalletSetup] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [search, setSearch] = useState("");
+  const { reduceMotion } = useMotionPreferences();
   const [editing, setEditing] = useState(null);
   const [category, setCategory] = useState("things");
   const [categoryPicker, setCategoryPicker] = useState(false);
@@ -17,6 +19,18 @@ export default function BankExpensesPanel({ controller: c, colors, language, cat
   const [invalid, setInvalid] = useState(false);
   useEffect(() => { if (!c.visible) { setEditing(null); setCategoryPicker(false); setChoosing(false); setWalletSetup(false); setInvalid(false); setSearch(""); } }, [c.visible]);
   useEffect(() => { if (!c.isPremium) { setChoosing(false); setWalletSetup(false); } }, [c.isPremium]);
+  useEffect(() => {
+    if (!c.visible || !c.editRequest) return;
+    const item = c.editRequest;
+    setEditing(item);
+    setCategory(item.category || classifyMerchant(item.merchant).category);
+    setAmount(item.amount);
+    setCurrency(item.currency);
+    setCategoryPicker(false);
+    setChoosing(false);
+    setWalletSetup(false);
+    setInvalid(false);
+  }, [c.visible, c.editRequest]);
   if (!c.supported) return null;
   const copy = c.copy;
   const walletConnected = !!c.status?.walletConnected;
@@ -92,7 +106,7 @@ export default function BankExpensesPanel({ controller: c, colors, language, cat
     {!c.busy && !editing && !choosing && !walletSetup && !c.items.length ? <Text style={[text, styles.body, { color: colors.muted }]}>{Platform.OS === "ios" ? copy.walletEmpty : copy.empty}</Text> : null}
   </View>;
   const rows = editing || walletSetup ? [] : choosing ? c.apps.filter((app) => app.label.toLocaleLowerCase().includes(search.toLocaleLowerCase()) || app.id.includes(search)) : c.items;
-  return <Modal visible={c.visible} animationType="slide" onRequestClose={close} presentationStyle="fullScreen">
+  return <Modal visible={c.visible} animationType={reduceMotion ? "fade" : "slide"} onRequestClose={close} presentationStyle="fullScreen">
     <SafeAreaProvider>
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <Pressable testID="expenses-close" onPress={close} disabled={c.busy} accessibilityRole="button" style={[styles.close, { alignItems: rtl ? "flex-end" : "flex-start", paddingHorizontal: 18, width: "100%", maxWidth: 620, alignSelf: "center" }]}><Text style={[text, { color: colors.muted }]}>{copy.close}</Text></Pressable>
@@ -101,11 +115,11 @@ export default function BankExpensesPanel({ controller: c, colors, language, cat
           renderItem={({ item }) => choosing ? <Pressable disabled={c.busy} accessibilityRole="checkbox" accessibilityState={{ checked: c.selected.includes(item.id), disabled: c.busy }} onPress={() => c.setSelected((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])} style={[styles.receipt, { borderColor: colors.border, backgroundColor: colors.card }]}>
             <Text style={text}>{c.selected.includes(item.id) ? "✓  " : "○  "}{item.label}</Text>
             <Text style={[text, { color: colors.muted, fontSize: 12 }]}>{item.id}</Text>
-          </Pressable> : <Pressable onPress={() => edit(item)} accessibilityRole="button" accessibilityLabel={`${item.label}, ${item.amount} ${item.currency}, ${Platform.OS === "ios" ? categoryLabel(item.category || classifyMerchant(item.merchant).category) : ""}, ${item.status === "review" ? copy.review : copy.saved}, ${copy.edit}`} style={[styles.receipt, { borderColor: item.status === "review" ? colors.primaryBorder : colors.border, backgroundColor: colors.card }]}>
+          </Pressable> : <Pressable onPress={() => edit(item)} accessibilityRole="button" accessibilityLabel={`${item.label}, ${copy.automaticSource}, ${item.amount} ${item.currency}, ${Platform.OS === "ios" ? categoryLabel(item.category || classifyMerchant(item.merchant).category) : ""}, ${item.status === "review" ? copy.review : copy.saved}, ${copy.edit}`} style={[styles.receipt, { borderColor: item.status === "review" ? colors.primaryBorder : colors.border, backgroundColor: colors.card }]}>
             <Text style={text}>{item.label}</Text>
             {Platform.OS === "ios" ? <Text style={[text, { color: colors.muted }]}>{categoryLabel(item.category || classifyMerchant(item.merchant).category)}{!item.category && !classifyMerchant(item.merchant).recognized ? ` · ${copy.categoryUnknown}` : ""}</Text> : null}
             <Text style={[text, { fontSize: 19, fontVariant: ["tabular-nums"] }]}>{item.amount ? `${item.amount} ${item.currency}` : copy.review}</Text>
-            <Text style={[text, { color: colors.muted }]}>{new Date(item.created).toLocaleString(language)} · {item.status === "review" ? copy.review : copy.saved} · {copy.edit}</Text>
+            <Text style={[text, { color: colors.muted }]}>{copy.automaticSource} · {new Date(item.created).toLocaleString(language)} · {item.status === "review" ? copy.review : copy.saved} · {copy.edit}</Text>
           </Pressable>}
           ListFooterComponent={!choosing && !editing && !walletSetup && c.hasMore ? button(copy.more, c.more) : null} />
       </KeyboardAvoidingView>

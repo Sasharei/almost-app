@@ -20,5 +20,7 @@ RCT_EXPORT_VIEW_PROPERTY(onPress, RCTBubblingEventBlock)
 @end
 
 @interface RCT_EXTERN_MODULE(NativeEdgeBackGestureManager, RCTViewManager)
+RCT_EXPORT_VIEW_PROPERTY(isRTL, BOOL)
+RCT_EXPORT_VIEW_PROPERTY(onEdgeBackProgress, RCTBubblingEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onBack, RCTBubblingEventBlock)
 @end

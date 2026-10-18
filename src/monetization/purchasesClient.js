@@ -1035,3 +1035,10 @@ export const syncPurchasesAttributionSafe = (request = {}) => {
     syncPurchasesAttributionOnce(request)
   );
 };
+
+// Existing SDK identity only; do not configure or refresh receipts for privacy requests.
+export const existingRevenueCatDeletionIds = async () => {
+  if (!revenueCatConfigured || typeof Purchases?.getAppUserID !== "function") return [];
+  const id = await Purchases.getAppUserID();
+  return id ? [id] : [];
+};

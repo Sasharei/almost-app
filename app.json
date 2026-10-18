@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost Savings",
     "slug": "almost_clean",
-    "version": "8.0.1",
+    "version": "8.0.2",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -27,7 +27,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "133",
+      "buildNumber": "136",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -78,7 +78,18 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "CFBundleDisplayName": "Almost Savings"
+        "CFBundleDisplayName": "Almost Savings",
+        "UIApplicationSceneManifest": {
+          "UIApplicationSupportsMultipleScenes": false,
+          "UISceneConfigurations": {
+            "UIWindowSceneSessionRoleApplication": [
+              {
+                "UISceneConfigurationName": "Default Configuration",
+                "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).SceneDelegate"
+              }
+            ]
+          }
+        }
       },
       "entitlements": {
         "aps-environment": "production",
@@ -90,7 +101,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 131,
+      "versionCode": 136,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",

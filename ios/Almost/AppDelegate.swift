@@ -10,28 +10,14 @@ public class AppDelegate: ExpoAppDelegate {
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
 
-  public override func application(
-    _ application: UIApplication,
-    willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-  ) -> Bool {
-#if os(iOS) || os(tvOS)
-    // Install an opaque app-owned surface at the earliest delegate callback.
-    // This runs before React/Firebase factory creation and remains visible when
-    // iOS hands off from the property-list launch screen.
-    installBootstrapWindowIfNeeded(for: application)
-#endif
-    return super.application(
-      application,
-      willFinishLaunchingWithOptions: launchOptions)
-  }
+  private var startupLaunchOptions: [UIApplication.LaunchOptionsKey: Any]?
 
   public override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
-#if os(iOS) || os(tvOS)
-    let bootstrapWindow = installBootstrapWindowIfNeeded(for: application)
-#endif
+    // Process-wide SDK setup stays independent of scene creation and JS consent.
+    startupLaunchOptions = launchOptions
     let delegate = ReactNativeDelegate()
     let factory = ExpoReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
@@ -40,59 +26,60 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-#if os(iOS) || os(tvOS)
 // @generated begin @react-native-firebase/app-didFinishLaunchingWithOptions - expo prebuild (DO NOT MODIFY) sync-10e8520570672fd76b2403b7e1e27f5198a6349a
 FirebaseApp.configure()
 // @generated end @react-native-firebase/app-didFinishLaunchingWithOptions
     let didFinishLaunching = super.application(
       application,
       didFinishLaunchingWithOptions: launchOptions)
-
-    // Returning to the run loop before starting React lets Core Animation
-    // commit the white bootstrap window. iOS 26 otherwise keeps displaying
-    // the system's black hand-off surface while the Release bundle mounts.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak bootstrapWindow] in
-      guard let self, let bootstrapWindow, self.window === bootstrapWindow else { return }
-      factory.startReactNative(
-        withModuleName: "main",
-        in: bootstrapWindow,
-        launchOptions: launchOptions)
-    }
     return didFinishLaunching
-#endif
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
-  @discardableResult
-  private func installBootstrapWindowIfNeeded(for application: UIApplication) -> UIWindow {
-    if let window, window.rootViewController is NativeBootstrapViewController {
-      window.backgroundColor = .white
-      window.overrideUserInterfaceStyle = .light
+  func connect(to windowScene: UIWindowScene, options: UIScene.ConnectionOptions) -> UIWindow {
+    // A single scene can reconnect without creating a second React host.
+    if let window {
+      window.windowScene = windowScene
       window.makeKeyAndVisible()
-      window.rootViewController?.view.layoutIfNeeded()
       return window
     }
 
-    let bootstrapWindow = Self.makeBootstrapWindow(for: application)
-    bootstrapWindow.frame = bootstrapWindow.windowScene?.coordinateSpace.bounds ?? UIScreen.main.bounds
+    let bootstrapWindow = UIWindow(windowScene: windowScene)
     bootstrapWindow.backgroundColor = .white
     bootstrapWindow.overrideUserInterfaceStyle = .light
     bootstrapWindow.rootViewController = NativeBootstrapViewController()
     window = bootstrapWindow
     bootstrapWindow.makeKeyAndVisible()
     bootstrapWindow.rootViewController?.view.layoutIfNeeded()
-    return bootstrapWindow
-  }
 
-  private static func makeBootstrapWindow(for application: UIApplication) -> UIWindow {
-#if os(iOS)
-    if #available(iOS 13.0, *),
-       let windowScene = application.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
-      return UIWindow(windowScene: windowScene)
+    // RN 0.81 still reads initial links from UIApplication launch options.
+    // Warm links use the same delegates; cold links also reach getInitialURL.
+    var launchOptions = startupLaunchOptions ?? [:]
+    if let context = options.urlContexts.first {
+      launchOptions[.url] = context.url
+      launchOptions[.sourceApplication] = context.options.sourceApplication
+      launchOptions[.annotation] = context.options.annotation
     }
-#endif
-    return UIWindow(frame: UIScreen.main.bounds)
+    if let activity = options.userActivities.first {
+      launchOptions[.userActivityDictionary] = [
+        UIApplication.LaunchOptionsKey.userActivityType.rawValue: activity.activityType,
+        "UIApplicationLaunchOptionsUserActivityKey": activity
+      ]
+    }
+    if let response = options.notificationResponse {
+      launchOptions[.remoteNotification] = response.notification.request.content.userInfo
+    }
+    startupLaunchOptions = nil
+
+    // Let Core Animation commit the same blank bootstrap surface before React.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak bootstrapWindow] in
+      guard let self, let bootstrapWindow, self.window === bootstrapWindow,
+            let factory = self.reactNativeFactory else { return }
+      factory.startReactNative(
+        withModuleName: "main",
+        in: bootstrapWindow,
+        launchOptions: launchOptions)
+    }
+    return bootstrapWindow
   }
 
   // Linking API
@@ -114,6 +101,56 @@ FirebaseApp.configure()
     AppsFlyerAttribution.shared().continue(userActivity, restorationHandler: nil)
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+
+// UIKit owns the scene; AppDelegate continues to own the single React factory.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+  private var appDelegate: AppDelegate? { UIApplication.shared.delegate as? AppDelegate }
+
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+    guard let windowScene = scene as? UIWindowScene else { return }
+    window = appDelegate?.connect(to: windowScene, options: connectionOptions)
+    self.scene(scene, openURLContexts: connectionOptions.urlContexts)
+    for activity in connectionOptions.userActivities {
+      self.scene(scene, continue: activity)
+    }
+    if let shortcut = connectionOptions.shortcutItem, let appDelegate {
+      appDelegate.application(UIApplication.shared, performActionFor: shortcut, completionHandler: { _ in })
+    }
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    for context in URLContexts {
+      var options: [UIApplication.OpenURLOptionsKey: Any] = [.openInPlace: context.options.openInPlace]
+      options[.sourceApplication] = context.options.sourceApplication
+      options[.annotation] = context.options.annotation
+      _ = appDelegate?.application(UIApplication.shared, open: context.url, options: options)
+    }
+  }
+
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    _ = appDelegate?.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
+  }
+
+  func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
+    guard let appDelegate else { completionHandler(false); return }
+    appDelegate.application(UIApplication.shared, performActionFor: shortcutItem, completionHandler: completionHandler)
+  }
+
+  // Expo SDK 54 subscribers still use UIApplicationDelegate lifecycle methods.
+  func sceneDidBecomeActive(_ scene: UIScene) {
+    appDelegate?.applicationDidBecomeActive(UIApplication.shared)
+  }
+  func sceneWillResignActive(_ scene: UIScene) {
+    appDelegate?.applicationWillResignActive(UIApplication.shared)
+  }
+  func sceneDidEnterBackground(_ scene: UIScene) {
+    appDelegate?.applicationDidEnterBackground(UIApplication.shared)
+  }
+  func sceneWillEnterForeground(_ scene: UIScene) {
+    appDelegate?.applicationWillEnterForeground(UIApplication.shared)
   }
 }
 

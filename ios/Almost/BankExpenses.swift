@@ -230,6 +230,8 @@ struct ImportApplePayTransactionIntent: LiveActivityIntent {
   @Parameter(title: "expenseWalletMerchant") var merchant: String?
   @Parameter(title: "expenseWalletDate") var transactionDate: Date?
   func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+    let currency = ExpenseParser.walletCurrency(self.currency)
+    let amount = ExpenseParser.walletAmount(self.amount, currency: currency)
     guard let amount, let currency, let normalized = ExpenseParser.parseAmount(amount, currency: currency),
           let value = Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX")) else { throw BankExpenseError.walletInputRequired }
     let inserted = try BankExpenseStore.captureWallet(amount: value, currency: currency, merchant: merchant, transactionDate: transactionDate)

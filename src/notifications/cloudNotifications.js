@@ -9,6 +9,8 @@ const STORE_URLS = {
 let initialNotificationConsumed = false;
 let initialNotificationPromise;
 let lastStoreOpenAt = 0;
+// An old effect's token deletion must finish before a replacement can register again.
+let registrationQueue = Promise.resolve();
 // Keep reservations outside the effect so language/permission restarts cannot replay a banner.
 const foregroundAnnouncements = new Map();
 const IDENTICAL_ANNOUNCEMENT_WINDOW_MS = 90000;
@@ -81,38 +83,66 @@ export function startCloudNotifications({ channelName, scheduleNotification = No
   }
   let stopped = false;
   let syncing = false;
+  let syncRequested = false;
   let retryTimer;
+  const permissionAllowsCloud = (permission) => permission.granted ||
+    permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  const revokeRegistration = async () => {
+    await api.setAutoInitEnabled(messaging, false);
+    try {
+      await api.deleteToken(messaging);
+    } finally {
+      // Still stop APNs delivery when FCM deletion needs a network retry.
+      if (Platform.OS === "ios" && messaging.isDeviceRegisteredForRemoteMessages) {
+        await api.unregisterDeviceForRemoteMessages(messaging);
+      }
+    }
+  };
   const sync = async () => {
-    if (stopped || syncing) return;
+    if (stopped) return;
+    if (syncing) { syncRequested = true; return; }
     syncing = true;
+    syncRequested = false;
     clearTimeout(retryTimer);
     try {
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync(ANNOUNCEMENTS_CHANNEL_ID, {
-          name: channelName,
-          importance: Notifications.AndroidImportance.DEFAULT,
-        });
-      }
-      const permission = await Notifications.getPermissionsAsync();
-      const allowed = permission.granted ||
-        permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-      if (!allowed || stopped) return;
-      // A granted OS permission enables cloud messages by default, including when
-      // a previous native configuration persisted FCM auto-init as disabled.
-      await api.setAutoInitEnabled(messaging, true);
-      if (stopped) return;
-      if (Platform.OS === "ios" && !messaging.isDeviceRegisteredForRemoteMessages) {
-        await api.registerDeviceForRemoteMessages(messaging);
-      }
-      if (stopped) return;
-      // FCM enrolls this installation for Firebase Console campaigns. No token is logged,
-      // stored in analytics, or sent to the purchase backend.
-      await api.getToken(messaging);
+      const pending = registrationQueue.then(async () => {
+        if (stopped) return;
+        if (Platform.OS === "android") {
+          await Notifications.setNotificationChannelAsync(ANNOUNCEMENTS_CHANNEL_ID, {
+            name: channelName,
+            importance: Notifications.AndroidImportance.DEFAULT,
+          });
+        }
+        const permission = await Notifications.getPermissionsAsync();
+        if (stopped) return;
+        if (!permissionAllowsCloud(permission)) {
+          await revokeRegistration();
+          return;
+        }
+        // A granted OS permission enables cloud messages by default, including when
+        // a previous native configuration persisted FCM auto-init as disabled.
+        await api.setAutoInitEnabled(messaging, true);
+        if (stopped) return;
+        if (Platform.OS === "ios" && !messaging.isDeviceRegisteredForRemoteMessages) {
+          await api.registerDeviceForRemoteMessages(messaging);
+        }
+        if (stopped) return;
+        // FCM enrolls this installation for Firebase Console campaigns. No token is logged,
+        // stored in analytics, or sent to the purchase backend.
+        await api.getToken(messaging);
+        // Permission can change while native registration is in flight.
+        if (stopped) return;
+        const latestPermission = await Notifications.getPermissionsAsync();
+        if (!stopped && !permissionAllowsCloud(latestPermission)) await revokeRegistration();
+      });
+      registrationQueue = pending.catch(() => {});
+      await pending;
     } catch {
       if (!stopped) retryTimer = setTimeout(() => void sync(), 30000);
-      console.warn("Cloud messaging registration deferred; will retry");
+      console.warn("Cloud messaging synchronization deferred; will retry");
     } finally {
       syncing = false;
+      if (syncRequested && !stopped) void sync();
     }
   };
   const unsubscribeMessage = api.onMessage(messaging, async (message) => {

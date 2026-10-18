@@ -1,0 +1,42 @@
+# iPhone 17 / iOS 26.5 / 402x874 pt. Remote Share Sheet AX frames on this
+# runtime omit the sheet offset; Copy uses its inspected on-screen position.
+# Run with scripts/fixtures/privacy-sharing-preview.jsx in a freshly built iOS
+# simulator shell. System locale: English. No messages or requests are sent.
+appId: com.sasarei.almostclean
+---
+- assertVisible: Native iOS share available
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-prepare
+- tapOn:
+    id: cloud-deletion-cancel
+- assertVisible: 'Top action 0'
+- repeat:
+    times: 2
+    commands:
+      - tapOn:
+          id: request-cloud-deletion
+      - tapOn:
+          id: cloud-deletion-share
+      - assertVisible: Copy
+      - waitForAnimationToEnd:
+          timeout: 10000
+      - takeScreenshot: native-share-open
+      - tapOn:
+          point: "17%,89%"
+      - waitForAnimationToEnd:
+          timeout: 10000
+      # A premature/mislocated remote Share Sheet tap must not hit the app.
+      - assertVisible: 'Top action 0'
+      - assertVisible:
+          id: request-cloud-deletion
+- tapOn:
+    id: qa-tap
+- assertVisible: 'Top action 1'
+- swipe:
+    start: 50%, 80%
+    end: 50%, 30%
+    duration: 800
+- assertVisible: 'Scroll marker 12'
+- takeScreenshot: native-share-restored-scroll

@@ -21,6 +21,7 @@ export function useBankExpenses(language, premiumState = {}, entitlementHydrated
     const sub = AppState.addEventListener("change", (state) => { if (state === "active") void sync(); });
     return () => sub.remove();
   }, [native, accessResolved, isPremium, expiresAt]);
+  const [editRequest, setEditRequest] = useState(null);
   const [visible, setVisible] = useState(false);
   const [status, setStatus] = useState(null);
   const [apps, setApps] = useState([]);
@@ -105,6 +106,11 @@ export function useBankExpenses(language, premiumState = {}, entitlementHydrated
     if (native) await native.reset();
     setStatus(null); setItems([]); setSelected([]); setTotal(0); setVisible(false);
   }, [native]);
-  const open = useCallback(() => { setVisible(true); void refresh(); }, [refresh]);
-  return { isPremium: isPremium && expiresAt > Date.now(), supported: !!native && (Platform.OS === "ios" || Platform.OS === "android"), copy, visible, setVisible, open, status, apps, selected, setSelected, items, total, busy, error, refresh, configure, more, update, separateDuplicate, permission, openWalletAutomation, reset, hasMore: nextOffset < total };
+  const open = useCallback(() => { setEditRequest(null); setVisible(true); void refresh(); }, [refresh]);
+  const openReceipt = useCallback((receipt) => {
+    if (!native || receipt?.source !== "apple-pay" || receipt.status !== "saved") return;
+    setEditRequest({ ...receipt });
+    setVisible(true);
+  }, [native]);
+  return { isPremium: isPremium && expiresAt > Date.now(), supported: !!native && (Platform.OS === "ios" || Platform.OS === "android"), copy, visible, setVisible, open, openReceipt, editRequest, status, apps, selected, setSelected, items, total, busy, error, refresh, configure, more, update, separateDuplicate, permission, openWalletAutomation, reset, hasMore: nextOffset < total };
 }

@@ -1,3 +1,4 @@
+import { CloudDeletionRow } from "./src/privacy/CloudDeletionRow";
 import { pauseCountTranslationKey } from "./src/constants/pauseCountCopy";
 import { ALMI_WIDGET_COPY } from "./src/constants/almiWidgetCopy";
 import { buildAlmiWidgetContext } from "./src/utils/almiWidgetContext";
@@ -5,7 +6,8 @@ import ShoppingBlockerPanel, { ShoppingBlockerEntry } from "./src/components/Sho
 import { useWalletHistory } from "./src/bankExpenses/useWalletHistory";
 import { walletHistoryEvents, mergeWalletHistory, classifyMerchant } from "./src/bankExpenses/walletHistory";
 import BankExpensesPanel from "./src/components/BankExpensesPanel";
-import { useBankExpenses } from "./src/bankExpenses/useBankExpenses";
+import { useModalActionHandoff } from "./src/hooks/useModalActionHandoff";
+import { useBankExpenses, expenseCopy } from "./src/bankExpenses/useBankExpenses";
 import { useShoppingBlocker } from "./src/shoppingBlocker/useShoppingBlocker";
 import DecisionCardWheel from "./src/components/DecisionCardWheel";
 import PracticeTutorialOverlay, { PracticeTarget, PracticeInactive, usePracticeTutorial } from "./src/components/PracticeTutorial";
@@ -192,7 +194,7 @@ import { resolveForegroundForColor } from "./src/utils/themeColors";
 import { TRANSLATIONS } from "./src/constants/translations";
 import { DEFAULT_TEMPTATIONS } from "./src/constants/temptations";
 import { TAMAGOTCHI_CRY_ASSET } from "./src/constants/tamagotchiCryAsset";
-import { IOS_TERMS_URL, PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
+import { PRIVACY_LINKS, TERMS_LINKS, TERMS_POINTS } from "./src/constants/legal";
 import {
   COIN_VALUE_MODAL_STATUS,
   RAIN_DROPS,
@@ -321,8 +323,6 @@ import {
   FAB_TUTORIAL_CARD_SPACING,
   FAB_TUTORIAL_HALO_INSET,
   BACK_GESTURE_EDGE_WIDTH,
-  BACK_GESTURE_TRIGGER_DISTANCE,
-  BACK_GESTURE_VERTICAL_SLOP,
   MAX_TAB_HISTORY,
 } from "./src/constants/tutorialUiConstants";
 import {
@@ -424,6 +424,7 @@ import {
   LTR_MARK,
   RTL_CURRENCIES,
   CURRENCY_RATES,
+  WALLET_CURRENCY_RATES,
   CURRENCY_REWARD_STEPS,
   DEFAULT_COIN_SLIDER_MAX_USD,
   MAX_TRANSACTION_AMOUNT_USD,
@@ -641,6 +642,8 @@ const {
   readTemptationPriceOverridesWithRetry,
 } = require("./src/utils/temptationPriceOverrideStorage");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+const { normalizeIndependentDecisions, commitIndependentDecision, consumeIndependentDecisionOffer, isCoachActuallyPresented } = require("./src/engagement/independentDecisions");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   NEXT_DECISION_COACH_STATUS,
   buildNextDecisionCoachScrollRequest,
@@ -699,8 +702,15 @@ const {
 } = require("./src/utils/temptationLifetimeStats");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
+  rollbackHistoryDecisionSeries,
+  rollbackHistoryDecisionInteractions,
+} = require("./src/utils/historyDecisionRollback");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
   HISTORY_EVENT_BUCKETS,
   HISTORY_SORT_MODES,
+  historyExpenseSourceLabel,
+  isWalletHistoryEntry,
   filterHistoryEntries,
   resolveHistoryCategoryId: resolveHistoryPresentationCategoryId,
   resolveHistoryEventBucket,
@@ -1007,6 +1017,8 @@ const Modal = ({
   children,
   ...rest
 }) => {
+  const { reduceMotion } = useMotionPreferences();
+  const modalLanguage = useContext(FormattingLanguageContext);
   const modalHostIdRef = useRef(null);
   if (!modalHostIdRef.current) {
     modalHostIdRef.current = {};
@@ -1023,8 +1035,7 @@ const Modal = ({
   const statusGlassOverlay = statusGlassConfig ? <StatusGlass {...statusGlassConfig} /> : null;
   const modalChildren = (
     <View style={styles.modalContentLayer}>
-      {children}
-      {Platform.OS === "ios" && onRequestClose ? <EdgeBackGesture onBack={onRequestClose} /> : null}
+      <EdgeBackGesture enabled={Platform.OS === "ios" && !!onRequestClose} onBack={onRequestClose} rtl={isRtlLanguage(modalLanguage)}>{children}</EdgeBackGesture>
     </View>
   );
   const iosFabricRendererActive = Platform.OS === "ios" && !!global?.nativeFabricUIManager;
@@ -1038,7 +1049,7 @@ const Modal = ({
   const resolvedHardwareAccelerated =
     Platform.OS === "android" ? hardwareAccelerated ?? true : hardwareAccelerated;
   const resolvedNativeAnimationType =
-    Platform.OS === "android" && transparent === true ? "none" : animationType;
+    Platform.OS === "android" && transparent === true ? "none" : reduceMotion && animationType !== "none" ? "fade" : animationType;
   const resolvedPresentationStyle =
     Platform.OS === "ios"
       ? presentationStyle || IOS_DEFAULT_MODAL_PRESENTATION
@@ -1049,7 +1060,7 @@ const Modal = ({
     return (
       <InTreeTransparentModal
         visible={visible}
-        animationType={animationType}
+        animationType={reduceMotion && animationType !== "none" ? "fade" : animationType}
         onRequestClose={onRequestClose}
         onShow={onShow}
         onDismiss={onDismiss}
@@ -1907,7 +1918,7 @@ const MONETIZATION_EXPERIMENT_DEFAULT_CONFIG = Object.freeze({
   trialSaveLimit: 5,
 });
 const MONETIZATION_TRIAL_ACTION_LIMIT_ENABLED = false;
-const AUTOMATIC_SOFT_PAYWALL_TRIGGER = "first_action_after_onboarding";
+const AUTOMATIC_SOFT_PAYWALL_TRIGGER = "second_independent_decision";
 const MONETIZATION_HARD_LOCK_CLOSE_ACTIONS = new Set([
   "purchase_success",
   "restore_success",
@@ -3507,7 +3518,9 @@ const AppText = React.memo(
             minimumFontSize: fabricMinimumFontSize,
           };
     const isRtlLayout = isRtlLanguage(formattingLanguage);
-    const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right" } : null;
+    // Android swaps physical left/right alignment for a Yoga RTL text node.
+    // Isolate paragraph layout from that swap; parent rows remain RTL.
+    const directionStyle = isRtlLayout ? { writingDirection: "rtl", textAlign: "right", direction: Platform.OS === "android" ? "ltr" : undefined } : null;
     // Android must inherit the device/theme typeface. Besides respecting user-selected fonts,
     // this avoids OEM rendering paths where a bundled font can disappear until a re-render.
     // Flatten first so typography presets and explicit component styles cannot bypass the guard.
@@ -4050,14 +4063,15 @@ const describeHistoryEntry = (entry, { t, formatLocalAmount, language = DEFAULT_
   }
 };
 const formatHistoryEntryMeta = (entry, { t, locale }) => {
-  if (!entry?.timestamp) return "";
+  const source = historyExpenseSourceLabel(entry, t);
+  if (!entry?.timestamp) return source;
   try {
     const date = new Date(entry.timestamp);
     const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
     const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-    return t("historyTimestamp", { date: dateLabel, time: timeLabel });
+    return [t("historyTimestamp", { date: dateLabel, time: timeLabel }), source].filter(Boolean).join(" · ");
   } catch {
-    return "";
+    return source;
   }
 };
 const normalizeClaimedRewardEntry = (value) => {
@@ -6758,6 +6772,34 @@ const resolveTamagotchiCarePressure = (state = TAMAGOTCHI_START_STATE, timestamp
     dominantNeed,
   };
 };
+
+// Keep one next action: earned coins first, then the lowest care stat.
+const resolveTamagotchiHeroBadge = (state, timestamp = Date.now()) => {
+  if (resolveTamagotchiHourlyRewardStatus(state, timestamp).ready) return "reward";
+  if (Number(state?.hungerImmunityUntil) > timestamp) return null;
+  const pressure = resolveTamagotchiCarePressure(state, timestamp);
+  const needs = [];
+  if (pressure.hungry) needs.push({ kind: "food", value: Number(state?.hunger) || 0 });
+  const cleanliness = normalizeTamagotchiStateValue(state?.cleanliness, TAMAGOTCHI_START_STATE.cleanliness);
+  if (cleanliness <= TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD) needs.push({ kind: "clean", value: cleanliness });
+  if (pressure.neglected) needs.push({
+    kind: "play",
+    value: Math.min(TAMAGOTCHI_LOW_MOOD_THRESHOLD, normalizeTamagotchiStateValue(state?.mood, TAMAGOTCHI_START_STATE.mood)),
+  });
+  return needs.reduce((next, need) => !next || need.value < next.value ? need : next, null)?.kind || null;
+};
+
+// A tint image uses the source alpha, so dirt cannot paint the rectangular canvas.
+// Both layers stay mounted together as cleanliness changes, preserving animation playback.
+const TamagotchiHeroImage = React.memo(function TamagotchiHeroImage({ source, size, dirtyLevel = 0 }) {
+  const strength = Math.pow(Math.max(0, Math.min(1, Number(dirtyLevel) || 0)), 0.72);
+  return (
+    <View pointerEvents="none" accessible={false} style={{ width: size, height: size }}>
+      <Image source={source} resizeMode="contain" fadeDuration={0} accessible={false} style={{ width: size, height: size }} />
+      <Image testID="today-cat-silhouette-dirt" source={source} resizeMode="contain" fadeDuration={0} accessible={false} style={{ position: "absolute", top: 0, left: 0, width: size, height: size, tintColor: "#63452E", opacity: strength * 0.64 }} />
+    </View>
+  );
+});
 
 const getTamagotchiDirtyVisualLevel = (cleanlinessPercent = TAMAGOTCHI_MAX_STATE_VALUE) => {
   const normalizedCleanliness = Math.min(
@@ -10576,7 +10618,7 @@ const EXCHANGE_RATES_BASE_CODE = "USD";
 const EXCHANGE_RATES_API_URL = "https://open.er-api.com/v6/latest/USD";
 const EXCHANGE_RATES_FETCH_TIMEOUT_MS = 6500;
 const EXCHANGE_RATES_MIN_REFRESH_INTERVAL_MS = 1 * HOUR_MS;
-const EXCHANGE_RATES_SUPPORTED_CODES = Object.freeze(Object.keys(CURRENCY_RATES));
+const EXCHANGE_RATES_SUPPORTED_CODES = Object.freeze(Object.keys(WALLET_CURRENCY_RATES));
 
 const normalizeCurrencyRatesSnapshot = (rawRates = null) => {
   if (!rawRates || typeof rawRates !== "object") return null;
@@ -10621,12 +10663,13 @@ const applyRuntimeCurrencyRates = (nextRates = null) => {
         ? 1
         : Number.isFinite(normalized[code]) && normalized[code] > 0
         ? normalized[code]
-        : CURRENCY_RATES[code];
+        : WALLET_CURRENCY_RATES[code];
     if (!Number.isFinite(nextValue) || nextValue <= 0) return;
-    if (CURRENCY_RATES[code] !== nextValue) {
-      CURRENCY_RATES[code] = nextValue;
+    if (WALLET_CURRENCY_RATES[code] !== nextValue) {
+      WALLET_CURRENCY_RATES[code] = nextValue;
       changed = true;
     }
+    if (Object.prototype.hasOwnProperty.call(CURRENCY_RATES, code)) CURRENCY_RATES[code] = nextValue;
   });
   return changed;
 };
@@ -15187,7 +15230,9 @@ const TemptationGlyph = React.memo(function TemptationGlyph({
   color,
   size = 16,
   strokeWidth = 1.8,
+  back = false,
 }) {
+  const glyphRtl = isRtlLanguage(useContext(FormattingLanguageContext));
   const commonPathProps = {
     fill: "none",
     stroke: color,
@@ -15199,7 +15244,7 @@ const TemptationGlyph = React.memo(function TemptationGlyph({
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
       {type === "chevron" ? (
-        <SvgPath d="m9 5 7 7-7 7" {...commonPathProps} />
+        <SvgPath d={glyphRtl !== back ? "m15 5-7 7 7 7" : "m9 5 7 7-7 7"} {...commonPathProps} />
       ) : type === "more" ? (
         <><SvgCircle cx="5" cy="12" r="1.6" fill={color} /><SvgCircle cx="12" cy="12" r="1.6" fill={color} /><SvgCircle cx="19" cy="12" r="1.6" fill={color} /></>
       ) : type === "timer" ? (
@@ -27075,6 +27120,7 @@ const HistoryCloseGlyph = React.memo(function HistoryCloseGlyph({ color = "#6267
 const HistoryTimeline = React.memo(function HistoryTimeline({
   history = [],
   onHistoryDelete = () => {},
+  onHistoryEntryPress = null,
   t,
   colors,
   currency,
@@ -27255,8 +27301,8 @@ const HistoryTimeline = React.memo(function HistoryTimeline({
       const bucket = resolveHistoryEventBucket(entry);
       const accent = resolveBucketAccent(bucket);
       const description = describeHistory(entry);
-      const meta =
-        sortMode === HISTORY_SORT_MODES.CATEGORY ? formatHistoryMeta(entry) : formatHistoryTime(entry);
+      const meta = sortMode === HISTORY_SORT_MODES.CATEGORY ? formatHistoryMeta(entry)
+        : [formatHistoryTime(entry), historyExpenseSourceLabel(entry, t)].filter(Boolean).join(" · ");
       return (
         <View style={[styles.historyTimelineRow, isRtl && styles.historyRtlRow]}>
           <View style={styles.historyTimelineMarkerColumn}>
@@ -27275,12 +27321,15 @@ const HistoryTimeline = React.memo(function HistoryTimeline({
               <View style={[styles.historyTimelineConnector, { backgroundColor: colors.separator || colors.border }]} />
             ) : null}
           </View>
-          <View style={[styles.historyTimelineCopy, isRtl && styles.historyTimelineCopyRtl]}>
+          <Pressable
+            onPress={isWalletHistoryEntry(entry) && onHistoryEntryPress ? () => onHistoryEntryPress(entry) : undefined}
+            accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined}
+            style={[styles.historyTimelineCopy, isRtl && styles.historyTimelineCopyRtl]}>
             <Text style={[styles.historyItemTitle, { color: colors.text }]}>{description}</Text>
             {meta ? (
               <Text style={[styles.historyItemMeta, { color: colors.muted }]}>{meta}</Text>
             ) : null}
-          </View>
+          </Pressable>
           <PlatformPressable surfaceRole="filter"
             style={({ pressed }) => [
               styles.historyDeleteBtn,
@@ -27310,6 +27359,8 @@ const HistoryTimeline = React.memo(function HistoryTimeline({
       formatHistoryTime,
       isRtl,
       onHistoryDelete,
+      onHistoryEntryPress,
+      language,
       resolveBucketAccent,
       sortMode,
       t,
@@ -27471,11 +27522,13 @@ const HistoryModal = React.memo(function HistoryModal({
   history = [],
   onClose = () => {},
   onHistoryDelete = () => {},
+  onHistoryEntryPress = null,
   t,
   colors,
   currency,
   language,
 }) {
+  const expenseHandoff = useModalActionHandoff(visible, onClose, onHistoryEntryPress);
   const historyInsets = useSafeAreaInsets();
   const [modalHeight, setModalHeight] = useState(0);
   const modalOpacity = useMemo(() => {
@@ -27490,6 +27543,7 @@ const HistoryModal = React.memo(function HistoryModal({
       animationType="fade"
       statusBarTranslucent
       onRequestClose={onClose}
+      onDismiss={expenseHandoff.onDismiss}
     >
       <View style={styles.progressCategoryModalRoot}>
         <TouchableWithoutFeedback onPress={onClose}>
@@ -27538,6 +27592,7 @@ const HistoryModal = React.memo(function HistoryModal({
             <HistoryTimeline
               history={history}
               onHistoryDelete={onHistoryDelete}
+              onHistoryEntryPress={onHistoryEntryPress ? expenseHandoff.select : null}
               t={t}
               colors={colors}
               currency={currency}
@@ -28918,7 +28973,7 @@ const HeaderGlassButton = React.memo(function HeaderGlassButton({ colors, onPres
   const target = Platform.OS === "android" ? 48 : 44;
   const offset = (target - diameter) / 2;
   return <Pressable testID={testID} nativeID={nativeID} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}
-    hitSlop={hitSlop} style={[placement, { width: target, height: target, borderWidth: 0, backgroundColor: "transparent", shadowOpacity: 0, elevation: 0, overflow: "visible", alignItems: "center", justifyContent: "center", ...(typeof placement.top === "number" ? { top: placement.top - offset } : {}), ...(typeof placement.right === "number" ? { right: placement.right - offset } : {}) }]}>
+    hitSlop={hitSlop} style={[placement, { width: target, height: target, borderWidth: 0, backgroundColor: "transparent", shadowOpacity: 0, elevation: 0, overflow: "visible", alignItems: "center", justifyContent: "center", ...(typeof placement.top === "number" ? { top: placement.top - offset } : {}), ...(typeof placement.right === "number" ? { right: placement.right - offset } : {}), ...(typeof placement.left === "number" ? { left: placement.left - offset } : {}) }]}>
     <View pointerEvents="none" style={{ width: diameter, height: diameter, borderRadius: diameter / 2, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
       <PlatformGlassBackground style={{ borderRadius: 999 }} isDarkTheme={dark} glassEffectStyle="regular"
         fallbackColor={colorWithAlpha(colors.card, 0.7)} solidFallbackColor={colors.card} borderColor={colors.border} />
@@ -28930,7 +28985,7 @@ const HeaderGlassButton = React.memo(function HeaderGlassButton({ colors, onPres
 const BugReportFab = React.memo(function BugReportFab({ visible = false, topInset = 0, colors, language, onPress, activeTab, reserveAdd = true }) {
   if (!visible) return null;
   return <HeaderGlassButton testID="header-bug-report" colors={colors} onPress={onPress} label={resolveBugReportCopy(language).buttonLabel}
-    style={[styles.bugReportFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 128 : 106) : (Platform.OS === "android" ? 70 : 60) }]}>
+    style={[styles.bugReportFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 128 : 106) : (Platform.OS === "android" ? 70 : 60), left: isRtlLanguage(language) ? (activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 128 : 106) : (Platform.OS === "android" ? 70 : 60)) : undefined }]}>
     <BugReportIcon color={colors.text} size={16} />
   </HeaderGlassButton>;
 });
@@ -29758,7 +29813,7 @@ const HelpGuideIcon = React.memo(function HelpGuideIcon({ color = "#111827", siz
 const HelpGuideFab = React.memo(function HelpGuideFab({ visible = false, topInset = 0, colors, language, activeTab = "feed", onPress, reserveAdd = true }) {
   if (!visible) return null;
   return <HeaderGlassButton testID="header-help" colors={colors} onPress={onPress} label={resolveHelpGuideCopy(language, activeTab).buttonLabel}
-    style={[styles.helpGuideFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 72 : 60) : 14 }]}>
+    style={[styles.helpGuideFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 72 : 60) : 14, left: isRtlLanguage(language) ? (activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 72 : 60) : 14) : undefined }]}>
     <HelpGuideIcon color={colors.text} size={16} />
   </HeaderGlassButton>;
 });
@@ -30904,12 +30959,68 @@ function TycoonAutosaveHungryModal({
   );
 }
 
+// Measure the mounted coach/target in the viewport. Scheduling a navigation or
+// scroll is never presentation evidence. Native measurement is cancellable.
+function PresentedDecisionCoach({ targetId, presentedId, onShown, onDismiss, presentationRef, targetViewRef, viewportBottom, onReveal, enabled, t, colors }) {
+  const view = useRef(null);
+  const revealReadyRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const measure = useCallback(() => {
+    view.current?.measureInWindow((x, y, width, height) => {
+      const screen = Dimensions.get("window");
+      if (!enabledRef.current) return;
+      targetViewRef.current?.measureInWindow((targetX, targetY, targetWidth, targetHeight) => {
+        if (!view.current || !targetViewRef.current || !enabledRef.current) return;
+        const context = { targetId, presentedId, appState: AppState.currentState, screenWidth: screen.width, screenHeight: screen.height, viewportBottom };
+        if (isCoachActuallyPresented({ ...context, x, y, width, height }) &&
+            isCoachActuallyPresented({ ...context, x: targetX, y: targetY, width: targetWidth, height: targetHeight })) {
+          onShown?.(targetId);
+        } else {
+          const delta = Math.max(0, y + height - (viewportBottom ?? screen.height) + 8);
+          // Reveal once, then measure the actual position; a scroll request is
+          // never evidence that the coach or its action has been presented.
+          if (revealReadyRef.current && delta > 1 && targetY - delta >= 0 && onReveal?.(delta)) {
+            requestAnimationFrame(() => presentationRef.current?.());
+          }
+        }
+      });
+    });
+  }, [targetId, presentedId, onShown, targetViewRef, viewportBottom, onReveal, presentationRef, enabled]);
+  useEffect(() => {
+    presentationRef.current = measure;
+    revealReadyRef.current = false;
+    let frame = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      frame = requestAnimationFrame(() => { revealReadyRef.current = true; measure(); });
+    });
+    return () => {
+      presentationRef.current = null;
+      revealReadyRef.current = false;
+      task?.cancel?.();
+      if (frame != null) cancelAnimationFrame(frame);
+    };
+  }, [measure, presentationRef]);
+  return <View ref={view} collapsable={false} onLayout={measure} testID="next-decision-presented"
+    style={{ padding: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, backgroundColor: colors.card, marginVertical: 8 }}>
+    <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>{t("nextDecisionCoachTitle")}</Text>
+    <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>{t("nextDecisionCoachBody")}</Text>
+    <PlatformPressable surfaceRole="control" onPress={() => onDismiss?.("not_now")} accessibilityRole="button"
+      style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start", paddingHorizontal: 8 }}>
+      <Text style={{ color: colors.muted }}>{t("nextDecisionCoachDismiss")}</Text>
+    </PlatformPressable>
+  </View>;
+}
+
 const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   t,
   colors,
   currency,
+  theme = DEFAULT_THEME,
   savedTotalUSD,
   mascotSource,
+  mascotBadge = null,
+  mascotDirtyLevel = 0,
   speechText,
   language,
   resolveTemplateTitle,
@@ -30939,8 +31050,18 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   shoppingBlockerEntry = null,
   recentEvents = [],
   onHistory,
+  onHistoryEntryPress = null,
   practiceTutorial = null,
+  decisionCoach = null,
 }) {
+  const { reduceMotion } = useMotionPreferences();
+  const decisionActionRef = useRef(null);
+  const rtl = isRtlLanguage(language);
+  const mascotBadgeLabel = mascotBadge === "reward"
+    ? t("tamagotchiHourlyRewardClaim")
+    : mascotBadge === "food" ? t("tamagotchiHeroFeed")
+    : mascotBadge === "play" ? t("tamagotchiHeroPlay")
+    : mascotBadge === "clean" ? t("tamagotchiHeroClean") : null;
   const itemTitle = (entry) => {
     const rawTitle = entry.item?.titleOverride ||
       resolveTemplateTitle?.(entry.item?.templateId || entry.item?.id, entry.item?.title) ||
@@ -31016,13 +31137,18 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   const focus = mode === "focus" && focusEntry;
   return (
     <View style={redesignStyles.todayRoot}>
-      <PracticeInactive tutorial={practiceTutorial} style={redesignStyles.todayTopline}>
+      <PracticeInactive tutorial={practiceTutorial} style={[redesignStyles.todayTopline, { direction: rtl ? "rtl" : "ltr", paddingEnd: focus ? 104 : 164 }]}>
         {focus ? (
-          <Pressable onPress={onBack} accessibilityRole="button"><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>‹  {focusBackLabel || t("redesignTodayLabel")}</Text></Pressable>
+          <Pressable onPress={onBack} accessibilityRole="button" style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 }}><TemptationGlyph type="chevron" back color={colors.primary} size={18} /><Text style={[redesignStyles.pauseBrand, { color: colors.primary, flexShrink: 1 }]}>{focusBackLabel || t("redesignTodayLabel")}</Text></Pressable>
         ) : <Text style={[redesignStyles.todayBrand, { color: colors.text }]}>almost<Text style={{ color: colors.primary }}>.</Text></Text>}
 
       </PracticeInactive>
-      <Text style={[redesignStyles.pauseTitle, !focus && { fontSize: 26, marginTop: 0 }, { color: colors.text }]}>{focus ? t("redesignTodayDecide") : t("redesignTodayLabel")}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Text style={[redesignStyles.pauseTitle, !focus && { fontSize: 26, marginTop: 0 }, { color: colors.text, flex: 1, minWidth: 0 }]}>{focus ? t("redesignTodayDecide") : t("redesignTodayLabel")}</Text>
+        {focus ? <Pressable testID="decision-add-temptation" onPress={() => { Keyboard.dismiss(); onAdd?.(); }} accessibilityRole="button" accessibilityLabel={t("redesignTodayAdd")} style={{ width: FAB_BUTTON_SIZE, height: FAB_BUTTON_SIZE, alignItems: "center", justifyContent: "center" }}>
+          <LiquidGlassFabOrb size={FAB_BUTTON_SIZE} icon="+" iconColor={colors.text} isDarkTheme={getReadableTextColor(colors.background) === "#FFFFFF"} isProTheme={theme === PRO_THEME_ID} proThemeAccentColor={colors.primary} />
+        </Pressable> : null}
+      </View>
       {!focus ? <PracticeTarget tutorial={practiceTutorial} id="practice-result"><Pressable onPress={onSavingsBreakdownPress} accessible={false}>
         <PlatformSurface surfaceRole="card" style={[redesignStyles.todayHero, { backgroundColor: colors.primarySurface, minHeight: IS_SHORT_DEVICE ? 174 : 220, paddingBottom: 0, marginTop: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start" }]}>
           <RedesignHeroBackdrop colors={colors} />
@@ -31038,7 +31164,13 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
               </View>
               <View style={{ width: 10, height: 10, alignSelf: "center", marginTop: -5, transform: [{ rotate: "45deg" }], backgroundColor: colors.card, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }} />
             </View> : null}
-            <Pressable testID="today-cat-care" onPress={(event) => { event.stopPropagation(); onMascotPress?.(); }} accessibilityRole="button" accessibilityLabel={t("redesignProfileCare")}><Image source={mascotSource} resizeMode="contain" style={{ width: IS_SHORT_DEVICE ? 96 : 132, height: IS_SHORT_DEVICE ? 96 : 132 }} /></Pressable>
+            <Pressable testID="today-cat-care" onPress={(event) => { event.stopPropagation(); onMascotPress?.(); }} accessibilityRole="button" accessibilityLabel={[t("redesignProfileCare"), mascotBadgeLabel].filter(Boolean).join(". ")} style={{ alignItems: "center", alignSelf: "stretch", paddingBottom: 6 }}>
+              <TamagotchiHeroImage source={mascotSource} size={IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />
+              {mascotBadgeLabel ? <View testID={`today-cat-badge-${mascotBadge}`} pointerEvents="none" style={[redesignStyles.todayCatBadge, { backgroundColor: colors.card, borderColor: colors.primary, flexDirection: rtl ? "row-reverse" : "row" }]}>
+                <Text accessible={false} style={{ fontSize: 15 }}>{mascotBadge === "reward" ? "🪙" : mascotBadge === "play" ? "🧶" : mascotBadge === "clean" ? "🧽" : "🐟"}</Text>
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700", flexShrink: 1, textAlign: "center" }}>{mascotBadgeLabel}</Text>
+              </View> : null}
+            </Pressable>
           </View>
         </PlatformSurface>
       </Pressable></PracticeTarget> : null}
@@ -31054,7 +31186,7 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
           </PracticeInactive>
           <DecisionCardWheel tutorial={practiceTutorial} onEngage={() => practiceTutorial?.event("CARD")} entries={decisionEntries} selectedId={focusEntry.id} onSelect={onFocus} onInteractionChange={setWheelInteracting} titleFor={itemTitle}
             emojiFor={(entry) => resolvePendingEntryDisplay(entry.item, t("defaultDealTitle")).emoji} colors={colors} label={t("decisionChooseCard")} statusFor={cardStatus} searchLabel={t("decisionSearchCards")} onSearch={() => openCardPicker(true)} addLabel={t("redesignTodayAdd")} onAdd={onAdd} />
-          <Modal visible={cardPickerExpanded} transparent animationType="slide" onRequestClose={() => setCardPickerExpanded(false)}>
+          <Modal visible={cardPickerExpanded} transparent animationType={reduceMotion ? "fade" : "slide"} onRequestClose={() => setCardPickerExpanded(false)}>
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(0,0,0,0.5)" }}>
               <View accessibilityViewIsModal style={{ maxHeight: "85%", borderRadius: 24, padding: 16, backgroundColor: colors.card }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -31091,7 +31223,7 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
             <Text accessibilityLiveRegion="polite" style={[redesignStyles.pauseCardBody, { color: colors.muted, maxWidth: "100%" }]}>{amountValid ? t("decisionAmountHint") : t("quickCustomErrorAmount")}</Text>
           </PlatformSurface></PracticeTarget></View>
           <PracticeTarget tutorial={practiceTutorial} id="practice-action">
-            <PlatformPressable surfaceRole="control" onPress={() => { Keyboard.dismiss(); onAction("save", focusEntry.item); }} disabled={!amountValid || sliderInteracting || wheelInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary, opacity: amountValid && !sliderInteracting && !wheelInteracting ? 1 : 0.45 }]}><Text style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t("redesignTodaySaveAction")}</Text></PlatformPressable>
+            <PlatformPressable ref={decisionActionRef} onLayout={() => decisionCoach?.presentationRef.current?.()} surfaceRole="control" onPress={() => { Keyboard.dismiss(); onAction("save", focusEntry.item); }} disabled={!amountValid || sliderInteracting || wheelInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary, opacity: amountValid && !sliderInteracting && !wheelInteracting ? 1 : 0.45 }]}><Text style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t("redesignTodaySaveAction")}</Text></PlatformPressable>
           <View style={redesignStyles.decisionSecondary}>
             <PlatformPressable surfaceRole="control" testID="decision-spend" onPress={() => { Keyboard.dismiss(); onAction(secondaryDecisions[1][1], focusEntry.item); }} disabled={!amountValid || sliderInteracting || wheelInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { marginTop: 0, backgroundColor: colors.surfaceMuted, opacity: amountValid && !sliderInteracting && !wheelInteracting ? 1 : 0.45 }]}>
               <Text style={[redesignStyles.pausePrimaryText, { color: colors.text }]}>{t("redesignTodaySpent")}</Text>
@@ -31100,6 +31232,7 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
               <Text style={[redesignStyles.pauseActionText, { color: colors.primary }]}>{t("redesignTodayLater")}</Text><TemptationGlyph type="chevron" color={colors.muted} size={18} />
             </Pressable>
           </View></PracticeTarget>
+          {decisionCoach ? <PresentedDecisionCoach key={`${decisionCoach.requestId}:${decisionCoach.targetId}`} {...decisionCoach} targetViewRef={decisionActionRef} enabled={amountValid && !sliderInteracting && !wheelInteracting} t={t} colors={colors} /> : null}
           <PracticeInactive tutorial={practiceTutorial} style={redesignStyles.decisionSecondary}>
             <Pressable testID="decision-edit-card" onPress={() => { Keyboard.dismiss(); onEdit(focusEntry.item); }} style={[redesignStyles.pauseActionRow, { paddingHorizontal: 16 }]}>
               <View style={{ flex: 1, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.muted }]}>{t("decisionEditCard")}</Text></View>
@@ -31143,7 +31276,7 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
           <Pressable onPress={onHistory} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 8 }}><Text style={{ color: colors.primary, fontSize: 15 }}>{t("decisionViewAll")}</Text></Pressable>
         </View>
         {!recentEvents.length ? <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>{t("homeWidgetRecentEmptyLabel")}</Text> : null}
-        {recentEvents.map((entry, index) => <Pressable key={entry.id || `${entry.timestamp}-${index}`} onPress={onHistory} accessibilityRole="button" style={{ minHeight: 64, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 4 }}>
+        {recentEvents.map((entry, index) => <Pressable key={entry.id || `${entry.timestamp}-${index}`} onPress={() => isWalletHistoryEntry(entry) && onHistoryEntryPress ? onHistoryEntryPress(entry) : onHistory?.()} accessibilityRole="button" accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined} style={{ minHeight: 64, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 4 }}>
           <Text style={{ color: colors.text, fontSize: 15, lineHeight: 21 }}>{describeHistoryEntry(entry, { t, language, formatLocalAmount: (amount) => formatCurrency(convertToCurrency(amount || 0, currency), currency) })}</Text>
           <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{formatHistoryEntryMeta(entry, { t, locale: getFormatLocale(language) })}</Text>
         </Pressable>)}
@@ -31209,6 +31342,7 @@ const FeedScreen = React.memo(
   cardFeedback = {},
   historyEvents = [],
   onHistoryDelete = () => {},
+  onHistoryEntryPress = null,
   profile,
   incomeEntries = [],
   budgetOverrides = {},
@@ -31276,6 +31410,7 @@ const FeedScreen = React.memo(
   resolveTemplateTitle = () => null,
   resolveTemplateCard = () => null,
   resolveTemptationCategory = null,
+  tamagotchiHeroBadge = null,
   tamagotchiMood = null,
   tamagotchiDesiredFood = null,
   tamagotchiDesiredToy = null,
@@ -31312,6 +31447,7 @@ const FeedScreen = React.memo(
   showAmountSliderConfirmCoach = false,
   onAmountSliderConfirmCoachComplete = () => {},
   nextDecisionCoachRequest = null,
+  nextDecisionCoachViewportBottom = null,
   onNextDecisionCoachShown = () => {},
   onNextDecisionCoachDismiss = () => {},
   onNextDecisionCoachUnavailable = () => {},
@@ -31478,6 +31614,8 @@ const FeedScreen = React.memo(
   }, [redesignFeedMode]);
   const feedIndexByTemplateRef = useRef(new Map());
   const nextDecisionCoachScrollHandledRef = useRef(null);
+  const coachPresentationMeasureRef = useRef(null);
+  const coachRevealHandledRef = useRef(null);
   const [feedScrollLocked, setFeedScrollLocked] = useState(false);
   const activeAmountSliderCardIdRef = useRef(null);
   const heroSectionHeightRef = useRef(0);
@@ -31592,6 +31730,7 @@ const FeedScreen = React.memo(
       }
       feedScrollTimerRef.current = setTimeout(() => {
         notifyFeedScrollState(false);
+        coachPresentationMeasureRef.current?.();
       }, 140);
     },
     [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
@@ -31617,6 +31756,7 @@ const FeedScreen = React.memo(
         feedScrollTimerRef.current = null;
       }
       notifyFeedScrollState(false);
+      coachPresentationMeasureRef.current?.();
     },
     [notifyFeedScrollState, syncFeedScrollOffsetFromEvent]
   );
@@ -34298,7 +34438,7 @@ const FeedScreen = React.memo(
   const nextDecisionCoachTarget = useMemo(() => {
     if (!nextDecisionCoachRequest) return null;
     return resolveNextDecisionCoachTarget({
-      products: orderedProducts,
+      products: [...redesignTodayGroups.due, ...redesignTodayGroups.later].map((entry) => entry.item),
       resolvedTemptationIds: [
         ...Object.keys(normalizedTemptationSeries.resolutions || {}),
         ...Object.keys(normalizedTodayTemptationPlan.resolutions || {}),
@@ -34310,7 +34450,7 @@ const FeedScreen = React.memo(
     nextDecisionCoachRequest,
     normalizedTemptationSeries.resolutions,
     normalizedTodayTemptationPlan.resolutions,
-    orderedProducts,
+    redesignTodayGroups,
   ]);
   const nextDecisionCoachTargetId = nextDecisionCoachTarget?.id || null;
   const feedKeyExtractor = useCallback(
@@ -34379,72 +34519,27 @@ const FeedScreen = React.memo(
     if (requestTick) onTemptationSeriesContinuationHandled?.(requestTick);
   }, [onTemptationSeriesContinuationHandled, temptationSeriesContinuationRequestTick]);
   useEffect(() => {
-    if (!nextDecisionCoachRequest) return undefined;
-    const requestId = Math.max(1, Number(nextDecisionCoachRequest.requestId) || 1);
-    if (!nextDecisionCoachTargetId) {
-      const unavailableKey = `${requestId}:unavailable`;
-      if (nextDecisionCoachScrollHandledRef.current === unavailableKey) return undefined;
-      nextDecisionCoachScrollHandledRef.current = unavailableKey;
-      onNextDecisionCoachUnavailable?.();
-      return undefined;
-    }
-    const targetVisibleInFilter = activeFeedProducts.some(
-      (item) =>
-        normalizeTemptationId(item?.templateId || item?.id) === nextDecisionCoachTargetId
-    );
-    if (
-      nextDecisionCoachRequest.status === NEXT_DECISION_COACH_STATUS.PENDING &&
-      !targetVisibleInFilter
-    ) {
-      setSelectedFeedCategoryId("all");
-      return undefined;
-    }
+    if (!nextDecisionCoachRequest) return;
+    const requestId = nextDecisionCoachRequest.requestId;
+    const targetEntry = redesignCardEntries.find((entry) =>
+      normalizeTemptationId(entry.item?.templateId || entry.item?.id) === nextDecisionCoachTargetId);
+    if (!targetEntry) { onNextDecisionCoachUnavailable?.(); return; }
     const requestKey = `${requestId}:${nextDecisionCoachTargetId}`;
-    if (nextDecisionCoachScrollHandledRef.current === requestKey) return undefined;
-    let retryTimer = null;
-    let cancelled = false;
-    const interactionTask = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      const completeSuccessfulScroll = () => {
-        if (cancelled) return;
-        nextDecisionCoachScrollHandledRef.current = requestKey;
-        onNextDecisionCoachShown?.(nextDecisionCoachTargetId);
-      };
-      const firstAttempt = scrollToTemptationCard({
-        templateId: nextDecisionCoachTargetId,
-        animated: !reduceMotion,
-      });
-      if (firstAttempt) {
-        completeSuccessfulScroll();
-        return;
-      }
-      retryTimer = setTimeout(() => {
-        if (cancelled) return;
-        const retryDidScroll = scrollToTemptationCard({
-          templateId: nextDecisionCoachTargetId,
-          animated: !reduceMotion,
-        });
-        if (retryDidScroll) {
-          completeSuccessfulScroll();
-          return;
-        }
-        onNextDecisionCoachUnavailable?.();
-      }, 180);
-    });
-    return () => {
-      cancelled = true;
-      interactionTask?.cancel?.();
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [
-    activeFeedProducts,
-    nextDecisionCoachRequest,
-    nextDecisionCoachTargetId,
-    onNextDecisionCoachShown,
-    onNextDecisionCoachUnavailable,
-    reduceMotion,
-    scrollToTemptationCard,
-  ]);
+    if (nextDecisionCoachScrollHandledRef.current === requestKey) return;
+    nextDecisionCoachScrollHandledRef.current = requestKey;
+    // Keep the next real decision in Today/focus. The explicit All route stays
+    // available; no synthetic catalog item is invented when Today is complete.
+    setRedesignFocusId(targetEntry.id);
+    setRedesignFeedMode("focus");
+  }, [nextDecisionCoachRequest, nextDecisionCoachTargetId, redesignCardEntries, onNextDecisionCoachUnavailable]);
+  const revealDecisionCoach = useCallback((delta) => {
+    if (!nextDecisionCoachRequest || feedScrollingRef.current || activeAmountSliderCardIdRef.current) return false;
+    const key = `${nextDecisionCoachRequest.requestId}:${nextDecisionCoachTargetId}`;
+    if (coachRevealHandledRef.current === key || !listRef.current?.scrollToOffset) return false;
+    coachRevealHandledRef.current = key;
+    listRef.current.scrollToOffset({ offset: Math.max(0, feedScrollOffsetRef.current + delta), animated: false });
+    return true;
+  }, [nextDecisionCoachRequest, nextDecisionCoachTargetId]);
   const resolveAssignedGoalLabel = useCallback(
     (goalId, assignedGoal) => {
       if (assignedGoal) return getWishTitleWithoutEmoji(assignedGoal);
@@ -34943,6 +35038,7 @@ const FeedScreen = React.memo(
     ]
   );
   const analyticsPreview = analyticsStats.slice(0, 3);
+  const handleHeroCatPress = useCallback(() => onMascotPress(tamagotchiHeroBadge), [onMascotPress, tamagotchiHeroBadge]);
   const heroMascotBadgeCount = Number(dailyRewardReady ? 1 : 0) + Number(dailySummaryBadgeVisible ? 1 : 0);
   const savingRating = useMemo(
     () =>
@@ -35040,14 +35136,21 @@ const FeedScreen = React.memo(
             <>
             <RedesignTodayHeader
               practiceTutorial={practiceTutorial}
+              decisionCoach={nextDecisionCoachRequest && nextDecisionCoachTargetId &&
+                normalizeTemptationId(redesignFocusEntry?.item?.templateId || redesignFocusEntry?.item?.id) === nextDecisionCoachTargetId
+                ? { requestId: nextDecisionCoachRequest.requestId, targetId: nextDecisionCoachTargetId, presentedId: normalizeTemptationId(redesignFocusEntry?.item?.templateId || redesignFocusEntry?.item?.id),
+                    onReveal: revealDecisionCoach, viewportBottom: nextDecisionCoachViewportBottom, presentationRef: coachPresentationMeasureRef, onShown: onNextDecisionCoachShown, onDismiss: onNextDecisionCoachDismiss } : null}
               t={t}
               colors={colors}
+              theme={theme}
               currency={currency}
               savedTotalUSD={savedTotalUSD}
               mascotSource={tamagotchiAnimations.idle}
+              mascotBadge={tamagotchiHeroBadge}
+              mascotDirtyLevel={tamagotchiDirtyLevel}
               speechText={showTamagotchiBubble ? tamagotchiSpeechDisplayText : null}
               onSavingsBreakdownPress={onSavingsBreakdownPress}
-              onMascotPress={onMascotPress}
+              onMascotPress={handleHeroCatPress}
               onSliderInteractionChange={handleRedesignSliderInteraction}
               language={language}
               resolveTemplateTitle={resolveTemplateTitle}
@@ -35059,12 +35162,13 @@ const FeedScreen = React.memo(
               now={resolveTodayQueueNow(redesignNow)}
               recentEvents={[...resolvedHistoryEvents].sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0)).slice(0, 5)}
               onHistory={openHistoryModal}
+              onHistoryEntryPress={onHistoryEntryPress}
               hasCards={redesignCardEntries.length > 0}
               focusEntry={redesignFocusEntry}
               mode={redesignFeedMode}
               onAdd={onNewTemptation}
               onFocus={(entry) => { setRedesignFocusId(entry.id); setRedesignFeedMode("focus"); }}
-              onBack={() => { setRedesignFocusId(null); setRedesignFeedMode(redesignFocusReturnMode); }}
+              onBack={() => { onNextDecisionCoachDismiss?.("not_now"); setRedesignFocusId(null); setRedesignFeedMode(redesignFocusReturnMode); }}
               focusBackLabel={redesignFocusReturnMode === "all" ? t("redesignTodayAllCards") : t("redesignTodayLabel")}
               onEdit={onTemptationEditToggle}
               focusStats={redesignFocusEntry ? {
@@ -35076,7 +35180,7 @@ const FeedScreen = React.memo(
               } : {}}
               categoryLabel={redesignFocusEntry ? getBudgetCategoryLabel(resolveTemptationCategory?.(redesignFocusEntry.item) || DEFAULT_IMPULSE_CATEGORY, language) : null}
               onAction={async (type, item, actionOptions) => { const result = await onTemptationAction(type, item, actionOptions); if (result?.cancelled) return; if ((type === "save" || type === "spend") && !result?.committed) return; if (practiceTutorial?.active && !result?.committed) return; setRedesignFeedMode(redesignFocusReturnMode); setRedesignFocusId(null); }}
-              onAll={() => setRedesignFeedMode("all")}
+              onAll={() => { onNextDecisionCoachDismiss?.("filter_changed"); setRedesignFeedMode("all"); }}
               shoppingBlockerEntry={shoppingBlockerEntry}
               seriesCard={<TemptationSeriesProgressCard compact series={normalizedTemptationSeries} previewPlan={normalizedTodayTemptationPlan} colors={colors} isDarkMode={isDarkMode} t={t} usageStreak={usageStreak} onOpenChest={onTemptationSeriesOpenChest} />}
               tools={[
@@ -35317,6 +35421,7 @@ const FeedScreen = React.memo(
         history={heroHistoryEntries}
         onClose={closeHistoryModal}
         onHistoryDelete={onHistoryDelete}
+        onHistoryEntryPress={onHistoryEntryPress}
         t={t}
         colors={colors}
         currency={currency}
@@ -36591,6 +36696,7 @@ const RedesignProgressOverview = React.memo(function RedesignProgressOverview({
   mascotSource, goalCount, decisionCount, onOpenGoal, onBudgetPress,
   onGoalsPress, onRewardsPress, onInsightsPress, onPlanPress, onMonthlyPlanPress, onSubscriptionsPress, onFreeDaysPress, subscriptionWidget, scrollRef, contentBottomPadding, topInset,
 }) {
+  const progressRtl = isRtlLanguage(useContext(FormattingLanguageContext));
   const [sectionsExpanded, setSectionsExpanded] = useState(false);
   const goalProgress = goalTargetUSD > 0 ? Math.min(1, goalSavedUSD / goalTargetUSD) : 0;
   const goalAmount = formatCurrency(convertToCurrency(goalSavedUSD || 0, currency), currency);
@@ -36603,7 +36709,7 @@ const RedesignProgressOverview = React.memo(function RedesignProgressOverview({
   );
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <View style={redesignStyles.pauseTopline}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("wishlistTab")}</Text></View>
+      <View style={[redesignStyles.pauseTopline, { minHeight: FAB_BUTTON_SIZE + 16, paddingEnd: 196, direction: progressRtl ? "rtl" : "ltr" }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary, textAlign: progressRtl ? "right" : "left" }]}>{t("wishlistTab")}</Text></View>
       <Text style={[redesignStyles.pauseTitle, { color: colors.text }]}>{t("redesignProgressHeadline")}</Text>
       <Text style={[redesignStyles.pauseSubtitle, { color: colors.muted }]}>{t("redesignProgressDecisions", { count: decisionCount })}</Text>
       <View style={{ flexDirection: "row", gap: 12, marginBottom: 8 }}>
@@ -36859,6 +36965,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   onFreeDayRescue,
   freeDayRescueCost = FREE_DAY_RESCUE_COST,
   historyEvents = [],
+  onHistoryEntryPress = null,
   incomeEntries = [],
   budgetOverrides = {},
   budgetAutoEnabled = true,
@@ -39225,18 +39332,7 @@ const confirmAccept = () => {
     [formatLocalAmount, language, t]
   );
   const formatCategoryHistoryMeta = useCallback(
-    (entry) => {
-      const timestamp = normalizeTemporalMs(entry?.timestamp, 0);
-      if (!timestamp) return "";
-      try {
-        const date = new Date(timestamp);
-        const dateLabel = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
-        const timeLabel = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-        return t("historyTimestamp", { date: dateLabel, time: timeLabel });
-      } catch {
-        return "";
-      }
-    },
+    (entry) => formatHistoryEntryMeta({ ...entry, timestamp: normalizeTemporalMs(entry?.timestamp, 0) }, { t, locale }),
     [locale, t]
   );
   const openCategoryHistory = useCallback((categoryId) => {
@@ -39280,6 +39376,7 @@ const confirmAccept = () => {
     });
     categoryModalCloseFallbackTimerRef.current = setTimeout(finalizeClose, 260);
   }, [categoryModalAnim, categoryModalVisible, reduceMotion]);
+  const categoryExpenseHandoff = useModalActionHandoff(categoryModalVisible, closeCategoryHistory, onHistoryEntryPress);
   useEffect(
     () => () => {
       if (categoryModalCloseFallbackTimerRef.current) {
@@ -42387,6 +42484,7 @@ const confirmAccept = () => {
         animationType="none"
         statusBarTranslucent
         onRequestClose={closeCategoryHistory}
+        onDismiss={categoryExpenseHandoff.onDismiss}
       >
         <View style={styles.progressCategoryModalRoot}>
           <TouchableWithoutFeedback onPress={closeCategoryHistory}>
@@ -42453,8 +42551,10 @@ const confirmAccept = () => {
                   showsVerticalScrollIndicator
                 >
                   {categoryHistoryEntries.map((entry, index) => (
-                    <View
+                    <Pressable
                       key={entry.id}
+                      onPress={isWalletHistoryEntry(entry) && onHistoryEntryPress ? () => categoryExpenseHandoff.select(entry) : undefined}
+                      accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined}
                       style={[
                         styles.historyItem,
                         {
@@ -42474,7 +42574,7 @@ const confirmAccept = () => {
                           </Text>
                         </View>
                       </View>
-                    </View>
+                    </Pressable>
                   ))}
                 </ScrollView>
               )}
@@ -43831,6 +43931,7 @@ const redesignStyles = StyleSheet.create({
   progressGoalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   progressGoalOpen: { minHeight: UI_TOUCH_TARGET.current, minWidth: UI_TOUCH_TARGET.current, maxWidth: "55%", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingVertical: 8, paddingHorizontal: 4, flexShrink: 1 },
   progressGoalOpenLabel: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, textAlign: "auto" },
+  todayCatBadge: { maxWidth: "100%", minHeight: 28, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 14, borderWidth: 1 },
   todayHero: { minHeight: 190, borderRadius: 20, padding: 16, marginTop: 18, marginBottom: 21, overflow: "hidden" },
   todayAmount: { fontSize: 36, lineHeight: 39, fontWeight: "800", letterSpacing: -1.2, marginTop: 8, fontVariant: ["tabular-nums"] },
   todayHeroBody: { fontSize: 12, lineHeight: 17, maxWidth: "100%", marginTop: 8 },
@@ -43869,12 +43970,12 @@ const redesignStyles = StyleSheet.create({
   profileBack: { minWidth: 76, justifyContent: "center", paddingRight: 8 },
   settingsList: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 16, overflow: "hidden" },
   settingsRow: { minHeight: 56, paddingHorizontal: 16, paddingVertical: 14, gap: 12, flexDirection: "row", alignItems: "center" },
-  settingsRowRtl: { flexDirection: "row-reverse" },
+  settingsRowRtl: { direction: "rtl", flexDirection: "row" },
   settingsValue: { fontSize: 13, lineHeight: 18, flexShrink: 1, maxWidth: "40%", textAlign: "auto" },
   settingsThemePreview: { width: 40, height: 32, borderRadius: 8, borderWidth: 1, overflow: "hidden", flexDirection: "row", flexShrink: 0 },
   settingsSwitch: { width: 43, height: 26, borderRadius: 13, justifyContent: "center", paddingHorizontal: 3 },
   settingsSwitchKnob: { width: 20, height: 20, borderRadius: 10 },
-  pauseTopline: { minHeight: 43, justifyContent: "center", paddingRight: 96 },
+  pauseTopline: { minHeight: 48, justifyContent: "center", paddingEnd: 104 },
   pauseBrand: { fontSize: 14, fontWeight: "700" },
   pauseTitle: { fontSize: Platform.OS === "android" ? 26 : 29, fontWeight: "800", letterSpacing: Platform.OS === "android" ? -0.6 : -1.1, marginTop: 6 },
   pauseSubtitle: { fontSize: 13, lineHeight: 18, marginTop: 5 },
@@ -49183,8 +49284,8 @@ const RedesignInlinePreferences = React.memo(function RedesignInlinePreferences(
     else onThemeToggle?.(id);
   };
   return <View>{Object.entries(options).map(([kind, items]) => <View key={kind} style={{ paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
-    <Pressable testID={`settings-${kind}`} onPress={() => onChoicePress(kind)} accessibilityRole="button" style={{ minHeight: Platform.OS === "android" ? 48 : 44, paddingHorizontal: 14, flexDirection: rtl ? "row-reverse" : "row", alignItems: "center", justifyContent: "space-between" }}>
-      <Text style={[{ color: colors.text, fontSize: 12, fontWeight: "500", flexShrink: 1, textAlign: rtl ? "right" : "left" }]}>{t(`${kind}Label`)}</Text><Text style={{ color: colors.muted, fontSize: 22 }}>{rtl ? "‹" : "›"}</Text>
+    <Pressable testID={`settings-${kind}`} onPress={() => onChoicePress(kind)} accessibilityRole="button" style={{ minHeight: Platform.OS === "android" ? 48 : 44, paddingHorizontal: 14, direction: rtl ? "rtl" : "ltr", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <Text style={[{ color: colors.text, fontSize: 12, fontWeight: "500", flexShrink: 1, textAlign: rtl ? "right" : "left" }]}>{t(`${kind}Label`)}</Text><TemptationGlyph type="chevron" color={colors.muted} size={18} />
     </Pressable>
     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ gap: 6, paddingHorizontal: 14 }}>
       {items.map((option) => <Pressable key={option.id} onPress={() => select(kind, option.id)} accessibilityRole="radio" accessibilityState={{ selected: values[kind] === option.id }} style={{ minHeight: Platform.OS === "android" ? 48 : 44, justifyContent: "center", backgroundColor: "transparent", borderWidth: 0 }}>
@@ -49205,12 +49306,12 @@ const RedesignProfileOverview = React.memo(function RedesignProfileOverview({
   const row = (key, detailKey, onPress) => (
     <Pressable testID={`profile-row-${key}`} key={key} onPress={onPress} accessibilityRole="button" style={[redesignStyles.pauseActionRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
       <View style={{ flex: 1 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{t(key)}</Text><Text style={[redesignStyles.pauseRowMeta, { color: colors.muted }]}>{t(detailKey)}</Text></View>
-      <Text style={[redesignStyles.pauseChevron, { color: colors.muted }]}>›</Text>
+      <TemptationGlyph type="chevron" color={colors.muted} size={18} />
     </Pressable>
   );
   return (
-    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <View style={redesignStyles.pauseTopline}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("profileTab")}</Text></View>
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background, direction: isRtlLanguage(language) ? "rtl" : "ltr" }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
+      <View style={[redesignStyles.pauseTopline, { direction: isRtlLanguage(language) ? "rtl" : "ltr" }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("profileTab")}</Text></View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginVertical: 16 }}>
         <Pressable testID="profile-edit-avatar" onPress={onEditPress} accessibilityRole="button" accessibilityLabel={t("profileEdit")} style={{ width: 72, height: 72, borderRadius: 36, overflow: "hidden", backgroundColor: colors.card }}>
           <Image source={avatarSource} resizeMode="cover" style={{ width: 72, height: 72 }} />
@@ -49218,10 +49319,10 @@ const RedesignProfileOverview = React.memo(function RedesignProfileOverview({
         <View style={{ flex: 1 }}><Text style={[redesignStyles.pauseTitle, { color: colors.text, marginBottom: 0 }]}>{name}</Text>
           <Pressable testID="profile-edit-name" onPress={onEditPress} accessibilityRole="button" style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center" }}><Text style={{ color: colors.primary, fontSize: 15, fontWeight: "600" }}>{t("profileEdit")}</Text></Pressable></View>
       </View>
-      {!isPremiumUser ? <PlatformPressable surfaceRole="control" testID="profile-full-access" onPress={onPremiumPress} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.success, marginTop: 0, marginBottom: 16 }]}>
+      {!isPremiumUser ? <PlatformPressable surfaceRole="control" foregroundColor={getReadableTextColor(colors.success)} testID="profile-full-access" onPress={onPremiumPress} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.success, marginTop: 0, marginBottom: 16 }]}>
         <Text style={[redesignStyles.pausePrimaryText, { color: getReadableTextColor(colors.success) }]}>{t("profileGetFullAccess")}</Text>
       </PlatformPressable> : null}
-      <PlatformPressable surfaceRole="control" testID="profile-open-reports" onPress={onReportsPress} accessibilityRole="button" accessibilityLabel={t("reportsButton")} style={[redesignStyles.profileReportButton, { backgroundColor: isPremiumUser ? colors.primary : colors.surfaceMuted, alignSelf: isRtlLanguage(language) ? "flex-end" : "flex-start" }]}>
+      <PlatformPressable surfaceRole="control" foregroundColor={isPremiumUser ? colors.onPrimary : colors.text} testID="profile-open-reports" onPress={onReportsPress} accessibilityRole="button" accessibilityLabel={t("reportsButton")} style={[redesignStyles.profileReportButton, { backgroundColor: isPremiumUser ? colors.primary : "transparent", borderWidth: isPremiumUser ? 0 : StyleSheet.hairlineWidth, borderColor: colors.border, alignSelf: isRtlLanguage(language) ? "flex-end" : "flex-start" }]}>
         <Text style={[redesignStyles.pausePrimaryText, { color: isPremiumUser ? colors.onPrimary : colors.text }]}>{t("redesignProfileReports")}</Text>
         {reportsBadgeVisible ? <Text testID="profile-report-ready" style={{ color: isPremiumUser ? colors.onPrimary : colors.text, fontSize: 13 }}>{t("reportsBadgeNew")}</Text> : null}
       </PlatformPressable>
@@ -49229,7 +49330,7 @@ const RedesignProfileOverview = React.memo(function RedesignProfileOverview({
         <Image source={mascotSource} resizeMode="contain" style={{ width: 56, height: 56 }} />
         <View style={{ flex: 1 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{t("redesignProfileCare")}</Text>
           <Text style={[redesignStyles.pauseRowMeta, { color: colors.muted }]}>{t("redesignProfileLevel", { level })}</Text></View>
-        <Text style={[redesignStyles.pauseChevron, { color: colors.muted }]}>›</Text>
+        <TemptationGlyph type="chevron" color={colors.muted} size={18} />
       </Pressable>
       <View style={redesignStyles.profileMetrics}>
         <PlatformSurface surfaceRole="row" style={[redesignStyles.profileMetric, { backgroundColor: colors.card, borderColor: colors.border }]}><Text style={[redesignStyles.profileMetricValue, { color: colors.text }]}>{savedAmount}</Text><Text style={[redesignStyles.pauseRowMeta, { color: colors.muted }]}>{t("redesignTodaySaved")}</Text></PlatformSurface>
@@ -49262,18 +49363,18 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
     <Pressable testID={`settings-row-${key}`} key={key} onPress={onPress} accessibilityRole="button" style={[redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
       <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t(key)}</Text>
       <Text style={[redesignStyles.settingsValue, { color: colors.muted }]}>{detail}</Text>
-      <Text accessible={false} style={[redesignStyles.pauseChevron, { color: colors.muted }]}>{rtl ? "‹" : "›"}</Text>
+      <TemptationGlyph type="chevron" color={colors.muted} size={18} />
     </Pressable>
   );
   const supportRow = (label, onPress) => (
     <Pressable testID={onPress === onHelpGuidePress ? "settings-help" : "settings-report-bug"} key={label} onPress={onPress} accessibilityRole="button" style={[redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
       <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{label}</Text>
-      <Text accessible={false} style={[redesignStyles.pauseChevron, { color: colors.muted }]}>{rtl ? "‹" : "›"}</Text>
+      <TemptationGlyph type="chevron" color={colors.muted} size={18} />
     </Pressable>
   );
   const group = (titleKey, rows) => (
     <View style={{ marginTop: 20 }}>
-      <Text style={[redesignStyles.pauseSectionTitle, { color: colors.text }]}>{t(titleKey)}</Text>
+      <Text style={[redesignStyles.pauseSectionTitle, { color: colors.text, textAlign: rtl ? "right" : "left" }]}>{t(titleKey)}</Text>
       <PlatformSurface surfaceRole="row" style={[redesignStyles.settingsList, { backgroundColor: colors.card, borderColor: colors.border }]}>{rows}</PlatformSurface>
     </View>
   );
@@ -49287,8 +49388,8 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
   );
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <Pressable testID="settings-back" onPress={onBack} accessibilityRole="button" style={[redesignStyles.pauseTopline, rtl && { alignSelf: "flex-end", paddingRight: 0, paddingLeft: 96 }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{rtl ? "›" : "‹"}  {t("profileTab")}</Text></Pressable>
-      <Text style={[redesignStyles.pauseTitle, { color: colors.text }]}>{t("profileSettingsTab")}</Text>
+      <Pressable testID="settings-back" onPress={onBack} accessibilityRole="button" style={[redesignStyles.pauseTopline, rtl && { direction: "rtl", alignSelf: "stretch", paddingRight: 0, paddingLeft: 104 }]}><View style={{ flexDirection: "row", alignItems: "center", gap: 6, direction: rtl ? "rtl" : "ltr" }}><TemptationGlyph type="chevron" back color={colors.primary} size={18} /><Text style={[redesignStyles.pauseBrand, { color: colors.primary, flexShrink: 1 }]}>{t("profileTab")}</Text></View></Pressable>
+      <Text style={[redesignStyles.pauseTitle, { color: colors.text, textAlign: rtl ? "right" : "left" }]}>{t("profileSettingsTab")}</Text>
       {group("redesignSettingsApp", [
         <RedesignInlinePreferences key="preferences" {...{ t, colors, language, currency, theme, onLanguageChange, onCurrencyChange, onThemeToggle, onChoicePress }} />,
         toggle("soundLabel", soundEnabled, () => onSoundToggle?.(!soundEnabled)),
@@ -49298,13 +49399,14 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
         <View key="payday" style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>{incomePaydaySection}</View>,
         row("addCategoryLabel", "", onCategoriesPress),
         Platform.OS === "ios" ? row("blockTitle", "", onShoppingBlockerPress) : null,
-        bankExpenses?.supported ? <Pressable key="automaticExpenses" onPress={bankExpenses.open} testID="settings-expenses" accessibilityRole="button" accessibilityLabel={isPremiumUser ? bankExpenses.copy.title : `${bankExpenses.copy.title}, ${bankExpenses.copy.premiumLabel}`} style={[redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}><View style={{ flex: 1, minWidth: 0, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{bankExpenses.copy.title}</Text>{!isPremiumUser ? <Text style={{ color: colors.muted, fontSize: 12 }}>{bankExpenses.copy.premiumDetail}</Text> : null}</View>{!isPremiumUser ? <View testID="settings-expenses-premium-badge" style={{ flexShrink: 1, maxWidth: "32%", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.primarySurface }}><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>{bankExpenses.copy.premiumLabel}</Text></View> : null}<Text accessible={false} style={[redesignStyles.pauseChevron, { color: colors.muted }]}>{rtl ? "‹" : "›"}</Text></Pressable> : null,
+        bankExpenses?.supported ? <Pressable key="automaticExpenses" onPress={bankExpenses.open} testID="settings-expenses" accessibilityRole="button" accessibilityLabel={isPremiumUser ? bankExpenses.copy.title : `${bankExpenses.copy.title}, ${bankExpenses.copy.premiumLabel}`} style={[redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}><View style={{ flex: 1, minWidth: 0, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{bankExpenses.copy.title}</Text>{!isPremiumUser ? <Text style={{ color: colors.muted, fontSize: 12 }}>{bankExpenses.copy.premiumDetail}</Text> : null}</View>{!isPremiumUser ? <View testID="settings-expenses-premium-badge" style={{ flexShrink: 1, maxWidth: "32%", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.primarySurface }}><Text style={{ color: colors.primary, fontSize: 12, fontWeight: "700" }}>{bankExpenses.copy.premiumLabel}</Text></View> : null}<TemptationGlyph type="chevron" color={colors.muted} size={18} /></Pressable> : null,
         toggle("spendReductionLabel", spendReducesSavings, () => onSpendReductionToggle?.(!spendReducesSavings)),
         toggle("tycoonModeLabel", tycoonModeEnabled, () => onTycoonModeToggle?.(tycoonModeLocked ? true : !tycoonModeEnabled)),
       ])}
       {group("redesignSettingsData", [
         row("premiumStoryBadge", "", onPremiumPress),
         row("privacyPolicyLink", "", onPrivacyPress),
+        <CloudDeletionRow key="cloud-deletion" t={t} colors={colors} />,
         row("supportLink", "", onSupportPress),
         row("instagramLink", "", onInstagramPress),
         row("developerReset", "", onResetData),
@@ -49353,8 +49455,8 @@ const RedesignSettingsChoiceScreen = React.memo(function RedesignSettingsChoiceS
   };
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <Pressable testID="settings-back" onPress={onBack} accessibilityRole="button" style={[redesignStyles.pauseTopline, rtl && { alignSelf: "flex-end", paddingRight: 0, paddingLeft: 96 }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{rtl ? "›" : "‹"}  {t("profileSettingsTab")}</Text></Pressable>
-      <Text style={[redesignStyles.pauseTitle, { color: colors.text }]}>{t(titleKey)}</Text>
+      <Pressable testID="settings-back" onPress={onBack} accessibilityRole="button" style={[redesignStyles.pauseTopline, rtl && { direction: "rtl", alignSelf: "stretch", paddingRight: 0, paddingLeft: 104 }]}><View style={{ flexDirection: "row", alignItems: "center", gap: 6, direction: rtl ? "rtl" : "ltr" }}><TemptationGlyph type="chevron" back color={colors.primary} size={18} /><Text style={[redesignStyles.pauseBrand, { color: colors.primary, flexShrink: 1 }]}>{t("profileSettingsTab")}</Text></View></Pressable>
+      <Text style={[redesignStyles.pauseTitle, { color: colors.text, textAlign: rtl ? "right" : "left" }]}>{t(titleKey)}</Text>
       <PlatformSurface surfaceRole="row" style={[redesignStyles.settingsList, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 20 }]}>
         {options.map((option, index) => (
           <Pressable
@@ -49459,6 +49561,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onResetData,
   onPickImage,
   onHistoryDelete = () => {},
+  onHistoryEntryPress = null,
   theme,
   proThemeAccentId = DEFAULT_PRO_THEME_ACCENT_ID,
   isPremiumUser = false,
@@ -50046,6 +50149,7 @@ const ProfileScreen = React.memo(function ProfileScreen({
           <HistoryTimeline
             history={historyEntries}
             onHistoryDelete={onHistoryDelete}
+            onHistoryEntryPress={onHistoryEntryPress}
             t={t}
             colors={colors}
             currency={currentCurrency}
@@ -50376,8 +50480,15 @@ function AppContent() {
   const [premiumHardPaywallShown, setPremiumHardPaywallShown] = useState(false);
   const [premiumHardPaywallHydrated, setPremiumHardPaywallHydrated] = useState(false);
   const premiumSoftPaywallCheckTimerRef = useRef(null);
-  const [automaticSoftPaywallDecisionRecorded, setAutomaticSoftPaywallDecisionRecorded] =
-    useState(false);
+  const [independentDecisions, setIndependentDecisions] = useState(() => normalizeIndependentDecisions(null));
+  const independentDecisionsRef = useRef(independentDecisions);
+  const [independentDecisionsHydrated, setIndependentDecisionsHydrated] = useState(false);
+  const independentDecisionSequenceRef = useRef(0);
+  const independentDecisionSessionRef = useRef(null);
+  if (!independentDecisionSessionRef.current) independentDecisionSessionRef.current = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const [softPaywallReadinessTick, setSoftPaywallReadinessTick] = useState(0);
+  const notificationPermissionInFlightRef = useRef(0);
+  const tutorialReplayPendingRef = useRef(false);
   const automaticSoftPaywallShownThisSessionRef = useRef(false);
   const [
     premiumTransactionAbandonedOfferLastShownAt,
@@ -51147,9 +51258,10 @@ function AppContent() {
   const incomeEntrySourceRef = useRef("manual");
   const incomeEntryModeRef = useRef(INCOME_ENTRY_TYPES.MONTHLY);
   const walletReceipts = useWalletHistory();
+  const [walletCurrencyRates, setWalletCurrencyRates] = useState(() => ({ ...WALLET_CURRENCY_RATES }));
   const importedWalletEvents = useMemo(() => walletHistoryEvents(walletReceipts,
-    (amount, currency) => CURRENCY_RATES[currency] > 0 ? convertFromCurrency(amount, currency) : NaN,
-    classifyMerchant), [walletReceipts]);
+    (amount, currency) => walletCurrencyRates[currency] > 0 ? amount / walletCurrencyRates[currency] : NaN,
+    classifyMerchant), [walletReceipts, walletCurrencyRates]);
   const resolvedHistoryEvents = useMemo(() => mergeWalletHistory(
     Array.isArray(historyEvents) ? historyEvents : [], importedWalletEvents), [historyEvents, importedWalletEvents]);
   const decisionAmountStats = useMemo(() => buildDecisionAmountStats(historyEvents), [historyEvents]);
@@ -53086,7 +53198,7 @@ function AppContent() {
     exchangeRatesSyncInFlightRef.current = true;
     try {
       const { rates, fetchedAt } = await fetchLatestUsdRates();
-      applyRuntimeCurrencyRates(rates);
+      if (applyRuntimeCurrencyRates(rates)) setWalletCurrencyRates({ ...WALLET_CURRENCY_RATES });
       exchangeRatesLastSyncAtRef.current = now;
       AsyncStorage.setItem(
         STORAGE_KEYS.CURRENCY_RATES_CACHE,
@@ -53115,7 +53227,7 @@ function AppContent() {
       if (cancelled) return;
       const cached = parseCachedCurrencyRates(cachedRaw || "");
       if (cached?.rates) {
-        applyRuntimeCurrencyRates(cached.rates);
+        if (applyRuntimeCurrencyRates(cached.rates)) setWalletCurrencyRates({ ...WALLET_CURRENCY_RATES });
         const lastSyncAt = Math.max(0, cached.syncedAt || cached.fetchedAt || 0);
         if (lastSyncAt > 0) {
           exchangeRatesLastSyncAtRef.current = lastSyncAt;
@@ -53532,7 +53644,7 @@ function AppContent() {
     shouldPromptIncome,
   ]);
   const closeDailySummary = useCallback(
-    ({ markSeen = false } = {}) => {
+    ({ markSeen = false, preserveData = false } = {}) => {
       if (markSeen) {
         const summaryDayKey = dailySummaryData?.todayKey || getDayKey(Date.now());
         if (summaryDayKey) {
@@ -53542,7 +53654,7 @@ function AppContent() {
       }
       setDailySummaryVisible(false);
       setDailySummaryBreakdownType(null);
-      setDailySummaryData(null);
+      if (!preserveData) setDailySummaryData(null);
       setPendingDailySummaryData(null);
       pendingDailySummaryNotificationRef.current = null;
       if (dailySummaryLiveActivityRef.current.active) {
@@ -53607,6 +53719,7 @@ function AppContent() {
     status: NEXT_DECISION_COACH_STATUS.LOADING,
   }));
   const nextDecisionCoachRef = useRef(nextDecisionCoach);
+  const nextDecisionCoachClosedAtRef = useRef(0);
   const completeNextDecisionCoach = useCallback(
     (reason = "completed") => {
       const current = nextDecisionCoachRef.current;
@@ -53620,6 +53733,7 @@ function AppContent() {
         ...createEligibleNextDecisionCoach(),
         status: NEXT_DECISION_COACH_STATUS.DONE,
       };
+      nextDecisionCoachClosedAtRef.current = Date.now();
       nextDecisionCoachRef.current = nextState;
       setNextDecisionCoach(nextState);
       queuePersist(STORAGE_KEYS.NEXT_DECISION_COACH, "done");
@@ -53674,6 +53788,10 @@ function AppContent() {
     },
     [completeNextDecisionCoach, queuePersist]
   );
+  useEffect(() => {
+    if (activeTab !== "feed" && (nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+        nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE)) completeNextDecisionCoach("filter_changed");
+  }, [activeTab, nextDecisionCoach.status, completeNextDecisionCoach]);
   const handleNextDecisionCoachUnavailable = useCallback(() => {
     completeNextDecisionCoach("unavailable");
   }, [completeNextDecisionCoach]);
@@ -53917,8 +54035,10 @@ function AppContent() {
       );
       storeReviewModalGuardTimerRef.current = setTimeout(() => {
         storeReviewModalGuardTimerRef.current = null;
+        setSoftPaywallReadinessTick((tick) => tick + 1);
         requestQueuedModalProcess();
       }, guardRemainingMs + MODAL_HANDOFF_FRAME_SLACK_MS);
+      setSoftPaywallReadinessTick((tick) => tick + 1);
       requestQueuedModalProcess();
       return storeReviewModalGuardUntilRef.current;
     },
@@ -55421,6 +55541,12 @@ function AppContent() {
   const shoppingBlocker = useShoppingBlocker({ history: resolvedHistoryEvents, hydrated: historyHydrated, t, language });
   const bankExpenses = useBankExpenses(language, premiumState, premiumStateCacheHydrated);
   const showBankExpenses = bankExpenses.open;
+  const openHistoryReceipt = bankExpenses.openReceipt;
+  const handleHistoryEntryPress = useCallback((entry) => {
+    if (!isWalletHistoryEntry(entry)) return;
+    const receipt = walletReceipts.find((item) => item.id === entry.meta.receiptId);
+    if (receipt) openHistoryReceipt(receipt);
+  }, [walletReceipts, openHistoryReceipt]);
   const almostPay = useAlmostPayConfirmation();
   const confirmAlmostPay = almostPay.confirm;
   const fabAccessibilityLabel =
@@ -55784,11 +55910,11 @@ function AppContent() {
     }
     AsyncStorage.setItem(STORAGE_KEYS.FOCUS_DIGEST_PENDING, JSON.stringify(pendingFocusDigest)).catch(() => {});
   }, [pendingFocusDigest, focusDigestHydrated]);
-  const openTamagotchiOverlay = useCallback(() => {
+  const openTamagotchiOverlay = useCallback((careTab = "food") => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
     playSound("tap");
     setTamagotchiClosing(false);
-    setTamagotchiActiveTab("food");
+    setTamagotchiActiveTab(careTab === "play" || careTab === "clean" ? careTab : "food");
     setTamagotchiCleanToolArmed(false);
     tamagotchiTabContentAnim.setValue(1);
     tamagotchiTabSwitchingRef.current = false;
@@ -55968,6 +56094,7 @@ function AppContent() {
     (hidden) => {
       if (fabScrollHiddenRef.current === hidden) return;
       fabScrollHiddenRef.current = hidden;
+      setSoftPaywallReadinessTick((tick) => tick + 1);
       Animated.timing(fabSlideAnim, {
         toValue: hidden ? 1 : 0,
         duration: hidden ? 140 : 200,
@@ -57176,6 +57303,7 @@ function AppContent() {
       modalHandoffBlockUntilRef.current || 0,
       settleUntil
     );
+    setSoftPaywallReadinessTick((tick) => tick + 1);
     return modalHandoffBlockUntilRef.current;
   }, []);
   const getModalCloseSettleRemainingMs = useCallback(
@@ -57469,12 +57597,12 @@ function AppContent() {
         {
           translateX: fabSlideAnim.interpolate({
             inputRange: [0, 1],
-            outputRange: [0, FAB_HIDE_TRANSLATE],
+            outputRange: [0, activeTab === "cart" && (progressSection === "overview" || progressSection === "challenges") && isRtlLanguage(language) ? -FAB_HIDE_TRANSLATE : FAB_HIDE_TRANSLATE],
           }),
         },
       ],
     }),
-    [fabSlideAnim]
+    [activeTab, fabSlideAnim, language, progressSection]
   );
 
   const keyboardModalOffset = useMemo(() => {
@@ -57685,6 +57813,10 @@ function AppContent() {
     clearWidgetAction();
     InteractionManager.runAfterInteractions(() => {
       if (!action) return;
+      if (action.type === "progress") {
+        goToTab("cart", { recordHistory: false });
+        return;
+      }
       if (action.type === "daily-summary") {
         const nowTs = Date.now();
         if (!dailySummaryUnlocked || !historyHydrated) return;
@@ -57713,6 +57845,7 @@ function AppContent() {
     dailySummaryUnlocked,
     enqueueQueuedModal,
     getDayKey,
+    goToTab,
     handleFabNewTemptation,
     historyHydrated,
     interfaceReady,
@@ -58769,7 +58902,7 @@ function AppContent() {
   const coinValueModalQueueReady = useCallback(() => {
     if (coinValueModalStatusRef.current !== COIN_VALUE_MODAL_STATUS.PENDING) return false;
     if (!coinValueModalAllowed || coinValueModalVisible) return false;
-    if (premiumSoftPaywallPending || premiumPaywallState.visible) return false;
+    if (premiumPaywallState.visible) return false;
     if (pendingUsageStreakRef.current) return false;
     if (overlayQueueRef.current.length) return false;
     if (celebrationQueueRef.current.length) return false;
@@ -58779,7 +58912,6 @@ function AppContent() {
     coinValueModalAllowed,
     coinValueModalVisible,
     premiumPaywallState.visible,
-    premiumSoftPaywallPending,
   ]);
   useEffect(() => {
     if (queuedModalType !== QUEUED_MODAL_TYPES.COIN_VALUE) {
@@ -59009,6 +59141,13 @@ function AppContent() {
     setBreakdownVisible(true);
   }, []);
   const closeBreakdown = useCallback(() => setBreakdownVisible(false), []);
+  const breakdownExpenseHandoff = useModalActionHandoff(breakdownVisible, closeBreakdown, handleHistoryEntryPress);
+  const closeSummaryForReceipt = useCallback(() => closeDailySummary({ preserveData: true }), [closeDailySummary]);
+  const openSummaryReceipt = useCallback((entry) => {
+    setDailySummaryData(null);
+    handleHistoryEntryPress(entry);
+  }, [handleHistoryEntryPress]);
+  const summaryExpenseHandoff = useModalActionHandoff(dailySummaryVisible, closeSummaryForReceipt, openSummaryReceipt);
   const resolveHistoryCategoryIdForReports = useCallback(
     (entry) => {
       const metaCategory =
@@ -63299,12 +63438,27 @@ function AppContent() {
     },
     [logMonetizationEvent, openPremiumPaywall, premiumState.isPremium]
   );
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", () => setSoftPaywallReadinessTick((tick) => tick + 1));
+    return () => subscription.remove();
+  }, []);
   const canShowSoftPaywallNow = useCallback(() => {
+    if (!independentDecisionsHydrated || !independentDecisionsRef.current.pending) return false;
+    if (feedIntroStatusRef.current !== "done" || feedIntroVisible || tutorialReplayPendingRef.current) return false;
+    if (nextDecisionCoachRef.current.status === NEXT_DECISION_COACH_STATUS.PENDING ||
+        nextDecisionCoachRef.current.status === NEXT_DECISION_COACH_STATUS.VISIBLE) return false;
+    if (Date.now() - nextDecisionCoachClosedAtRef.current < MODAL_CLOSE_SETTLE_MS) return false;
+    if (notificationPermissionInFlightRef.current || suppressResumeOnceRef.current) return false;
+    if (activeTab !== "feed" || allTemptationsVisible || fabMenuVisible || decisionFocusVisible || keyboardVisible || editOverlayVisible || fabScrollHiddenRef.current) return false;
+    if (visibleModalHostCount > 0) return false;
     if (appStateRef.current !== "active") return false;
     if (startupHardLockPendingBeforePaywall) return false;
     if (automaticModalPresentationPausedRef.current) return false;
     if (premiumState.isPremium || premiumPaywallState.visible) return false;
     if (temptationSeriesModalVisible) return false;
+    if (normalizeTemptationSeriesState(temptationSeriesRef.current).status === TEMPTATION_SERIES_STATUS.READY &&
+        temptationSeriesReadyPresentedRef.current !== temptationSeriesRef.current?.seriesId) return false;
+    if (coinValueModalStatusRef.current === COIN_VALUE_MODAL_STATUS.PENDING && coinValueModalAllowed) return false;
     const firstSaveJarStatus = firstSaveGoalJarStatusRef.current;
     if (
       firstSaveGoalJarVisible ||
@@ -63360,6 +63514,8 @@ function AppContent() {
     if (saveOverlayDismissedAt > 0 && Date.now() - saveOverlayDismissedAt < 900) return false;
     return true;
   }, [
+    independentDecisionsHydrated, feedIntroVisible, nextDecisionCoach.status, allTemptationsVisible, fabMenuVisible, activeTab, decisionFocusVisible, keyboardVisible, editOverlayVisible, visibleModalHostCount, softPaywallReadinessTick,
+    coinValueModalAllowed, temptationSeries,
     startupHardLockPendingBeforePaywall,
     blockingModalVisible,
     coinValueModalVisible,
@@ -63565,80 +63721,58 @@ function AppContent() {
     if (!Number.isFinite(installDateMs) || installDateMs <= 0) return false;
     return Date.now() - installDateMs >= DAY_MS * 2;
   }, [installDateMs, isMonetizationExperimentControlGroup, temptationActionCount]);
-  // The first committed save/spend queues one automatic soft paywall per session.
-  // Reward/modal handoffs delay presentation; series completion and legacy
-  // persisted paywall history do not gate this trigger.
+  // Two independent committed decisions unlock an offer. Presentation consumes
+  // the durable opportunity; a new real decision may queue a future session's
+  // offer, always retaining the existing one-show-per-session cap.
   useEffect(() => {
-    if (!isMonetizationSoftPaywallExperimentGroup) return;
-    if (!automaticSoftPaywallDecisionRecorded) return;
-    if (onboardingStep !== "done" || !interfaceReady) return;
-    if (!premiumStateCacheHydrated || premiumState.isPremium) return;
-    if (automaticSoftPaywallShownThisSessionRef.current) return;
-    if (premiumPaywallState.visible || premiumSoftPaywallPending) return;
+    if (!isMonetizationSoftPaywallExperimentGroup || !independentDecisionsHydrated) return;
+    if (!independentDecisions.pending || !premiumStateCacheHydrated || premiumState.isPremium) return;
+    if (automaticSoftPaywallShownThisSessionRef.current || premiumPaywallState.visible) return;
     setPremiumSoftPaywallPending(true);
-  }, [
-    automaticSoftPaywallDecisionRecorded,
-    interfaceReady,
-    isMonetizationSoftPaywallExperimentGroup,
-    onboardingStep,
-    premiumPaywallState.visible,
-    premiumSoftPaywallPending,
-    premiumStateCacheHydrated,
-    premiumState.isPremium,
-  ]);
+  }, [independentDecisions, independentDecisionsHydrated, isMonetizationSoftPaywallExperimentGroup,
+    premiumStateCacheHydrated, premiumState.isPremium, premiumPaywallState.visible]);
   useEffect(() => {
-    if (!premiumSoftPaywallPending) return undefined;
-    if (
-      !isMonetizationSoftPaywallExperimentGroup ||
-      premiumState.isPremium ||
-      automaticSoftPaywallShownThisSessionRef.current
-    ) {
-      setPremiumSoftPaywallPending(false);
-      return undefined;
-    }
+    if (!premiumSoftPaywallPending || !isMonetizationSoftPaywallExperimentGroup ||
+        premiumState.isPremium || automaticSoftPaywallShownThisSessionRef.current) return undefined;
+    let cancelled = false;
     const checkAndShow = () => {
-      if (automaticSoftPaywallShownThisSessionRef.current || premiumState.isPremium) {
-        setPremiumSoftPaywallPending(false);
-        premiumSoftPaywallCheckTimerRef.current = null;
-        return;
-      }
+      premiumSoftPaywallCheckTimerRef.current = null;
+      if (cancelled) return;
       if (canShowSoftPaywallNow()) {
         const opened = openPremiumPaywall({
-          kind: "soft",
-          savedAmountUSD: savedTotalUSD,
-          delayMs: 0,
-          trigger: AUTOMATIC_SOFT_PAYWALL_TRIGGER,
-          dismissible: true,
+          kind: "soft", savedAmountUSD: savedTotalUSD, delayMs: 0,
+          trigger: AUTOMATIC_SOFT_PAYWALL_TRIGGER, dismissible: true,
         });
         if (opened) {
           automaticSoftPaywallShownThisSessionRef.current = true;
+          const consumed = consumeIndependentDecisionOffer(independentDecisionsRef.current);
+          independentDecisionsRef.current = consumed;
+          setIndependentDecisions(consumed);
+          queuePersist(STORAGE_KEYS.INDEPENDENT_DECISIONS, JSON.stringify(consumed));
           setPremiumSoftPaywallShown(true);
           setPremiumSoftPaywallPending(false);
-          premiumSoftPaywallCheckTimerRef.current = null;
-          logMonetizationEvent("premium_soft_paywall_shown", {
-            trigger: AUTOMATIC_SOFT_PAYWALL_TRIGGER,
-          });
-          return;
+          logMonetizationEvent("premium_soft_paywall_shown", { trigger: AUTOMATIC_SOFT_PAYWALL_TRIGGER });
         }
+        return;
       }
-      premiumSoftPaywallCheckTimerRef.current = setTimeout(checkAndShow, 250);
+      // Only wake for known transition deadlines. State/ref owners wake the
+      // effect when their handoff finishes; no continuous readiness polling.
+      const remaining = Math.max(getModalCloseSettleRemainingMs(),
+        MODAL_CLOSE_SETTLE_MS - (Date.now() - nextDecisionCoachClosedAtRef.current),
+        600 - (Date.now() - (lastOverlayDismissedAtRef.current || 0)),
+        900 - (Date.now() - (lastSaveOverlayDismissedAtRef.current || 0)));
+      if (remaining > 0) premiumSoftPaywallCheckTimerRef.current = setTimeout(checkAndShow, remaining + 32);
     };
-    checkAndShow();
+    const task = InteractionManager.runAfterInteractions(checkAndShow);
     return () => {
-      if (premiumSoftPaywallCheckTimerRef.current) {
-        clearTimeout(premiumSoftPaywallCheckTimerRef.current);
-        premiumSoftPaywallCheckTimerRef.current = null;
-      }
+      cancelled = true;
+      task?.cancel?.();
+      clearTimeout(premiumSoftPaywallCheckTimerRef.current);
+      premiumSoftPaywallCheckTimerRef.current = null;
     };
-  }, [
-    canShowSoftPaywallNow,
-    isMonetizationSoftPaywallExperimentGroup,
-    logMonetizationEvent,
-    openPremiumPaywall,
-    premiumSoftPaywallPending,
-    premiumState.isPremium,
-    savedTotalUSD,
-  ]);
+  }, [canShowSoftPaywallNow, getModalCloseSettleRemainingMs, independentDecisions,
+    isMonetizationSoftPaywallExperimentGroup, logMonetizationEvent, openPremiumPaywall,
+    premiumSoftPaywallPending, premiumState.isPremium, queuePersist, savedTotalUSD]);
   useEffect(() => {
     if (!isMonetizationExperimentControlGroup) return;
     const completedCount = (Array.isArray(wishes) ? wishes : []).filter(
@@ -64292,6 +64426,7 @@ function AppContent() {
 
   const ensureNotificationPermission = useCallback(async ({ request = true } = {}) => {
     if (startupHardLockPendingBeforePaywall) return false;
+    notificationPermissionInFlightRef.current += 1;
     try {
       const provisionalStatus = Notifications?.IosAuthorizationStatus?.PROVISIONAL;
       let settings = (await safeNotifications.getPermissionsAsync()) || {};
@@ -64314,6 +64449,9 @@ function AppContent() {
       console.warn("notifications", error);
       setNotificationPermissionGranted(false);
       return false;
+    } finally {
+      notificationPermissionInFlightRef.current -= 1;
+      setSoftPaywallReadinessTick((tick) => tick + 1);
     }
   }, [startupHardLockPendingBeforePaywall]);
 
@@ -68695,6 +68833,7 @@ function AppContent() {
         STORAGE_KEYS.HIDDEN_TEMPTATIONS,
         STORAGE_KEYS.ARCHIVED_TEMPTATIONS,
         STORAGE_KEYS.TEMPTATION_SERIES,
+        STORAGE_KEYS.INDEPENDENT_DECISIONS,
         STORAGE_KEYS.NEXT_DECISION_COACH,
         STORAGE_KEYS.DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL,
         STORAGE_KEYS.HEALTH,
@@ -70307,6 +70446,10 @@ function AppContent() {
         setTemptationSeriesState(fallbackTemptationSeries);
       }
       setTemptationSeriesHydrated(true);
+      const hydratedIndependentDecisions = normalizeIndependentDecisions(storedMap[STORAGE_KEYS.INDEPENDENT_DECISIONS]);
+      independentDecisionsRef.current = hydratedIndependentDecisions;
+      setIndependentDecisions(hydratedIndependentDecisions);
+      setIndependentDecisionsHydrated(true);
       const hydratedNextDecisionCoach = normalizeNextDecisionCoachState(nextDecisionCoachRaw);
       nextDecisionCoachRef.current = hydratedNextDecisionCoach;
       setNextDecisionCoach(hydratedNextDecisionCoach);
@@ -70672,6 +70815,7 @@ function AppContent() {
       deferredHydrationReadyRef.current = true;
       setDeferredHydrationReady(true);
     } finally {
+      setIndependentDecisionsHydrated(true);
       if (nextDecisionCoachRef.current.status === NEXT_DECISION_COACH_STATUS.LOADING) {
         const fallbackNextDecisionCoach = createEligibleNextDecisionCoach();
         nextDecisionCoachRef.current = fallbackNextDecisionCoach;
@@ -73636,34 +73780,6 @@ useEffect(() => {
   const canUseBackGesture =
     onboardingStep !== "done" ? canGoBackOnboarding : true;
 
-  const backGestureResponder = useMemo(() => {
-    if (!canUseBackGesture) return null;
-    let handled = false;
-    const tryHandleBack = (gestureState) => {
-      if (
-        handled ||
-        gestureState.dx < BACK_GESTURE_TRIGGER_DISTANCE ||
-        Math.abs(gestureState.dy) >= BACK_GESTURE_VERTICAL_SLOP
-      ) {
-        return;
-      }
-      handled = true;
-      if (!dispatchScreenBack()) handleAppBack();
-    };
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onPanResponderGrant: () => { handled = false; },
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && gestureState.dx > 10,
-      onPanResponderRelease: (_, gestureState) => {
-        tryHandleBack(gestureState);
-      },
-      onPanResponderTerminate: (_, gestureState) => {
-        tryHandleBack(gestureState);
-      },
-      onPanResponderTerminationRequest: () => true,
-    });
-  }, [canUseBackGesture, handleAppBack]);
 
   const handleThemeToggle = (mode, options = {}) => {
     const nextTheme = normalizeThemeId(mode);
@@ -73752,7 +73868,7 @@ useEffect(() => {
 
   const handleTermsLinkOpen = () => {
     const normalizedLanguage = normalizeLanguage(language);
-    const url = Platform.OS === "ios" ? IOS_TERMS_URL : TERMS_LINKS[normalizedLanguage] || TERMS_LINKS.en;
+    const url = TERMS_LINKS[normalizedLanguage] || TERMS_LINKS.en;
     if (!url) return;
     triggerHaptic();
     playSound("tap", { skipCooldown: true });
@@ -75375,6 +75491,10 @@ useEffect(() => {
         return;
       }
       if (parsed.route === "progress" || parsed.route === "cart") {
+        if (!interfaceReady || !premiumAccessResolved) {
+          queueWidgetAction({ type: "progress" });
+          return;
+        }
         goToTab("cart", { recordHistory: false });
       }
     },
@@ -77093,6 +77213,9 @@ useEffect(() => {
         void bankExpenses.update(entry.meta.receiptId, "", "", true);
         return;
       }
+      const storedEntry = historyEvents.find((candidate) => candidate.id === entry.id);
+      if (!storedEntry) return;
+      entry = storedEntry;
       const entryId = entry.id;
       const amountUSD = Math.max(0, Number(entry.meta?.amountUSD) || 0);
       const historyTemplateId =
@@ -77110,6 +77233,18 @@ useEffect(() => {
         historyTemplateCard?.id,
         historyTemplateCard?.templateId,
       ];
+      if (entry.kind === "refuse_spend" || entry.kind === "spend") {
+        setTemptationInteractions((prev) =>
+          rollbackHistoryDecisionInteractions(prev, entry, historyEvents, lifetimeStatKeys)
+        );
+        const nextSeries = updateTemptationSeries((prev) =>
+          rollbackHistoryDecisionSeries(prev, entry, historyEvents, lifetimeStatKeys)
+        );
+        if (nextSeries.status === TEMPTATION_SERIES_STATUS.ACTIVE) {
+          setTemptationSeriesModalVisible(false);
+          temptationSeriesReadyPresentedRef.current = null;
+        }
+      }
       const resolveHistoryGoalId = () => {
         const meta = entry.meta || {};
         const storedGoalId =
@@ -77169,6 +77304,8 @@ useEffect(() => {
     },
     [
       bankExpenses,
+      historyEvents,
+      updateTemptationSeries,
       applyHistoryGoalDelta,
       resolveTemptationGoalId,
       resolveTemplateCard,
@@ -80229,9 +80366,6 @@ useEffect(() => {
   ]);
   const registerTemptationSeriesAction = useCallback(
     (item, action, rewardCoins = 0, timestamp = Date.now()) => {
-      if (onboardingStep === "done" && (action === "save" || action === "spend")) {
-        setAutomaticSoftPaywallDecisionRecorded(true);
-      }
       recordRatingPromptDecisionAction(action);
       const temptationId = normalizeTemptationId(
         resolveTemptationTemplateId(item) || item?.id
@@ -80335,6 +80469,31 @@ useEffect(() => {
       visibleHistoryEvents,
     ]
   );
+  const beginIndependentDecision = useCallback(() => ({
+    id: `${independentDecisionSessionRef.current}:${++independentDecisionSequenceRef.current}`,
+    coachRequestId: nextDecisionCoachRef.current.requestId,
+    independent: independentDecisionsHydrated && onboardingStep === "done" &&
+      feedIntroStatusRef.current === "done" && !feedIntroVisible &&
+      !tutorialReplayPendingRef.current && !practiceTutorial.active,
+  }), [independentDecisionsHydrated, onboardingStep, feedIntroVisible, practiceTutorial.active]);
+  const recordIndependentDecision = useCallback((context, action) => {
+    if (!context || context.recorded) return; // Technical calls have no user attempt.
+    if (feedIntroStatusRef.current !== "done" || tutorialReplayPendingRef.current) {
+      context.independent = false;
+      return;
+    }
+    const current = independentDecisionsRef.current;
+    const next = commitIndependentDecision(current, { ...context, action, committed: true });
+    if (next === current) return;
+    context.recorded = true;
+    independentDecisionsRef.current = next;
+    setIndependentDecisions(next);
+    queuePersist(STORAGE_KEYS.INDEPENDENT_DECISIONS, JSON.stringify(next));
+    const coach = nextDecisionCoachRef.current;
+    if (context.coachRequestId && context.coachRequestId === coach.requestId && (coach.status === NEXT_DECISION_COACH_STATUS.PENDING || coach.status === NEXT_DECISION_COACH_STATUS.VISIBLE)) {
+      completeNextDecisionCoach("next_decision_completed");
+    }
+  }, [completeNextDecisionCoach, queuePersist]);
   const handleTemptationSeriesClaim = useCallback(() => {
     const claimedAt = Date.now();
     const current = normalizeTemptationSeriesState(temptationSeriesRef.current);
@@ -80554,9 +80713,11 @@ useEffect(() => {
       if (!isEssentialSpendCategory) {
         queueHomeSpeech("spend");
       }
+      recordIndependentDecision(options?.decisionContext, "spend");
       return true;
     },
     [
+      recordIndependentDecision,
       buildTemptationActionTitle,
       enqueueQueuedModal,
       enforceMonetizationTrialActionLimit,
@@ -80594,7 +80755,7 @@ useEffect(() => {
     // Avoid modal stacking race on iOS by waiting for close animation.
     InteractionManager.runAfterInteractions(() => {
       try {
-        const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });
+        const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt, decisionContext: spendPrompt.decisionContext });
         spendDecisionResolverRef.current?.(spendCommitted ? { committed: true } : { cancelled: true });
         spendDecisionResolverRef.current = null;
         if (!spendCommitted) return;
@@ -80616,6 +80777,7 @@ useEffect(() => {
   }, [
     closeSpendPrompt,
     executeSpend,
+    spendPrompt.decisionContext,
     spendPrompt.amountUSD,
     spendPrompt.item,
     spendPrompt.skipFrequencyReminderPrompt,
@@ -81154,6 +81316,11 @@ useEffect(() => {
 
   const handleTemptationAction = useCallback(
     async (type, item, options = {}) => {
+      const decisionContext = options.decisionContext || beginIndependentDecision();
+      // Amount-only coin entries and technical autosave batches are not card
+      // decisions. Carry the original context through every confirmation/retry.
+      if (options.independentDecision === false || String(item?.id || "").startsWith("coin_entry_")) decisionContext.independent = false;
+      options = { ...options, decisionContext };
       const {
         skipPrompt = false,
         goalId: forcedGoalId = null,
@@ -81275,6 +81442,7 @@ useEffect(() => {
           });
           if (bypassSpendPrompt) {
             const spendCommitted = executeSpend(item, priceUSD, {
+              decisionContext,
               skipFrequencyReminderPrompt,
               skipMonetizationTrialLimit,
               preserveFrequencyTimer,
@@ -81289,6 +81457,7 @@ useEffect(() => {
                 visible: true,
                 item,
                 amountUSD: priceUSD,
+                decisionContext,
                 skipFrequencyReminderPrompt,
               });
             });
@@ -81418,6 +81587,7 @@ useEffect(() => {
             item,
             intent: "save",
             amountUSD: priceUSD,
+            decisionContext,
           });
           return;
         }
@@ -81966,6 +82136,7 @@ useEffect(() => {
           logEvent("pending_decide_decline", buildTemptationPayload(item, { days_waited: item.pendingResolutionDaysWaited || 0 }));
           logHistoryEvent("pending_to_decline", { title, amountUSD: priceUSD, category: resolvedCategory });
         }
+        recordIndependentDecision(decisionContext, "save");
         return {
           committed: true,
           type: "save",
@@ -82056,6 +82227,7 @@ useEffect(() => {
                 onPress: () => {
                   void handleTemptationAction(type, item, {
                     ...options,
+                    decisionContext,
                     skipPendingDuplicateConfirm: true,
                   });
                 },
@@ -82140,11 +82312,14 @@ useEffect(() => {
             )
           );
         })();
+        recordIndependentDecision(decisionContext, "pause");
         return { committed: true, type: "pause", pendingId: pendingEntry.id };
       }
       Alert.alert("Almost", t("actionSoon"));
     },
     [
+      beginIndependentDecision,
+      recordIndependentDecision,
       language,
       buildTemptationActionTitle,
       t,
@@ -82494,6 +82669,7 @@ useEffect(() => {
         await handleTemptationAction("spend", card, {
           amountUSD,
           skipAlmostPayConfirmation: true,
+          independentDecision: false,
           bypassSpendPrompt: true,
           suppressStormOverlay: true,
           skipMonetizationTrialLimit: true,
@@ -82507,6 +82683,7 @@ useEffect(() => {
         const saveResult = await handleTemptationAction("save", card, {
           amountUSD,
           skipAlmostPayConfirmation: true,
+          independentDecision: false,
           skipPrompt: true,
           suppressSaveOverlay: true,
           skipSaveSpamCheck: true,
@@ -83183,6 +83360,7 @@ useEffect(() => {
       }
       if (intent === "save") {
         handleTemptationAction("save", sourceItem, {
+          decisionContext: goalLinkPrompt.decisionContext,
           skipPrompt: true,
           goalId: wishId,
           shouldAssign: canPersistTemptationGoalAssignments,
@@ -83195,6 +83373,7 @@ useEffect(() => {
       }
     },
     [
+      goalLinkPrompt.decisionContext,
       assignTemptationGoal,
       canPersistTemptationGoalAssignments,
       closeGoalLinkPrompt,
@@ -87517,6 +87696,7 @@ useEffect(() => {
       practiceClosingRef.current = true;
       setFeedIntroVisible(false);
       feedIntroStatusRef.current = "done";
+      tutorialReplayPendingRef.current = false;
       AsyncStorage.setItem(PRACTICE_TUTORIAL_STORAGE_KEY, "1").catch(() => {});
       AsyncStorage.setItem(STORAGE_KEYS.FEED_INTRO_SHOWN, "1").catch(() => {});
       logEvent("screen_intro_closed", { screen: "feed", source });
@@ -87524,6 +87704,7 @@ useEffect(() => {
     [logEvent]
   );
   const replayPracticeTutorial = useCallback(() => {
+    tutorialReplayPendingRef.current = true;
     closeHelpGuide();
     clearTimeout(practiceReplayTimer.current);
     practiceReplayTimer.current = setTimeout(() => {
@@ -87563,6 +87744,7 @@ useEffect(() => {
         const isSeen = normalized === "1" || normalized === "true" || normalized === "done";
         if (isSeen) {
           feedIntroStatusRef.current = "done";
+          setSoftPaywallReadinessTick((tick) => tick + 1);
           return;
         }
         const handoffRemaining = getModalCloseSettleRemainingMs();
@@ -87783,6 +87965,9 @@ useEffect(() => {
     !helpGuideVisible;
   const nextDecisionCoachProgress = getTemptationSeriesProgress(displayTemptationSeries);
   const nextDecisionCoachPresentationAllowed =
+    appStateRef.current === "active" &&
+    notificationPermissionInFlightRef.current === 0 &&
+    !suppressResumeOnceRef.current &&
     (nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.PENDING ||
       nextDecisionCoach.status === NEXT_DECISION_COACH_STATUS.VISIBLE) &&
     activeTab === "feed" &&
@@ -87792,6 +87977,9 @@ useEffect(() => {
     !startupHardLockPendingBeforePaywall &&
     !blockingModalVisible &&
     !budgetWidgetTutorialVisible &&
+    !feedIntroVisible &&
+    !practiceTutorial.active &&
+    !tutorialReplayPendingRef.current &&
     !showImageSourceSheet &&
     !editOverlayVisible &&
     !premiumPaywallState.visible &&
@@ -87858,6 +88046,7 @@ useEffect(() => {
         }
         return (
           <ProgressScreen
+            onHistoryEntryPress={handleHistoryEntryPress}
             wishes={wishes}
             currency={profile.currency || DEFAULT_PROFILE.currency}
             onRemoveWish={handleRemoveWish}
@@ -88058,6 +88247,7 @@ useEffect(() => {
             onTycoonModeToggle={handleTycoonModeToggle}
             history={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
+            onHistoryEntryPress={handleHistoryEntryPress}
             freeDayStats={freeDayStats}
             rewardBadgeCount={rewardClaimTotal}
             challengeBadges={challengeBadgeEmojis}
@@ -88080,7 +88270,7 @@ useEffect(() => {
       default:
         return (
           <FeedScreen
-            shoppingBlockerEntry={<ShoppingBlockerEntry formatLocalAmount={formatCurrency} controller={shoppingBlocker} t={t} colors={colors} language={language} formatAmount={(amount) => formatCurrency(convertToCurrency(amount, profile.currency || DEFAULT_PROFILE.currency), profile.currency || DEFAULT_PROFILE.currency)} />}
+            shoppingBlockerEntry={<ShoppingBlockerEntry formatLocalAmount={formatCurrency} currency={profile.currency || DEFAULT_PROFILE.currency} toLocalAmount={(amount) => convertToCurrency(amount, profile.currency || DEFAULT_PROFILE.currency)} controller={shoppingBlocker} t={t} colors={colors} language={language} />}
             ref={feedScreenRef}
             products={products}
             archivedItems={archivedProducts}
@@ -88120,6 +88310,7 @@ useEffect(() => {
             cardFeedback={cardFeedback}
             historyEvents={visibleHistoryEvents}
             onHistoryDelete={handleHistoryDelete}
+            onHistoryEntryPress={handleHistoryEntryPress}
             profile={profile}
             incomeEntries={incomeEntries}
             budgetOverrides={budgetOverrides}
@@ -88185,6 +88376,7 @@ useEffect(() => {
             resolveTemplateTitle={resolveTemplateTitle}
             resolveTemplateCard={resolveTemplateCard}
             resolveTemptationCategory={resolveTemptationCategory}
+            tamagotchiHeroBadge={tamagotchiHydratedRef.current ? resolveTamagotchiHeroBadge(tamagotchiState) : null}
             tamagotchiMood={tamagotchiMood}
             tamagotchiDesiredFood={tamagotchiDesiredFood}
             tamagotchiDesiredToy={tamagotchiDesiredToy}
@@ -88212,6 +88404,7 @@ useEffect(() => {
             showAmountSliderConfirmCoach={!amountSliderConfirmCoachSeen}
             onAmountSliderConfirmCoachComplete={markAmountSliderConfirmCoachSeen}
             nextDecisionCoachRequest={nextDecisionCoachRequest}
+            nextDecisionCoachViewportBottom={viewportHeight - resolvedTabBarHeight}
             onNextDecisionCoachShown={handleNextDecisionCoachShown}
             onNextDecisionCoachDismiss={completeNextDecisionCoach}
             onNextDecisionCoachUnavailable={handleNextDecisionCoachUnavailable}
@@ -88421,12 +88614,10 @@ useEffect(() => {
 	                translucent
 	                backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
 	              />
-              {onboardContent}
-              {backGestureResponder && (
-                <View pointerEvents="box-none" style={styles.backGestureWrapper}>
-                  <EdgeBackGesture onBack={() => { if (!dispatchScreenBack()) handleAppBack(); }} fallbackHandlers={backGestureResponder.panHandlers} />
-                </View>
-              )}
+              <EdgeBackGesture enabled={canUseBackGesture} rtl={isRtlLanguage(language)} onBack={() => { if (!dispatchScreenBack()) handleAppBack(); }}>
+                {onboardContent}
+              </EdgeBackGesture>
+
             </View>
           </View>
           <ImageSourceSheet
@@ -88507,16 +88698,14 @@ useEffect(() => {
                 translucent
                 backgroundColor={canSetSystemBarColors ? "transparent" : undefined}
               />
-              {backGestureResponder && (
-                <View pointerEvents="box-none" style={styles.backGestureWrapper}>
-                  <EdgeBackGesture onBack={() => { if (!dispatchScreenBack()) handleAppBack(); }} fallbackHandlers={backGestureResponder.panHandlers} />
-                </View>
-              )}
+
+              <EdgeBackGesture enabled={canUseBackGesture} rtl={isRtlLanguage(language)} onBack={() => { if (!dispatchScreenBack()) handleAppBack(); }}>
               <View style={[styles.screenWrapper, screenKeyboardAdjustmentStyle]}>
                 <View accessibilityElementsHidden={editOverlayVisible} importantForAccessibility={editOverlayVisible ? "no-hide-descendants" : "auto"} style={{ flex: 1, paddingTop: 0 }}>
                   {renderActiveScreen()}
                 </View>
               </View>
+              </EdgeBackGesture>
               <PracticeInactive tutorial={practiceTutorial} pointerEvents="box-none" style={[StyleSheet.absoluteFillObject, { zIndex: 240 }]}><HelpGuideFab
                 visible={helpGuideFabVisible}
                 topInset={topSafeInset}
@@ -88536,7 +88725,7 @@ useEffect(() => {
                 activeTab={activeTab}
               />
               {helpGuideFabVisible && activeTab === "feed" && !decisionFocusVisible ? <HeaderGlassButton testID="header-add-temptation" hitSlop={0} colors={colors} onPress={handleFabNewTemptation} label={t("redesignTodayAdd")}
-                style={{ position: "absolute", top: topSafeInset + 12, right: 14, width: 32, height: 32, borderRadius: 16, zIndex: 240 }}>
+                style={{ position: "absolute", top: topSafeInset + 12, right: isRtlLanguage(language) ? undefined : 14, left: isRtlLanguage(language) ? 14 : undefined, width: 32, height: 32, borderRadius: 16, zIndex: 240 }}>
                 <Text style={{ color: colors.text, fontSize: 23, lineHeight: 26 }}>+</Text>
               </HeaderGlassButton> : null}</PracticeInactive>
           <BugReportModal
@@ -88573,6 +88762,7 @@ useEffect(() => {
               animationType="fade"
               statusBarTranslucent
               onRequestClose={closeBreakdown}
+              onDismiss={breakdownExpenseHandoff.onDismiss}
             >
               <View style={styles.breakdownOverlay}>
                 <Pressable style={StyleSheet.absoluteFillObject} onPress={closeBreakdown} />
@@ -88905,10 +89095,11 @@ useEffect(() => {
                       <Text style={[redesignStyles.pauseSectionTitle, { color: colors.text }]}>{t("homeWidgetRecentLabel")}</Text>
                       {!recentBreakdownEvents.length ? <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>{t("homeWidgetRecentEmptyLabel")}</Text> : null}
                       {recentBreakdownEvents.map((entry, index) => <View key={entry.id || `${entry.timestamp}-${index}`} style={{ paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                        <View style={{ flex: 1, gap: 4 }}>
+                        <Pressable onPress={isWalletHistoryEntry(entry) ? () => breakdownExpenseHandoff.select(entry) : undefined}
+                          accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined} style={{ flex: 1, gap: 4 }}>
                           <Text style={{ fontSize: 14, lineHeight: 20, color: colors.text }}>{describeHistoryEntry(entry, { t, language, formatLocalAmount: breakdownData.formatLocal })}</Text>
                           <Text style={{ fontSize: 12, color: colors.muted }}>{new Date(entry.timestamp).toLocaleDateString(getFormatLocale(language))}</Text>
-                        </View>
+                        </Pressable>
                         <Pressable testID="recent-event-delete" onPress={() => handleHistoryDelete(entry)} accessibilityRole="button"
                           accessibilityLabel={t("historyDeleteEntry", { title: describeHistoryEntry(entry, { t, language, formatLocalAmount: breakdownData.formatLocal }) })}
                           style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.surfaceMuted }}>
@@ -89702,14 +89893,14 @@ useEffect(() => {
         )}
         {!startupHardLockPendingBeforePaywall &&
           !automaticModalPresentationPaused &&
-          dailySummaryVisible &&
           dailySummaryData && (
           <Modal
-            visible
+            visible={dailySummaryVisible}
             transparent
             animationType={reduceMotion ? "none" : "fade"}
             statusBarTranslucent
             onRequestClose={handleDailySummaryDismiss}
+            onDismiss={summaryExpenseHandoff.onDismiss}
           >
             <View
               style={[
@@ -90034,10 +90225,12 @@ useEffect(() => {
                           {dailySummaryBreakdownEntries.length ? (
                             <View style={styles.dailySummaryBreakdownListContent}>
                               {dailySummaryBreakdownEntries.map((entry, index) => (
-                                <View
+                                <Pressable
                                   key={`${entry?.id || entry?.kind || "entry"}-${
                                     entry?.timestamp || "ts"
                                   }-${index}`}
+                                  onPress={isWalletHistoryEntry(entry) ? () => summaryExpenseHandoff.select(entry) : undefined}
+                                  accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined}
                                   style={[
                                     styles.dailySummaryBreakdownItem,
                                     index === dailySummaryBreakdownEntries.length - 1 &&
@@ -90057,7 +90250,7 @@ useEffect(() => {
                                   <Text style={[styles.dailySummaryBreakdownItemMeta, { color: colors.muted }]}>
                                     {formatDailySummaryHistoryMeta(entry)}
                                   </Text>
-                                </View>
+                                </Pressable>
                               ))}
                             </View>
                           ) : (
@@ -90688,17 +90881,18 @@ useEffect(() => {
               styles.fabCenterContainer,
               fabSlideStyle,
               {
-                bottom: activeTab === "cart" && progressSection === "challenges"
+                bottom: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview")
                   ? undefined
                   : Platform.OS === "android"
                   ? Math.max(fabContainerBottom + tabBarBottomInset, resolvedTabBarHeight + 14)
                   : fabContainerBottom + tabBarBottomInset,
-                top: activeTab === "cart" && progressSection === "challenges"
+                top: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview")
                   ? topSafeInset + 4
                   : undefined,
                 // Keep the goal shortcut and its long-press menu reachable without
                 // covering a challenge's Start/Claim button while the list scrolls.
-                right: activeTab === "cart" && progressSection === "challenges" ? 112 : fabContainerRight,
+                right: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") ? (isRtlLanguage(language) ? undefined : 112) : fabContainerRight,
+                left: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") && isRtlLanguage(language) ? 112 : undefined,
               },
             ]}
           >
@@ -90764,20 +90958,6 @@ useEffect(() => {
           </Animated.View>
         )}
 
-        {barsThemeReady && helpGuideFabVisible && activeTab === "feed" && decisionFocusVisible ? (
-          <View pointerEvents="box-none" style={[styles.fabCenterContainer, {
-            bottom: Platform.OS === "android"
-              ? Math.max(fabContainerBottom + tabBarBottomInset, resolvedTabBarHeight + 14)
-              : fabContainerBottom + tabBarBottomInset,
-            right: fabContainerRight,
-          }]}>
-            <Pressable accessibilityElementsHidden={feedIntroVisible} importantForAccessibility={feedIntroVisible ? "no-hide-descendants" : "auto"} testID="decision-add-temptation" onPress={() => { Keyboard.dismiss(); handleFabNewTemptation(); }}
-              accessibilityRole="button" accessibilityLabel={t("redesignTodayAdd")} style={styles.cartBadge}>
-              <LiquidGlassFabOrb size={FAB_BUTTON_SIZE} icon="+" iconColor={colors.text}
-                isDarkTheme={isDarkTheme} isProTheme={isProTheme} proThemeAccentColor={proThemeAccentColor} />
-            </Pressable>
-          </View>
-        ) : null}
 
         <CoinEntryModal
           visible={!startupHardLockPendingBeforePaywall && coinEntryVisible}
@@ -94306,7 +94486,7 @@ useEffect(() => {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-        <ShoppingBlockerPanel controller={shoppingBlocker} formatLocalAmount={formatCurrency} t={t} colors={colors} language={language} currency={profile.currency || DEFAULT_PROFILE.currency} formatAmount={(amount) => formatCurrency(convertToCurrency(amount, profile.currency || DEFAULT_PROFILE.currency), profile.currency || DEFAULT_PROFILE.currency)} toUSD={(amount) => convertFromCurrency(amount, profile.currency || DEFAULT_PROFILE.currency)} />
+        <ShoppingBlockerPanel controller={shoppingBlocker} toLocalAmount={(amount) => convertToCurrency(amount, profile.currency || DEFAULT_PROFILE.currency)} formatLocalAmount={formatCurrency} t={t} colors={colors} language={language} currency={profile.currency || DEFAULT_PROFILE.currency} toUSD={(amount) => convertFromCurrency(amount, profile.currency || DEFAULT_PROFILE.currency)} />
         <BankExpensesPanel controller={bankExpenses} colors={colors} language={language} categories={IMPULSE_CATEGORY_ORDER.map((id) => ({ id, label: getImpulseCategoryLabel(id, language) }))} onUpgrade={() => { bankExpenses.setVisible(false); ensurePremiumFeatureAccess(PREMIUM_FEATURE_KEYS.automaticExpenses, { delayMs: 350 }); }} />
         <AlmostPaySheet request={almostPay.request} onConfirm={() => almostPay.finish(true)} onCancel={() => almostPay.finish(false)} colors={colors} t={t} />
         <SpendConfirmSheet

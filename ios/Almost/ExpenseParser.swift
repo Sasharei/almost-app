@@ -41,6 +41,40 @@ enum ExpenseParser {
     guard let value = Decimal(string: number, locale: Locale(identifier: "en_US_POSIX")), value > 0, value <= 1_000_000_000 else { return nil }
     return NSDecimalNumber(decimal: value).stringValue
   }
+  // Shortcuts may stringify a Currency Amount using the phone's locale.
+  // Require an explicit currency; never infer an ambiguous symbol or device default.
+  static func walletCurrency(_ input: String?) -> String? {
+    guard let input else { return nil }
+    let code = normalize(input).trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    guard NSLocale.commonISOCurrencyCodes.contains(code) else { return nil }
+    return code
+  }
+  static func walletAmount(_ input: String?, currency: String?) -> String? {
+    guard let input, let code = walletCurrency(currency) else { return nil }
+    var number = normalize(input).trimmingCharacters(in: .whitespacesAndNewlines)
+    var tokens = [code]
+    let symbols = ["EUR": ["€"], "GBP": ["£"], "RUB": ["₽"], "SAR": ["ر.س.", "ر.س", "ريال"], "AED": ["د.إ.", "د.إ", "درهم"], "USD": ["US$", "$"], "CAD": ["CA$", "C$", "$"], "AUD": ["A$", "$"], "NZD": ["NZ$", "$"], "HKD": ["HK$", "$"], "SGD": ["S$", "$"], "JPY": ["JP¥", "¥", "￥"], "CNY": ["CN¥", "¥", "￥"]]
+    tokens += symbols[code] ?? []
+    for token in tokens {
+      if number.uppercased().hasPrefix(token.uppercased()) {
+        number = String(number.dropFirst(token.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        break
+      }
+      if number.uppercased().hasSuffix(token.uppercased()) {
+        number = String(number.dropLast(token.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        break
+      }
+    }
+    // A single grouping separator is not a decimal point for two-decimal
+    // currencies. Three-decimal currencies retain their fractional precision.
+    if !["KWD", "BHD", "OMR"].contains(code),
+       !matches(#"^[1-9][0-9]{0,2}([.,])[0-9]{3}(?:\1[0-9]{3})*$"#, number).isEmpty {
+      number = number.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: "")
+    } else if !matches(#"^[1-9][0-9]{0,2}([.,])[0-9]{3}(?:\1[0-9]{3})+$"#, number).isEmpty {
+      number = number.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: "")
+    }
+    return parseAmount(number, currency: code)
+  }
   static func parse(_ input: String) -> Result {
     let text = normalize(input)
     guard !matches(ExpensePatterns.outgoing, text).isEmpty, matches(ExpensePatterns.exclude, text).isEmpty else {

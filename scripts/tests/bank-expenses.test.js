@@ -9,6 +9,89 @@ const root = path.resolve(__dirname, "../..");
 const fixtures = require("./expense-fixtures.json");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
+test("iOS expense parser compiles for the app's iOS 15.5 deployment target", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "almost-expenses-ios-"));
+  try {
+    const sdk = execFileSync("xcrun", ["--sdk", "iphoneos", "--show-sdk-path"], { encoding: "utf8" }).trim();
+    execFileSync("xcrun", ["swiftc", "-typecheck", "-target", "arm64-apple-ios15.5", "-sdk", sdk,
+      "-module-cache-path", path.join(dir, "ModuleCache"),
+      path.join(root, "ios/Almost/ExpensePatterns.swift"), path.join(root, "ios/Almost/ExpenseParser.swift")]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("Wallet history retries bridge failures, publishes complete pages and cancels retries on unmount", async () => {
+  const effects = [];
+  const timers = new Map();
+  const published = [];
+  let event;
+  let calls = 0;
+  let fail = true;
+  let timerID = 0;
+  const native = { page: async (offset) => {
+    calls += 1;
+    if (fail) throw Error("database busy");
+    return JSON.stringify({ revision: 1, total: 2, items: [{ id: String(offset) }] });
+  } };
+  const source = read("src/bankExpenses/useWalletHistory.js").replace(/^import .*;\n/gm, "").replace("export function", "function");
+  const vm = require("node:vm");
+  const context = {
+    useCallback: (callback) => callback, useEffect: (effect) => effects.push(effect),
+    useRef: (current) => ({ current }), useState: () => [[], (value) => published.push(value)],
+    Platform: { OS: "ios" }, NativeModules: { BankExpenses: native },
+    AppState: { addEventListener: () => ({ remove() {} }) },
+    NativeEventEmitter: class { addListener(_name, callback) { event = callback; return { remove() {} }; } },
+    setTimeout: (callback) => { timers.set(++timerID, callback); return timerID; },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  vm.runInNewContext(`${source}\nuseWalletHistory();`, context);
+  const cleanup = effects[0]();
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const runTimer = () => { const [id, callback] = timers.entries().next().value; timers.delete(id); callback(); };
+  runTimer(); await flush();
+  assert.equal(calls, 1);
+  assert.equal(published.length, 0);
+  assert.equal(timers.size, 1);
+  fail = false;
+  runTimer(); await flush();
+  assert.equal(calls, 3);
+  assert.deepEqual(Array.from(published[0], (item) => item.id), ["0", "1"]);
+  await event();
+  assert.equal(published.length, 1, "unchanged revisions do not publish partial or duplicate snapshots");
+  fail = true;
+  await event();
+  assert.equal(timers.size, 1);
+  cleanup();
+  assert.equal(timers.size, 0);
+});
+
+test("Wallet accepts localized Shortcuts amounts without guessing a currency or accepting mismatches", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "almost-wallet-input-"));
+  try {
+    fs.writeFileSync(path.join(dir, "main.swift"), `import Foundation
+let valid: [(String, String, String)] = [
+  ("SAR 1,234.56", " sar ", "1234.56"), ("1.234,56 €", "EUR", "1234.56"),
+  ("1\\u{202f}234,56", "EUR", "1234.56"), ("١٬٢٣٤٫٥٦ ر.س.", "SAR", "1234.56"),
+  ("$1,234", "USD", "1234"), ("1.234.567", "EUR", "1234567"),
+  ("1,234", "KWD", "1.234"), ("1,234.567", "KWD", "1234.567"),
+  ("12.34", "USD", "12.34"), ("\\u{200f}١٢٫٣٤", "SAR", "12.34")
+]
+for (input, currency, expected) in valid {
+  precondition(ExpenseParser.walletAmount(input, currency: currency) == expected, "Wallet input: \\(input)")
+}
+for input in ["EUR 12.34", "-12.34", "12.34 USD EUR", "1,23,4", "12.3456", "0.123", "0,123", "01,234", "1,234.567", "0", "NaN", "12 USD 34", ""] {
+  precondition(ExpenseParser.walletAmount(input, currency: "USD") == nil, "Invalid input accepted: \\(input)")
+}
+precondition(ExpenseParser.walletAmount("12.34", currency: nil) == nil)
+precondition(ExpenseParser.walletAmount(nil, currency: "USD") == nil)
+precondition(ExpenseParser.walletCurrency("ZZZ") == nil)
+precondition(ExpenseParser.walletCurrency(" sar ") == "SAR")
+print("wallet input passed")
+`);
+    execFileSync("xcrun", ["swiftc", path.join(root, "ios/Almost/ExpensePatterns.swift"), path.join(root, "ios/Almost/ExpenseParser.swift"), path.join(dir, "main.swift"), "-o", path.join(dir, "parser")]);
+    assert.match(execFileSync(path.join(dir, "parser"), [], { encoding: "utf8" }), /wallet input passed/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("real iOS and Android parsers agree on multilingual purchases, ambiguous amounts and non-expenses", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "almost-expenses-test-"));
   try {
@@ -265,17 +348,27 @@ from verify_wallet_shortcuts import verify
 root = pathlib.Path('.')
 for name, trigger in [('AlmostApplePayAction', False), ('AlmostApplePayAutomation', True)]:
     source = plistlib.loads((root / 'scripts/shortcuts' / (name + '.unsigned.shortcut')).read_bytes())
-    action = source['WFWorkflowActions'][0]
+    bridge, action = source['WFWorkflowActions']
+    assert bridge['WFWorkflowActionIdentifier'] == 'is.workflow.actions.setvariable'
+    assert bridge['WFWorkflowActionParameters']['WFVariableName'] == 'WalletAmount'
+    assert bridge['WFWorkflowActionParameters']['WFInput']['WFSerializationType'] == 'WFTextTokenAttachment'
+    wallet_amount = bridge['WFWorkflowActionParameters']['WFInput']['Value']
+    assert wallet_amount['Type'] == ('TriggerOutput' if trigger else 'ExtensionInput')
+    assert [part['PropertyName'] for part in wallet_amount['Aggrandizements']] == ['Amount']
     assert action['WFWorkflowActionIdentifier'] == 'com.sasarei.almostclean.ImportApplePayTransactionIntent'
     assert source['WFWorkflowImportQuestions'] == []
     parameters = action['WFWorkflowActionParameters']
     assert parameters['AppIntentDescriptor']['TeamIdentifier'] == 'CGRYGJXPS2'
-    for field, props in [('amount', ['Amount', 'Currency Amount']), ('currency', ['Amount', 'Currency Code']), ('merchant', ['Merchant'])]:
+    for field, props in [('amount', ['Currency Amount']), ('currency', ['Currency Code']), ('merchant', ['Merchant'])]:
         token = parameters[field]
         assert token['WFSerializationType'] == 'WFTextTokenString'
         value = token['Value']['attachmentsByRange']['{0, 1}']
         assert [part['PropertyName'] for part in value['Aggrandizements']] == props
-        assert value['Type'] == ('TriggerOutput' if trigger else 'ExtensionInput')
+        if field == 'merchant':
+            assert value['Type'] == ('TriggerOutput' if trigger else 'ExtensionInput')
+        else:
+            assert value['Type'] == 'Variable'
+            assert value['VariableName'] == 'WalletAmount'
     if trigger:
         assert source['WFWorkflowTriggers'][0]['WFTriggerIdentifier'] == 'WFWalletTransactionTrigger'
         assert source['WFWorkflowTriggers'][0]['WFTriggerSerializedParameters'] == {}
@@ -335,5 +428,83 @@ test("Live Activity raster assets match their point sizes at every device scale"
       assert.equal(png.readUInt32BE(16), Number(width) * scale, `${name}/${image.scale}: incorrect pixel width can cause WidgetKit redaction`);
       assert.equal(png.readUInt32BE(20), Number(height) * scale, `${name}/${image.scale}: incorrect pixel height can cause WidgetKit redaction`);
     }
+  }
+});
+
+
+test("history opens the exact older receipt and category corrections replace its history projection", async () => {
+  const vm = require("node:vm");
+  const state = [];
+  let cursor = 0;
+  const receipt = { id: "older", source: "apple-pay", status: "saved", category: "things",
+    amount: "12.50", currency: "SAR", created: Date.now() - 10000, merchant: "Cafe", label: "Cafe" };
+  let corrections = 0;
+  const native = {
+    updateCategorized: async (id, amount, currency, category) => {
+      assert.equal(id, "older");
+      Object.assign(receipt, { amount, currency, category });
+      corrections += 1;
+    },
+    // The edited receipt need not be present in the panel's first page.
+    page: async () => JSON.stringify({ items: [{ id: "newest" }], total: 100, revision: corrections }),
+  };
+  const source = read("src/bankExpenses/useBankExpenses.js").replace(/^import .*;\n/gm, "").replace(/export function/g, "function");
+  const context = {
+    useCallback: (fn) => fn, useEffect() {}, useRef: (current) => ({ current }),
+    useState: (initial) => { const index = cursor++; if (!(index in state)) state[index] = initial;
+      return [state[index], (value) => { state[index] = typeof value === "function" ? value(state[index]) : value; }]; },
+    NativeModules: { BankExpenses: native }, Platform: { OS: "ios" },
+    expensePremiumUntil: () => 0, BANK_EXPENSE_COPY: { en: {} }, normalizeLanguage: (lang) => lang,
+    resolveTranslationLanguage: () => "en", Date,
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  const render = () => { cursor = 0; return vm.runInContext('useBankExpenses("en")', context); };
+  let c = render();
+  c.openReceipt(receipt);
+  c = render();
+  assert.equal(c.visible, true);
+  assert.equal(c.editRequest.id, "older");
+  assert.equal(c.editRequest.category, "things");
+  assert.equal(await c.update("older", "12.50", "SAR", false, "food"), true);
+  const walletSource = read("src/bankExpenses/walletHistory.js").replace(/export function/g, "function");
+  vm.runInContext(walletSource, context);
+  context.receipt = receipt;
+  const events = vm.runInContext('mergeWalletHistory([{ id: "apple-pay-older", meta: { source: "apple-pay" } }], walletHistoryEvents([receipt], (value) => value, () => ({ category: "things" })))', context);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].meta.quickEntryCategoryId, "food");
+  assert.equal(events[0].meta.amountLocal, 12.5);
+  assert.equal(events[0].meta.receiptId, "older");
+  c = render();
+  c.setVisible(false);
+  assert.equal(render().visible, false);
+  assert.equal(corrections, 1);
+});
+
+test("receipt modal handoff waits for iOS dismissal and commits once on either platform", () => {
+  const vm = require("node:vm");
+  const source = read("src/hooks/useModalActionHandoff.js").replace(/^import .*;\n/gm, "").replace("export function", "function");
+  for (const platform of ["ios", "android"]) {
+    const effects = [];
+    const pending = { current: null };
+    const opened = [];
+    let closes = 0;
+    const context = { useCallback: (fn) => fn, useRef: () => pending,
+      useEffect: (fn) => effects.push(fn), Platform: { OS: platform },
+      close: () => { closes += 1; }, open: (entry) => opened.push(entry.id) };
+    vm.createContext(context);
+    vm.runInContext(source, context);
+    const handoff = vm.runInContext('useModalActionHandoff(true, close, open)', context);
+    const entry = { id: "older" };
+    handoff.select(entry);
+    handoff.select({ id: "double-tap" });
+    assert.equal(closes, 1);
+    assert.deepEqual(opened, []);
+    vm.runInContext('useModalActionHandoff(false, close, open)', context);
+    effects.forEach((effect) => effect());
+    assert.deepEqual(opened, platform === "ios" ? [] : ["older"]);
+    handoff.onDismiss();
+    handoff.onDismiss();
+    assert.deepEqual(opened, ["older"]);
   }
 });

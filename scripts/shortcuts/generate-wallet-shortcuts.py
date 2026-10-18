@@ -4,9 +4,13 @@ No transaction data or third-party workflow actions are included.
 import argparse, pathlib, plistlib, subprocess, tempfile
 from verify_wallet_shortcuts import verify
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-def variable(property_names, trigger):
-    value = {'Type': 'TriggerOutput', 'TriggerIdentifier': 'WFWalletTransactionTrigger'} if trigger else {'Type': 'ExtensionInput'}
+def variable(property_names, trigger, name=None, text=True):
+    value = {'Type': 'Variable', 'VariableName': name} if name else ({'Type': 'TriggerOutput', 'TriggerIdentifier': 'WFWalletTransactionTrigger'} if trigger else {'Type': 'ExtensionInput'})
     value['Aggrandizements'] = [{'Type': 'WFPropertyVariableAggrandizement', 'PropertyName': name} for name in property_names]
+    if not text:
+        # Set Variable must retain the typed Currency Amount object. A text
+        # token here would stringify it and discard its currency properties.
+        return {'WFSerializationType': 'WFTextTokenAttachment', 'Value': value}
     # Explicit currency-amount properties avoid the editor's fixed device currency.
     return {'WFSerializationType': 'WFTextTokenString', 'Value': {'string': '\ufffc', 'attachmentsByRange': {'{0, 1}': value}}}
 def workflow(trigger):
@@ -21,13 +25,19 @@ def workflow(trigger):
         'WFQuickActionSurfaces': [], 'WFWorkflowInputContentItemClasses': ['WFGenericFileContentItem'],
         'WFWorkflowOutputContentItemClasses': [], 'WFWorkflowHasOutputFallback': False,
         'WFWorkflowActions': [{
+            'WFWorkflowActionIdentifier': 'is.workflow.actions.setvariable',
+            'WFWorkflowActionParameters': {
+                'WFVariableName': 'WalletAmount',
+                'WFInput': variable(['Amount'], trigger, text=False)
+            }
+        }, {
             'WFWorkflowActionIdentifier': 'com.sasarei.almostclean.ImportApplePayTransactionIntent',
             'WFWorkflowActionParameters': {
                 'UUID': 'B089CAFE-947E-4ABC-90EF-38EB02C2191D',
                 'AppIntentDescriptor': {'TeamIdentifier': 'CGRYGJXPS2', 'BundleIdentifier': 'com.sasarei.almostclean',
                                         'Name': 'Almost', 'AppIntentIdentifier': 'ImportApplePayTransactionIntent'},
-                'amount': variable(['Amount', 'Currency Amount'], trigger),
-                'currency': variable(['Amount', 'Currency Code'], trigger),
+                'amount': variable(['Currency Amount'], trigger, 'WalletAmount'),
+                'currency': variable(['Currency Code'], trigger, 'WalletAmount'),
                 'merchant': variable(['Merchant'], trigger)
             }
         }]
@@ -41,6 +51,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--automation-export', type=pathlib.Path,
                         help='File → Anyone export from iOS 27 Shortcuts; verified before bundling')
+    parser.add_argument('--sign-automation', action='store_true',
+                        help='Sign with macOS 27+; reject the output if signing strips the Wallet trigger')
     args = parser.parse_args()
     for name, trigger in [('AlmostApplePayAction', False), ('AlmostApplePayAutomation', True)]:
         source = ROOT / 'scripts/shortcuts' / (name + '.unsigned.shortcut')
@@ -49,7 +61,7 @@ if __name__ == '__main__':
         if trigger and args.automation_export:
             verify(workflow(True), args.automation_export)
             destination.write_bytes(args.automation_export.read_bytes())
-        elif trigger and destination.exists():
+        elif trigger and destination.exists() and not args.sign_automation:
             # macOS 26 strips iOS 27 triggers: preserve only a validated device export.
             verify(workflow(True), destination)
         else:

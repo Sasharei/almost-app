@@ -4,13 +4,21 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const load = (os, granted = true, clock = Date) => {
-  const calls = { tokens: 0, autoInit: [], scheduled: [], urls: [], timers: new Map(), removed: 0 };
+  const calls = { tokens: 0, deleted: 0, registered: 0, unregistered: 0, operations: [], autoInit: [], scheduled: [], urls: [], timers: new Map(), removed: 0 };
   let receive;
   let resume;
+  const messaging = { isDeviceRegisteredForRemoteMessages: true };
   const api = {
-    getMessaging: () => ({ isDeviceRegisteredForRemoteMessages: true }),
-    getToken: async () => { calls.tokens += 1; },
-    setAutoInitEnabled: async (_, enabled) => calls.autoInit.push(enabled),
+    getMessaging: () => messaging,
+    getToken: async () => { calls.tokens += 1; calls.operations.push("token"); },
+    deleteToken: async () => { calls.deleted += 1; calls.operations.push("delete"); },
+    registerDeviceForRemoteMessages: async () => {
+      calls.registered += 1; calls.operations.push("register"); messaging.isDeviceRegisteredForRemoteMessages = true;
+    },
+    unregisterDeviceForRemoteMessages: async () => {
+      calls.unregistered += 1; calls.operations.push("unregister"); messaging.isDeviceRegisteredForRemoteMessages = false;
+    },
+    setAutoInitEnabled: async (_, enabled) => { calls.autoInit.push(enabled); calls.operations.push(`auto:${enabled}`); },
     onMessage: (_, handler) => { receive = handler; return () => { calls.removed += 1; }; },
     onNotificationOpenedApp: () => () => { calls.removed += 1; },
     getInitialNotification: async () => null,
@@ -20,7 +28,7 @@ const load = (os, granted = true, clock = Date) => {
     AndroidImportance: { DEFAULT: 3 },
     IosAuthorizationStatus: { PROVISIONAL: 3 },
     SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval" },
-    getPermissionsAsync: async () => ({ granted }),
+    getPermissionsAsync: async () => typeof granted === "object" ? granted : ({ granted }),
     setNotificationChannelAsync: async () => {},
     scheduleNotificationAsync: async (value) => calls.scheduled.push(value),
   };
@@ -40,7 +48,8 @@ test("registration respects denied permission without an extra prompt", async ()
   const stop = state.startCloudNotifications({ channelName: "News" });
   await flush();
   assert.equal(state.calls.tokens, 0);
-  assert.deepEqual(state.calls.autoInit, []);
+  assert.deepEqual(state.calls.autoInit, [false]);
+  assert.equal(state.calls.deleted, 1);
   stop();
   assert.equal(state.calls.removed, 3);
 });
@@ -111,12 +120,12 @@ for (const platform of ["ios", "android"]) {
     state.setPermission(true);
     state.resume();
     await flush();
-    assert.deepEqual(state.calls.autoInit, [true]);
+    assert.deepEqual(state.calls.autoInit, [false, true]);
     assert.equal(state.calls.tokens, 1);
     stop();
     const stopAfterRestart = state.startCloudNotifications({ channelName: "News" });
     await flush();
-    assert.deepEqual(state.calls.autoInit, [true, true]);
+    assert.deepEqual(state.calls.autoInit, [false, true, true]);
     assert.equal(state.calls.tokens, 2);
     stopAfterRestart();
   });
@@ -193,5 +202,113 @@ test("revoking OS permission suppresses Android foreground banners from an exist
   state.setPermission(false);
   await state.receive({ messageId: "revoked", notification: { title: "Release", body: "8.0.0" } });
   assert.equal(state.calls.scheduled.length, 0);
+  stop();
+});
+
+for (const platform of ["ios", "android"]) {
+  test(`${platform}: permission revocation deletes the token before a later grant obtains a new one`, async () => {
+    const state = load(platform);
+    const stop = state.startCloudNotifications({ channelName: "News" });
+    await flush();
+    state.setPermission(false);
+    state.resume();
+    await flush();
+    assert.deepEqual(state.calls.operations, platform === "ios"
+      ? ["auto:true", "token", "auto:false", "delete", "unregister"]
+      : ["auto:true", "token", "auto:false", "delete"]);
+    assert.equal(state.calls.scheduled.length, 0);
+    state.setPermission(true);
+    state.resume();
+    await flush();
+    assert.equal(state.calls.tokens, 2);
+    assert.equal(state.calls.registered, platform === "ios" ? 1 : 0);
+    assert.equal(state.calls.autoInit.at(-1), true);
+    stop();
+  });
+}
+
+test("iOS still revokes APNs registration when token deletion fails, then retries deletion", async () => {
+  const state = load("ios", false);
+  const deleteToken = state.api.deleteToken;
+  let attempts = 0;
+  state.api.deleteToken = async (...args) => {
+    attempts += 1;
+    if (attempts === 1) throw Error("offline");
+    return deleteToken(...args);
+  };
+  const stop = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  assert.equal(state.calls.unregistered, 1);
+  assert.equal(state.calls.tokens, 0);
+  assert.equal(state.calls.timers.size, 1);
+  state.calls.timers.values().next().value();
+  await flush();
+  assert.equal(attempts, 2);
+  assert.equal(state.calls.deleted, 1);
+  assert.equal(state.calls.timers.size, 0);
+  stop();
+});
+
+test("permission revoked during getToken is reconciled without another foreground event", async () => {
+  const state = load("android");
+  let finishToken;
+  state.api.getToken = () => new Promise((resolve) => { finishToken = resolve; });
+  const stop = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  state.setPermission(false);
+  finishToken();
+  await flush();
+  assert.deepEqual(state.calls.autoInit, [true, false]);
+  assert.equal(state.calls.deleted, 1);
+  stop();
+});
+
+test("a grant arriving during deletion is reconciled after deletion completes", async () => {
+  const state = load("ios", false);
+  let finishDelete;
+  const deleteToken = state.api.deleteToken;
+  state.api.deleteToken = async (...args) => {
+    await new Promise((resolve) => { finishDelete = resolve; });
+    return deleteToken(...args);
+  };
+  const stop = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  state.setPermission(true);
+  state.resume();
+  assert.equal(state.calls.tokens, 0);
+  finishDelete();
+  await flush();
+  assert.deepEqual(state.calls.operations, ["auto:false", "delete", "unregister", "auto:true", "register", "token"]);
+  stop();
+});
+
+test("an effect restart cannot let old deletion invalidate the replacement registration", async () => {
+  const state = load("ios", false);
+  let finishDelete;
+  const deleteToken = state.api.deleteToken;
+  state.api.deleteToken = async (...args) => {
+    await new Promise((resolve) => { finishDelete = resolve; });
+    return deleteToken(...args);
+  };
+  const stopOld = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  stopOld();
+  state.setPermission(true);
+  const stopNew = state.startCloudNotifications({ channelName: "Новости" });
+  await flush();
+  assert.equal(state.calls.tokens, 0);
+  finishDelete();
+  await flush();
+  assert.deepEqual(state.calls.operations, ["auto:false", "delete", "unregister", "auto:true", "register", "token"]);
+  stopNew();
+});
+
+test("iOS provisional authorization keeps push enabled and does not delete the token", async () => {
+  const state = load("ios", { granted: false, ios: { status: 3 } });
+  const stop = state.startCloudNotifications({ channelName: "News" });
+  await flush();
+  assert.deepEqual(state.calls.autoInit, [true]);
+  assert.equal(state.calls.tokens, 1);
+  assert.equal(state.calls.deleted, 0);
   stop();
 });

@@ -666,3 +666,120 @@ test("reconciliation excludes retired and unrelated IDs without changing earned 
   assert.equal(result.pendingCoins, 30);
   assert.equal(result.creditedCoins, 30);
 });
+
+const { rollbackHistoryDecisionSeries, rollbackHistoryDecisionInteractions } = require("../../src/utils/historyDecisionRollback");
+const historyDecision = (id, kind = "refuse_spend", timestamp = DAY_ONE, templateId = "coffee") =>
+  ({ id, kind, timestamp, meta: { templateId, amountUSD: 5 } });
+
+test("deleting the final decision restores an unchecked card, its feed position and series progress after restart", () => {
+  const { buildTodayTemptationPlan, partitionUnifiedTemptationFeed } = require("../../src/engagement/todayTemptations");
+  const products = ["coffee", "delivery", "games"].map(id => ({ id }));
+  let state = null;
+  const history = products.map((item, index) => historyDecision(item.id, "refuse_spend", DAY_ONE + index * 1000, item.id));
+  products.forEach((item, index) => {
+    state = applyTemptationSeriesAction(state, { availableIds: products.map(p => p.id), temptationId: item.id,
+      action: "save", rewardCoins: 5, timestamp: history[index].timestamp }).state;
+  });
+  for (const initial of [state, claimTemptationSeries(state, DAY_ONE + 4000).state]) {
+    const undone = rollbackHistoryDecisionSeries(initial, history[0], history);
+    const persisted = normalizeTemptationSeriesState(JSON.parse(JSON.stringify(undone)));
+    const plan = buildTodayTemptationPlan({ products, historyEvents: history.slice(1), activeTargetIds: persisted.targetIds, timestamp: DAY_ONE + 5000 });
+    const reconciled = reconcileTemptationSeriesTargets(persisted, { ...plan, historyResolutions: plan.resolutions, eligibleIds: products.map(p => p.id), timestamp: DAY_ONE + 5000 });
+    assert.equal(reconciled.status, TEMPTATION_SERIES_STATUS.ACTIVE);
+    assert.deepEqual(getTemptationSeriesProgress(reconciled), { completed: 2, total: 3, remaining: 1 });
+    assert.equal(reconciled.resolutions.coffee, undefined);
+    assert.deepEqual(partitionUnifiedTemptationFeed({ items: products, todayTargetIds: plan.targetIds, resolvedTodayIds: Object.keys(reconciled.resolutions) }).uncheckedToday, [products[0]]);
+    const redone = applyTemptationSeriesAction(reconciled, { availableIds: persisted.targetIds, temptationId: "coffee", action: "save", rewardCoins: 5, timestamp: DAY_ONE + 6000 });
+    assert.equal(redone.becameReady, true);
+    assert.equal(claimTemptationSeries(redone.state, DAY_ONE + 7000).payoutCoins, 0);
+  }
+});
+
+test("history undo retains other decisions for the same card and handles legacy aliases", () => {
+  const first = historyDecision("first");
+  const last = historyDecision("last", "spend", DAY_ONE + 1000, "legacy-coffee");
+  let state = applyTemptationSeriesAction(null, { availableIds: ["coffee", "delivery", "games"], temptationId: "coffee", action: "save", timestamp: DAY_ONE }).state;
+  state = applyTemptationSeriesAction(state, { temptationId: "coffee", action: "spend", timestamp: last.timestamp }).state;
+  const result = rollbackHistoryDecisionSeries(state, last, [last, first], ["coffee"]);
+  assert.equal(result.resolutions.coffee.firstAction, "save");
+  assert.equal(result.resolutions.coffee.lastAction, "save");
+  assert.equal(result.resolutions.coffee.actionCount, 1);
+  assert.equal(getTemptationSeriesProgress(result).completed, 1);
+  assert.equal(rollbackHistoryDecisionSeries(state, { ...last, timestamp: DAY_TWO }, [] ).resolutions.coffee.lastAction, "spend");
+});
+
+test("undo preserves independent skips and unrelated cards", () => {
+  const entry = historyDecision("save");
+  let state = applyTemptationSeriesAction(null, { availableIds: ["coffee", "delivery", "games"], temptationId: "coffee", action: "save", timestamp: DAY_ONE }).state;
+  state = applyTemptationSeriesAction(state, { temptationId: "coffee", action: "skip", timestamp: DAY_ONE + 1000 }).state;
+  state = applyTemptationSeriesAction(state, { temptationId: "delivery", action: "pause", timestamp: DAY_ONE + 2000 }).state;
+  const result = rollbackHistoryDecisionSeries(state, entry, [entry]);
+  assert.equal(result.resolutions.coffee.firstAction, "skip");
+  assert.equal(result.resolutions.delivery.firstAction, "pause");
+});
+
+test("undo restores interaction timestamps without removing configured reminders or lifetime totals", () => {
+  const first = historyDecision("first");
+  const latest = historyDecision("latest", "spend", DAY_ONE + 1000);
+  const stats = { coffee: { lastInteractionAt: latest.timestamp, saveCount: 40, spendCount: 5, frequency: "weekly", nextCheckAt: DAY_TWO }, taxi: { saveCount: 3 } };
+  const result = rollbackHistoryDecisionInteractions(stats, latest, [first, latest]);
+  assert.equal(result.coffee.lastInteractionAt, first.timestamp);
+  assert.equal(result.coffee.lastSavedAt, first.timestamp);
+  assert.equal(result.coffee.lastSpentAt, null);
+  assert.equal(result.coffee.saveCount, 40);
+  assert.equal(result.coffee.nextCheckAt, DAY_TWO);
+  assert.equal(result.taxi, stats.taxi);
+  assert.equal(rollbackHistoryDecisionInteractions(result, first, [first]).coffee.lastInteractionAt, null);
+});
+
+test("the actual history delete handler persists the reopened series and keeps existing accounting wired", () => {
+  const { decrementTemptationLifetimeInteractionStats, decrementTemptationLifetimeRefuseStats } = require("../../src/utils/temptationLifetimeStats");
+  const source = fs.readFileSync(path.join(__dirname, "../../App.js"), "utf8");
+  const start = source.indexOf("  const handleHistoryDelete = useCallback(");
+  const end = source.indexOf("\n  useEffect", start);
+  const entry = historyDecision("save");
+  const storage = new Map();
+  let state = applyTemptationSeriesAction(null, { availableIds: ["coffee", "delivery", "games"], temptationId: "coffee", action: "save", timestamp: DAY_ONE }).state;
+  let interactions = { coffee: { saveCount: 1, lastSavedAt: DAY_ONE, lastInteractionAt: DAY_ONE, savedAmountUSD: 5 } };
+  let refuses = { coffee: { count: 1, totalUSD: 5 } };
+  let saved = 5;
+  let progressSaved = 5;
+  let declines = 1;
+  const context = {
+    useCallback: callback => callback, bankExpenses: {},
+    historyEvents: [entry], rollbackHistoryDecisionSeries, rollbackHistoryDecisionInteractions,
+    decrementTemptationLifetimeInteractionStats, decrementTemptationLifetimeRefuseStats,
+    TEMPTATION_SERIES_STATUS, temptationSeriesReadyPresentedRef: { current: "ready" },
+    resolveTemplateCard: () => ({ id: "coffee" }), resolveTemptationGoalId: () => null,
+    applyHistoryGoalDelta: () => {}, setPendingList: () => {}, setWishes: () => {},
+    setDeclineCount: updater => { declines = updater(declines); },
+    setRefuseStats: updater => { refuses = updater(refuses); },
+    setTemptationInteractions: updater => { interactions = updater(interactions); },
+    setSavedTotalUSD: updater => { saved = updater(saved); },
+    setProgressSavedTotalUSD: updater => { progressSaved = updater(progressSaved); },
+    clampSavedBalanceUSD: value => Math.max(0, value), spendReducesSavings: true,
+    updateTemptationSeries: updater => {
+      state = updater(state);
+      storage.set("series", JSON.stringify(state));
+      return state;
+    },
+    setTemptationSeriesModalVisible: () => {},
+    AsyncStorage: { setItem: (key, value) => { storage.set(key, value); return Promise.resolve(); } },
+    STORAGE_KEYS: { HISTORY: "history" }, setChallengesState: updater => updater({}),
+    rebuildChallengeProgressFromHistory: () => ({}),
+    setHistoryEvents: updater => { context.historyEvents = updater(context.historyEvents); },
+  };
+  vm.runInNewContext(source.slice(start, end) + "\nthis.deleteEntry = handleHistoryDelete;", context);
+  context.deleteEntry(entry);
+  assert.equal(getTemptationSeriesProgress(state).completed, 0);
+  assert.equal(JSON.parse(storage.get("series")).resolutions.coffee, undefined);
+  assert.deepEqual(JSON.parse(storage.get("history")), []);
+  assert.equal(interactions.coffee.lastInteractionAt, null);
+  assert.equal(interactions.coffee.saveCount, 0);
+  assert.equal(refuses.coffee.count, 0);
+  assert.equal(saved, 0);
+  assert.equal(progressSaved, 0);
+  assert.equal(declines, 0);
+  context.deleteEntry(entry);
+  assert.equal(declines, 0);
+});

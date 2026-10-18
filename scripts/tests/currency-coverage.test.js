@@ -22,7 +22,7 @@ const declarations = parse(app, { sourceType: 'module', plugins: ['jsx'] }).prog
 const economy = fs.readFileSync(path.join(root, 'src/constants/economyConfig.js'), 'utf8').replace(/export /g, '');
 const additions = 'HKD INR CHF PHP SEK CZK KGS MDL NGN RON UAH ILS PKR TRY SCR UZS'.split(' ');
 function setup(locale = 'en-US', noIntl = false) {
-  return vm.runInNewContext(`${economy}\n${declarations}\n({${names.join(',')}, CURRENCY_RATES, CURRENCY_SIGNS, CURRENCY_FINE_STEPS, CURRENCY_REWARD_STEPS})`, {
+  return vm.runInNewContext(`${economy}\n${declarations}\n({${names.join(',')}, CURRENCY_RATES, WALLET_CURRENCY_RATES, CURRENCY_SIGNS, CURRENCY_FINE_STEPS, CURRENCY_REWARD_STEPS})`, {
     DEFAULT_PROFILE: { currency: 'USD' }, activeCurrency: 'USD',
     resolveCurrencyLocale: () => locale, shouldForceLtrCurrencyLayout: () => false,
     getCachedIntlNumberFormat: (l, options) => {
@@ -54,6 +54,23 @@ test('new selectable currencies have usable rates, symbols and monetary steps', 
   }
   for (const code of ['JPY', 'KRW', 'KZT', 'RUB', 'ARS', 'TWD']) assert.equal(api.getCurrencyPrecision(code), 0);
   assert.equal(api.normalizeCurrencyCode('invalid'), 'USD');
+});
+
+test('foreign Wallet currencies retain offline rates and refresh without expanding selectable currencies', () => {
+  const api = setup();
+  const selectable = Object.keys(api.CURRENCY_RATES).sort();
+  for (const code of ['KWD', 'BHD', 'OMR', 'QAR', 'EGP', 'NZD', 'SGD', 'NOK', 'DKK', 'ZAR', 'IDR', 'THB', 'MYR', 'VND']) {
+    assert.ok(api.WALLET_CURRENCY_RATES[code] > 0, code);
+    assert.ok(api.EXCHANGE_RATES_SUPPORTED_CODES.includes(code), code);
+  }
+  const previous = api.WALLET_CURRENCY_RATES.KWD;
+  const snapshot = api.parseCachedCurrencyRates(JSON.stringify({ base: 'USD', rates: { USD: 1, KWD: 0.31, BHD: -1 } }));
+  const bhd = api.WALLET_CURRENCY_RATES.BHD;
+  assert.ok(api.applyRuntimeCurrencyRates(snapshot.rates));
+  assert.notEqual(previous, 0.31);
+  assert.equal(api.WALLET_CURRENCY_RATES.KWD, 0.31);
+  assert.equal(api.WALLET_CURRENCY_RATES.BHD, bhd);
+  assert.deepEqual(Object.keys(api.CURRENCY_RATES).sort(), selectable);
 });
 
 test('partial cached/live rates preserve fallbacks for newly supported currencies', () => {

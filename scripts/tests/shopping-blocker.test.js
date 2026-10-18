@@ -6,7 +6,7 @@ const os = require("node:os");
 const { execFileSync } = require("node:child_process");
 const { eligibleShoppingSavings, hasShoppingDecision, parseShoppingGoal } = require("../../src/shoppingBlocker/eligibleSavings.js");
 
-const { formatShoppingCycleAmount } = require("../../src/shoppingBlocker/amounts.js");
+const { formatShoppingCycleAmount, shoppingGoalInput } = require("../../src/shoppingBlocker/amounts.js");
 
 const event = (id, timestamp, amountUSD, extra = {}) => ({ id, timestamp, kind: "refuse_spend", meta: { amountUSD }, ...extra });
 
@@ -522,12 +522,11 @@ test("Shopping Pause shows currency minor units instead of hiding a shortfall be
     style: "currency", currency, minimumFractionDigits: options.precisionOverride,
     maximumFractionDigits: options.precisionOverride,
   }).format(amount);
-  const status = { goalUSD: 100 / 0.923451, goalAmount: 100, goalCurrency: "EUR" };
-  assert.equal(formatShoppingCycleAmount(99.99 / 0.923451, status, format), "€99.99");
-  assert.equal(formatShoppingCycleAmount(status.goalUSD, status, format), "€100.00");
-  assert.equal(formatShoppingCycleAmount(100, { goalUSD: 100, goalAmount: 100, goalCurrency: "JPY" }, format), "¥100");
-  assert.equal(formatShoppingCycleAmount(99.999, { goalUSD: 100, goalAmount: 100, goalCurrency: "KWD" }, format), "KWD 99.999");
-  assert.equal(formatShoppingCycleAmount(10, {}, format, (amount) => `$${amount}`), "$10");
+  const toEUR = (amount) => amount * 0.923451;
+  assert.equal(formatShoppingCycleAmount(99.99 / 0.923451, "EUR", toEUR, format), "€99.99");
+  assert.equal(formatShoppingCycleAmount(100 / 0.923451, "EUR", toEUR, format), "€100.00");
+  assert.equal(formatShoppingCycleAmount(100, "JPY", (amount) => amount, format), "¥100");
+  assert.equal(formatShoppingCycleAmount(99.999, "KWD", (amount) => amount, format), "KWD 99.999");
 });
 
 
@@ -540,4 +539,36 @@ test("stop is reachable only from the settings route, while limit changes and re
   assert.match(app, /onShoppingBlockerPress=\{\(\) => shoppingBlocker.openSettings\(\)\}/);
   const native = fs.readFileSync(path.resolve(__dirname, "../../ios/Almost/ShoppingBlocker.swift"), "utf8");
   assert.match(native, /try state.updateGoal\(goalUSD, amount: goalAmount, currency: currency, now: ShoppingBlockerStore.now\)/);
+});
+
+
+test("Shopping Pause switches saved, target and remaining amounts with the app currency without changing the cycle", () => {
+  const status = Object.freeze({ goalUSD: 100, progressUSD: 40, goalAmount: 90, goalCurrency: "EUR", ready: false });
+  const values = [status.progressUSD, status.goalUSD, status.goalUSD - status.progressUSD];
+  const format = (amount, currency, options) => ({ amount, currency, precision: options.precisionOverride });
+  for (const [currency, rate, precision] of [["USD", 1, 2], ["SAR", 3.75, 2], ["JPY", 150, 0], ["KWD", 0.307, 3], ["EUR", 0.95, 2]]) {
+    const toLocal = (amount) => amount * rate;
+    assert.deepEqual(values.map((amount) => formatShoppingCycleAmount(amount, currency, toLocal, format)),
+      values.map((amount) => ({ amount: amount * rate, currency, precision })));
+    assert.equal(shoppingGoalInput(status, currency, toLocal), String(100 * rate));
+  }
+  assert.equal(status.goalUSD, 100);
+  assert.equal(status.goalCurrency, "EUR");
+  assert.equal(status.ready, false);
+  assert.equal(shoppingGoalInput({}, "USD", (amount) => amount), "");
+  assert.equal(shoppingGoalInput(status, "KWD", (amount) => amount * 0.307123456), "30.712");
+});
+
+test("both Shopping Pause surfaces and goal editing receive the app currency conversion", () => {
+  const app = fs.readFileSync(path.resolve(__dirname, "../../App.js"), "utf8");
+  for (const component of ["ShoppingBlockerEntry", "ShoppingBlockerPanel"]) {
+    const props = app.match(new RegExp(`<${component}\\s[^\\n]+`))?.[0];
+    assert.ok(props, component);
+    assert.match(props, /currency=\{profile.currency \|\| DEFAULT_PROFILE.currency\}/);
+    assert.match(props, /toLocalAmount=\{\(amount\) => convertToCurrency\(amount, profile.currency \|\| DEFAULT_PROFILE.currency\)\}/);
+  }
+  const panel = fs.readFileSync(path.resolve(__dirname, "../../src/components/ShoppingBlockerPanel.js"), "utf8");
+  assert.equal((panel.match(/formatShoppingCycleAmount\(amount, currency, toLocalAmount, formatLocalAmount\)/g) || []).length, 2);
+  assert.match(panel, /setGoal\(shoppingGoalInput\(status, currency, toLocalAmount\)\)/);
+  assert.match(panel, /status\?\.needsNextGoal, currency\]/);
 });

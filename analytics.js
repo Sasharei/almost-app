@@ -1511,3 +1511,11 @@ export const setUserProperties = async (properties = {}) => {
   }
   await setAmplitudeUserProperties(properties);
 };
+
+/** Explicit privacy-request reads; never initializes, starts or changes an SDK. */
+export const existingAnalyticsDeletionReaders = () => ({
+  firebase_app_instance_ids: () => getAnalyticsClient()?.getAppInstanceId?.(),
+  amplitude_user_ids: () => amplitudeInitialized ? amplitudeAnalytics?.getUserId?.() : null,
+  amplitude_device_ids: () => amplitudeInitialized ? amplitudeAnalytics?.getDeviceId?.() : null,
+  appsflyer_ids: () => appsFlyerInitialized ? getAppsFlyerUIDSafe() : null,
+});

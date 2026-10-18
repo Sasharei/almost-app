@@ -101,6 +101,7 @@ export const STORAGE_KEYS = {
   HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
   ARCHIVED_TEMPTATIONS: "@almost_archived_temptations",
   TEMPTATION_SERIES: "@almost_temptation_series",
+  INDEPENDENT_DECISIONS: "@almost_independent_decisions_v1",
   NEXT_DECISION_COACH: "@almost_next_decision_coach_v1",
   DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL: "@almost_default_temptation_growth_lock_level",
   IMPULSE_TRACKER: "@almost_impulse_tracker",

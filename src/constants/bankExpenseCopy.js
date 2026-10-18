@@ -55,7 +55,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Review expenses",
     "walletRecorded": "Expense recorded",
     "duplicateExplanation": "Repeated signals were combined. If this was another payment, record it separately.",
-    "separatePayment": "Record as a separate payment"
+    "separatePayment": "Record as a separate payment",
+    "automaticSource": "Automatic"
   },
   "ru": {
     "title": "Автоматические расходы",
@@ -113,7 +114,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Проверить расходы",
     "walletRecorded": "Расход записал",
     "duplicateExplanation": "Повторные сигналы объединены. Если это был другой платёж, запишите его отдельно.",
-    "separatePayment": "Записать как отдельный платёж"
+    "separatePayment": "Записать как отдельный платёж",
+    "automaticSource": "Автоматически"
   },
   "es": {
     "title": "Gastos automáticos",
@@ -171,7 +173,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Revisar gastos",
     "walletRecorded": "Gasto registrado",
     "duplicateExplanation": "Se combinaron las señales repetidas. Si fue otro pago, regístralo por separado.",
-    "separatePayment": "Registrar como otro pago"
+    "separatePayment": "Registrar como otro pago",
+    "automaticSource": "Automático"
   },
   "fr": {
     "title": "Dépenses automatiques",
@@ -229,7 +232,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Vérifier les dépenses",
     "walletRecorded": "Dépense enregistrée",
     "duplicateExplanation": "Les signaux répétés ont été regroupés. S’il s’agissait d’un autre paiement, enregistrez-le séparément.",
-    "separatePayment": "Enregistrer un paiement distinct"
+    "separatePayment": "Enregistrer un paiement distinct",
+    "automaticSource": "Automatique"
   },
   "de": {
     "title": "Automatische Ausgaben",
@@ -287,7 +291,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Ausgaben prüfen",
     "walletRecorded": "Ausgabe erfasst",
     "duplicateExplanation": "Wiederholte Signale wurden zusammengeführt. Wenn es eine weitere Zahlung war, erfasse sie separat.",
-    "separatePayment": "Als separate Zahlung erfassen"
+    "separatePayment": "Als separate Zahlung erfassen",
+    "automaticSource": "Automatisch"
   },
   "ar": {
     "title": "المصروفات التلقائية",
@@ -345,7 +350,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "مراجعة المصروفات",
     "walletRecorded": "تم تسجيل المصروف",
     "duplicateExplanation": "تم دمج الإشارات المتكررة. إذا كانت دفعة أخرى، فسجّلها بشكل منفصل.",
-    "separatePayment": "تسجيل كدفعة منفصلة"
+    "separatePayment": "تسجيل كدفعة منفصلة",
+    "automaticSource": "تلقائي"
   },
   "zh": {
     "title": "自动支出",
@@ -403,7 +409,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "核对支出",
     "walletRecorded": "已记录支出",
     "duplicateExplanation": "重复信号已合并。如果这是另一笔付款，请单独记录。",
-    "separatePayment": "记录为另一笔付款"
+    "separatePayment": "记录为另一笔付款",
+    "automaticSource": "自动"
   },
   "zh-Hant": {
     "title": "自動支出",
@@ -461,7 +468,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "核對支出",
     "walletRecorded": "已記錄支出",
     "duplicateExplanation": "重複訊號已合併。如果這是另一筆付款，請單獨記錄。",
-    "separatePayment": "記錄為另一筆付款"
+    "separatePayment": "記錄為另一筆付款",
+    "automaticSource": "自動"
   },
   "pt": {
     "title": "Despesas automáticas",
@@ -519,7 +527,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Revisar despesas",
     "walletRecorded": "Despesa registrada",
     "duplicateExplanation": "Os sinais repetidos foram combinados. Se foi outro pagamento, registre-o separadamente.",
-    "separatePayment": "Registrar como outro pagamento"
+    "separatePayment": "Registrar como outro pagamento",
+    "automaticSource": "Automático"
   },
   "it": {
     "title": "Spese automatiche",
@@ -577,7 +586,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "Verifica le spese",
     "walletRecorded": "Spesa registrata",
     "duplicateExplanation": "I segnali ripetuti sono stati uniti. Se era un altro pagamento, registralo separatamente.",
-    "separatePayment": "Registra come pagamento distinto"
+    "separatePayment": "Registra come pagamento distinto",
+    "automaticSource": "Automatico"
   },
   "ja": {
     "title": "支出の自動記録",
@@ -635,7 +645,8 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "支出を確認",
     "walletRecorded": "支出を記録しました",
     "duplicateExplanation": "重複する通知をまとめました。別の支払いだった場合は、個別に記録してください。",
-    "separatePayment": "別の支払いとして記録"
+    "separatePayment": "別の支払いとして記録",
+    "automaticSource": "自動"
   },
   "ko": {
     "title": "자동 지출",
@@ -693,6 +704,7 @@ export const BANK_EXPENSE_COPY = {
     "reviewExpenses": "지출 확인",
     "walletRecorded": "지출 기록됨",
     "duplicateExplanation": "중복 신호를 합쳤습니다. 별도의 결제였다면 따로 기록하세요.",
-    "separatePayment": "별도 결제로 기록"
+    "separatePayment": "별도 결제로 기록",
+    "automaticSource": "자동"
   }
 };

@@ -8,8 +8,11 @@ export function useWalletHistory() {
   const lastRevision = useRef(null);
   const pending = useRef(false);
   const mounted = useRef(false);
+  const retryTimer = useRef(null);
+  const retries = useRef(0);
   const refresh = useCallback(async () => {
     if (!native) return;
+    clearTimeout(retryTimer.current);
     if (running.current) { pending.current = true; return; }
     running.current = true;
     try {
@@ -27,8 +30,15 @@ export function useWalletHistory() {
         }
         if (!pending.current && mounted.current) { lastRevision.current = revision; setItems(next); }
       } while (pending.current && mounted.current);
+      retries.current = 0;
     } catch {
-      // Keep the last complete snapshot. Foreground and native changes retry.
+      // A locked database or an interrupted bridge call must not leave history
+      // stale until the user next backgrounds the app. Retain the complete
+      // snapshot and retry transient failures with a bounded backoff.
+      if (mounted.current && retries.current < 3) {
+        retries.current += 1;
+        retryTimer.current = setTimeout(() => { void refresh(); }, retries.current * 1000);
+      }
     } finally { running.current = false; }
   }, [native]);
   useEffect(() => {
@@ -36,7 +46,7 @@ export function useWalletHistory() {
     const timer = setTimeout(() => { void refresh(); }, 1000);
     const app = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
     const event = native ? new NativeEventEmitter(native).addListener("BankExpensesChanged", refresh) : null;
-    return () => { mounted.current = false; clearTimeout(timer); app.remove(); event?.remove(); };
+    return () => { mounted.current = false; clearTimeout(timer); clearTimeout(retryTimer.current); app.remove(); event?.remove(); };
   }, [native, refresh]);
   return items;
 }

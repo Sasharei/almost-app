@@ -1,0 +1,76 @@
+# iPhone17/iOS26.5; synthetic English profile; starts on Today.
+# Does not submit requests or save system-extension drafts.
+appId: com.sasarei.almostclean
+---
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: request-cloud-deletion
+    direction: DOWN
+- tapOn:
+    id: request-cloud-deletion
+- assertVisible:
+    id: cloud-deletion-share
+- takeScreenshot: app-confirmation
+- tapOn:
+    id: cloud-deletion-share
+- assertVisible: Copy
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: app-share-sheet
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn:
+    point: "17%,89%"
+- waitForAnimationToEnd:
+    timeout: 10000
+- assertVisible:
+    id: request-cloud-deletion
+- scrollUntilVisible:
+    element:
+      id: settings-language
+    direction: UP
+- tapOn:
+    id: settings-language
+- assertVisible:
+    id: settings-choice-en
+- takeScreenshot: app-language-after-share
+- tapOn:
+    id: settings-back
+- tapOn: Today
+- assertVisible: Make a decision
+- tapOn: Profile
+- scrollUntilVisible:
+    element:
+      id: profile-row-redesignProfileSettings
+    direction: DOWN
+- tapOn:
+    id: profile-row-redesignProfileSettings
+- scrollUntilVisible:
+    element:
+      id: request-cloud-deletion
+    direction: DOWN
+- tapOn:
+    id: request-cloud-deletion
+- tapOn:
+    id: cloud-deletion-prepare
+- assertVisible: Copy
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn:
+    point: "17%,89%"
+- waitForAnimationToEnd:
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: settings-language
+    direction: UP
+- assertVisible:
+    id: settings-language
+- takeScreenshot: app-scroll-after-mail-fallback

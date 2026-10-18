@@ -194,7 +194,7 @@ const fetchReportingScope = async ({ apiKey, lookbackDays, reportScope }) => {
   try {
     response = await fetch(requestUrl, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(90_000),
     });
   } catch (error) {
     throw new Error(

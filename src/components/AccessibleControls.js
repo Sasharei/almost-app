@@ -16,6 +16,7 @@ export const AccessiblePressable = forwardRef(function AccessiblePressable(
 ) {
   const interactive = typeof props.onPress === "function" && hasContent(children);
   const role = props.accessibilityRole || (interactive ? "button" : undefined);
+  const resolvedStyle = typeof style === "function" ? (state) => controlStyle(style(state), interactive, role) : controlStyle(style, interactive, role);
   return (
     <Pressable
       {...props}
@@ -23,7 +24,12 @@ export const AccessiblePressable = forwardRef(function AccessiblePressable(
       accessibilityRole={role}
       accessibilityState={{ ...props.accessibilityState, ...(props.disabled != null ? { disabled: !!props.disabled } : {}) }}
       hitSlop={props.hitSlop ?? (role === "switch" ? 12 : undefined)}
-      style={typeof style === "function" ? (state) => controlStyle(style(state), interactive, role) : controlStyle(style, interactive, role)}
+      style={(state) => [
+        typeof resolvedStyle === "function" ? resolvedStyle(state) : resolvedStyle,
+        // Custom state styles already own their feedback. Static controls get an
+        // immediate highlight without moving their hit area or committing early.
+        interactive && !props.disabled && typeof style !== "function" && state.pressed && styles.pressed,
+      ]}
     >
       {children}
     </Pressable>
@@ -48,3 +54,5 @@ export const AccessibleTouchableOpacity = forwardRef(function AccessibleTouchabl
     </TouchableOpacity>
   );
 });
+
+const styles = StyleSheet.create({ pressed: { opacity: 0.72 } });

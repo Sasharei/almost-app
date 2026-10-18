@@ -104,23 +104,17 @@ test("coach scrolling targets the virtualized feed index instead of a cell-local
   assert.equal(buildNextDecisionCoachScrollRequest({ index: -1 }), null);
 });
 
-test("the next-decision coach performs one smooth scroll after the target is available", () => {
+test("coach continuation preserves Today/focus and never treats scheduled scrolling as shown", () => {
   const presentationEffect = getSourceSection(
-    "if (!nextDecisionCoachRequest) return undefined;",
+    "if (!nextDecisionCoachRequest) return;",
     "const resolveAssignedGoalLabel = useCallback("
   );
-  const failedIndexFallback = getSourceSection(
-    "const handleFeedScrollToIndexFailed = useCallback((info) => {",
-    "const handleHeroLayout = useCallback("
-  );
-
-  assert.match(
-    presentationEffect,
-    /if \(firstAttempt\) \{\s*completeSuccessfulScroll\(\);\s*return;\s*\}/
-  );
-  assert.doesNotMatch(presentationEffect, /settleOnTarget|settleTimer/);
-  assert.equal((failedIndexFallback.match(/scrollToOffset\(\{/g) || []).length, 1);
-  assert.doesNotMatch(failedIndexFallback, /scrollToIndex/);
+  assert.match(presentationEffect, /setRedesignFocusId\(targetEntry.id\)/);
+  assert.match(presentationEffect, /setRedesignFeedMode\("focus"\)/);
+  assert.doesNotMatch(presentationEffect, /onNextDecisionCoachShown|setRedesignFeedMode\("all"\)/);
+  const nativeCoach = getSourceSection("function PresentedDecisionCoach(", "const RedesignTodayHeader =");
+  assert.match(nativeCoach, /measureInWindow/);
+  assert.match(nativeCoach, /isCoachActuallyPresented/);
 });
 
 test("a visible coach restores as pending until the user acts or dismisses it", () => {

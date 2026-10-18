@@ -4,11 +4,11 @@
   "contracts": [
     {
       "id": "decision-visible-create-shortcuts",
-      "description": "Focused decisions expose the existing creation form from a large floating plus, remove the duplicate header plus and shift help/report into its space. Existing decision, edit, back, capacity, validation and cancel handlers remain intact.",
+      "description": "Focused decisions expose the existing creation form from a large in-flow plus, remove the duplicate header plus and reserve help/report space. Existing decision, edit, back, capacity, validation and cancel handlers remain intact.",
       "file": "App.js",
       "requiredFragments": [
         "testID=\"decision-add-temptation\"",
-        "onPress={() => { Keyboard.dismiss(); handleFabNewTemptation(); }}",
+        "onPress={() => { Keyboard.dismiss(); onAdd?.(); }}",
         "reserveAdd={!decisionFocusVisible}",
         "activeTab === \"feed\" && !decisionFocusVisible ? <HeaderGlassButton",
         "addLabel={t(\"redesignTodayAdd\")} onAdd={onAdd}"
@@ -647,7 +647,7 @@
     },
     {
       "id": "new-user-next-decision-coach",
-      "description": "A user's first-ever resolved temptation queues one persisted, non-blocking next-decision coach independently of attribution and monetization install markers. The Feed may switch to All only when the target is outside the current filter, maps the target to its virtualized feed index and auto-scrolls there rather than trusting a cell-local layout offset, keeps the real card actions interactive, and permanently completes the coach after a second distinct resolution, an explicit dismissal, a filter change, or an unavailable target.",
+      "description": "The first resolved temptation queues a persisted, dismissible next-decision coach. Continuation chooses an unfinished Today card in focus, with native viewport confirmation before shown. Explicit All, back, dismiss, card actions and virtualized scrolling utilities remain available.",
       "file": "App.js",
       "requiredFragments": [
         "STORAGE_KEYS.NEXT_DECISION_COACH",
@@ -664,12 +664,15 @@
         "buildNextDecisionCoachScrollRequest({ index, animated });",
         "listRef.current.scrollToIndex(scrollRequest);",
         "onScrollToIndexFailed={handleFeedScrollToIndexFailed}",
-        "scrollToTemptationCard({",
         "showNextDecisionCoach={isNextDecisionCoachTarget}",
         "onNextDecisionCoachDismiss?.(\"filter_changed\")",
         "onNextDecisionCoachDismiss?.(\"not_now\")",
         "t(\"nextDecisionCoachTitle\")",
-        "t(\"nextDecisionCoachBody\")"
+        "t(\"nextDecisionCoachBody\")",
+        "setRedesignFocusId(targetEntry.id);",
+        "<PresentedDecisionCoach",
+        "onLayout={measure}",
+        "isCoachActuallyPresented({ ...context, x, y, width, height })"
       ]
     },
     {
@@ -1133,6 +1136,29 @@
       ]
     },
     {
+      "id": "premium-overview-current-product-and-layout",
+      "description": "The six post-purchase stories explain current savings/debt, reports and impulse activity; keep sticky labeled continuation, previous/close, interruptible swipes, playback pause/resume and scroll reading recovery reachable.",
+      "file": "src/components/PremiumUnlockStories.js",
+      "requiredFragments": [
+        "import PremiumStoryArtwork",
+        "testID=\"premium-story-primary\"",
+        "testID=\"premium-story-previous\"",
+        "testID=\"premium-story-close\"",
+        "testID=\"premium-story-playback\"",
+        "onPanResponderMove:",
+        "onPanResponderTerminate:",
+        "dragStartRef.current + gesture.dx",
+        "if (paused || interacting)",
+        "setPaused(true)",
+        "showsVerticalScrollIndicator",
+        "mainScroll:{flex:1,minHeight:0}",
+        "footer:{flexShrink:0",
+        "premiumStoryNext",
+        "premiumStoryResume",
+        "premiumStoryPause"
+      ]
+    },
+    {
       "id": "budget-routing-and-persistence",
       "description": "Budget premium access, transfer persistence, debt-plan persistence, proof picking, and analytics remain wired end to end.",
       "file": "App.js",
@@ -1574,7 +1600,7 @@
       "requiredFragments": [
         "if (decision === \"want\") {",
         "pendingResolutionId: pendingItem.id",
-        "const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt });",
+        "const spendCommitted = executeSpend(item, amountUSD, { skipFrequencyReminderPrompt, decisionContext: spendPrompt.decisionContext });",
         "if (!spendCommitted) return;",
         "entry.id !== pendingResolutionId",
         "titleText={newPendingModal.pendingId ? t(\"temptationEditTitle\") : null}",
@@ -2410,7 +2436,7 @@
       "description": "The iOS host owns a blank white scene-aware key window, never draws a completed native wordmark, and yields long enough for its first Core Animation commit before React initialization blocks the Release main thread.",
       "file": "ios/Almost/AppDelegate.swift",
       "requiredFragments": [
-        "let bootstrapWindow = Self.makeBootstrapWindow(for: application)",
+        "let bootstrapWindow = UIWindow(windowScene: windowScene)",
         "bootstrapWindow.backgroundColor = .white",
         "bootstrapWindow.rootViewController = NativeBootstrapViewController()",
         "bootstrapWindow.makeKeyAndVisible()",
@@ -2418,7 +2444,11 @@
         "DispatchQueue.main.asyncAfter(deadline: .now() + 0.05)",
         "Keep this bridge surface blank.",
         "rootView.isOpaque = true",
-        "factory.startReactNative("
+        "factory.startReactNative(",
+        "class SceneDelegate: UIResponder, UIWindowSceneDelegate",
+        "window = appDelegate?.connect(to: windowScene, options: connectionOptions)",
+        "launchOptions[.url] = context.url",
+        "appDelegate?.applicationDidBecomeActive(UIApplication.shared)"
       ]
     },
     {
@@ -2619,18 +2649,21 @@
     },
     {
       "id": "automatic-first-card-decision-soft-paywall",
-      "description": "The first committed save or spend after onboarding queues one dismissible automatic soft paywall per app session after reward and modal handoffs. Neither opening the Feed, series completion, nor legacy persisted history controls eligibility. Feature gate callbacks remain repeatable; background state and active modal/reward handoffs defer presentation.",
+      "description": "Automatic soft paywall requires two persisted independent save/spend/pause commits after practice; guided/service actions and duplicate receipts do not count. Readiness waits for coach, modal/reward/permission handoffs and active safe context. Manual premium remains repeatable, with the existing one-show-per-session maximum.",
       "file": "App.js",
       "requiredFragments": [
-        "const AUTOMATIC_SOFT_PAYWALL_TRIGGER = \"first_action_after_onboarding\";",
+        "const AUTOMATIC_SOFT_PAYWALL_TRIGGER = \"second_independent_decision\";",
         "const automaticSoftPaywallShownThisSessionRef = useRef(false);",
-        "if (!automaticSoftPaywallDecisionRecorded) return;",
-        "if (onboardingStep === \"done\" && (action === \"save\" || action === \"spend\")) {",
-        "setAutomaticSoftPaywallDecisionRecorded(true);",
+        "commitIndependentDecision(current, { ...context, action, committed: true })",
+        "recordIndependentDecision(decisionContext, \"save\");",
+        "recordIndependentDecision(decisionContext, \"pause\");",
+        "recordIndependentDecision(options?.decisionContext, \"spend\");",
         "if (canShowSoftPaywallNow()) {",
         "automaticSoftPaywallShownThisSessionRef.current = true;",
         "if (appStateRef.current !== \"active\") return false;",
-        "trigger: \"feature_gate\","
+        "trigger: \"feature_gate\",",
+        "notificationPermissionInFlightRef.current",
+        "consumeIndependentDecisionOffer(independentDecisionsRef.current)"
       ]
     },
     {
@@ -2670,7 +2703,7 @@
       "requiredFragments": [
         "<RedesignTodayHeader",
         "onFocus={(entry) => { setRedesignFocusId(entry.id); setRedesignFeedMode(\"focus\"); }}",
-        "onAll={() => setRedesignFeedMode(\"all\")}",
+        "onAll={() => { onNextDecisionCoachDismiss?.(\"filter_changed\"); setRedesignFeedMode(\"all\"); }}",
         "onAction={async (type, item, actionOptions) => { const result = await onTemptationAction(type, item, actionOptions); if (result?.cancelled) return;",
         "[[\"redesignTodayLater\", \"maybe\"], [\"redesignTodaySpent\", \"spend\"]]",
         "onAction(\"save\", focusEntry.item)"
@@ -3132,7 +3165,7 @@
       "requiredFragments": [
         "countExplicitSchedules(redesignCardEntries)",
         "shouldIncludeUnscheduledInToday({ scheduledCount, isStarter: entry.seriesTarget, isActiveSeries: normalizedTemptationSeries.status === TEMPTATION_SERIES_STATUS.ACTIVE, isCustom: isCustomTemptation(entry.item), interaction })",
-        "onAll={() => setRedesignFeedMode(\"all\")}",
+        "onAll={() => { onNextDecisionCoachDismiss?.(\"filter_changed\"); setRedesignFeedMode(\"all\"); }}",
         "speechText={showTamagotchiBubble ? tamagotchiSpeechDisplayText : null}"
       ]
     },
@@ -4018,6 +4051,196 @@
         "reportCalendarDayCount(effectiveStartMs, effectiveEndMs)",
         "t(\"reportsPatternScope\")",
         "activeReport.daily.map((day) => ("
+      ]
+    },
+    {
+      "id": "history-expense-origin-and-actions",
+      "description": "Expense origin remains visible in timeline, recent events and category history while search, sorting, filtering, deletion and category close remain wired. Empty routes are preserved by the existing history contract.",
+      "file": "App.js",
+      "requiredFragments": [
+        "historyExpenseSourceLabel(entry, t)",
+        "formatHistoryEntryMeta(entry, { t, locale })",
+        "onHistoryDelete?.(entry)",
+        "sortHistoryEntries(",
+        "filterHistoryEntries(historyEntries, filterMode)",
+        "onPress={closeCategoryHistory}"
+      ]
+    },
+    {
+      "id": "widget-progress-startup-routing",
+      "description": "Progress and cart deep links remain reachable during cold startup and after hydration; defer their destination until startup can no longer reset navigation.",
+      "file": "App.js",
+      "requiredFragments": [
+        "if (parsed.route === \"progress\" || parsed.route === \"cart\") {",
+        "queueWidgetAction({ type: \"progress\" });",
+        "if (action.type === \"progress\") {",
+        "goToTab(\"cart\", { recordHistory: false });"
+      ]
+    },
+    {
+      "id": "design-review-decision-inflow-create",
+      "description": "The decision add action remains reachable in its title row, with keyboard dismissal, existing creation callback and a full touch target; the card wheel add route is preserved.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"decision-add-temptation\"",
+        "onPress={() => { Keyboard.dismiss(); onAdd?.(); }}",
+        "onAdd={onNewTemptation}",
+        "paddingEnd: focus ? 104 : 164",
+        "minHeight: FAB_BUTTON_SIZE + 16, paddingEnd: 196"
+      ]
+    },
+    {
+      "id": "design-review-tracking-edge-back",
+      "description": "Leading-edge back follows the current visible state, commits on release, restores on cancellation and mirrors for RTL; disabled/onboarding guards and the existing route callback remain.",
+      "file": "src/components/EdgeBackGesture.js",
+      "requiredFragments": [
+        "onPanResponderMove: (_event, gesture) => move(gesture.dx)",
+        "onPanResponderTerminate: restore",
+        "callback.current?.();",
+        "origin.current = value",
+        "const sign = rtl ? -1 : 1",
+        "rtl ? { right: 0 } : { left: 0 }",
+        "useMotionPreferences()"
+      ]
+    },
+    {
+      "id": "design-review-native-edge-cancellation",
+      "description": "The native recognizer exposes RTL and continuous progress without navigating on cancellation.",
+      "file": "ios/Almost/LiquidGlassNativeViewManager.swift",
+      "requiredFragments": [
+        "edge.edges = isRTL ? .right : .left",
+        "case .changed:",
+        "case .cancelled, .failed:",
+        "onEdgeBackProgress?([\"phase\": \"cancelled\"",
+        "onBack?([:])"
+      ]
+    },
+    {
+      "id": "design-review-press-feedback",
+      "description": "Default feedback is decorative, preserves custom state styles and disabled controls, and does not move activation to press-in.",
+      "file": "src/components/AccessibleControls.js",
+      "requiredFragments": [
+        "typeof resolvedStyle === \"function\" ? resolvedStyle(state) : resolvedStyle",
+        "interactive && !props.disabled && typeof style !== \"function\" && state.pressed && styles.pressed",
+        "{...props}",
+        "{children}"
+      ]
+    },
+    {
+      "id": "today-cat-context-badge",
+      "description": "Hero cat keeps its existing care route and stops propagation to savings. Earned rewards take priority over hunger, the badge stays part of the cat target, and the savings action is preserved.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"today-cat-care\"",
+        "event.stopPropagation(); onMascotPress?.();",
+        "testID=\"today-savings-details\" onPress={onSavingsBreakdownPress}",
+        "mascotBadge={tamagotchiHeroBadge}",
+        "testID={`today-cat-badge-${mascotBadge}`} pointerEvents=\"none\"",
+        "onMascotPress={openTamagotchiOverlay}",
+        "onPress={handleTamagotchiHourlyRewardClaim}"
+      ]
+    },
+    {
+      "id": "today-cat-care-states-and-silhouette",
+      "description": "Hero exposes the most urgent food, play or clean need through the existing care route and shows actual cleanliness on the selected cat silhouette without painting a rectangular dirt canvas. Earned reward and ordinary care routes remain available.",
+      "file": "App.js",
+      "requiredFragments": [
+        "mascotDirtyLevel={tamagotchiDirtyLevel}",
+        "<TamagotchiHeroImage source={mascotSource} size={IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />",
+        "onMascotPress={handleHeroCatPress}",
+        "onMascotPress(tamagotchiHeroBadge)",
+        "setTamagotchiActiveTab(careTab === \"play\" || careTab === \"clean\" ? careTab : \"food\");",
+        "testID=\"today-cat-silhouette-dirt\" source={source}",
+        "t(\"tamagotchiHeroPlay\")",
+        "t(\"tamagotchiHeroClean\")"
+      ]
+    },
+    {
+      "id": "cloud-deletion-actions",
+      "description": "Deletion request preserves explicit preparation, alternate sharing, cancellation, busy feedback, retryable failure, existing identifier scope and complete email transport without changing local data or purchases.",
+      "file": "src/privacy/CloudDeletionRow.js",
+      "requiredFragments": [
+        "testID=\"request-cloud-deletion\"",
+        "t(\"cloudDeletionTitle\")",
+        "t(\"cloudDeletionExplanation\")",
+        "t(\"profileCancel\")",
+        "t(\"cloudDeletionShare\")",
+        "t(\"cloudDeletionPrepare\")",
+        "t(\"cloudDeletionError\")",
+        "accessibilityState={{ disabled: busy, busy }}",
+        "buildDeletionRequest",
+        "buildDeletionEmail",
+        "openDeletionEmail",
+        "existingAnalyticsDeletionReaders()",
+        "existingRevenueCatDeletionIds",
+        "readExistingPremiumInstallId",
+        "onRequestClose={cancel} onDismiss={flushPending}",
+        "pending.current = () => prepare(shareOnly);",
+        "if (flight.current) return;",
+        "if (!mounted.current) return;",
+        "\"cloud-deletion-prepare\"",
+        "\"cloud-deletion-share\"",
+        "\"cloud-deletion-cancel\""
+      ]
+    },
+    {
+      "id": "cloud-deletion-native-ios-sharing",
+      "description": "The complete deletion draft uses the scene-owned native iOS sharing lifecycle; Android and older shells retain sharing.",
+      "file": "src/privacy/shareDeletionRequest.js",
+      "requiredFragments": [
+        "NativeModules.AlmostPrivacySharing",
+        "Platform.OS === \"ios\"",
+        "nativeShare.share({ ...content, subject: options?.subject })",
+        "return Share.share(content, options);"
+      ]
+    },
+    {
+      "id": "cloud-deletion-native-dismissal-touch-ownership",
+      "description": "System sharing is owned by the current scene, cancels React touches at handoff and return, and resolves only after dismissal while retaining explicit error and cancellation paths.",
+      "file": "ios/Almost/AlmostPrivacySharing.m",
+      "requiredFragments": [
+        "RCT_EXPORT_MODULE();",
+        "[self applicationWindow]",
+        "delegate.window.rootViewController",
+        "RCTSurfaceTouchHandler",
+        "RCTTouchHandler",
+        "[self cancelReactTouches:window.rootViewController.view];",
+        "viewDidDisappear:(BOOL)animated",
+        "presentationControllerDidDismiss:",
+        "[self finishDismissal]",
+        "E_SHARE_ACTIVITY",
+        "UIUserInterfaceIdiomPad",
+        "self.activityController = controller;"
+      ]
+    },
+    {
+      "id": "wallet-history-receipt-edit-navigation",
+      "description": "Apple Pay operations open their exact native receipt editor from recent Home, full Home/Profile history and category history; deletion remains independent.",
+      "file": "App.js",
+      "requiredFragments": [
+        "isWalletHistoryEntry(entry)",
+        "onHistoryEntryPress={handleHistoryEntryPress}",
+        "onHistoryEntryPress={onHistoryEntryPress}",
+        "onHistoryEntryPress={onHistoryEntryPress ? expenseHandoff.select : null}",
+        "categoryExpenseHandoff.select(entry)",
+        "onDismiss={categoryExpenseHandoff.onDismiss}",
+        "openHistoryReceipt(receipt)",
+        "breakdownExpenseHandoff.select(entry)",
+        "summaryExpenseHandoff.select(entry)",
+        "onDismiss={summaryExpenseHandoff.onDismiss}",
+        "walletReceipts.find((item) => item.id === entry.meta.receiptId)"
+      ]
+    },
+    {
+      "id": "wallet-history-editor-target",
+      "description": "A history navigation request supplies the exact receipt even beyond page one, initializes category editing and preserves save/cancel.",
+      "file": "src/components/BankExpensesPanel.js",
+      "requiredFragments": [
+        "if (!c.visible || !c.editRequest) return;",
+        "setEditing(item);",
+        "setCategory(item.category || classifyMerchant(item.merchant).category);",
+        "if (saved) setEditing(null); else setInvalid(true);",
+        "else if (editing) setEditing(null)"
       ]
     }
   ]
