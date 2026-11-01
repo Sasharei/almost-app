@@ -33,6 +33,7 @@ import { parseAppleServerNotification } from "./webhooks/apple.js";
 import { parseGoogleRtdnMessage } from "./webhooks/google.js";
 
 const app = express();
+const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const resolveTamagotchiSkinAssetDir = () =>
@@ -608,8 +609,9 @@ app.post("/v1/iap/validate", appEndpointRateLimiter, requireAppAuth, async (req,
 
 app.post(
   "/v1/webhooks/apple",
-  requireWebhookSecret(() => config.apple.webhook.secret),
-  async (req, res) => {
+  // Apple authenticates notifications with its signed JWS, never a custom header.
+  appEndpointRateLimiter,
+  asyncRoute(async (req, res) => {
     const parsed = parseBody(appleWebhookSchema, req.body || {});
     if (!parsed.ok) {
       res.status(400).json({ error: "invalid_payload", details: parsed.errors });
@@ -618,7 +620,6 @@ app.post(
 
     const event = await parseAppleServerNotification({
       signedPayload: parsed.data.signedPayload,
-      appUserIdHint: parsed.data.appUserId || null,
     });
 
     if (!event.ok) {
@@ -634,12 +635,7 @@ app.post(
       return;
     }
 
-    if (event.transactionId) {
-      markTransactionSeen(event.transactionId, event.appUserId || "");
-    }
-    if (event.originalTransactionId) {
-      markTransactionSeen(event.originalTransactionId, event.appUserId || "");
-    }
+    if (!event.trusted) return res.status(401).json({ error: "untrusted_webhook" });
 
     if (!event.mapped || !event.appUserId) {
       res.status(202).json({
@@ -655,6 +651,13 @@ app.post(
         },
       });
       return;
+    }
+
+    if (event.transactionId) {
+      markTransactionSeen(event.transactionId, event.appUserId || "");
+    }
+    if (event.originalTransactionId) {
+      markTransactionSeen(event.originalTransactionId, event.appUserId || "");
     }
 
     const entitlement = upsertEntitlement(event.appUserId, {
@@ -685,7 +688,7 @@ app.post(
         subtype: event.subtype,
       },
     });
-  }
+  })
 );
 
 app.post(

@@ -37,7 +37,7 @@ const isNonEmptyString = (value) => typeof value === "string" && value.trim().le
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProductionEnv = nodeEnv === "production";
 const forceAppleWebhookVerificationInProd =
-  isProductionEnv && process.env.ALLOW_INSECURE_APPLE_WEBHOOKS !== "1";
+  isProductionEnv;
 const sessionSecret = process.env.APP_SESSION_SECRET || "";
 const strictStartupValidationDefault = isProductionEnv;
 const healthExposeDetailsDefault = !isProductionEnv;
