@@ -11,7 +11,9 @@ const languageSource = fs.readFileSync('src/utils/language.js','utf8').replace(/
 const language = vm.runInNewContext(fallback+'\n'+languageSource+'\n({normalizeLanguage,resolveTranslationLanguage,SUPPORTED_LANGUAGES})',{React:{isValidElement:()=>false},NativeModules:{},Intl});
 const generated = fs.readFileSync('src/constants/translations.generated.js','utf8').replace(/export const /g,'const ');
 const copy = fs.readFileSync('src/constants/translations.js','utf8').replace(/^import .*;\n/gm,'').replace(/export const /g,'const ');
-const translations = vm.runInNewContext(generated+'\n'+copy+'\nTRANSLATIONS');
+const roomCopy = fs.readFileSync('src/constants/almiRoomTranslations.js','utf8').replace(/export const /g,'const ');
+const tutorialCopy = fs.readFileSync('src/constants/almiTutorialTranslations.js','utf8').replace(/export const /g,'const ');
+const translations = vm.runInNewContext(tutorialCopy+'\n'+generated+'\n'+roomCopy+'\n'+copy+'\nTRANSLATIONS');
 const plural = vm.runInNewContext(fs.readFileSync('src/constants/pauseCountCopy.js','utf8').replace(/export const /g,'const ')+'\n({pauseCountTranslationKey})');
 
 test('locale copy resolves every supported locale including DE → ar-sa/ar-ae without missing exports', () => {

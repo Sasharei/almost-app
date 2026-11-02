@@ -10,6 +10,11 @@ const normalizeGoalAmount = (value) => {
   return Math.max(0, numericValue);
 };
 
+// Budget transfers already reduce the available balance. Cap goal progress once,
+// without charging a new goal for transfers made before it existed.
+const resolveAvailableGoalSavingsUSD = (goalSavedUSD, availableToAllocateUSD) =>
+  Math.min(normalizeGoalAmount(goalSavedUSD), normalizeGoalAmount(availableToAllocateUSD));
+
 const isGoalCompletionLocked = ({
   savedUSD = 0,
   targetUSD = 0,
@@ -100,4 +105,5 @@ module.exports = {
   isGoalCompletionLocked,
   resolveGoalProgressState,
   resolveGoalProgressPercentLabel,
+  resolveAvailableGoalSavingsUSD,
 };

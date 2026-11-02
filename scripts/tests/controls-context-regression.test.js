@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const babel = require('@babel/core');
 const { resolveControlGeometry } = require('../../src/utils/controlGeometry');
-const { isDecisionRecordedToday } = require('../../src/engagement/todayOverview');
+const { buildDecisionQueue, isDecisionRecordedToday } = require('../../src/engagement/todayOverview');
 const app = fs.readFileSync(require('node:path').join(__dirname,'../../App.js'),'utf8');
 
 test('autocollect cannot double its maximum after each persisted drag; manual extension stays stable',()=>{
@@ -19,13 +19,13 @@ test('autocollect cannot double its maximum after each persisted drag; manual ex
  assert.equal(resolve({id:'coffee',amountUSD:75,sliderBaseAmountUSD:15}),100);
 });
 
-test('daily context includes eight due/later cards, deduplicates and resets completion at midnight',()=>{
- const fragment=app.slice(app.indexOf('  const remainingEntries = [...dueEntries'),app.indexOf('  const heroAmountLabel',app.indexOf('  const remainingEntries = [...dueEntries')));
+test('gallery keeps due and later cards, deduplicates and resets checked status at midnight',()=>{
  const day=new Date(2026,9,6,23,59).getTime();
  const entries=Array.from({length:8},(_,i)=>({id:'card-'+i,interaction:{lastSavedAt:i<6?day:0}}));
- const context=now=>vm.runInNewContext(fragment+'\n({remaining:remainingEntries.length,completed:completedToday})',{dueEntries:entries.slice(0,2),laterEntries:[...entries.slice(2),entries[0]],decisionEntries:entries,now,isDecisionRecordedToday});
- assert.equal(context(day).remaining,2); assert.equal(context(day).completed,6);
- assert.equal(context(day+120000).remaining,8); assert.equal(context(day+120000).completed,0);
+ const gallery=buildDecisionQueue({due:entries.slice(0,2),later:[...entries.slice(2),entries[0]]},entries);
+ assert.equal(gallery.length,8);
+ assert.equal(gallery.filter(entry=>isDecisionRecordedToday(entry.interaction,day)).length,6);
+ assert.equal(gallery.filter(entry=>isDecisionRecordedToday(entry.interaction,day+120000)).length,0);
 });
 
 function wheelHarness(){

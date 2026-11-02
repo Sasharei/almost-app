@@ -14,16 +14,14 @@ test('all currencies hide conversion residue at tiny, typical and maximum amount
   }
 });
 
-test("CTA counts today’s pending cards and only suggests finishing after real progress", () => {
-  const expression = app.match(/\{t\(completedToday > 0 && remainingEntries.length === 1[^\n]+\)\}/)[0].slice(1, -1);
-  for (const completedToday of [0, 1, 6]) {
-    for (const count of [0, 1, 2, 3, 4, 8, 10000]) {
-      const key = !count ? 'redesignTodayDecide' : completedToday && count === 1 ? 'todayDecisionLast' : completedToday && count <= 3 ? 'todayDecisionFew' : 'todayDecisionReview';
-      const result = vm.runInNewContext(expression, { completedToday, remainingEntries: new Array(count), t: (name, params) => ({ name, count: params.count }) });
-      assert.equal(result.name, key);
-      assert.equal(result.count, count);
-    }
-  }
+test("home opens the direct card gallery below Shopping Pause", () => {
+  assert.match(app, /const \[redesignFeedMode, setRedesignFeedMode\] = useState\("all"\)/);
+  assert.match(app, /actionButtonsMode="gallery"/);
+  assert.doesNotMatch(app, /DecisionCardWheel|wheelInteracting/);
+  assert.doesNotMatch(app, /testID="today-make-decision"/);
+  const header = app.slice(app.indexOf("const RedesignTodayHeader ="), app.indexOf("const FeedScreen ="));
+  assert.match(header, /shoppingBlockerEntry : null/);
+  assert.match(app, /\{todayHeader\}[\s\S]*?<View style=\{styles.feedTemptationHeader\}>/);
 });
 
 test('opting out updates every control, survives reload and wins over a delayed hydration', async () => {

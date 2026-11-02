@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { spawnSync } from "node:child_process";
 
 Object.assign(process.env, {
@@ -74,6 +75,17 @@ await test('HTTP security regressions on loopback with synthetic store/RevenueCa
     const b = await session('security-user-b-0001');
     assert.equal(a.status, 200); assert.equal(b.status, 200);
     const payload = { appUserId: 'security-user-a-0001', installId: 'security-user-a-0001', platform: 'android', productId: 'almost_premium_lifetime', purchaseToken: 'store-purchase-token' };
+    await t.test('trailing compressed-body bytes are contained and later requests still work', async () => {
+      const valid = gzipSync(Buffer.from('{}'));
+      const options = body => ({ method: 'POST', headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' }, body, signal: AbortSignal.timeout(3000) });
+      const clean = await realFetch(base + '/parser-regression-no-route', options(valid));
+      assert.equal(clean.status, 404);
+      await clean.text();
+      const malformed = await realFetch(base + '/parser-regression-no-route', options(Buffer.concat([valid, Buffer.from([0xff, 0xff])])));
+      assert.ok(malformed.status >= 400 && malformed.status < 600);
+      assert.ok(['request_failed', 'invalid_json'].includes((await malformed.json()).error));
+      assert.equal((await request('/health')).status, 200);
+    });
     await t.test('pending, canceled, empty purchase state cannot grant premium', async () => {
       for (const state of [1, 2, null, undefined]) {
         purchaseState = state;

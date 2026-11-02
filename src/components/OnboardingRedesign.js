@@ -373,12 +373,13 @@ function ProgressHeader({ step, language, onBack, onSkip, compact = false }) {
   );
 }
 
-function PrimaryButton({ label, language, onPress, accessibilityLabel }) {
+function PrimaryButton({ label, language, onPress, accessibilityLabel, disabled = false }) {
   const rtl = isRtlLanguage(language);
   return (
     <AnimatedButton
       style={styles.primaryButton}
       onPress={onPress}
+      disabled={disabled}
       accessibilityLabel={accessibilityLabel || label}
       scaleTo={0.97}
     >
@@ -394,9 +395,9 @@ function PrimaryButton({ label, language, onPress, accessibilityLabel }) {
   );
 }
 
-function SecondaryButton({ label, onPress }) {
+function SecondaryButton({ label, onPress, disabled = false }) {
   return (
-    <AnimatedButton style={styles.secondaryButton} onPress={onPress} accessibilityLabel={label}>
+    <AnimatedButton style={styles.secondaryButton} onPress={onPress} disabled={disabled} accessibilityLabel={label}>
       <AutoFitText style={styles.secondaryButtonText} center minimumFontScale={0.58}>
         {label}
       </AutoFitText>
@@ -404,12 +405,12 @@ function SecondaryButton({ label, onPress }) {
   );
 }
 
-function ActionDock({ language, primaryLabel, onPrimary, secondaryLabel, onSecondary, bottomInset = 0 }) {
+function ActionDock({ language, primaryLabel, onPrimary, secondaryLabel, onSecondary, bottomInset = 0, disabled = false }) {
   return (
     <PlatformSurface surfaceRole="sheet" style={[styles.actionDock, { paddingBottom: Math.max(14, bottomInset + 10) }]}>
       <View style={styles.actionDockContent}>
-        <PrimaryButton label={primaryLabel} language={language} onPress={onPrimary} />
-        {secondaryLabel ? <SecondaryButton label={secondaryLabel} onPress={onSecondary} /> : null}
+        <PrimaryButton label={primaryLabel} language={language} onPress={onPrimary} disabled={disabled} />
+        {secondaryLabel ? <SecondaryButton label={secondaryLabel} onPress={onSecondary} disabled={disabled} /> : null}
       </View>
     </PlatformSurface>
   );
@@ -717,6 +718,10 @@ export function AnalyticsConsentScreen({
   onBack,
   bottomInset = 0,
   onTap,
+  saving = false,
+  saveError = false,
+  onPrivacyPress,
+  privacyLabel,
 }) {
   const { width, height } = useWindowDimensions();
   const compact = height <= 740 || width <= 360;
@@ -731,7 +736,7 @@ export function AnalyticsConsentScreen({
     <ScreenFrame
       step={2}
       language={language}
-      onBack={onBack}
+      onBack={saving ? undefined : onBack}
       compact={compact}
       bottomInset={bottomInset}
       onTap={onTap}
@@ -792,6 +797,14 @@ export function AnalyticsConsentScreen({
             <AutoFitText style={styles.privacyNote} center minimumFontScale={0.54}>
               {copy("privacy.note")}
             </AutoFitText>
+            <Text style={[styles.privacyNote, isRtlLanguage(language) && styles.textRight]}>{copy("privacy.scopeNote")}</Text>
+            {onPrivacyPress ? (
+              <Pressable onPress={onPrivacyPress} accessibilityRole="link" accessibilityLabel={privacyLabel} style={({ pressed }) => [styles.privacyPolicyLink, pressed && { opacity: 0.72 }]}>
+                <Text style={styles.privacyPolicyLinkText}>{privacyLabel}</Text>
+              </Pressable>
+            ) : null}
+            {saving ? <Text accessibilityLiveRegion="polite" style={[styles.privacyNote, isRtlLanguage(language) && styles.textRight]}>{copy("privacy.saving")}</Text> : null}
+            {saveError ? <Text accessibilityRole="alert" style={[styles.privacyNote, isRtlLanguage(language) && styles.textRight]}>{copy("privacy.saveError")}</Text> : null}
           </ScreenScroll>
           <ActionDock
             language={language}
@@ -800,6 +813,7 @@ export function AnalyticsConsentScreen({
             secondaryLabel={copy("privacy.decline")}
             onSecondary={onSkip}
             bottomInset={bottomInset}
+            disabled={saving}
           />
         </>
       )}
@@ -2017,8 +2031,20 @@ const styles = StyleSheet.create({
     color: PALETTE.muted,
     fontFamily: FONT.regular,
     fontWeight: "400",
-    fontSize: 9.5,
-    lineHeight: 13,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  privacyPolicyLink: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  privacyPolicyLinkText: {
+    color: PALETTE.primary,
+    fontWeight: "600",
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   personaSectionLabel: { marginTop: 22 },
   personaSectionLabelAll: { marginTop: 14 },

@@ -21,8 +21,9 @@ function find(node, name) {
 const schedulerNode = find(ast, "rescheduleSubscriptionReminders");
 const revision = find(ast, "NOTIFICATION_COPY_REVISION").value;
 const generated = fs.readFileSync("src/constants/translations.generated.js", "utf8").replace(/export const /g, "const ");
+const roomTranslations = (fs.readFileSync("src/constants/almiRoomTranslations.js", "utf8").replace(/export const /g, "const ") + "\n" + fs.readFileSync("src/constants/almiTutorialTranslations.js", "utf8").replace(/export const /g, "const "));
 const dictionaries = fs.readFileSync("src/constants/translations.js", "utf8").replace(/^import .*;\n/gm, "").replace(/export const /g, "const ");
-const translations = vm.runInNewContext(generated + "\n" + dictionaries + "\nTRANSLATIONS");
+const translations = vm.runInNewContext(generated + "\n" + roomTranslations + "\n" + dictionaries + "\nTRANSLATIONS");
 
 function fixture({ current = false, cancelFails = false } = {}) {
   const now = Date.UTC(2026, 9, 5, 9);

@@ -18,15 +18,21 @@ function buildDecisionAmountStats(events = []) {
   }
   return stats;
 }
-function resolveRememberedAmount(interaction, history, fallback) {
+function resolveRememberedAmount(interaction, history, fallback, { currency, rate = 1 } = {}) {
   const interactionAt = Math.max(positive(interaction?.lastSavedAt), positive(interaction?.lastSpentAt));
-  if (positive(history?.lastAmountUSD) && (!positive(interaction?.lastAmountUSD) || positive(history.lastAmountAt) > interactionAt)) return history.lastAmountUSD;
+  if (positive(history?.lastAmountUSD) && (!positive(interaction?.lastAmountUSD) || (positive(history.lastAmountAt) > interactionAt && Math.abs(history.lastAmountUSD - interaction.lastAmountUSD) > 1e-9))) return history.lastAmountUSD;
+  if (positive(interaction?.lastAmountUSD) && currency && interaction.lastAmountCurrency === currency && positive(interaction.lastAmountLocal) && positive(rate)) return interaction.lastAmountLocal / rate;
   return positive(interaction?.lastAmountUSD) || positive(history?.lastAmountUSD) || positive(interaction?.averageAmountUSD) || positive(fallback);
 }
-function recordAmountSample(previous = {}, amount, history) {
+function recordAmountSample(previous = {}, amount, history, { currency, localAmount } = {}) {
   if (!positive(amount)) return {};
   const count = positive(history?.sampleCount) || positive(previous.amountSampleCount);
   const total = positive(history?.totalAmountUSD) || positive(previous.averageAmountUSD) * count;
-  return { lastAmountUSD: Number(amount), amountSampleCount: count + 1, averageAmountUSD: (total + Number(amount)) / (count + 1) };
+  return { lastAmountUSD: Number(amount), amountSampleCount: count + 1, averageAmountUSD: (total + Number(amount)) / (count + 1),
+    // Clear stale local memory when a caller records a new USD-only sample.
+    ...((currency && positive(localAmount)) || previous.lastAmountCurrency ? {
+      lastAmountCurrency: currency && positive(localAmount) ? currency : null,
+      lastAmountLocal: currency && positive(localAmount) ? Number(localAmount) : null,
+    } : {}) };
 }
 module.exports = { buildDecisionAmountStats, resolveRememberedAmount, recordAmountSample };

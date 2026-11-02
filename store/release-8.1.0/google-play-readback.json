@@ -1,0 +1,75 @@
+{
+  "verifiedAt": "2026-11-02T09:39:01.694Z",
+  "track": "production",
+  "release": {
+    "name": "8.1.0",
+    "versionCodes": [
+      "137"
+    ],
+    "releaseNotes": [
+      {
+        "language": "en-US",
+        "text": "More ways to make Almi your own! Customize your cat, care for him and decorate his room.\n\nAll your temptations are now together in the main feed, so they are easier to find and manage.\n\nWe also fixed many bugs and errors for a more reliable experience."
+      },
+      {
+        "language": "ru-RU",
+        "text": "Ещё больше возможностей для вашего Алми! Меняйте облик кота, ухаживайте за ним и обустраивайте его комнату.\n\nТеперь все ваши искушения собраны в основной ленте, чтобы их было удобнее находить и отслеживать.\n\nТакже исправили множество багов и ошибок, чтобы приложение работало стабильнее."
+      },
+      {
+        "language": "es-ES",
+        "text": "¡Más formas de personalizar a Almi! Cambia el aspecto de tu gato, cuídalo y decora su habitación.\n\nAhora todas tus tentaciones están juntas en el feed principal para encontrarlas y gestionarlas más fácilmente.\n\nTambién hemos corregido numerosos fallos y errores para una experiencia más estable."
+      },
+      {
+        "language": "es-419",
+        "text": "¡Más formas de personalizar a Almi! Cambia el aspecto de tu gato, cuídalo y decora su habitación.\n\nAhora todas tus tentaciones están juntas en el feed principal para encontrarlas y administrarlas más fácilmente.\n\nTambién corregimos muchos fallos y errores para una experiencia más estable."
+      },
+      {
+        "language": "fr-FR",
+        "text": "Encore plus de façons de personnaliser Almi ! Changez l’apparence de votre chat, prenez soin de lui et décorez sa chambre.\n\nToutes vos tentations sont désormais réunies dans le fil principal pour les retrouver et les gérer plus facilement.\n\nNous avons aussi corrigé de nombreux bugs et erreurs pour une expérience plus fiable."
+      },
+      {
+        "language": "de-DE",
+        "text": "Noch mehr Möglichkeiten für deinen Almi! Passe das Aussehen deiner Katze an, kümmere dich um sie und richte ihr Zimmer ein.\n\nAlle Versuchungen findest du jetzt gemeinsam im Hauptfeed. So behältst du leichter den Überblick.\n\nAußerdem haben wir viele Fehler behoben, damit die App zuverlässiger funktioniert."
+      },
+      {
+        "language": "it-IT",
+        "text": "Ancora più modi per personalizzare Almi! Cambia l’aspetto del tuo gatto, prenditi cura di lui e arreda la sua stanza.\n\nOra tutte le tue tentazioni sono riunite nel feed principale, per trovarle e gestirle più facilmente.\n\nAbbiamo anche corretto numerosi bug ed errori per un’esperienza più affidabile."
+      },
+      {
+        "language": "pt-BR",
+        "text": "Mais formas de personalizar o Almi! Mude o visual do seu gato, cuide dele e decore o quarto dele.\n\nAgora todas as suas tentações estão juntas no feed principal para ficar mais fácil encontrar e acompanhar cada uma.\n\nTambém corrigimos diversos bugs e erros para uma experiência mais estável."
+      },
+      {
+        "language": "pt-PT",
+        "text": "Mais formas de personalizar o Almi! Mude o aspeto do seu gato, cuide dele e decore o quarto dele.\n\nAgora todas as suas tentações estão reunidas no feed principal para ser mais fácil encontrá-las e acompanhá-las.\n\nTambém corrigimos vários erros para uma experiência mais estável."
+      },
+      {
+        "language": "ar",
+        "text": "طرق أكثر لتخصيص ألمي! غيّر مظهر قطك واعتنِ به وزيّن غرفته.\n\nأصبحت كل إغراءات الشراء مجتمعة في الخلاصة الرئيسية لتسهيل العثور عليها ومتابعتها.\n\nأصلحنا أيضًا العديد من الأخطاء لتجربة أكثر استقرارًا."
+      },
+      {
+        "language": "ja-JP",
+        "text": "Almiのカスタマイズがさらに充実！猫の見た目を変えたり、お世話をしたり、部屋を飾ったりできます。\n\n買いたいものがすべてメインフィードにまとまり、見つけやすく、管理しやすくなりました。\n\n多くの不具合やエラーも修正し、アプリの安定性を向上させました。"
+      },
+      {
+        "language": "ko-KR",
+        "text": "Almi를 꾸미는 방법이 더 다양해졌어요! 고양이의 모습을 바꾸고, 돌보고, 방을 꾸며 보세요.\n\n이제 모든 구매 유혹을 메인 피드에서 한눈에 보고 더 쉽게 찾고 관리할 수 있어요.\n\n여러 버그와 오류도 수정해 앱의 안정성을 높였어요."
+      },
+      {
+        "language": "zh-CN",
+        "text": "Almi 的个性化选择更丰富了！为猫咪换造型、照顾它，还能装饰它的房间。\n\n现在，所有购物诱惑都集中在主动态中，查找和管理更方便。\n\n我们还修复了许多问题和错误，让应用更加稳定可靠。"
+      },
+      {
+        "language": "zh-TW",
+        "text": "Almi 的個人化選擇更豐富了！為貓咪換造型、照顧牠，還能佈置牠的房間。\n\n現在，所有購物誘惑都集中在主動態中，尋找和管理更方便。\n\n我們也修正了許多問題和錯誤，讓 App 更加穩定可靠。"
+      }
+    ],
+    "status": "completed"
+  },
+  "bundle": {
+    "versionCode": 137,
+    "sha1": "9aee614b1ae11d0246c8e3312789ef40cb6c387e",
+    "sha256": "db88b24b08e9220f41a724d949e0935b4a537dde1e13747b88541ca09167365f"
+  },
+  "notesByteIdentical": true
+}

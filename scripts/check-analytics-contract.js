@@ -413,13 +413,13 @@ assert(
     appSource.includes("onAgree={() => handleAnalyticsConsentChoice(true)}") &&
     appSource.includes("onSkip={() => handleAnalyticsConsentChoice(false)}") &&
     appSource.includes("setAnalyticsOptOutState(") &&
-    /const handleAnalyticsConsentChoice = \(enabled\) => \{(?:(?!await)[\s\S])*?goToOnboardingStep\("persona"\);/.test(
+    /const handleAnalyticsConsentChoice = async \(enabled\) => \{[\s\S]*?await AsyncStorage\.setItem\(\s*STORAGE_KEYS\.ANALYTICS_CONSENT_RECEIPT,[\s\S]*?goToOnboardingStep\("persona"\);/.test(
       appSource
     ) &&
     !appSource.includes(
       'if (Platform.OS === "android") {\n        setAnalyticsOptOutState(false);'
     ),
-  "Analytics consent must offer accept/decline, continue before SDK waits, and honor stored Android opt-out."
+  "Analytics consent must offer accept/decline, save the revised receipt before continuing, and honor stored opt-out."
 );
 
 const earlyPaid = normalizeAppsFlyerInstallAttribution({

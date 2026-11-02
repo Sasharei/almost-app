@@ -165,8 +165,9 @@ test("closed series cards hide coin text and accessibility amounts, while opened
 
 test("every supported language coin push preserves the amount and drops game-currency wording", () => {
   const generated = fs.readFileSync("src/constants/translations.generated.js", "utf8").replace(/export const /g, "const ");
+  const roomTranslations = (fs.readFileSync("src/constants/almiRoomTranslations.js", "utf8").replace(/export const /g, "const ") + "\n" + fs.readFileSync("src/constants/almiTutorialTranslations.js", "utf8").replace(/export const /g, "const "));
   const dictionaries = fs.readFileSync("src/constants/translations.js", "utf8").replace(/^import .*;\n/gm, "").replace(/export const /g, "const ");
-  const translations = vm.runInNewContext(generated + "\n" + dictionaries + "\nTRANSLATIONS");
+  const translations = vm.runInNewContext(generated + "\n" + roomTranslations + "\n" + dictionaries + "\nTRANSLATIONS");
   const forbidden = /in.game|игров|de jeu|del juego|Spielbelohnung|do jogo|del gioco|داخل اللعبة|遊戲|游戏|게임 보상|ゲーム内/;
   for (const [language, dictionary] of Object.entries(translations)) {
     assert.ok(dictionary.tamagotchiHourlyRewardPushBody.includes("{{amount}}"), language);
@@ -465,7 +466,7 @@ test("Hero shows play and clean needs at production thresholds, choosing the low
   }
 });
 
-test("Hero dirt grows with actual cleanliness and is drawn only by the source silhouette", () => {
+test("Hero keeps the selected skin animated while visible dirt grows with lost cleanliness", () => {
   const dirtyLevel = evaluate("getTamagotchiDirtyVisualLevel", {
     TAMAGOTCHI_MAX_STATE_VALUE: 100,
     ...Object.fromEntries(["TAMAGOTCHI_DIRTY_SOFT_CLEANLINESS_THRESHOLD", "TAMAGOTCHI_DIRTY_SOFT_MAX_VISUAL", "TAMAGOTCHI_DIRTY_STEEP_CURVE_EXPONENT"].map((key) => [key, evaluate(key, {})])),
@@ -475,29 +476,28 @@ test("Hero dirt grows with actual cleanliness and is drawn only by the source si
   }).code;
   const render = vm.runInNewContext(code, {
     React: { createElement: (type, props, ...children) => ({ type, props, children }) },
-    View: "view", Image: "image",
+    View: "view", AlmiTamagotchi: "animated-cat", AlmiDustOverlay: "dust-overlay",
   });
-  const imageSource = { uri: "cached-selected-skin.gif" };
+  const animations = { idle: { uri: "cached-selected-skin.gif" }, curious: { uri: "curious.gif" } };
   let previousOpacity = -1;
-  for (const cleanliness of [100, 80, 60, 30, 15, 0]) {
-    const tree = render({ source: imageSource, size: 96, dirtyLevel: dirtyLevel(cleanliness) });
+  for (const cleanliness of [100, 80, 60, 50, 34, 15, 0]) {
+    const tree = render({ animations, animationSetKey: "selected", size: 96, dirtyLevel: dirtyLevel(cleanliness) });
     assert.equal(tree.props.pointerEvents, "none");
     assert.equal(tree.props.style.backgroundColor, undefined);
-    const [base, dirt] = tree.children;
-    assert.equal(base.type, "image");
-    assert.equal(dirt.type, "image", "no rectangular color View may cover the mascot");
-    assert.equal(base.props.source, imageSource);
-    assert.equal(dirt.props.source, imageSource, "selected animated skin is also the alpha mask");
-    assert.equal(dirt.props.style.width, base.props.style.width);
-    assert.equal(dirt.props.style.height, base.props.style.height);
-    assert.equal(dirt.props.resizeMode, base.props.resizeMode);
-    assert.ok(dirt.props.style.tintColor);
-    assert.equal(dirt.props.style.backgroundColor, undefined);
-    assert.ok(dirt.props.style.opacity >= previousOpacity);
-    if (cleanliness === 100) assert.equal(dirt.props.style.opacity, 0);
-    if (cleanliness === 0) assert.ok(dirt.props.style.opacity > 0.5);
-    previousOpacity = dirt.props.style.opacity;
+    const [cat, dirt] = tree.children[0].children;
+    assert.equal(cat.type, "animated-cat");
+    assert.equal(cat.props.animations, animations);
+    assert.equal(cat.props.animationSetKey, "selected");
+    assert.equal(cat.props.dirtyOverlayEnabled, false);
+    assert.equal(dirt.type, "dust-overlay");
+    assert.equal(dirt.props.testID, "today-cat-dirt");
+    const opacity = dirt.props.intensity;
+    assert.ok(opacity >= previousOpacity);
+    if (cleanliness === 100) assert.equal(opacity, 0);
+    if (cleanliness === 0) assert.equal(opacity, 1);
+    previousOpacity = opacity;
   }
+  assert.ok(dirtyLevel(34) > 0.5, "cleaning attention threshold must look visibly dirty");
 });
 
 test("Hero care entry opens the matching tab while ordinary entries and reward collection retain Food", () => {

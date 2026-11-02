@@ -10,7 +10,12 @@ function checkSecurityVendors() {
   const expoRequire = createRequire(require.resolve('expo/package.json'));
   const cliRequire = createRequire(expoRequire.resolve('@expo/cli/package.json'));
   const installedForge = cliRequire.resolve('node-forge');
-  for (const [name, installed] of [['braces', installedBraces], ['node-forge', installedForge]]) {
+  const configRequire = createRequire(expoRequire.resolve('@expo/config/package.json'));
+  const eslintRequire = createRequire(require.resolve('eslint/package.json'));
+  for (const [name, installed] of [
+    ['braces', installedBraces], ['node-forge', installedForge],
+    ['deepmerge', configRequire.resolve('deepmerge')], ['minimatch', eslintRequire.resolve('minimatch')],
+  ]) {
     const vendor = path.join(root, 'vendor/security', name);
     assert.equal(fs.realpathSync(installed), fs.realpathSync(require.resolve(vendor)), `${name} must use the maintained security fork`);
     const metadata = require(path.join(vendor, 'package.json'));
@@ -21,6 +26,45 @@ function checkSecurityVendors() {
       assert.equal(createHash('sha256').update(fs.readFileSync(path.join(vendor, file))).digest('hex'), expected, `${name}/${file} integrity`);
     }
   }
+  const merge = configRequire('deepmerge');
+  for (const target of [{}, JSON.parse('{"__proto__":{"poisoned":true}}'), Object.create(null)]) {
+    const result = merge(target, JSON.parse('{"__proto__":{"poisoned":true},"safe":{"value":1}}'));
+    assert.equal(Object.getPrototypeOf(result), Object.prototype);
+    assert.equal(result.poisoned, undefined);
+    assert.equal(result.safe.value, 1);
+  }
+  assert.deepEqual(merge({ nested: { a: 1 }, list: [1] }, { nested: { b: 2 }, list: [2] }),
+    { nested: { a: 1, b: 2 }, list: [1, 2] });
+  const symbol = Symbol('merge');
+  assert.equal(merge({}, { [symbol]: 7 })[symbol], 7);
+
+  const matcher = eslintRequire('minimatch');
+  assert.equal(require('minimatch-core/package.json').version, '11.0.1');
+  assert.equal(matcher('src/a.js', '**/*.{js,ts}'), true);
+  assert.equal(matcher.minimatch('src/a.js', '**/*.ts'), false);
+  assert.equal(matcher.defaults({ dot: true })('.hidden', '*'), true);
+  assert.equal(matcher.defaults({ dot: true }).defaults({ nocase: true })('.HIDDEN', '.hidden'), true);
+  // ReactCodegen and CocoaPods discovery still use glob 7's parsed-segment API.
+  const glob = require('glob');
+  const podspecDirectory = path.dirname(require.resolve('@react-native-async-storage/async-storage/package.json'));
+  assert.ok(glob.sync('*.podspec', { cwd: podspecDirectory }).includes('RNCAsyncStorage.podspec'));
+  assert.ok(glob.sync('**/*.{podspec,json}', { cwd: podspecDirectory, ignore: '**/node_modules/**' }).includes('package.json'));
+  const segment = new matcher.Minimatch('*.podspec').set[0][0];
+  assert.equal(segment._glob, '*.podspec');
+  assert.ok('RNCAsyncStorage.podspec'.match(segment));
+  assert.equal('package.json'.match(segment), null);
+  const dotSegment = new (matcher.Minimatch.defaults({ dot: true }))('*').set[0][0];
+  assert.ok('.hidden'.match(dotSegment));
+  const { spawnSync } = require('node:child_process');
+  const probe = spawnSync(process.execPath, ['-e', `
+    const assert = require('node:assert/strict');
+    const { Minimatch } = require('minimatch-core');
+    const matcher = new Minimatch('**/../'.repeat(24) + '*.js', { optimizationLevel: 2 });
+    assert.ok(matcher.set.length < 128);
+    matcher.match('src/a.js');
+  `], { cwd: root, timeout: 3000, encoding: 'utf8' });
+  assert.equal(probe.status, 0, probe.stderr || probe.error?.message);
+
   const braces = consumer('braces');
   assert.deepEqual(braces.expand('a/{b,{c,d}}/{1..3}'), ['a/b/1','a/b/2','a/b/3','a/c/1','a/c/2','a/c/3','a/d/1','a/d/2','a/d/3']);
   const deep = '{'.repeat(4000) + 'a,b' + '}'.repeat(4000);

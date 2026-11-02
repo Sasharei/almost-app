@@ -59,4 +59,29 @@ function resolvePracticeTargetLayout({ rect, top, bottom, bubbleHeight = 180, ke
   const ready = oversized ? displayRect.height >= 48 : rect.y >= top && rect.y + rect.height <= bottom;
   return { oversized, preferredTop, needsScroll, displayRect, ready };
 }
-module.exports = { PRACTICE_TUTORIAL_STORAGE_KEY, INITIAL_PRACTICE_TUTORIAL, PRACTICE_TUTORIAL_TARGETS, practiceTutorialReducer, resolvePracticeTutorialStep, resolvePracticeSpotlight, resolvePracticeTargetLayout };
+// A different target registering elsewhere must not invalidate a live opening.
+function isPracticeAnchorCurrent(anchor, id, session, node) {
+  return Boolean(anchor?.ready && node?.current && anchor.id === id && anchor.session === session && anchor.node === node);
+}
+// Intrinsic copy height is independent of the constrained outer bubble height.
+// Choose the larger side once from geometry, not from text size thresholds.
+function resolvePracticeBubbleLayout({ top, bottom, hole, contentHeight, allowCover = false }) {
+  const desired = Math.max(96, contentHeight);
+  const above = hole ? Math.max(0, hole.top - top - 12) : 0;
+  const below = hole ? Math.max(0, bottom - hole.top - hole.height - 12) : 0;
+  const belowTarget = below >= above;
+  const available = hole ? (belowTarget ? below : above) : bottom - top;
+  const full = !hole || (allowCover && available < 160);
+  const height = Math.min(desired, Math.max(56, full ? bottom - top : available));
+  return { top: full ? top + Math.max(0, (bottom - top - height) / 2) : belowTarget ? hole.top + hole.height + 12 : hole.top - 12 - height, height };
+}
+function resolvePracticeSpotlightPath(width, height, hole) {
+  "worklet";
+  const base = `M0 0H${width}V${height}H0Z`;
+  if (!hole) return base;
+  const { left, top, width: w, height: h } = hole;
+  const r = Math.min(12, w / 2, h / 2);
+  const right = left + w, bottom = top + h;
+  return `${base} M${left + r} ${top}H${right - r}Q${right} ${top} ${right} ${top + r}V${bottom - r}Q${right} ${bottom} ${right - r} ${bottom}H${left + r}Q${left} ${bottom} ${left} ${bottom - r}V${top + r}Q${left} ${top} ${left + r} ${top}Z`;
+}
+module.exports = { PRACTICE_TUTORIAL_STORAGE_KEY, INITIAL_PRACTICE_TUTORIAL, PRACTICE_TUTORIAL_TARGETS, practiceTutorialReducer, resolvePracticeTutorialStep, resolvePracticeSpotlight, resolvePracticeTargetLayout, isPracticeAnchorCurrent, resolvePracticeBubbleLayout, resolvePracticeSpotlightPath };

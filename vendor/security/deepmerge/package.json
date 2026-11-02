@@ -1,0 +1,8 @@
+{
+  "name": "@almost-security/deepmerge",
+  "version": "4.3.1-almost.1",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT"
+}

@@ -111,3 +111,132 @@ test("amount step ends only on actual drag release or accessible confirmation", 
   confirm();
   assert.deepEqual(events, [["AMOUNT", true], ["AMOUNT", true]]);
 });
+
+test("native feed confirmation preserves the amount on cancel and never reopens an expired tour", async () => {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  const source = fs.readFileSync(require("node:path").join(__dirname, "../../App.js"), "utf8");
+  const start = source.indexOf("  const confirmAmountAction = useCallback(");
+  const end = source.indexOf("  const switchAmountSliderAction =", start);
+  const expression = source.slice(start, end).trim().replace(/^const confirmAmountAction = /, "").replace(/;$/, "");
+  for (const outcome of ["cancel", "commit", "error", "replay", "skip"]) {
+    let visible = true, resolve, reject;
+    const calls = [];
+    const tutorial = { active: true, state: { reset: 3 }, sessionRef: { current: 3 }, activeRef: { current: true } };
+    const context = {
+      useCallback: (fn) => fn, amountSliderDisplayedAmountUSDRef: { current: 7.25 }, amountSliderManualUSDRef: { current: null },
+      amountSliderValueRef: { current: 0.5 }, amountSliderBaseOverrideUSDRef: { current: null },
+      clampTransactionAmountUSD: (amount) => amount, triggerHaptic() {}, playSound() {},
+      Haptics: { ImpactFeedbackStyle: { Light: "light", Medium: "medium" } }, suppressCardPressUntilRef: {},
+      amountSliderResumeRef: { current: false }, practiceTutorial: tutorial, setAmountSliderVisible: (value) => { visible = value; }, notifyAmountSliderTouch() {},
+      onAction: (...args) => { calls.push(args); return new Promise((yes, no) => { resolve = yes; reject = no; }); },
+      closeAmountSlider() { throw new Error("must preserve draft during the tour"); }, item: { id: "feed-card" },
+      onAmountSliderConfirmCoachComplete: null, resolveAmountSliderAmount() { throw new Error("must use displayed amount"); },
+    };
+    const confirm = vm.runInNewContext(expression, context);
+    const pending = confirm("spend");
+    assert.equal(visible, false, "native modal yields to the real confirmation dialog");
+    assert.equal(calls[0][0], "spend");
+    assert.equal(calls[0][1].id, "feed-card");
+    assert.equal(calls[0][2].amountUSD, 7.25);
+    if (outcome === "replay") tutorial.sessionRef.current++;
+    if (outcome === "skip") tutorial.activeRef.current = false;
+    if (outcome === "error") reject(Error("temporary failure"));
+    else resolve(outcome === "commit" ? { committed: true } : { cancelled: true });
+    await pending;
+    assert.equal(visible, outcome === "cancel" || outcome === "error");
+    assert.equal(context.amountSliderResumeRef.current, outcome === "cancel" || outcome === "error");
+    assert.equal(context.amountSliderDisplayedAmountUSDRef.current, 7.25);
+  }
+});
+
+
+test("reopening a cancelled native decision does not run the initial amount reset", () => {
+  const fs = require("node:fs"), vm = require("node:vm");
+  const source = fs.readFileSync(require("node:path").join(__dirname, "../../App.js"), "utf8");
+  const marker = source.indexOf("    if (amountSliderResumeRef.current) {");
+  const effect = source.slice(source.lastIndexOf("  useEffect(() => {", marker), source.indexOf("\n\n", marker));
+  for (const resume of [false, true]) {
+    let displayed = 0.75;
+    const context = { useEffect: (fn) => fn(), amountSliderVisible: true, amountSliderResumeRef: { current: resume },
+      amountSliderValueRef: { current: 0.75 }, amountSliderStepRef: {}, amountSliderStepCount: 100, item: { id: "feed-card" },
+      setAmountSliderValue: (value) => { displayed = value; } };
+    vm.runInNewContext(effect, context);
+    assert.equal(displayed, resume ? 0.75 : 0.5);
+    assert.equal(context.amountSliderValueRef.current, resume ? 0.75 : 0.5);
+    assert.equal(context.amountSliderResumeRef.current, false);
+  }
+});
+
+test("a live spotlight survives unrelated registrations but never unlocks a replaced or stale node", () => {
+  const { isPracticeAnchorCurrent } = require('../../src/utils/practiceTutorial');
+  const node = { current: {} };
+  const anchor = { id: 'practice-card', session: 4, node, ready: true, registry: 1 };
+  assert.equal(isPracticeAnchorCurrent({ ...anchor, registry: 100 }, 'practice-card', 4, node), true);
+  assert.equal(isPracticeAnchorCurrent(anchor, 'practice-amount', 4, node), false);
+  assert.equal(isPracticeAnchorCurrent(anchor, 'practice-card', 5, node), false);
+  assert.equal(isPracticeAnchorCurrent(anchor, 'practice-card', 4, { current: {} }), false);
+  node.current = null;
+  assert.equal(isPracticeAnchorCurrent(anchor, 'practice-card', 4, node), false);
+});
+
+test("copy resizing cannot flip the bubble between sides of the same target", () => {
+  const { resolvePracticeBubbleLayout } = require('../../src/utils/practiceTutorial');
+  // The old text-size threshold chose below at 180 px, then jumped above at
+  // 240 px, changing the measured constrained height and repeating the loop.
+  const hole = { left: 16, top: 360, width: 288, height: 160 };
+  for (const contentHeight of [180, 240, 400, 180, 240]) {
+    const box = resolvePracticeBubbleLayout({ top: 48, bottom: 730, hole, contentHeight });
+    assert.equal(box.top + box.height, hole.top - 12);
+    assert.ok(box.top >= 48);
+    assert.ok(box.height <= contentHeight);
+  }
+});
+
+test("bubble placement stays inside safe bounds for real phone, keyboard and large text geometry", () => {
+  const { resolvePracticeBubbleLayout } = require('../../src/utils/practiceTutorial');
+  for (const [top, bottom, hole] of [
+    [48, 850, { left: 16, top: 130, width: 370, height: 260 }],
+    [48, 850, { left: 16, top: 620, width: 370, height: 170 }],
+    [48, 340, { left: 16, top: 180, width: 288, height: 80 }],
+    [48, 560, { left: 16, top: 178, width: 288, height: 380 }],
+  ]) for (const contentHeight of [180, 300, 700]) {
+    const box = resolvePracticeBubbleLayout({ top, bottom, hole, contentHeight });
+    assert.ok(box.top >= top, JSON.stringify(box));
+    assert.ok(box.top + box.height <= bottom, JSON.stringify(box));
+    assert.ok(box.height >= 56);
+  }
+});
+
+test("the animated mask uses the outline's rounded corners and a valid full-screen fallback", () => {
+  const { resolvePracticeSpotlightPath } = require('../../src/utils/practiceTutorial');
+  assert.equal(resolvePracticeSpotlightPath(320, 568, null), 'M0 0H320V568H0Z');
+  const path = resolvePracticeSpotlightPath(320, 568, { left: 10, top: 20, width: 100, height: 50 });
+  assert.match(path, /M22 20H98Q110 20 110 32/);
+  assert.equal((path.match(/Q/g) || []).length, 4);
+  assert.doesNotMatch(resolvePracticeSpotlightPath(320, 568, { left: 0, top: 0, width: 4, height: 4 }), /NaN|Infinity/);
+});
+
+test("an expired recovery timer from the previous step cannot flash recovery on the next step", () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const source = fs.readFileSync(require('node:path').join(__dirname, '../../src/components/PracticeTutorial.js'), 'utf8');
+  const guard = source.match(/const recovering = ([^;]+);/)[1];
+  const start = source.indexOf('  useEffect(() => {\n    setDelayedTarget(null);');
+  const effect = source.slice(start, source.indexOf('\n  useEffect(', start + 1));
+  let callback, cleanup, cleared = false;
+  const context = { visible: true, waiting: false, ready: false, holding: false, deadlineKey: '0:practice-card', delayedTarget: '0:practice-open',
+    useEffect: (fn) => { cleanup = fn(); }, setDelayedTarget: (value) => { context.delayedTarget = value; },
+    setTimeout: (fn) => { callback = fn; return 1; }, clearTimeout: () => { cleared = true; } };
+  assert.equal(vm.runInNewContext(guard, context), false, 'new step is safe before effects run');
+  vm.runInNewContext(effect, context);
+  assert.equal(vm.runInNewContext(guard, context), false);
+  callback();
+  assert.equal(vm.runInNewContext(guard, context), true, 'a genuinely missing target exposes recovery after its own deadline');
+  cleanup();
+  assert.equal(cleared, true);
+  context.ready = true;
+  vm.runInNewContext(effect, context);
+  assert.equal(vm.runInNewContext(guard, context), false, 'a ready target clears its recovery state');
+  context.deadlineKey = '0:practice-amount';context.ready = false;
+  assert.equal(vm.runInNewContext(guard, context), false);
+});

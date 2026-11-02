@@ -15,12 +15,12 @@ export const MAX_ACTIVE_GOALS = 5;
 
 // Android's realtime Dimezis blur continuously redraws the captured hierarchy and can cause
 // severe jank/blank frames when several glass surfaces or a modal are visible. Keep generic
-// overlays on theme-aware solid fallbacks and reserve live blur for the two surfaces whose
-// backdrop genuinely changes while scrolling: the bottom navigation and the quick-spend FAB.
+// overlays, bottom navigation and the quick-spend FAB on theme-aware solid fallbacks.
+// Capturing the root also exhausts the bitmap heap on API 24 while SVGs are visible.
 export const ANDROID_DIMEZIS_DISABLED = true;
 export const ANDROID_BLUR_AUTO_UPDATE = false;
 export const ANDROID_EXPO_BLUR_ENABLED = false;
-export const ANDROID_LIVE_GLASS_BLUR_ENABLED = true;
+export const ANDROID_LIVE_GLASS_BLUR_ENABLED = false;
 // RenderScript blur on Android requires 0 < radius <= 25.
 // Keep reduction >= 2 so the native default blurRadius (50) stays in range during mount.
 export const ANDROID_EXPO_BLUR_REDUCTION_FACTOR = 2;
@@ -94,6 +94,7 @@ export const STORAGE_KEYS = {
   CLAIMED_REWARDS: "@almost_claimed_rewards",
   REWARD_TOTAL: "@almost_reward_total",
   ANALYTICS_OPT_OUT: "@almost_analytics_opt_out",
+  ANALYTICS_CONSENT_RECEIPT: "@almost_analytics_consent_2026_10_31_v1",
   FIRST_SESSION_DURATION_BUCKET: "@almost_first_session_duration_bucket",
   TEMPTATION_GOALS: "@almost_temptation_goals",
   TEMPTATION_INTERACTIONS: "@almost_temptation_interactions",
@@ -101,6 +102,7 @@ export const STORAGE_KEYS = {
   HIDDEN_TEMPTATIONS: "@almost_hidden_temptations",
   ARCHIVED_TEMPTATIONS: "@almost_archived_temptations",
   TEMPTATION_SERIES: "@almost_temptation_series",
+  ALMI_CARE_TUTORIAL: "@almost_almi_care_tutorial_v1",
   INDEPENDENT_DECISIONS: "@almost_independent_decisions_v1",
   NEXT_DECISION_COACH: "@almost_next_decision_coach_v1",
   DEFAULT_TEMPTATION_GROWTH_LOCK_LEVEL: "@almost_default_temptation_growth_lock_level",

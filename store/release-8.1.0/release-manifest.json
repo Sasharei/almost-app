@@ -1,0 +1,182 @@
+{
+  "version": "8.1.0",
+  "build": 137,
+  "appId": "6756276744",
+  "bundleId": "com.sasarei.almostclean",
+  "createdAt": "2026-11-02T09:03:08.708Z",
+  "ios": {
+    "versionId": "38f3bf6d-607d-4f87-8956-8dbc03f7093c",
+    "state": "WAITING_FOR_REVIEW",
+    "releaseType": "AFTER_APPROVAL",
+    "ipa": {
+      "path": "store/release-8.1.0/builds/Almost-8.1.0-137.ipa",
+      "bytes": 112911441,
+      "sha256": "75d4216b5dd015f3214756ed91ec3872cc88e945519ab83fabeae4b1c7a71515",
+      "signatures": [
+        {
+          "bundle": "com.sasarei.almostclean",
+          "version": "8.1.0",
+          "build": "137",
+          "xcodeBuild": "27B52",
+          "sdk": "iphoneos27.2",
+          "signature": "PASS",
+          "distribution": "App Store",
+          "familyControls": true,
+          "push": "production"
+        },
+        {
+          "bundle": "com.sasarei.almostclean.Almost-Widget",
+          "version": "8.1.0",
+          "build": "137",
+          "xcodeBuild": "27B52",
+          "sdk": "iphoneos27.2",
+          "signature": "PASS",
+          "distribution": "App Store",
+          "familyControls": null,
+          "push": null
+        },
+        {
+          "bundle": "com.sasarei.almostclean.ShoppingBlockerAction",
+          "version": "8.1.0",
+          "build": "137",
+          "xcodeBuild": "27B52",
+          "sdk": "iphoneos27.2",
+          "signature": "PASS",
+          "distribution": "App Store",
+          "familyControls": true,
+          "push": null
+        },
+        {
+          "bundle": "com.sasarei.almostclean.ShoppingBlockerMonitor",
+          "version": "8.1.0",
+          "build": "137",
+          "xcodeBuild": "27B52",
+          "sdk": "iphoneos27.2",
+          "signature": "PASS",
+          "distribution": "App Store",
+          "familyControls": true,
+          "push": null
+        },
+        {
+          "bundle": "com.sasarei.almostclean.ShoppingBlockerShield",
+          "version": "8.1.0",
+          "build": "137",
+          "xcodeBuild": "27B52",
+          "sdk": "iphoneos27.2",
+          "signature": "PASS",
+          "distribution": "App Store",
+          "familyControls": true,
+          "push": null
+        }
+      ]
+    },
+    "deliveryUUID": "105682ff-7b5a-431b-aa3a-4f6900e311f2",
+    "uploaded": true,
+    "processing": "VALID",
+    "buildUploadId": "105682ff-7b5a-431b-aa3a-4f6900e311f2",
+    "archive": "/Users/sasarei/Library/Developer/Xcode/Archives/2026-11-02/Almost-8.1.0-137.xcarchive",
+    "archiveRetention": "Shipping release archive and dSYMs retained for active store submission and crash symbolication",
+    "buildId": "105682ff-7b5a-431b-aa3a-4f6900e311f2",
+    "selectedBuild": "105682ff-7b5a-431b-aa3a-4f6900e311f2",
+    "reviewSubmissionId": "393e63f1-9c93-425d-b7db-85216b1fd2d0",
+    "reviewItemId": "MzkzZTYzZjEtOWM5My00MjVkLWI3ZGItODUyMTZiMWZkMmQwfDZ8ODk0MzgyODkw",
+    "reviewSubmissionState": "WAITING_FOR_REVIEW",
+    "submittedAt": "2026-11-02T09:50:10.177Z",
+    "ageRatingUpdate": {
+      "appInfoId": "689ec35b-0cbd-410d-9471-dfe44530e2d3",
+      "socialMedia": false,
+      "reason": "Required new field; verified no social-network features"
+    },
+    "publiclyLive": false,
+    "metadataReadback": {
+      "locales": 14,
+      "whatsNew": "byte-identical",
+      "promotionalText": "byte-identical",
+      "selectedBuild": "105682ff-7b5a-431b-aa3a-4f6900e311f2"
+    }
+  },
+  "android": {
+    "state": "CHANGES_IN_REVIEW",
+    "versionCode": 137,
+    "aab": "store/release-8.1.0/builds/Almost-8.1.0-137-store.aab",
+    "bytes": 98058999,
+    "sha256": "db88b24b08e9220f41a724d949e0935b4a537dde1e13747b88541ca09167365f",
+    "nativeSymbolsAttached": true,
+    "retraceAttached": true,
+    "supportedDeviceLoss": 0,
+    "rolloutPercentage": 100,
+    "managedPublishing": false,
+    "quickChecks": "Running, queues for review after successful completion",
+    "publiclyLive": false,
+    "apiSha256AndNotesReadback": "PASS: SHA-256 and all 14 release-note texts match"
+  },
+  "verification": {
+    "verify": "PASS",
+    "artifactSize": "Previous artifact only, final builds pending",
+    "runtime": {
+      "iOS": "Release configuration, iPhone 17 / iOS 26.5: fresh onboarding with analytics and notifications declined; tutorial recovery/restart, feed card, slider, Almost Pay cancel/double-confirm, recorded $9 saving, result, optional reminder dismissal, persistence after relaunch, Almi feeding and fullness update, room preview/insufficient balance, skins paywall, real products/prices/trial, empty restore, Sandbox auth and cancellation",
+      "Android": "Release APK, clean Android 16 Google Play emulator: onboarding with analytics and notifications declined, intro skip, main feed, Almi screen, daily chest interaction/reward and balance, room preview selection/insufficient balance, skin gallery and paywall Billing error, error dismissal, cold relaunch",
+      "visual": "Original-resolution iOS room preview and Android first launch inspected; native screenshots sampled for feed/care/room/skins/paywall. Light appearance only in this pass; full dark/PRO/accent/RTL/large-text/compact matrix not rerun. No complete visual PASS claimed.",
+      "limits": "Successful subscription transaction and server postback omitted with explicit user permission. Room purchase/equip with sufficient balance and premium skin activation not tested. Physical-device Shopping Pause not tested.",
+      "observedExistingIssues": [
+        "iOS simulator Shopping Pause synchronization error",
+        "Android sample feed viewport: floating add button overlaps the trailing Freeze control; no new UI/layout changes in this release-packaging task"
+      ],
+      "runner": "Maestro Android driver lost its connection during taps; direct native UI verified via task-specific official emulator wrapper instead"
+    },
+    "functionalParity": "PASS: 268 contracts, 2334 behavior fragments, 45 reachability patterns",
+    "localization": "PASS: 12 app languages, native permissions and shortcut resources",
+    "themes": "PASS static: light, dark, pro and 6 PRO accents",
+    "appLovin": {
+      "apiKey": "accepted",
+      "trackingUrls": "valid for iOS and Android",
+      "report": "HTTP 200, code 200, zero rows for both platforms over 45 days",
+      "gate": "FAIL due to no report rows",
+      "exception": "User confirmed AppLovin has long been inactive and authorized proceeding for 8.1.0; no permanent check changes",
+      "userDecisionDate": "2026-11-02"
+    },
+    "iosSize": {
+      "result": "113 MB exceeds configured 100 MB budget",
+      "exception": "User explicitly authorized releasing the 112.9 MB IPA on 2026-11-02; no budget/check changes"
+    },
+    "purchaseCoverage": {
+      "iOS": "Real products/prices/trial loaded; restore without subscription showed empty state; purchase opened Sandbox Apple Account authentication; cancellation returned to paywall",
+      "Android": "RevenueCat initialized; emulator billing returned BILLING_UNAVAILABLE",
+      "successfulTransactionAndServerPostback": "Not verified; user explicitly authorized shipping with this limitation on both platforms on 2026-11-02"
+    },
+    "androidQaArtifactParity": {
+      "javascript": "byte-identical",
+      "nativeLibraries": 87
+    },
+    "verifyFinal": "PASS with final 98,058,999-byte shipping Android AAB",
+    "sourceParity": "930 runtime/build/source files are byte-identical to the immutable release snapshot",
+    "gitDiffCheck": "PASS; inspected changed filenames and version/string diffs; no new in-app display text introduced by version bump",
+    "finalToolchain": "xcode-select: /Applications/Xcode.app/Contents/Developer; Xcode 27.2, build 27B52"
+  },
+  "toolchain": {
+    "xcode": "27.2",
+    "build": "27B52",
+    "officialRelease": "https://developer.apple.com/news/releases/"
+  },
+  "metadata": {
+    "appStoreLocales": 14,
+    "appStoreReadback": "byte-identical",
+    "googlePlayLocales": 14,
+    "googlePlayState": "CHANGES_IN_REVIEW",
+    "promotionalText": "Evergreen app positioning, not update-specific"
+  },
+  "sourceSnapshotRef": "refs/codex/release-snapshots/8.1.0-137",
+  "sourceCommit": "960f1da0b6e553d9a59b2b23c50652277d2f6c66",
+  "googlePlayDraftReleaseId": "85",
+  "cleanup": {
+    "state": "COMPLETE",
+    "temporaryDirectory": "Removed /private/tmp/almost-release-8.1.0-137 including isolated worktree/dependencies/build intermediates/QA screenshots/hierarchies/logs/fixtures/emulator overlay and helper app",
+    "exportLogs": "Task-owned Xcode distribution logs removed",
+    "backgroundProcesses": "Task emulator, build/test processes and orphan altool network log stream stopped",
+    "devices": "Task iOS simulator shut down with registration/data preserved; existing Android AVD data unchanged by read-only task overlay; other sessions untouched",
+    "retained": "Shipping IPA/AAB, native debug symbols, ProGuard mapping, Android JS source map, immutable source ref, concise release metadata and active iOS archive/dSYMs",
+    "sharedCaches": "Not cleared; no indiscriminate deletion of shared caches or other task outputs"
+  },
+  "verifiedAt": "2026-11-02T09:50:42.662Z",
+  "completedOperation": "Submitted iOS and Android 8.1.0 (137) for review, automatic release after approval"
+}

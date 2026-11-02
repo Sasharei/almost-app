@@ -61,6 +61,14 @@ try {
   perf = null;
 }
 
+let crashlytics = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  crashlytics = require("@react-native-firebase/crashlytics")?.default || null;
+} catch (_error) {
+  crashlytics = null;
+}
+
 let appsFlyer = null;
 try {
   // Optional dependency – only available in native builds.
@@ -916,6 +924,15 @@ const syncPerformanceCollection = async () => {
   }
 };
 
+const syncCrashlyticsCollection = async () => {
+  if (!baseEnabled || typeof crashlytics !== "function") return;
+  try {
+    await crashlytics().setCrashlyticsCollectionEnabled(isAnalyticsEnabled());
+  } catch (error) {
+    console.warn("Crashlytics toggle failed:", error?.message || error);
+  }
+};
+
 const waitForAmplitudeResult = async (result) => {
   if (!result || typeof result !== "object") return;
   if (result.promise && typeof result.promise.then === "function") {
@@ -1355,6 +1372,7 @@ export const syncAppsFlyerAttributionToRevenueCat = async ({
 export const initAnalytics = async () => {
   await syncAnalyticsCollection();
   await syncAmplitudeCollection();
+  await syncCrashlyticsCollection();
   await syncProductAnalyticsInstallIdentity();
   await initAttribution();
   if (__DEV__ && Platform.OS === "android") {
@@ -1381,6 +1399,7 @@ export const setAnalyticsOptOut = async (optOut) => {
   await syncAnalyticsCollection();
   await syncAmplitudeCollection();
   await syncPerformanceCollection();
+  await syncCrashlyticsCollection();
   if (!analyticsOptedOut) await syncProductAnalyticsInstallIdentity();
 };
 

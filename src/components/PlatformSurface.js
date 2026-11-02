@@ -20,6 +20,9 @@ function ControlGradient({ colors }) {
 
 let SwiftUISurface;
 const SurfaceDepth = createContext(false);
+const SurfaceSolid = createContext(false);
+// Scope stable semantic fills to animated screens where adaptive glass can flash.
+export const SolidSurfaceProvider = SurfaceSolid.Provider;
 const SurfaceAppearance = createContext(null);
 const SurfaceBackground = createContext("#FFFFFF");
 export const SurfaceThemeProvider = SurfaceBackground.Provider;
@@ -84,6 +87,7 @@ function nativeGlassAvailable() {
 // Cards and nested content use native material; selected controls retain their semantic fill.
 const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole, foregroundColor }) {
   const { reduceTransparency } = useMotionPreferences();
+  const forceSolid = useContext(SurfaceSolid);
   const parentHasMaterial = useContext(SurfaceDepth);
   const parentIsDark = useContext(SurfaceAppearance);
   const parentBackground = useContext(SurfaceBackground);
@@ -102,7 +106,7 @@ const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole
     borderBottomRightRadius: flat.borderBottomRightRadius ?? radius,
     overflow: "hidden",
   };
-  const solid = Platform.OS !== "ios" || reduceTransparency || tint.alpha < 1;
+  const solid = forceSolid || Platform.OS !== "ios" || reduceTransparency || (tint.alpha < 1 && surfaceRole !== "glass");
   const NativeSurface = !solid && tint.hex && resolveSwiftUISurface();
   const glass = !solid && nativeGlassAvailable();
   // Sheets retain a dense translucent backing; content cards use native material.
@@ -111,7 +115,7 @@ const SurfaceMaterial = React.memo(function SurfaceMaterial({ style, surfaceRole
   // Neutral glass lets the system material show through. Saturated/selected controls
   // keep their validated foreground contrast on an opaque semantic tint.
   const nestedContent = (parentHasMaterial && surfaceRole !== "control" && surfaceRole !== "filter");
-  const tintOpacity = surfaceRole === "control" ? 1 : surfaceRole === "filter" ? 1 : surfaceRole === "sheet" ? 0.82 : nestedContent ? 0.4 : 0.32;
+  const tintOpacity = surfaceRole === "control" ? 1 : surfaceRole === "filter" ? 1 : surfaceRole === "glass" ? 0.24 : surfaceRole === "sheet" ? 0.82 : nestedContent ? 0.4 : 0.32;
   const gradient = !reduceTransparency && tint.alpha === 1 && (surfaceRole === "control" || surfaceRole === "filter")
     ? resolveControlGradient(stableBackground, foregroundColor || resolveForegroundForColor(stableBackground)) : null;
   return (

@@ -1,7 +1,13 @@
+import AlmiCareTutorialCard, { useAlmiCareTutorial } from "./src/components/AlmiCareTutorial";
 import { CloudDeletionRow } from "./src/privacy/CloudDeletionRow";
 import { pauseCountTranslationKey } from "./src/constants/pauseCountCopy";
 import { ALMI_WIDGET_COPY } from "./src/constants/almiWidgetCopy";
 import { buildAlmiWidgetContext } from "./src/utils/almiWidgetContext";
+import AlmiRoomDecor from "./src/components/AlmiRoomDecor";
+import AlmiCareBackdrop from "./src/components/AlmiCareBackdrop";
+import AlmiDustOverlay from "./src/components/AlmiDustOverlay";
+import AlmiRoomShop from "./src/components/AlmiRoomShop";
+import { ALMI_ANDROID_PREVIEWS } from "./src/constants/almiAndroidPreviews";
 import ShoppingBlockerPanel, { ShoppingBlockerEntry } from "./src/components/ShoppingBlockerPanel";
 import { useWalletHistory } from "./src/bankExpenses/useWalletHistory";
 import { walletHistoryEvents, mergeWalletHistory, classifyMerchant } from "./src/bankExpenses/walletHistory";
@@ -9,7 +15,6 @@ import BankExpensesPanel from "./src/components/BankExpensesPanel";
 import { useModalActionHandoff } from "./src/hooks/useModalActionHandoff";
 import { useBankExpenses, expenseCopy } from "./src/bankExpenses/useBankExpenses";
 import { useShoppingBlocker } from "./src/shoppingBlocker/useShoppingBlocker";
-import DecisionCardWheel from "./src/components/DecisionCardWheel";
 import PracticeTutorialOverlay, { PracticeTarget, PracticeInactive, usePracticeTutorial } from "./src/components/PracticeTutorial";
 import { PRACTICE_TUTORIAL_STORAGE_KEY } from "./src/utils/practiceTutorial";
 import OverviewFeedScroll from "./src/components/OverviewFeedScroll";
@@ -97,7 +102,9 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import { Image as ExpoImage } from "expo-image";
 import * as Notifications from "expo-notifications";
+import { ALMI_SMOOTH_ANIMATIONS } from "./src/constants/almiSmoothAnimations";
 import { startCloudNotifications, openCloudAnnouncement } from "./src/notifications/cloudNotifications";
 import { createNotificationPolicy, nextTime, explicitKey, family } from "./src/notifications/notificationPolicy";
 import * as NavigationBar from "expo-navigation-bar";
@@ -155,7 +162,7 @@ import {
   Inter_800ExtraBold,
   Inter_900Black,
 } from "@expo-google-fonts/inter";
-import Sentry, { initSentry } from "./sentry";
+import Sentry, { initSentry, stopSentry } from "./sentry";
 import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from "react-native-safe-area-context";
 import ViewShot, {
   captureRef,
@@ -529,6 +536,7 @@ import {
   PersonaScreen,
   TermsModal,
 } from "./src/components/OnboardingRedesign";
+import { getOnboardingRedesignCopy } from "./src/constants/onboardingRedesignCopy";
 import { PartyFireworksLayer, PartySparklesLayer } from "./src/components/PartyEffects";
 import LiquidGlassTabBar from "./src/components/LiquidGlassTabBar";
 import LiquidGlassFabOrb from "./src/components/LiquidGlassFabOrb";
@@ -538,7 +546,7 @@ const { formatDecisionCountdown } = require("./src/utils/decisionCountdown");
 const { resolveReconciledIntervalMs } = require("./src/engagement/temptationSchedule");
 const { buildDecisionQueue, shouldIncludeUnscheduledInToday, countExplicitSchedules, classifyScheduledDecision, isDecisionRecordedToday, resolveScheduledDecisionAt, mergeDecisionTimestamps, resolveTodayQueueNow } = require("./src/engagement/todayOverview");
 import { CurrencyPicker } from "./src/components/CurrencyPicker";
-import PlatformSurface, { AnimatedPlatformSurface, PlatformPressable, PlatformTouchableOpacity, SurfaceThemeProvider } from "./src/components/PlatformSurface";
+import PlatformSurface, { AnimatedPlatformSurface, PlatformPressable, PlatformTouchableOpacity, SolidSurfaceProvider, SurfaceThemeProvider } from "./src/components/PlatformSurface";
 import {
   buildDefaultPlanCards,
   buildPaywallCopy,
@@ -604,6 +612,8 @@ const {
   serializeCoinBalanceBackup,
   serializeCoinBalanceIncidentRepair,
 } = require("./src/engagement/coinBalance");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { ROOM_ITEM_BY_ID, normalizeRoomState, purchaseRoomItem, equipRoomItem, removeRoomItem } = require("./src/engagement/almiRoom");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
   buildTodayTemptationPlan,
@@ -692,6 +702,7 @@ const {
   isGoalCompletionLocked,
   resolveGoalProgressState,
   resolveGoalProgressPercentLabel,
+  resolveAvailableGoalSavingsUSD,
 } = require("./src/utils/goalProgress");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
@@ -807,6 +818,8 @@ const {
   canEnableMetaAdvertiserTracking,
   isTrackingStatusGranted,
 } = require("./src/analytics/consentPolicy");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { readConsentReceipt, createConsentReceipt } = require("./src/analytics/consentReceipt");
 const IOS_DEFAULT_MODAL_PRESENTATION = "overFullScreen";
 const IOS_NATIVE_TAB_BAR_BOTTOM_LIFT = 6;
 const ANDROID_STABLE_ALPHA_PROPS =
@@ -1471,7 +1484,7 @@ const AndroidManualAmountBackdropVisual = React.memo(function AndroidManualAmoun
   solidFallbackColor = "#000000",
 }) {
   if (Platform.OS !== "android") return null;
-  if (reduceTransparency) {
+  if (reduceTransparency || !ANDROID_EXPO_BLUR_ENABLED) {
     return (
       <View
         pointerEvents="none"
@@ -1506,17 +1519,24 @@ const runLayoutAnimation = (preset = LayoutAnimation.Presets.easeInEaseOut) => {
   // iOS Fabric can crash in RCTMountingManager under rapid mount/unmount transitions
   // (first-save tutorial flow hits this path). Keep iOS stable by skipping these animations.
   if (Platform.OS === "ios" && isFabricRendererActive) return;
-  // Skip layout animations when Android community blur is active to avoid pre-ordered draw crashes.
-  if (Platform.OS === "android" && shouldUseAndroidCommunityBlur()) return;
+  // configureNext affects the entire next mount transaction, including unrelated
+  // images and modal hosts. Fabric can fade those out during card/editor updates.
+  if (Platform.OS === "android" && (isFabricRendererActive || shouldUseAndroidCommunityBlur())) return;
   LayoutAnimation.configureNext(preset);
 };
 
 const bootstrapMonitoring = (() => {
-  let initialized = false;
+  let sentryEnabled = false;
   return (enabled = false) => {
-    if (!enabled || initialized) return;
-    initialized = true;
+    if (!enabled) {
+      sentryEnabled = false;
+      void stopSentry();
+      return;
+    }
+    if (sentryEnabled) return;
+    sentryEnabled = true;
     InteractionManager.runAfterInteractions(() => {
+      if (!sentryEnabled) return;
       initSentry();
       initAnalytics();
       initPerformanceMonitoring();
@@ -5765,13 +5785,7 @@ const CoinValueTutorialModal = React.memo(function CoinValueTutorialModal({
 const TAMAGOTCHI_IDLE_VARIANTS = ["idle", "idle", "curious", "follow", "speak"];
 const TAMAGOTCHI_STARVING_VARIANTS = ["cry", "cry", "sad", "ohno", "idle"];
 const TAMAGOTCHI_PLAY_DEPRIVED_VARIANTS = ["cry", "sad", "cry", "ohno", "sad"];
-const ALMI_DIRT_SPOTS = [
-  { top: "14%", left: "16%", width: 20, height: 16, rotate: -18, opacity: 0.62, color: "#6F573B" },
-  { top: "24%", left: "62%", width: 24, height: 18, rotate: 22, opacity: 0.58, color: "#6A5136" },
-  { top: "48%", left: "10%", width: 18, height: 14, rotate: 8, opacity: 0.54, color: "#70583C" },
-  { top: "56%", left: "66%", width: 26, height: 20, rotate: -16, opacity: 0.56, color: "#5F492F" },
-  { top: "73%", left: "34%", width: 22, height: 16, rotate: 14, opacity: 0.52, color: "#684F34" },
-];
+
 const TAMAGOTCHI_IDLE_ANIMATION_DURATION_MS = {
   idle: 3000,
   curious: 3200,
@@ -5839,8 +5853,8 @@ const TAMAGOTCHI_MAX_HUNGER = 100;
 const TAMAGOTCHI_MAX_STATE_VALUE = 100;
 const TAMAGOTCHI_LOW_MOOD_THRESHOLD = 34;
 const TAMAGOTCHI_LOW_CLEANLINESS_THRESHOLD = 34;
-const TAMAGOTCHI_DIRTY_SOFT_CLEANLINESS_THRESHOLD = 30;
-const TAMAGOTCHI_DIRTY_SOFT_MAX_VISUAL = 0.2;
+const TAMAGOTCHI_DIRTY_SOFT_CLEANLINESS_THRESHOLD = 50;
+const TAMAGOTCHI_DIRTY_SOFT_MAX_VISUAL = 0.42;
 const TAMAGOTCHI_DIRTY_STEEP_CURVE_EXPONENT = 0.5;
 const TAMAGOTCHI_DECAY_MOOD_STEP = 0.72;
 const TAMAGOTCHI_DECAY_CLEANLINESS_STEP = 0.62;
@@ -6170,6 +6184,7 @@ const TAMAGOTCHI_START_STATE = {
   desiredFoodId: TAMAGOTCHI_DEFAULT_FOOD_ID,
   desiredToyId: TAMAGOTCHI_DEFAULT_TOY_ID,
   cleanToolSupplies: createDefaultTamagotchiToolSupplies(0),
+  room: normalizeRoomState(),
   hungerImmunityUntil: 0,
   hungerCareCooldownUntil: 0,
   hungerDecayMultiplier: 1,
@@ -6789,14 +6804,24 @@ const resolveTamagotchiHeroBadge = (state, timestamp = Date.now()) => {
   return needs.reduce((next, need) => !next || need.value < next.value ? need : next, null)?.kind || null;
 };
 
-// A tint image uses the source alpha, so dirt cannot paint the rectangular canvas.
-// Both layers stay mounted together as cleanliness changes, preserving animation playback.
-const TamagotchiHeroImage = React.memo(function TamagotchiHeroImage({ source, size, dirtyLevel = 0 }) {
-  const strength = Math.pow(Math.max(0, Math.min(1, Number(dirtyLevel) || 0)), 0.72);
+// Keep the animated mascot unobstructed; dirt sits over its torso instead of tinting a second GIF.
+const TamagotchiHeroImage = React.memo(function TamagotchiHeroImage({ animations, animationSetKey, size, dirtyLevel = 0, visible = true }) {
+  const strength = Math.max(0, Math.min(1, Number(dirtyLevel) || 0));
   return (
     <View pointerEvents="none" accessible={false} style={{ width: size, height: size }}>
-      <Image source={source} resizeMode="contain" fadeDuration={0} accessible={false} style={{ width: size, height: size }} />
-      <Image testID="today-cat-silhouette-dirt" source={source} resizeMode="contain" fadeDuration={0} accessible={false} style={{ position: "absolute", top: 0, left: 0, width: size, height: size, tintColor: "#63452E", opacity: strength * 0.64 }} />
+      {visible && (
+        <>
+          <AlmiTamagotchi
+        animations={animations}
+        animationSetKey={animationSetKey}
+        imageOffsetX={0}
+        imageStyle={{ width: "100%", height: "100%" }}
+        style={{ width: size, height: size, minHeight: size, borderWidth: 0, backgroundColor: "transparent", borderRadius: 0 }}
+        dirtyOverlayEnabled={false}
+      />
+      <AlmiDustOverlay testID="today-cat-dirt" intensity={strength} />
+        </>
+      )}
     </View>
   );
 });
@@ -6843,10 +6868,8 @@ function AlmiTamagotchi({
   imageStyle,
   idleAnimationsEnabled = true,
   dirtyOverlayEnabled = true,
-  transitionFallbackEnabled = false,
 }) {
   const [currentKey, setCurrentKey] = useState("idle");
-  const [loadedSourceIdentity, setLoadedSourceIdentity] = useState(null);
   const idleTimerRef = useRef(null);
   const overrideTimerRef = useRef(null);
   const currentKeyRef = useRef("idle");
@@ -6869,8 +6892,11 @@ function AlmiTamagotchi({
       TAMAGOTCHI_IDLE_ANIMATION_FALLBACK_MS,
     []
   );
+  const idleVariantsRef = useRef(idleVariants);
+  idleVariantsRef.current = idleVariants;
   const resolveNextIdleKey = useCallback((previousKey = "") => {
-    const pool = idleVariants.length ? idleVariants : TAMAGOTCHI_IDLE_VARIANTS;
+    const variants = idleVariantsRef.current;
+    const pool = variants.length ? variants : TAMAGOTCHI_IDLE_VARIANTS;
     if (!pool.length) return "idle";
     const uniquePool = Array.from(new Set(pool));
     if (uniquePool.length === 1) {
@@ -6887,7 +6913,7 @@ function AlmiTamagotchi({
     if (!fallbackPool.length) return uniquePool[0] || "idle";
     const fallbackIndex = Math.floor(Math.random() * fallbackPool.length);
     return fallbackPool[fallbackIndex] || uniquePool[0] || "idle";
-  }, [idleVariants]);
+  }, []);
 
   const scheduleIdleCycle = useCallback(
     (delay = TAMAGOTCHI_IDLE_ANIMATION_FALLBACK_MS, previousKey = currentKeyRef.current || "idle") => {
@@ -6906,85 +6932,85 @@ function AlmiTamagotchi({
     [resolveAnimationDuration, resolveNextIdleKey]
   );
 
-  useEffect(() => {
-    currentKeyRef.current = currentKey;
-  }, [currentKey]);
+  // Parent callbacks and downloaded skin maps can change while a reaction plays.
+  // Keep their latest values without restarting the reaction's deadline.
+  const onOverrideCompleteRef = useRef(onOverrideComplete);
+  onOverrideCompleteRef.current = onOverrideComplete;
+  const overrideType = override ? (animations[override.type] ? override.type : "happy") : null;
 
   useEffect(() => {
-    if (!idleAnimationsEnabled) {
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-      return undefined;
-    }
-    const initialKey = currentKeyRef.current || "idle";
-    const firstDelay = Math.max(
-      220,
-      resolveAnimationDuration(initialKey) - TAMAGOTCHI_IDLE_RESTART_GAP_MS
-    );
-    scheduleIdleCycle(firstDelay, initialKey);
-    return () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [idleAnimationsEnabled, resolveAnimationDuration, scheduleIdleCycle]);
-
-  useEffect(
-    () => () => {
+    const clearTimers = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!override) return;
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
-    const key = animations[override.type] ? override.type : "happy";
-    currentKeyRef.current = key;
-    setCurrentKey(key);
-    const overrideDuration = Math.max(
-      600,
-      Number(override.duration) || TAMAGOTCHI_REACTION_DURATION[key] || 3200
-    );
-    overrideTimerRef.current = setTimeout(() => {
-      onOverrideComplete?.();
+      idleTimerRef.current = null;
+      overrideTimerRef.current = null;
+    };
+    clearTimers();
+    const resumeIdle = () => {
+      const next = resolveNextIdleKey(currentKeyRef.current);
+      currentKeyRef.current = next;
+      setCurrentKey(next);
       if (idleAnimationsEnabled) {
-        const resumeDelay = Math.max(
-          220,
-          resolveAnimationDuration(key) - TAMAGOTCHI_IDLE_RESTART_GAP_MS
+        scheduleIdleCycle(
+          Math.max(220, resolveAnimationDuration(next) - TAMAGOTCHI_IDLE_RESTART_GAP_MS),
+          next
         );
-        scheduleIdleCycle(resumeDelay, key);
       }
-    }, overrideDuration);
+    };
+    if (overrideType) {
+      currentKeyRef.current = overrideType;
+      setCurrentKey(overrideType);
+      const overrideDuration = Math.max(
+        600,
+        Number(override?.duration) || TAMAGOTCHI_REACTION_DURATION[overrideType] || 3200
+      );
+      overrideTimerRef.current = setTimeout(() => {
+        overrideTimerRef.current = null;
+        // Leave the reaction immediately, even if its parent keeps the same override.
+        resumeIdle();
+        onOverrideCompleteRef.current?.();
+      }, overrideDuration);
+    } else if (idleAnimationsEnabled) {
+      // Cancellation must also leave the previous reaction and cancel its callback.
+      resumeIdle();
+    }
+    return clearTimers;
   }, [
-    animations,
     idleAnimationsEnabled,
     override?.key,
-    override?.type,
+    overrideType,
     override?.duration,
-    onOverrideComplete,
     resolveAnimationDuration,
+    resolveNextIdleKey,
     scheduleIdleCycle,
   ]);
 
   const sourceKey = normalizeMonetizationToken(animationSetKey, DEFAULT_TAMAGOTCHI_SKIN);
-  const skinConfig = TAMAGOTCHI_SKINS[sourceKey] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
+  const selectedSkinKey = sourceKey.replace(/_(?:remote|fallback)$/, "");
+  const skinConfig = TAMAGOTCHI_SKINS[selectedSkinKey] || TAMAGOTCHI_SKINS[DEFAULT_TAMAGOTCHI_SKIN];
   const animatedSource = animations[currentKey] || animations.idle;
   const sourceIsRemote = typeof animatedSource?.uri === "string" && animatedSource.uri.length > 0;
   const animatedDefaultImageSource = sourceIsRemote
     ? CLASSIC_TAMAGOTCHI_ANIMATIONS.idle
     : animations.idle || CLASSIC_TAMAGOTCHI_ANIMATIONS.idle;
   const shouldUseStaticPreview = !idleAnimationsEnabled;
+  // Android 7 charges animation bitmaps to the Java heap; use its bounded decoder.
+  const useLegacyAndroidImage = Platform.OS === "android" && Number(Platform.Version) <= 25;
+  const previewSource = (useLegacyAndroidImage ? ALMI_ANDROID_PREVIEWS[selectedSkinKey] : null)
+    || skinConfig?.preview || animatedDefaultImageSource;
   const source = shouldUseStaticPreview
-    ? skinConfig?.preview || animatedDefaultImageSource
+    ? previewSource
     : animatedSource;
+  const smoothAnimationSkinKey = sourceKey.endsWith("_remote")
+    ? selectedSkinKey
+    : DEFAULT_TAMAGOTCHI_SKIN;
+  const smoothSource = !shouldUseStaticPreview
+    ? ALMI_SMOOTH_ANIMATIONS[smoothAnimationSkinKey]?.[currentKey] || ALMI_SMOOTH_ANIMATIONS[smoothAnimationSkinKey]?.idle
+    : null;
   const defaultImageSource = shouldUseStaticPreview
     ? skinConfig?.preview || animatedDefaultImageSource
     : animatedDefaultImageSource;
   const renderSourceKey = shouldUseStaticPreview ? "preview" : currentKey;
-  const sourceIdentity = `${sourceKey}:${renderSourceKey}`;
   const flattenedWrapStyle = StyleSheet.flatten([styles.almiMascotWrap, style]) || {};
   const resolvedClipRadius = Number.isFinite(flattenedWrapStyle?.borderRadius)
     ? Math.max(0, flattenedWrapStyle.borderRadius)
@@ -6995,70 +7021,40 @@ function AlmiTamagotchi({
   return (
     <View style={[styles.almiMascotWrap, style]}>
       <View style={[styles.almiMascotClip, { borderRadius: resolvedClipRadius }]}>
-        {transitionFallbackEnabled && loadedSourceIdentity !== sourceIdentity && (
-          <Image
-            source={skinConfig?.preview || defaultImageSource}
+        {/* Keep the image mounted and retain its outgoing pose while Android draws the next WebP's first frame. */}
+        {smoothSource && !useLegacyAndroidImage ? (
+          <ExpoImage
+            source={smoothSource}
+            placeholder={skinConfig?.preview || defaultImageSource}
+            placeholderContentFit="contain"
+            contentFit="contain"
+            autoplay
+            cachePolicy="disk"
+            transition={Platform.OS === "android" ? 180 : 0}
+            useAppleWebpCodec={false}
+            accessible={false}
             style={[
               styles.almiMascotImage,
-              styles.almiMascotFallbackImage,
               imageStyle,
-              {
-                borderRadius: resolvedClipRadius,
-                transform: [{ translateX: resolvedImageOffsetX }],
-              },
-              normalizedDesaturation > 0 && { opacity: 1 - dirtyOverlayStrength * 0.4 },
+              { borderRadius: resolvedClipRadius, transform: [{ translateX: resolvedImageOffsetX }] },
+            ]}
+          />
+        ) : (
+          <Image
+            key={Platform.OS === "android" ? `almi_${sourceKey}` : `almi_${sourceKey}_${renderSourceKey}`}
+            source={smoothSource || source}
+            defaultSource={previewSource}
+            style={[
+              styles.almiMascotImage,
+              imageStyle,
+              { borderRadius: resolvedClipRadius, transform: [{ translateX: resolvedImageOffsetX }] },
             ]}
             resizeMode="contain"
-            fadeDuration={0}
+            resizeMethod="resize"
+            fadeDuration={useLegacyAndroidImage ? 180 : 0}
           />
         )}
-        <Image
-          key={`almi_${sourceKey}_${renderSourceKey}`}
-          source={source}
-          defaultSource={defaultImageSource}
-          style={[
-            styles.almiMascotImage,
-            imageStyle,
-            { borderRadius: resolvedClipRadius, transform: [{ translateX: resolvedImageOffsetX }] },
-            normalizedDesaturation > 0 && { opacity: 1 - dirtyOverlayStrength * 0.4 },
-          ]}
-          resizeMode="contain"
-          fadeDuration={0}
-          onLoad={
-            transitionFallbackEnabled
-              ? () => setLoadedSourceIdentity(sourceIdentity)
-              : undefined
-          }
-        />
-        {showDirtyOverlay && (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.almiMascotDirtyLayer,
-              { opacity: Math.max(0.28, Math.min(0.82, 0.2 + dirtyOverlayStrength * 0.62)) },
-            ]}
-          >
-            <View style={styles.almiMascotDirtyVeil} />
-            {ALMI_DIRT_SPOTS.map((spot, index) => (
-              <View
-                key={`dirt_spot_${index}`}
-                style={[
-                  styles.almiMascotDirtySpot,
-                  {
-                    top: spot.top,
-                    left: spot.left,
-                    width: spot.width,
-                    height: spot.height,
-                    borderRadius: Math.round(Math.min(spot.width, spot.height) / 2),
-                    opacity: Math.min(1, Math.max(0.18, dirtyOverlayStrength * spot.opacity)),
-                    backgroundColor: spot.color,
-                    transform: [{ rotate: `${spot.rotate}deg` }],
-                  },
-                ]}
-              />
-            ))}
-          </View>
-        )}
+        {showDirtyOverlay && <AlmiDustOverlay intensity={dirtyOverlayStrength} />}
       </View>
     </View>
   );
@@ -15207,6 +15203,21 @@ const getTemptationPricePrecision = (item) => {
   return null;
 };
 
+const resolveAutosaveCardAmountUSD = (card, interaction, history, priceOverride, currency) => {
+  const rate = CURRENCY_RATES[currency] || 1;
+  const remembered = resolveRememberedAmount(interaction, history, 0, { currency, rate });
+  if (remembered > 0) return remembered;
+  const amountUSD = priceOverride ?? getTemptationPrice(card);
+  // Explicit prices keep their cents. Catalog suggestions use local whole units
+  // (or the currency's larger usual step), rather than converted USD cents.
+  if (priceOverride != null || getTemptationPricePrecision(card) !== null || card?.hasRememberedDecisionAmount) return amountUSD;
+  const local = convertToCurrency(amountUSD, currency);
+  if (local <= 0) return 0;
+  const minorUnit = 10 ** -getCurrencyPrecision(currency);
+  const step = local < 1 ? minorUnit : Math.max(1, getCurrencyFineStep(currency));
+  return convertFromCurrency(roundCurrencyValue(Math.max(local < 1 ? minorUnit : 1, Math.round(local / step) * step), currency), currency);
+};
+
 const formatTemptationPriceLabel = (item, currency) => {
   const priceUSD = getTemptationPrice(item);
   const precision = getTemptationPricePrecision(item);
@@ -15347,7 +15358,7 @@ function TemptationCardComponent({
   lockedLabel = "",
   onLockedPress = null,
   actionButtonsMode = "default",
-  onCheck = null,
+  practiceTutorial = null,
   allowAmountManualInput = true,
   minAmountSliderUSD = 0,
   allowSwipeGestures = true,
@@ -15512,7 +15523,8 @@ function TemptationCardComponent({
   );
   const priceUSD = getTemptationPrice(item);
   const cardLocked = Boolean(locked) && !isArchived && !showEditorInline && !isEditing;
-  const reviewMode = actionButtonsMode === "review";
+  const galleryMode = actionButtonsMode === "gallery";
+  const reviewMode = galleryMode;
   const saveOnlyMode = actionButtonsMode === "save_only";
   const showPauseAction = !saveOnlyMode;
   const actionConfig = [];
@@ -15614,8 +15626,24 @@ function TemptationCardComponent({
   const swipeTouchStartRef = useRef(null);
   const swipeHorizontalIntentRef = useRef(false);
   const suppressCardPressUntilRef = useRef(0);
+  const amountSliderResumeRef = useRef(false);
   const [amountSliderVisible, setAmountSliderVisible] = useState(false);
   const [amountSliderAction, setAmountSliderAction] = useState(null);
+  const setPracticeNativeHost = practiceTutorial?.setNativeHostVisible;
+  const practiceNativeVisibleRef = useRef(false);
+  practiceNativeVisibleRef.current = amountSliderVisible;
+  useEffect(() => {
+    if (!amountSliderVisible) setPracticeNativeHost?.(false);
+    return () => setPracticeNativeHost?.(false);
+  }, [amountSliderVisible, setPracticeNativeHost]);
+  useEffect(() => {
+    if (!practiceTutorial) return;
+    if (!practiceTutorial.active || practiceTutorial.state.stage === "open") setAmountSliderVisible(false);
+  }, [practiceTutorial]);
+  const dismissPracticeAmount = () => {
+    closeAmountSlider();
+    practiceTutorial?.event("RESET");
+  };
   const [amountSliderValue, setAmountSliderValue] = useState(0.5);
   const [amountSliderInteracted, setAmountSliderInteracted] = useState(false);
   const [amountSliderDragging, setAmountSliderDragging] = useState(false);
@@ -16115,7 +16143,10 @@ function TemptationCardComponent({
         return;
       }
       if (showEditorInline) return;
-      runLayoutAnimation();
+      if (!practiceTutorial?.active) runLayoutAnimation();
+      amountSliderResumeRef.current = false;
+      practiceTutorial?.event("OPEN");
+      practiceTutorial?.event("CARD");
       setAmountSliderAction(actionType);
       setAmountSliderVisible(true);
       amountSliderInteractedRef.current = false;
@@ -16134,6 +16165,7 @@ function TemptationCardComponent({
     },
     [
       cardLocked,
+      practiceTutorial,
       amountSliderStepCount,
       item,
       onLockedPress,
@@ -16145,7 +16177,7 @@ function TemptationCardComponent({
 
   const closeAmountSlider = useCallback(() => {
     if (!amountSliderVisible) return;
-    runLayoutAnimation();
+    if (!practiceTutorial?.active) runLayoutAnimation();
     setAmountSliderVisible(false);
     setAmountSliderAction(null);
     amountSliderInteractedRef.current = false;
@@ -16162,7 +16194,7 @@ function TemptationCardComponent({
       amountSliderRafRef.current = null;
     }
     amountSliderPendingValueRef.current = null;
-  }, [amountSliderVisible, notifyAmountSliderTouch]);
+  }, [amountSliderVisible, notifyAmountSliderTouch, practiceTutorial]);
 
   useEffect(() => {
     if (!amountSliderVisible) return;
@@ -16196,6 +16228,10 @@ function TemptationCardComponent({
 
   useEffect(() => {
     if (!amountSliderVisible) return;
+    if (amountSliderResumeRef.current) {
+      amountSliderResumeRef.current = false;
+      return;
+    }
     amountSliderValueRef.current = 0.5;
     amountSliderStepRef.current = Math.round(0.5 * amountSliderStepCount);
     setAmountSliderValue(0.5);
@@ -16402,9 +16438,10 @@ function TemptationCardComponent({
     setAmountManualVisible(false);
     setAmountManualError("");
     Keyboard.dismiss();
+    practiceTutorial?.event("AMOUNT", { valid: true });
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     playSound?.("tap", { skipCooldown: true });
-  }, [amountManualValue, currency, markAmountSliderInteracted, playSound, t, updateAmountSliderValue]);
+  }, [amountManualValue, currency, markAmountSliderInteracted, playSound, practiceTutorial, t, updateAmountSliderValue]);
 
   const handleAmountSliderTouch = useCallback(
     (event) => {
@@ -16440,7 +16477,7 @@ function TemptationCardComponent({
   );
 
   const amountGestureCallbacks = useRef({});
-  amountGestureCallbacks.current = { handleAmountSliderTouch, notifyAmountSliderTouch, updateAmountSliderValue };
+  amountGestureCallbacks.current = { handleAmountSliderTouch, notifyAmountSliderTouch, updateAmountSliderValue, resolveAmountSliderAmount, practiceTutorial };
   const amountSliderPanResponder = useMemo(
     () => {
       const handleAmountSliderTouch = (event) => amountGestureCallbacks.current.handleAmountSliderTouch(event);
@@ -16466,6 +16503,7 @@ function TemptationCardComponent({
           amountSliderDragPointRef.current = null;
           setAmountSliderDragging(false);
           notifyAmountSliderTouch(false);
+          amountGestureCallbacks.current.practiceTutorial?.event("AMOUNT", { valid: amountGestureCallbacks.current.resolveAmountSliderAmount(amountSliderValueRef.current, amountSliderBaseOverrideUSDRef.current).amountUSD > 0 });
         },
         onPanResponderTerminate: () => {
           updateAmountSliderValue(amountSliderValueRef.current, { force: true });
@@ -16479,7 +16517,7 @@ function TemptationCardComponent({
   );
 
   const confirmAmountAction = useCallback(
-    (actionType) => {
+    async (actionType) => {
       const displayedAmountUSD = Number(amountSliderDisplayedAmountUSDRef.current);
       let normalizedAmountUSD =
         Number.isFinite(displayedAmountUSD) && displayedAmountUSD > 0 ? displayedAmountUSD : 0;
@@ -16504,8 +16542,28 @@ function TemptationCardComponent({
       // Keep card-press suppressed longer so iOS doesn't reopen the edit sheet
       // on delayed responder/bubble events after save/spend confirmation.
       suppressCardPressUntilRef.current = Date.now() + 1200;
-      closeAmountSlider();
-      onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });
+      if (practiceTutorial?.active) {
+        // Release the native modal before product confirmation dialogs appear.
+        // Preserve the draft so cancellation can resume the exact same amount.
+        const session = practiceTutorial.state.reset;
+        setAmountSliderVisible(false);
+        notifyAmountSliderTouch(false);
+        try {
+          const result = await onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });
+          if (!result?.committed && practiceTutorial.sessionRef.current === session && practiceTutorial.activeRef.current) {
+            amountSliderResumeRef.current = true;
+            setAmountSliderVisible(true);
+          }
+        } catch {
+          if (practiceTutorial.sessionRef.current === session && practiceTutorial.activeRef.current) {
+            amountSliderResumeRef.current = true;
+            setAmountSliderVisible(true);
+          }
+        }
+      } else {
+        closeAmountSlider();
+        onAction?.(actionType, item, { amountUSD: normalizedAmountUSD });
+      }
       if (onAmountSliderConfirmCoachComplete) {
         requestAnimationFrame(() => {
           onAmountSliderConfirmCoachComplete();
@@ -16514,6 +16572,8 @@ function TemptationCardComponent({
     },
     [
       closeAmountSlider,
+      practiceTutorial,
+      notifyAmountSliderTouch,
       item,
       onAction,
       onAmountSliderConfirmCoachComplete,
@@ -16761,8 +16821,9 @@ function TemptationCardComponent({
       closeAmountSlider();
       return;
     }
-    if (reviewMode && !isArchived) {
-      onCheck?.(item);
+    if (galleryMode && !isArchived) {
+      practiceTutorial?.event("OPEN");
+      setReviewOptionsVisible((visible) => !visible);
       return;
     }
     if (!allowCardTapToEdit) return;
@@ -16774,10 +16835,12 @@ function TemptationCardComponent({
     closeAmountSlider,
     item,
     isArchived,
-    onCheck,
     onLockedPress,
     onToggleEdit,
     reviewMode,
+    galleryMode,
+    actionButtonsMode,
+    practiceTutorial,
   ]);
   const handleCardLongPress = useCallback(() => {
     if (
@@ -16861,12 +16924,17 @@ function TemptationCardComponent({
   const goalAccentColor = isDarkTheme ? "#C2A7FF" : "#6E4ED2";
   const saveButtonBackground = cardSaveActionColor;
   const saveButtonTextColor = cardSaveActionTextColor;
-  const spendButtonBackground = colorWithAlpha(cardSpendActionColor, isDarkTheme ? 0.13 : 0.07);
-  const spendButtonTextColor = cardSpendActionColor;
-  const spendButtonBorder = colorWithAlpha(cardSpendActionColor, isDarkTheme ? 0.48 : 0.3);
+  const spendButtonBackground = galleryMode
+    ? cardSpendActionColor
+    : colorWithAlpha(cardSpendActionColor, isDarkTheme ? 0.13 : 0.07);
+  const spendButtonTextColor = galleryMode ? cardSpendActionTextColor : cardSpendActionColor;
+  const spendButtonBorder = galleryMode
+    ? cardSpendActionColor
+    : colorWithAlpha(cardSpendActionColor, isDarkTheme ? 0.48 : 0.3);
   const pauseButtonSurfaceColor = isDarkTheme ? "#113C59" : "#075A84";
   const pauseButtonBorderColor = isDarkTheme ? "#65CFFF" : "#0A6E9F";
   const pauseButtonIconColor = "#FFFFFF";
+  const pauseFreezeSelectionTextColor = isDarkTheme ? "#D7F4FF" : "#075A84";
   const saveButtonGlowStyle = Platform.select({
     ios: {
       shadowColor: saveButtonBackground,
@@ -17493,14 +17561,15 @@ function TemptationCardComponent({
       {!showEditorInline && amountSliderVisible && (
         <Modal
           visible
+          onShow={() => { if (practiceNativeVisibleRef.current && practiceTutorial?.active) setPracticeNativeHost?.(true); }}
           transparent
           forceNativeHost
-          animationType="fade"
+          animationType={practiceTutorial?.active ? "none" : "fade"}
           statusBarTranslucent
           navigationBarTranslucent
           hardwareAccelerated
           presentationStyle="overFullScreen"
-          onRequestClose={closeAmountSlider}
+          onRequestClose={practiceTutorial?.active ? dismissPracticeAmount : closeAmountSlider}
         >
           <View
             style={[
@@ -17587,7 +17656,7 @@ function TemptationCardComponent({
                   styles.temptationAmountModalClose,
                   { backgroundColor: amountSliderModalMutedPanelBackground },
                 ]}
-                onPress={closeAmountSlider}
+                onPress={practiceTutorial?.active ? dismissPracticeAmount : closeAmountSlider}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={[styles.temptationAmountCloseText, { color: colors.muted }]}>✕</Text>
@@ -17628,19 +17697,6 @@ function TemptationCardComponent({
                         {amountSliderTotalActionLabel}
                       </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.temptationAmountModalHeadline,
-                        compactDecisionLayout && styles.temptationAmountModalHeadlineCompact,
-                        { color: colors.text },
-                      ]}
-                      numberOfLines={2}
-                      adjustsFontSizeToFit
-                      allowAndroidAutoFit
-                      minimumFontScale={0.68}
-                    >
-                      {title}
-                    </Text>
                   </View>
                   <View
                     style={[
@@ -17875,7 +17931,7 @@ function TemptationCardComponent({
                 compactDecisionLayout && styles.temptationAmountBottomDockCompact,
               ]}
             >
-              <PlatformSurface surfaceRole="card"
+              <PracticeTarget tutorial={practiceTutorial} id="practice-amount"><PlatformSurface surfaceRole="card"
                 style={[
                   styles.temptationAmountSliderPanel,
                   compactDecisionLayout && styles.temptationAmountSliderPanelCompact,
@@ -17885,14 +17941,12 @@ function TemptationCardComponent({
                   },
                 ]}
               >
-                <View style={styles.temptationAmountScale}>
-                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
-                    {amountSliderMinLabel}
-                  </Text>
+                <View style={styles.temptationAmountCurrentRow}>
                   {allowAmountManualInput ? (
-                    <TouchableOpacity onPress={openAmountManual} activeOpacity={0.82}>
+                    <TouchableOpacity onPress={openAmountManual} activeOpacity={0.82} style={styles.temptationAmountCurrentTap}
+                      accessibilityRole="button" accessibilityLabel={`${t("decisionAmountLabel")}: ${amountSliderCurrentLabel}`}>
                       <Text
-                        style={[styles.temptationAmountScaleText, { color: amountSliderAccent }]}
+                        style={[styles.temptationAmountCurrentText, { color: colors.text }]}
                         numberOfLines={1}
                         adjustsFontSizeToFit
                         allowAndroidAutoFit
@@ -17900,10 +17954,13 @@ function TemptationCardComponent({
                       >
                         {amountSliderCurrentLabel}
                       </Text>
+                      <Text style={[styles.temptationAmountCurrentHint, { color: amountSliderAccent }]}>
+                        {t("coinEntryManualAmountTitle")}
+                      </Text>
                     </TouchableOpacity>
                   ) : (
                     <Text
-                      style={[styles.temptationAmountScaleText, { color: amountSliderAccent }]}
+                      style={[styles.temptationAmountCurrentText, { color: colors.text }]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       allowAndroidAutoFit
@@ -17912,11 +17969,8 @@ function TemptationCardComponent({
                       {amountSliderCurrentLabel}
                     </Text>
                   )}
-                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]}>
-                    {amountSliderMaxLabel}
-                  </Text>
                 </View>
-                <View style={styles.temptationAmountTrackWrap} hitSlop={{ top: 8, bottom: 8 }} {...amountSliderPanResponder.panHandlers}
+                <View testID="temptation-amount-slider" style={styles.temptationAmountTrackWrap} hitSlop={{ top: 8, bottom: 8 }} {...amountSliderPanResponder.panHandlers}
                   accessibilityRole="adjustable" accessibilityLabel={t("decisionAmountLabel")}
                   accessibilityValue={{ min: amountSliderMinUSD, max: amountSliderMaxUSD, now: amountSliderDisplayedAmount.amountUSD, text: amountSliderLabel }}
                   accessibilityActions={[{ name: "increment", label: "+" }, { name: "decrement", label: "−" }]}
@@ -17925,6 +17979,7 @@ function TemptationCardComponent({
                     if (!direction) return;
                     const range = amountSliderLocalMaximum - amountSliderLocalMinimum;
                     updateAmountSliderValue(amountSliderValueRef.current + direction * amountSliderCurrencyStep / Math.max(range, amountSliderCurrencyStep), { fromUser: true, force: true });
+                    practiceTutorial?.event("AMOUNT", { valid: resolveAmountSliderAmount(amountSliderValueRef.current, amountSliderBaseOverrideUSDRef.current).amountUSD > 0 });
                   }}>
                   <View
                     pointerEvents="none"
@@ -17956,8 +18011,16 @@ function TemptationCardComponent({
                     ]}
                   />
                 </View>
-              </PlatformSurface>
-              <View style={styles.temptationAmountModalActions}>
+                <View style={styles.temptationAmountScale}>
+                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]} numberOfLines={1}>
+                    {amountSliderMinLabel}
+                  </Text>
+                  <Text style={[styles.temptationAmountScaleText, { color: colors.muted }]} numberOfLines={1}>
+                    {amountSliderMaxLabel}
+                  </Text>
+                </View>
+              </PlatformSurface></PracticeTarget>
+              <PracticeTarget tutorial={practiceTutorial} id="practice-action"><View style={styles.temptationAmountModalActions}>
                 <PlatformTouchableOpacity surfaceRole="control"
                   style={[
                     styles.temptationAmountModalActionButton,
@@ -17981,6 +18044,7 @@ function TemptationCardComponent({
                           },
                         ],
                   ]}
+                  testID="temptation-amount-save"
                   onPress={() => handleAmountModalActionPress("save")}
                   disabled={amountSliderDragging || (amountSliderAction === "save" && amountSliderDisplayedAmount.amountUSD <= 0)}
                   accessibilityHint={amountSliderAction === "save" && amountSliderDisplayedAmount.amountUSD <= 0 ? t("coinEntryManualError") : undefined}
@@ -18024,6 +18088,7 @@ function TemptationCardComponent({
                             },
                           ],
                     ]}
+                    testID="temptation-amount-spend"
                     onPress={() => handleAmountModalActionPress("spend")}
                   disabled={amountSliderDragging || (amountSliderAction === "spend" && amountSliderDisplayedAmount.amountUSD <= 0)}
                   accessibilityHint={amountSliderAction === "spend" && amountSliderDisplayedAmount.amountUSD <= 0 ? t("coinEntryManualError") : undefined}
@@ -18044,8 +18109,10 @@ function TemptationCardComponent({
                     </Text>
                   </PlatformTouchableOpacity>
                 )}
-              </View>
+              </View></PracticeTarget>
             </View>
+            {practiceTutorial?.active ? <PracticeTutorialOverlay tutorial={practiceTutorial} visible={Boolean(practiceTutorial?.active && !amountManualVisible && ["amount", "action"].includes(practiceTutorial.state.stage))} colors={colors} t={t} rtl={isRtlLanguage(language)}
+              allowScrollReveal={false} onSkip={(reason) => { closeAmountSlider(); practiceTutorial.closeRef.current?.(reason); }} onFinish={() => {}} /> : null}
             {allowAmountManualInput && amountManualVisible && (
               <TouchableWithoutFeedback accessible={false} onPress={() => dismissKeyboardOrRun(closeAmountManual)}>
                 <View
@@ -18220,27 +18287,11 @@ function TemptationCardComponent({
           </TouchableWithoutFeedback>
         </Modal>
       )}
-      {reviewMode && !showEditorInline && (
-        <PlatformPressable surfaceRole="filter"
-          onPress={() => isArchived ? onSwipeArchive?.(item) : cardLocked ? onLockedPress?.(item) : onCheck?.(item)}
-          accessibilityRole="button"
-          style={[styles.temptationReviewPrimary, { backgroundColor: colors.primarySurface }]}
-        >
-          <Text
-            style={[styles.temptationReviewPrimaryText, { color: colors.text }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.84}
-          >
-            {isArchived ? t("archiveSwipeRestore") : t("redesignTemptationCheck")}
-          </Text>
-        </PlatformPressable>
-      )}
-      {!showEditorInline && actionConfig.length > 0 && (!reviewMode || reviewOptionsVisible) && (
-        <View
+      {!showEditorInline && actionConfig.length > 0 && (galleryMode || !reviewMode || reviewOptionsVisible) && (
+        <PracticeTarget tutorial={practiceTutorial} id="practice-card"><View
           style={[
             styles.temptationActions,
-            reviewMode && styles.temptationActionsReview,
+            reviewMode && !galleryMode && styles.temptationActionsReview,
             saveOnlyMode && styles.temptationActionsCentered,
             tutorialHighlightActions && styles.temptationTutorialAccent,
           ]}
@@ -18248,7 +18299,7 @@ function TemptationCardComponent({
           <View
             style={[
               styles.temptationActionsMain,
-              reviewMode && styles.temptationActionsMainReview,
+              reviewMode && !galleryMode && styles.temptationActionsMainReview,
               saveOnlyMode && styles.temptationActionsMainCentered,
             ]}
           >
@@ -18307,7 +18358,7 @@ function TemptationCardComponent({
               if (saveOnlyMode && action.type === "save") {
                 buttonStyle = [...buttonStyle, styles.temptationButtonSingleCentered];
               }
-              if (reviewMode) {
+              if (reviewMode && !galleryMode) {
                 buttonStyle = [
                   ...buttonStyle,
                   styles.temptationReviewOption,
@@ -18368,6 +18419,7 @@ function TemptationCardComponent({
               return (
                 <Pressable
                   key={`${action.type}-${actionIndex}`}
+                  testID={`temptation-${action.type}-${item.id}`}
                   style={({ pressed }) => [
                     buttonStyle,
                     pressed && !action.disabled && styles.temptationPressablePressed,
@@ -18396,10 +18448,10 @@ function TemptationCardComponent({
             <PlatformPressable surfaceRole="filter"
               style={({ pressed }) => [
                 styles.temptationPauseButton,
-                reviewMode && styles.temptationReviewOption,
+                reviewMode && !galleryMode && styles.temptationReviewOption,
                 {
-                  backgroundColor: reviewMode ? colors.surfaceMuted : pauseButtonSurfaceColor,
-                  borderColor: reviewMode ? colors.border : pauseButtonBorderColor,
+                  backgroundColor: reviewMode && !galleryMode ? colors.surfaceMuted : pauseButtonSurfaceColor,
+                  borderColor: reviewMode && !galleryMode ? colors.border : pauseButtonBorderColor,
                 },
                 pauseButtonGlowStyle,
                 tutorialHighlightThink && styles.temptationTutorialAccentButton,
@@ -18425,7 +18477,7 @@ function TemptationCardComponent({
               </Text>
             </PlatformPressable>
           )}
-        </View>
+        </View></PracticeTarget>
       )}
       {reviewMode && reviewOptionsVisible && !showEditorInline && (
         <View style={[styles.temptationReviewMenu, { borderTopColor: colors.border }]}>
@@ -18577,8 +18629,8 @@ function TemptationCardComponent({
                   style={[
                     styles.pauseFreezeSelectedPill,
                     {
-                      borderColor: colorWithAlpha(pauseButtonIconColor, isDarkTheme ? 0.55 : 0.4),
-                      backgroundColor: colorWithAlpha(pauseButtonIconColor, isDarkTheme ? 0.18 : 0.12),
+                      borderColor: colorWithAlpha(pauseButtonBorderColor, isDarkTheme ? 0.7 : 0.45),
+                      backgroundColor: colorWithAlpha(pauseButtonBorderColor, isDarkTheme ? 0.18 : 0.12),
                       transform: [{ scale: pauseFreezeSelectionScale }],
                     },
                   ]}
@@ -18586,7 +18638,7 @@ function TemptationCardComponent({
                   <Text style={styles.pauseFreezeSelectedIcon} allowFontScaling={false}>
                     ❄️
                   </Text>
-                  <Text style={[styles.pauseFreezeSelectedText, { color: pauseButtonIconColor }]}>
+                  <Text style={[styles.pauseFreezeSelectedText, { color: pauseFreezeSelectionTextColor }]}>
                     {pauseFreezeSelectedLabel}
                   </Text>
                 </Animated.View>
@@ -18600,7 +18652,7 @@ function TemptationCardComponent({
                           styles.pauseFreezeOptionChip,
                           {
                             borderColor: selected
-                              ? colorWithAlpha(pauseButtonIconColor, isDarkTheme ? 0.8 : 0.45)
+                              ? colorWithAlpha(pauseButtonBorderColor, isDarkTheme ? 0.8 : 0.45)
                               : pauseFreezeChipBorder,
                             backgroundColor: selected
                               ? pauseFreezeSelectedChipBackground
@@ -18614,7 +18666,7 @@ function TemptationCardComponent({
                         <Text
                           style={[
                             styles.pauseFreezeOptionText,
-                            { color: selected ? pauseButtonIconColor : colors.text },
+                            { color: selected ? pauseFreezeSelectionTextColor : colors.text },
                           ]}
                         >
                           {option.label}
@@ -18638,7 +18690,7 @@ function TemptationCardComponent({
                   <PlatformTouchableOpacity surfaceRole="control"
                     style={[
                       styles.pauseFreezeActionPrimary,
-                      { backgroundColor: pauseButtonIconColor },
+                      { backgroundColor: pauseButtonSurfaceColor },
                     ]}
                     onPress={handlePauseFreezeConfirm}
                   >
@@ -28985,7 +29037,7 @@ const HeaderGlassButton = React.memo(function HeaderGlassButton({ colors, onPres
 const BugReportFab = React.memo(function BugReportFab({ visible = false, topInset = 0, colors, language, onPress, activeTab, reserveAdd = true }) {
   if (!visible) return null;
   return <HeaderGlassButton testID="header-bug-report" colors={colors} onPress={onPress} label={resolveBugReportCopy(language).buttonLabel}
-    style={[styles.bugReportFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 128 : 106) : (Platform.OS === "android" ? 70 : 60), left: isRtlLanguage(language) ? (activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 128 : 106) : (Platform.OS === "android" ? 70 : 60)) : undefined }]}>
+    style={[styles.bugReportFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : (Platform.OS === "android" ? 62 : 58), left: isRtlLanguage(language) ? (Platform.OS === "android" ? 62 : 58) : undefined }]}>
     <BugReportIcon color={colors.text} size={16} />
   </HeaderGlassButton>;
 });
@@ -29813,7 +29865,7 @@ const HelpGuideIcon = React.memo(function HelpGuideIcon({ color = "#111827", siz
 const HelpGuideFab = React.memo(function HelpGuideFab({ visible = false, topInset = 0, colors, language, activeTab = "feed", onPress, reserveAdd = true }) {
   if (!visible) return null;
   return <HeaderGlassButton testID="header-help" colors={colors} onPress={onPress} label={resolveHelpGuideCopy(language, activeTab).buttonLabel}
-    style={[styles.helpGuideFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 72 : 60) : 14, left: isRtlLanguage(language) ? (activeTab === "feed" && reserveAdd ? (Platform.OS === "android" ? 72 : 60) : 14) : undefined }]}>
+    style={[styles.helpGuideFab, { borderWidth: 0, width: 28, height: 28, borderRadius: 14, top: Math.max(0, Number(topInset) || 0) + 14, right: isRtlLanguage(language) ? undefined : 14, left: isRtlLanguage(language) ? 14 : undefined }]}>
     <HelpGuideIcon color={colors.text} size={16} />
   </HeaderGlassButton>;
 });
@@ -30175,7 +30227,8 @@ const HelpGuideModal = React.memo(function HelpGuideModal({
   );
 });
 
-const MENU_TOP_CONTENT_OFFSET = 8;
+const MENU_TOP_CONTENT_OFFSET = 4;
+const MENU_HEADER_ROW_HEIGHT = 44;
 const ANDROID_STATUS_GLASS_FADE_HEIGHT = 44;
 const MAIN_SCREEN_CONTENT_BOTTOM_PADDING = IS_SHORT_DEVICE ? 12 : 24;
 
@@ -31018,8 +31071,11 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   currency,
   theme = DEFAULT_THEME,
   savedTotalUSD,
-  mascotSource,
+  mascotAnimations,
+  mascotAnimationSetKey,
+  mascotVisible = true,
   mascotBadge = null,
+  mascotBonusReady = false,
   mascotDirtyLevel = 0,
   speechText,
   language,
@@ -31053,6 +31109,7 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   onHistoryEntryPress = null,
   practiceTutorial = null,
   decisionCoach = null,
+  extrasOnly = false,
 }) {
   const { reduceMotion } = useMotionPreferences();
   const decisionActionRef = useRef(null);
@@ -31062,15 +31119,14 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
     : mascotBadge === "food" ? t("tamagotchiHeroFeed")
     : mascotBadge === "play" ? t("tamagotchiHeroPlay")
     : mascotBadge === "clean" ? t("tamagotchiHeroClean") : null;
+  const mascotBonusLabel = mascotBonusReady ? t("dailyRewardModalTitle") : null;
+  const mascotAttentionVisible = Boolean(mascotBadgeLabel || mascotBonusReady);
   const itemTitle = (entry) => {
     const rawTitle = entry.item?.titleOverride ||
       resolveTemplateTitle?.(entry.item?.templateId || entry.item?.id, entry.item?.title) ||
       resolveLanguageMapValue(entry.item?.title, language) || entry.item?.title;
     return resolvePendingEntryDisplay({ title: typeof rawTitle === "string" ? rawTitle : "" }, t("defaultDealTitle")).title;
   };
-  const remainingEntries = [...dueEntries, ...laterEntries].filter((entry, index, all) =>
-    all.findIndex((candidate) => candidate.id === entry.id) === index && !isDecisionRecordedToday(entry.interaction, now));
-  const completedToday = decisionEntries.filter((entry) => isDecisionRecordedToday(entry.interaction, now)).length;
   const heroAmountLabel = formatCurrency(convertToCurrency(savedTotalUSD || 0, currency), currency);
   const [heroCopyWidth, setHeroCopyWidth] = useState(120);
   const heroAmountSize = Math.max(14, Math.min(36, heroCopyWidth / Math.max(1, Array.from(heroAmountLabel).length * 0.65)));
@@ -31096,7 +31152,6 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   const [amountCardId, setAmountCardId] = useState(focusEntry?.id);
   const displayedAmountText = amountCardId === focusEntry?.id ? amountText : String(snapCurrencyValue(convertToCurrency(baseAmountUSD, currency), currency));
   const [sliderMaximumUSD, setSliderMaximumUSD] = useState(baseAmountUSD * 2);
-  const [wheelInteracting, setWheelInteracting] = useState(false);
   const [sliderInteracting, setSliderInteracting] = useState(false);
   const [amountInputFocused, setAmountInputFocused] = useState(false);
   useEffect(() => {
@@ -31129,14 +31184,46 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
   const renderScheduledRow = (entry) => (
     <PlatformPressable surfaceRole="row" key={entry.id} onPress={() => onFocus(entry)} accessibilityRole="button" accessibilityState={{ selected: entry.id === focusEntry?.id }} style={[redesignStyles.pauseRow, { backgroundColor: colors.card, borderColor: entry.id === focusEntry?.id ? colors.primary : colors.border, marginBottom: 8, minHeight: 56 }]}>
       <View style={[redesignStyles.pauseArt, { backgroundColor: colors.primarySurface }]}><Text style={redesignStyles.pauseEmoji}>{resolvePendingEntryDisplay(entry.item, t("defaultDealTitle")).emoji}</Text></View>
-      <View style={redesignStyles.pauseRowCopy}><Text numberOfLines={2} style={[redesignStyles.pauseRowTitle, { color: colors.text }]}>{itemTitle(entry)}</Text></View>
+      <View style={redesignStyles.pauseRowCopy}><Text numberOfLines={2} style={[redesignStyles.pauseRowTitle, { color: colors.text }]}>{itemTitle(entry)}</Text><Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{cardStatus(entry).time} · {cardStatus(entry).label}</Text></View>
       <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.65} style={{ color: colors.text, fontSize: 20, fontWeight: "700", fontVariant: ["tabular-nums"], maxWidth: "38%", textAlign: "right" }}>{itemPrice(entry)}</Text>
       <TemptationGlyph type="chevron" color={colors.muted} size={18} />
     </PlatformPressable>
   );
   const focus = mode === "focus" && focusEntry;
+  const gallery = mode === "all";
+  const extras = (
+    <>
+      {!focus ? <View testID="today-recent-history" accessibilityElementsHidden={Boolean(practiceTutorial?.active)} importantForAccessibility={practiceTutorial?.active ? "no-hide-descendants" : "auto"} style={{ marginTop: 24 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Text style={[redesignStyles.pauseSectionTitle, { color: colors.text, flex: 1 }]}>{t("homeWidgetRecentLabel")}</Text>
+          <Pressable onPress={onHistory} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 8 }}><Text style={{ color: colors.primary, fontSize: 15 }}>{t("decisionViewAll")}</Text></Pressable>
+        </View>
+        {!recentEvents.length ? <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>{t("homeWidgetRecentEmptyLabel")}</Text> : null}
+        {recentEvents.map((entry, index) => <Pressable key={entry.id || `${entry.timestamp}-${index}`} onPress={() => isWalletHistoryEntry(entry) && onHistoryEntryPress ? onHistoryEntryPress(entry) : onHistory?.()} accessibilityRole="button" accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined} style={{ minHeight: 64, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 4 }}>
+          <Text style={{ color: colors.text, fontSize: 15, lineHeight: 21 }}>{describeHistoryEntry(entry, { t, language, formatLocalAmount: (amount) => formatCurrency(convertToCurrency(amount || 0, currency), currency) })}</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{formatHistoryEntryMeta(entry, { t, locale: getFormatLocale(language) })}</Text>
+        </Pressable>)}
+      </View> : null}
+      {!focus && tools.length > 0 ? <>
+        <Pressable accessibilityElementsHidden={Boolean(practiceTutorial?.active)} importantForAccessibility={practiceTutorial?.active ? "no-hide-descendants" : "auto"} testID="today-tools-toggle" onPress={() => setToolsExpanded((value) => !value)} accessibilityRole="button" accessibilityState={{ expanded: toolsExpanded }} style={[redesignStyles.pauseActionRow, { minHeight: 56, marginTop: 16 }]}>
+          <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t("redesignTodayTools")}</Text>
+          <Text style={{ color: colors.muted, fontSize: 20 }}>{toolsExpanded ? "⌃" : "⌄"}</Text>
+        </Pressable>
+        {toolsExpanded ? <>
+        <PlatformSurface surfaceRole="row" style={[redesignStyles.pauseActionList, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {mode !== "all" ? <Pressable onPress={onAll} accessibilityRole="button" style={redesignStyles.pauseActionRow}><Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t("redesignTodayAllCards")}</Text><TemptationGlyph type="chevron" color={colors.muted} size={18} /></Pressable> : null}
+          {tools.map((tool, index) => <Pressable key={tool.key} onPress={tool.onPress} accessibilityRole="button" style={[redesignStyles.pauseActionRow, { paddingVertical: 12 }, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+            <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t(tool.key)}</Text>
+            <TemptationGlyph type="chevron" color={colors.muted} size={18} />
+          </Pressable>)}
+        </PlatformSurface>
+        </> : null}
+      </> : null}
+    </>
+  );
+  if (extrasOnly) return extras;
   return (
-    <View style={redesignStyles.todayRoot}>
+    <View style={[redesignStyles.todayRoot, mode === "all" && { paddingHorizontal: 0 }]}>
       <PracticeInactive tutorial={practiceTutorial} style={[redesignStyles.todayTopline, { direction: rtl ? "rtl" : "ltr", paddingEnd: focus ? 104 : 164 }]}>
         {focus ? (
           <Pressable onPress={onBack} accessibilityRole="button" style={{ flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 }}><TemptationGlyph type="chevron" back color={colors.primary} size={18} /><Text style={[redesignStyles.pauseBrand, { color: colors.primary, flexShrink: 1 }]}>{focusBackLabel || t("redesignTodayLabel")}</Text></Pressable>
@@ -31144,28 +31231,33 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
 
       </PracticeInactive>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <Text style={[redesignStyles.pauseTitle, !focus && { fontSize: 26, marginTop: 0 }, { color: colors.text, flex: 1, minWidth: 0 }]}>{focus ? t("redesignTodayDecide") : t("redesignTodayLabel")}</Text>
+        <Text style={[redesignStyles.pauseTitle, { color: colors.text, flex: 1, minWidth: 0 }]}>{focus ? t("redesignTodayDecide") : t("redesignTodayLabel")}</Text>
         {focus ? <Pressable testID="decision-add-temptation" onPress={() => { Keyboard.dismiss(); onAdd?.(); }} accessibilityRole="button" accessibilityLabel={t("redesignTodayAdd")} style={{ width: FAB_BUTTON_SIZE, height: FAB_BUTTON_SIZE, alignItems: "center", justifyContent: "center" }}>
           <LiquidGlassFabOrb size={FAB_BUTTON_SIZE} icon="+" iconColor={colors.text} isDarkTheme={getReadableTextColor(colors.background) === "#FFFFFF"} isProTheme={theme === PRO_THEME_ID} proThemeAccentColor={colors.primary} />
         </Pressable> : null}
       </View>
       {!focus ? <PracticeTarget tutorial={practiceTutorial} id="practice-result"><Pressable onPress={onSavingsBreakdownPress} accessible={false}>
-        <PlatformSurface surfaceRole="card" style={[redesignStyles.todayHero, { backgroundColor: colors.primarySurface, minHeight: IS_SHORT_DEVICE ? 174 : 220, paddingBottom: 0, marginTop: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start" }]}>
+        <PlatformSurface surfaceRole="card" style={[redesignStyles.todayHero, { backgroundColor: colors.primarySurface, minHeight: gallery ? 152 : IS_SHORT_DEVICE ? 174 : 220, paddingBottom: 0, marginTop: 8, marginBottom: 8, flexDirection: "row", alignItems: "flex-start" }]}>
           <RedesignHeroBackdrop colors={colors} />
           <Pressable testID="today-savings-details" onPress={onSavingsBreakdownPress} onLayout={({ nativeEvent }) => setHeroCopyWidth(nativeEvent.layout.width)} accessibilityRole="button" accessibilityLabel={t("savingsBreakdownTitle")} style={[redesignStyles.heroCopy, { flex: 1, paddingRight: 0, alignSelf: "stretch", justifyContent: "flex-start" }]}>
             <Text style={[redesignStyles.pauseEyebrow, { color: colors.muted }]}>{t("redesignTodaySaved")}</Text>
             <Text accessibilityLabel={heroAmountLabel} style={[redesignStyles.todayAmount, { color: colors.text, fontSize: heroAmountSize, lineHeight: Math.ceil(heroAmountSize * 1.15) }]} numberOfLines={2}>{heroAmountLabel}</Text>
             <Text style={[redesignStyles.todayHeroBody, { color: colors.muted }]}>{t("redesignTodayHeroHint")}</Text>
           </Pressable>
-          <View style={{ width: IS_SHORT_DEVICE ? 132 : 156, alignSelf: "stretch", alignItems: "center", justifyContent: "flex-start", marginLeft: 8 }}>
-            {speechText ? <View testID="today-cat-speech" style={{ alignSelf: "stretch", minHeight: IS_SHORT_DEVICE ? 48 : 64, justifyContent: "flex-start", marginBottom: 4 }}>
+          <View style={{ width: gallery ? 120 : IS_SHORT_DEVICE ? 132 : 156, alignSelf: "stretch", alignItems: "center", justifyContent: "flex-start", marginLeft: 8 }}>
+            {speechText ? <View testID="today-cat-speech" style={{ alignSelf: "stretch", minHeight: gallery ? 42 : IS_SHORT_DEVICE ? 48 : 64, justifyContent: "flex-start", marginBottom: 4 }}>
               <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: colors.card, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }}>
-                <Text numberOfLines={4} adjustsFontSizeToFit minimumFontScale={0.92} accessibilityLabel={speechText} style={{ color: colors.text, fontSize: 12, lineHeight: 16 }}>{speechText}</Text>
+                <Text numberOfLines={gallery ? 2 : 4} adjustsFontSizeToFit minimumFontScale={0.92} accessibilityLabel={speechText} style={{ color: colors.text, fontSize: 12, lineHeight: 16 }}>{speechText}</Text>
               </View>
               <View style={{ width: 10, height: 10, alignSelf: "center", marginTop: -5, transform: [{ rotate: "45deg" }], backgroundColor: colors.card, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }} />
             </View> : null}
-            <Pressable testID="today-cat-care" onPress={(event) => { event.stopPropagation(); onMascotPress?.(); }} accessibilityRole="button" accessibilityLabel={[t("redesignProfileCare"), mascotBadgeLabel].filter(Boolean).join(". ")} style={{ alignItems: "center", alignSelf: "stretch", paddingBottom: 6 }}>
-              <TamagotchiHeroImage source={mascotSource} size={IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />
+            <Pressable testID="today-cat-care" onPress={(event) => { event.stopPropagation(); onMascotPress?.(); }} accessibilityRole="button" accessibilityLabel={[t("redesignProfileCare"), mascotBadgeLabel, mascotBonusLabel].filter(Boolean).join(". ")} style={{ alignItems: "center", alignSelf: "stretch", paddingBottom: 6 }}>
+              <View style={{ position: "relative", alignSelf: "center" }}>
+              <TamagotchiHeroImage animations={mascotAnimations} animationSetKey={mascotAnimationSetKey} visible={mascotVisible} size={gallery ? 90 : IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />
+                {mascotAttentionVisible ? <View testID="today-cat-attention" pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[redesignStyles.todayCatAttention, { borderColor: colors.primarySurface }]}>
+                  <Text accessible={false} allowFontScaling={false} style={redesignStyles.todayCatAttentionMark}>!</Text>
+                </View> : null}
+              </View>
               {mascotBadgeLabel ? <View testID={`today-cat-badge-${mascotBadge}`} pointerEvents="none" style={[redesignStyles.todayCatBadge, { backgroundColor: colors.card, borderColor: colors.primary, flexDirection: rtl ? "row-reverse" : "row" }]}>
                 <Text accessible={false} style={{ fontSize: 15 }}>{mascotBadge === "reward" ? "🪙" : mascotBadge === "play" ? "🧶" : mascotBadge === "clean" ? "🧽" : "🐟"}</Text>
                 <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700", flexShrink: 1, textAlign: "center" }}>{mascotBadgeLabel}</Text>
@@ -31184,8 +31276,10 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
               <Text style={{ color: colors.primary, fontSize: 15, fontWeight: "600" }}>{t("decisionViewAll")}</Text>
             </Pressable>
           </PracticeInactive>
-          <DecisionCardWheel tutorial={practiceTutorial} onEngage={() => practiceTutorial?.event("CARD")} entries={decisionEntries} selectedId={focusEntry.id} onSelect={onFocus} onInteractionChange={setWheelInteracting} titleFor={itemTitle}
-            emojiFor={(entry) => resolvePendingEntryDisplay(entry.item, t("defaultDealTitle")).emoji} colors={colors} label={t("decisionChooseCard")} statusFor={cardStatus} searchLabel={t("decisionSearchCards")} onSearch={() => openCardPicker(true)} addLabel={t("redesignTodayAdd")} onAdd={onAdd} />
+          <PracticeInactive tutorial={practiceTutorial}>{renderScheduledRow(focusEntry)}</PracticeInactive>
+          <Pressable testID="decision-search-cards" onPress={() => openCardPicker(true)} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 8 }}>
+            <Text style={{ color: colors.primary, fontSize: 15, fontWeight: "600" }}>{t("decisionSearchCards")}</Text>
+          </Pressable>
           <Modal visible={cardPickerExpanded} transparent animationType={reduceMotion ? "fade" : "slide"} onRequestClose={() => setCardPickerExpanded(false)}>
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(0,0,0,0.5)" }}>
               <View accessibilityViewIsModal style={{ maxHeight: "85%", borderRadius: 24, padding: 16, backgroundColor: colors.card }}>
@@ -31223,16 +31317,16 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
             <Text accessibilityLiveRegion="polite" style={[redesignStyles.pauseCardBody, { color: colors.muted, maxWidth: "100%" }]}>{amountValid ? t("decisionAmountHint") : t("quickCustomErrorAmount")}</Text>
           </PlatformSurface></PracticeTarget></View>
           <PracticeTarget tutorial={practiceTutorial} id="practice-action">
-            <PlatformPressable ref={decisionActionRef} onLayout={() => decisionCoach?.presentationRef.current?.()} surfaceRole="control" onPress={() => { Keyboard.dismiss(); onAction("save", focusEntry.item); }} disabled={!amountValid || sliderInteracting || wheelInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary, opacity: amountValid && !sliderInteracting && !wheelInteracting ? 1 : 0.45 }]}><Text style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t("redesignTodaySaveAction")}</Text></PlatformPressable>
+            <PlatformPressable ref={decisionActionRef} onLayout={() => decisionCoach?.presentationRef.current?.()} surfaceRole="control" onPress={() => { Keyboard.dismiss(); onAction("save", focusEntry.item); }} disabled={!amountValid || sliderInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary, opacity: amountValid && !sliderInteracting ? 1 : 0.45 }]}><Text style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t("redesignTodaySaveAction")}</Text></PlatformPressable>
           <View style={redesignStyles.decisionSecondary}>
-            <PlatformPressable surfaceRole="control" testID="decision-spend" onPress={() => { Keyboard.dismiss(); onAction(secondaryDecisions[1][1], focusEntry.item); }} disabled={!amountValid || sliderInteracting || wheelInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { marginTop: 0, backgroundColor: colors.surfaceMuted, opacity: amountValid && !sliderInteracting && !wheelInteracting ? 1 : 0.45 }]}>
+            <PlatformPressable surfaceRole="control" testID="decision-spend" onPress={() => { Keyboard.dismiss(); onAction(secondaryDecisions[1][1], focusEntry.item); }} disabled={!amountValid || sliderInteracting} accessibilityRole="button" style={[redesignStyles.pausePrimary, { marginTop: 0, backgroundColor: colors.surfaceMuted, opacity: amountValid && !sliderInteracting ? 1 : 0.45 }]}>
               <Text style={[redesignStyles.pausePrimaryText, { color: colors.text }]}>{t("redesignTodaySpent")}</Text>
             </PlatformPressable>
             <Pressable testID="decision-later" onPress={() => { Keyboard.dismiss(); onAction(secondaryDecisions[0][1], focusEntry.item); }} accessibilityRole="button" style={redesignStyles.pauseActionRow}>
               <Text style={[redesignStyles.pauseActionText, { color: colors.primary }]}>{t("redesignTodayLater")}</Text><TemptationGlyph type="chevron" color={colors.muted} size={18} />
             </Pressable>
           </View></PracticeTarget>
-          {decisionCoach ? <PresentedDecisionCoach key={`${decisionCoach.requestId}:${decisionCoach.targetId}`} {...decisionCoach} targetViewRef={decisionActionRef} enabled={amountValid && !sliderInteracting && !wheelInteracting} t={t} colors={colors} /> : null}
+          {decisionCoach ? <PresentedDecisionCoach key={`${decisionCoach.requestId}:${decisionCoach.targetId}`} {...decisionCoach} targetViewRef={decisionActionRef} enabled={amountValid && !sliderInteracting} t={t} colors={colors} /> : null}
           <PracticeInactive tutorial={practiceTutorial} style={redesignStyles.decisionSecondary}>
             <Pressable testID="decision-edit-card" onPress={() => { Keyboard.dismiss(); onEdit(focusEntry.item); }} style={[redesignStyles.pauseActionRow, { paddingHorizontal: 16 }]}>
               <View style={{ flex: 1, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.muted }]}>{t("decisionEditCard")}</Text></View>
@@ -31256,46 +31350,14 @@ const RedesignTodayHeader = React.memo(function RedesignTodayHeader({
           </PlatformSurface>
           {focusCheckAt > 0 ? <Text testID="decision-next-check" style={{ color: colors.muted, fontSize: 13, lineHeight: 19, marginBottom: 12 }}>{t("frequencyReminderTimeLabel")}: {new Date(focusCheckAt).toLocaleString(getFormatLocale(language), { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</Text> : null}
         </>
-      ) : leadEntry ? (
-        <>
-        <PracticeTarget tutorial={practiceTutorial} id="practice-open"><PlatformPressable surfaceRole="control" testID="today-make-decision" onPress={() => onFocus(dueEntries[0] || leadEntry)} accessibilityRole="button" accessibilityHint={t("decisionAwaitingCount", { count: remainingEntries.length })} style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary, marginTop: 0 }]}>
-          <Text testID="today-awaiting-decisions" numberOfLines={2} style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t(completedToday > 0 && remainingEntries.length === 1 ? "todayDecisionLast" : completedToday > 0 && remainingEntries.length > 1 && remainingEntries.length <= 3 ? "todayDecisionFew" : remainingEntries.length > 0 ? "todayDecisionReview" : "redesignTodayDecide", { count: remainingEntries.length })}</Text>
-        </PlatformPressable></PracticeTarget>
-        </>
       ) : !hasCards ? (
         <PlatformSurface surfaceRole="card" style={[redesignStyles.pauseDecisionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[redesignStyles.pauseCardTitle, { color: colors.text }]}>{t("redesignTodayEmptyTitle")}</Text>
           <Text style={[redesignStyles.pauseCardBody, { color: colors.muted, maxWidth: "100%" }]}>{t("redesignTodayEmptyBody")}</Text>
           <PracticeTarget tutorial={practiceTutorial} id="practice-open"><PlatformPressable surfaceRole="control" onPress={() => { practiceTutorial?.event("EMPTY_ADD"); onAdd(); }} accessibilityRole="button" style={[redesignStyles.pausePrimary, { backgroundColor: colors.primary }]}><Text style={[redesignStyles.pausePrimaryText, { color: colors.onPrimary }]}>{t("redesignTodayAdd")}</Text></PlatformPressable></PracticeTarget>
-          <Pressable accessibilityElementsHidden={Boolean(practiceTutorial?.active)} importantForAccessibility={practiceTutorial?.active ? "no-hide-descendants" : "auto"} onPress={onAll} accessibilityRole="button" style={redesignStyles.pauseCancel}><Text style={[redesignStyles.todayTextLink, { color: colors.primary }]}>{t("redesignTodayAllCards")}</Text></Pressable>
         </PlatformSurface>
       ) : null}
-      {!focus ? <View testID="today-recent-history" accessibilityElementsHidden={Boolean(practiceTutorial?.active)} importantForAccessibility={practiceTutorial?.active ? "no-hide-descendants" : "auto"} style={{ marginTop: 24 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Text style={[redesignStyles.pauseSectionTitle, { color: colors.text, flex: 1 }]}>{t("homeWidgetRecentLabel")}</Text>
-          <Pressable onPress={onHistory} accessibilityRole="button" style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: 8 }}><Text style={{ color: colors.primary, fontSize: 15 }}>{t("decisionViewAll")}</Text></Pressable>
-        </View>
-        {!recentEvents.length ? <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20 }}>{t("homeWidgetRecentEmptyLabel")}</Text> : null}
-        {recentEvents.map((entry, index) => <Pressable key={entry.id || `${entry.timestamp}-${index}`} onPress={() => isWalletHistoryEntry(entry) && onHistoryEntryPress ? onHistoryEntryPress(entry) : onHistory?.()} accessibilityRole="button" accessibilityHint={isWalletHistoryEntry(entry) ? expenseCopy(language).edit : undefined} style={{ minHeight: 64, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, gap: 4 }}>
-          <Text style={{ color: colors.text, fontSize: 15, lineHeight: 21 }}>{describeHistoryEntry(entry, { t, language, formatLocalAmount: (amount) => formatCurrency(convertToCurrency(amount || 0, currency), currency) })}</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{formatHistoryEntryMeta(entry, { t, locale: getFormatLocale(language) })}</Text>
-        </Pressable>)}
-      </View> : null}
-      {!focus && tools.length > 0 ? <>
-        <Pressable accessibilityElementsHidden={Boolean(practiceTutorial?.active)} importantForAccessibility={practiceTutorial?.active ? "no-hide-descendants" : "auto"} testID="today-tools-toggle" onPress={() => setToolsExpanded((value) => !value)} accessibilityRole="button" accessibilityState={{ expanded: toolsExpanded }} style={[redesignStyles.pauseActionRow, { minHeight: 56, marginTop: 16 }]}>
-          <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t("redesignTodayTools")}</Text>
-          <Text style={{ color: colors.muted, fontSize: 20 }}>{toolsExpanded ? "⌃" : "⌄"}</Text>
-        </Pressable>
-        {toolsExpanded ? <>
-        <PlatformSurface surfaceRole="row" style={[redesignStyles.pauseActionList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Pressable onPress={onAll} accessibilityRole="button" style={redesignStyles.pauseActionRow}><Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t("redesignTodayAllCards")}</Text><TemptationGlyph type="chevron" color={colors.muted} size={18} /></Pressable>
-          {tools.map((tool, index) => <Pressable key={tool.key} onPress={tool.onPress} accessibilityRole="button" style={[redesignStyles.pauseActionRow, { paddingVertical: 12 }, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
-            <Text style={[redesignStyles.pauseActionText, { color: colors.text, flex: 1 }]}>{t(tool.key)}</Text>
-            <TemptationGlyph type="chevron" color={colors.muted} size={18} />
-          </Pressable>)}
-        </PlatformSurface>
-        </> : null}
-      </> : null}
+      {!focus && mode !== "all" ? extras : null}
     </View>
   );
 });
@@ -31424,6 +31486,7 @@ const FeedScreen = React.memo(
   onFocusCancel = null,
   tamagotchiAnimations = CLASSIC_TAMAGOTCHI_ANIMATIONS,
   tamagotchiAnimationSetKey = DEFAULT_TAMAGOTCHI_SKIN,
+  mascotVisible = true,
   lifetimeSavedUSD = 0,
   progressLifetimeSavedUSD,
   levelProgressSaveCount = 0,
@@ -31468,6 +31531,10 @@ const FeedScreen = React.memo(
   const emitPracticeEvent = practiceTutorial?.event;
   const practiceSession = practiceTutorial?.state.reset;
   const onTemptationAction = useCallback(async (type, item, options) => {
+    if (type === "pause" || type === "maybe") {
+      emitPracticeEvent?.("CARD");
+      emitPracticeEvent?.("AMOUNT", { valid: true });
+    }
     emitPracticeEvent?.("ACTION_STARTED");
     let result;
     try { result = await commitTemptationAction(type, item, options); return result; }
@@ -31475,9 +31542,9 @@ const FeedScreen = React.memo(
   }, [commitTemptationAction, emitPracticeEvent, practiceSession]);
   const safeAreaInsets = safeUseSafeAreaInsets();
   const { reduceMotion } = useMotionPreferences();
-  const [redesignFeedMode, setRedesignFeedMode] = useState("overview");
+  const [redesignFeedMode, setRedesignFeedMode] = useState("all");
   const [redesignFocusId, setRedesignFocusId] = useState(null);
-  const [redesignFocusReturnMode, setRedesignFocusReturnMode] = useState("overview");
+  const [redesignFocusReturnMode, setRedesignFocusReturnMode] = useState("all");
   useEffect(() => {
     if (redesignFeedMode === "overview" || redesignFeedMode === "all") {
       setRedesignFocusReturnMode(redesignFeedMode);
@@ -31489,9 +31556,9 @@ const FeedScreen = React.memo(
   const redesignNow = useMinuteTicker(true);
   useEffect(() => { onModeChange?.(redesignFeedMode === "all"); }, [onModeChange, redesignFeedMode]);
   useEffect(() => {
-    if (redesignFeedMode === "overview") return undefined;
+    if (redesignFeedMode === "all") return undefined;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setRedesignFeedMode(redesignFeedMode === "all" ? "overview" : redesignFocusReturnMode);
+      setRedesignFeedMode(redesignFocusReturnMode);
       setRedesignFocusId(null);
       return true;
     });
@@ -31628,7 +31695,7 @@ const FeedScreen = React.memo(
   useEffect(() => { if (practiceActive) practiceEvent?.("AVAILABILITY", { hasCards: products.length > 0 }); }, [practiceActive, practiceEvent, products.length]);
   useEffect(() => {
     if (!practiceActive) return;
-    setRedesignFeedMode("overview"); setRedesignFocusId(null);
+    setRedesignFeedMode("all"); setRedesignFocusId(null);
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   }, [practiceActive, practiceReset]);
   useEffect(() => {
@@ -31793,9 +31860,9 @@ const FeedScreen = React.memo(
   }, []);
   const scrollToTop = useCallback(
     ({ animated = false } = {}) => {
-      if (redesignFeedMode !== "overview") {
+      if (redesignFeedMode !== "all") {
         setRedesignFocusId(null);
-        setRedesignFeedMode("overview");
+        setRedesignFeedMode("all");
       }
       if (!listRef.current) return false;
       const wasAwayFromTop =
@@ -34526,12 +34593,10 @@ const FeedScreen = React.memo(
     if (!targetEntry) { onNextDecisionCoachUnavailable?.(); return; }
     const requestKey = `${requestId}:${nextDecisionCoachTargetId}`;
     if (nextDecisionCoachScrollHandledRef.current === requestKey) return;
-    nextDecisionCoachScrollHandledRef.current = requestKey;
-    // Keep the next real decision in Today/focus. The explicit All route stays
-    // available; no synthetic catalog item is invented when Today is complete.
-    setRedesignFocusId(targetEntry.id);
-    setRedesignFeedMode("focus");
-  }, [nextDecisionCoachRequest, nextDecisionCoachTargetId, redesignCardEntries, onNextDecisionCoachUnavailable]);
+    if (scrollToTemptationCard({ templateId: targetEntry.item?.templateId || targetEntry.item?.id, animated: true })) {
+      nextDecisionCoachScrollHandledRef.current = requestKey;
+    }
+  }, [nextDecisionCoachRequest, nextDecisionCoachTargetId, redesignCardEntries, onNextDecisionCoachUnavailable, scrollToTemptationCard]);
   const revealDecisionCoach = useCallback((delta) => {
     if (!nextDecisionCoachRequest || feedScrollingRef.current || activeAmountSliderCardIdRef.current) return false;
     const key = `${nextDecisionCoachRequest.requestId}:${nextDecisionCoachTargetId}`;
@@ -34556,6 +34621,10 @@ const FeedScreen = React.memo(
       return customTitle || resolveLanguageMapValue(preset, language) || preset?.en || primaryGoalId;
     },
     [language, profile.primaryGoals]
+  );
+  const firstFeedCardId = useMemo(
+    () => feedEntries.find((entry) => entry.type === "card")?.id,
+    [feedEntries]
   );
   const renderTemptationCard = useCallback(
     (entry, { archived = false, drag = null, isDragActive = false } = {}) => {
@@ -34667,12 +34736,8 @@ const FeedScreen = React.memo(
       return (
         <TemptationCard
             item={item}
-            actionButtonsMode="review"
-            onCheck={() => {
-              setRedesignFocusReturnMode("all");
-              setRedesignFocusId(entry.id);
-              setRedesignFeedMode("focus");
-            }}
+            actionButtonsMode="gallery"
+            practiceTutorial={practiceTutorial?.active && entry.id === firstFeedCardId ? practiceTutorial : null}
             language={language}
             colors={colors}
             t={t}
@@ -34727,7 +34792,7 @@ const FeedScreen = React.memo(
             onLongPress={canDragCard ? drag : null}
             isDragActive={isDragActive}
             onAction={async (type, _, actionOptions) => {
-              await onTemptationAction(type, item, actionOptions);
+              return await onTemptationAction(type, item, actionOptions);
             }}
             playSound={playSound}
             onAmountSliderToggle={handleAmountSliderToggle}
@@ -34750,6 +34815,8 @@ const FeedScreen = React.memo(
     },
     [
       resolvedBudgetSpeechDataRef,
+      practiceTutorial,
+      firstFeedCardId,
       onTemptationLockedPress,
       cardFeedback,
       colors,
@@ -34930,9 +34997,6 @@ const FeedScreen = React.memo(
   );
   const renderFeedItem = useCallback(
     ({ item: entry, drag, isActive }) => {
-      if (redesignFeedMode === "overview") {
-        return null;
-      }
       if (redesignFeedMode !== "all") return null;
       if (entry.type === "series") return null;
       const orderKey = getFeedCardOrderKey(entry.item);
@@ -34958,13 +35022,19 @@ const FeedScreen = React.memo(
               isDarkMode={isDarkMode}
             />
           ) : null}
-          <FeedDragLiftDecorator
+          {practiceTutorial?.active && entry.id === firstFeedCardId ? <PracticeTarget tutorial={practiceTutorial} id="practice-open" containsTargets><FeedDragLiftDecorator
             reduceMotion={reduceMotion}
             shadowColor={isDarkMode ? "#000000" : "#17213B"}
             tiltDirection={tiltDirection}
           >
             {renderTemptationCard(entry, { drag, isDragActive: isActive })}
-          </FeedDragLiftDecorator>
+          </FeedDragLiftDecorator></PracticeTarget> : <FeedDragLiftDecorator
+            reduceMotion={reduceMotion}
+            shadowColor={isDarkMode ? "#000000" : "#17213B"}
+            tiltDirection={tiltDirection}
+          >
+            {renderTemptationCard(entry, { drag, isDragActive: isActive })}
+          </FeedDragLiftDecorator>}
         </>
       );
     },
@@ -34976,6 +35046,8 @@ const FeedScreen = React.memo(
       normalizedTemptationSeries,
       normalizedTodayTemptationPlan,
       onTemptationSeriesOpenChest,
+      firstFeedCardId,
+      practiceTutorial,
       reduceMotion,
       redesignFeedMode,
       renderTemptationCard,
@@ -34996,46 +35068,6 @@ const FeedScreen = React.memo(
       </View>
     ),
     [colors.muted, colors.text, redesignFeedMode, t]
-  );
-  const feedFooter = useMemo(
-    () => redesignFeedMode !== "all" ? null : (
-      <>
-        {feedTailPlaceholder}
-        <View style={styles.archiveSection}>
-          <FrequencySectionHeader
-            title={t("archiveSectionTitle")}
-            count={String(archiveCount)}
-            collapsed={!archiveExpanded}
-            onToggle={toggleArchiveExpanded}
-            colors={colors}
-            t={t}
-          />
-          {archiveExpanded && archiveCount === 0 ? (
-            <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
-              {t("archiveEmpty")}
-            </Text>
-          ) : null}
-        </View>
-        {archiveExpanded
-          ? archiveEntries.map((entry) => (
-              <React.Fragment key={entry.id}>
-                {renderTemptationCard(entry, { archived: true })}
-              </React.Fragment>
-            ))
-          : null}
-      </>
-    ),
-    [
-      archiveCount,
-      archiveEntries,
-      archiveExpanded,
-      colors,
-      feedTailPlaceholder,
-      redesignFeedMode,
-      renderTemptationCard,
-      t,
-      toggleArchiveExpanded,
-    ]
   );
   const analyticsPreview = analyticsStats.slice(0, 3);
   const handleHeroCatPress = useCallback(() => onMascotPress(tamagotchiHeroBadge), [onMascotPress, tamagotchiHeroBadge]);
@@ -35078,62 +35110,7 @@ const FeedScreen = React.memo(
     return { wishesById: byId, swipePinnedByTemplate: swipePinned };
   }, [wishes]);
 
-  const FeedList = redesignFeedMode === "all" ? DraggableFlatList : OverviewFeedScroll;
-
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: Math.max(0, Number(topInset) || 0) + (redesignFeedMode === "all" ? MENU_TOP_CONTENT_OFFSET : 0),
-        },
-      ]}
-    >
-      <FeedList
-        key={redesignFeedMode}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        ref={listRef}
-        containerStyle={styles.feedListContainer}
-        style={styles.feedList}
-        contentInsetAdjustmentBehavior="never"
-        automaticallyAdjustContentInsets={false}
-        data={feedEntries}
-        keyExtractor={feedKeyExtractor}
-        showsVerticalScrollIndicator
-        scrollEnabled={!feedScrollLocked}
-        directionalLockEnabled
-        nestedScrollEnabled
-        contentContainerStyle={[
-          styles.feedListContent,
-          { paddingHorizontal: redesignFeedMode === "all" ? BASE_HORIZONTAL_PADDING : 0, paddingBottom: Math.max(0, Number(contentBottomPadding) || 0) },
-        ]}
-        renderItem={renderFeedItem}
-        renderPlaceholder={renderFeedPlaceholder}
-        ListEmptyComponent={feedEmptyState}
-        ListFooterComponent={feedFooter}
-        onDragBegin={handleFeedDragBegin}
-        onDragEnd={handleFeedDragEnd}
-        activationDistance={12}
-        animationConfig={feedDragAnimationConfig}
-        autoscrollThreshold={88}
-        autoscrollSpeed={170}
-        dragItemOverflow={false}
-        onScrollToIndexFailed={handleFeedScrollToIndexFailed}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={7}
-        updateCellsBatchingPeriod={50}
-        removeClippedSubviews={false}
-        scrollEventThrottle={16}
-        onScrollBeginDrag={handleFeedScrollBegin}
-        onScrollEndDrag={handleFeedScrollEnd}
-        onMomentumScrollBegin={handleFeedMomentumBegin}
-        onMomentumScrollEnd={handleFeedMomentumEnd}
-        ListHeaderComponent={
-          redesignFeedMode !== "all" ? (
-            <>
+  const todayHeader = (
             <RedesignTodayHeader
               practiceTutorial={practiceTutorial}
               decisionCoach={nextDecisionCoachRequest && nextDecisionCoachTargetId &&
@@ -35145,8 +35122,11 @@ const FeedScreen = React.memo(
               theme={theme}
               currency={currency}
               savedTotalUSD={savedTotalUSD}
-              mascotSource={tamagotchiAnimations.idle}
+              mascotAnimations={tamagotchiAnimations}
+              mascotAnimationSetKey={tamagotchiAnimationSetKey}
+              mascotVisible={mascotVisible}
               mascotBadge={tamagotchiHeroBadge}
+              mascotBonusReady={dailyRewardReady}
               mascotDirtyLevel={tamagotchiDirtyLevel}
               speechText={showTamagotchiBubble ? tamagotchiSpeechDisplayText : null}
               onSavingsBreakdownPress={onSavingsBreakdownPress}
@@ -35199,6 +35179,108 @@ const FeedScreen = React.memo(
                 activeChallenge ? { key: "challengeTabTitle", onPress: () => onActiveChallengePress?.(activeChallenge.id) } : null,
               ].filter(Boolean)}
             />
+  );
+
+  const feedFooter = useMemo(
+    () => redesignFeedMode !== "all" ? null : (
+      <>
+        {React.cloneElement(todayHeader, { extrasOnly: true })}
+        {feedTailPlaceholder}
+        <View style={styles.archiveSection}>
+          <FrequencySectionHeader
+            title={t("archiveSectionTitle")}
+            count={String(archiveCount)}
+            collapsed={!archiveExpanded}
+            onToggle={toggleArchiveExpanded}
+            colors={colors}
+            t={t}
+          />
+          {archiveExpanded && archiveCount === 0 ? (
+            <Text style={[styles.archiveEmptyText, { color: colors.muted }]}>
+              {t("archiveEmpty")}
+            </Text>
+          ) : null}
+        </View>
+        {archiveExpanded
+          ? archiveEntries.map((entry) => (
+              <React.Fragment key={entry.id}>
+                {renderTemptationCard(entry, { archived: true })}
+              </React.Fragment>
+            ))
+          : null}
+      </>
+    ),
+    [
+      archiveCount,
+      archiveEntries,
+      archiveExpanded,
+      colors,
+      feedTailPlaceholder,
+      redesignFeedMode,
+      renderTemptationCard,
+      t,
+      toggleArchiveExpanded,
+      todayHeader,
+    ]
+  );
+
+  const FeedList = redesignFeedMode === "all" ? DraggableFlatList : OverviewFeedScroll;
+
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
+        },
+      ]}
+    >
+      <FeedList
+        key={redesignFeedMode}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ref={listRef}
+        containerStyle={styles.feedListContainer}
+        style={styles.feedList}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        data={feedEntries}
+        keyExtractor={feedKeyExtractor}
+        showsVerticalScrollIndicator
+        scrollEnabled={!feedScrollLocked}
+        directionalLockEnabled
+        nestedScrollEnabled
+        contentContainerStyle={[
+          styles.feedListContent,
+          { paddingHorizontal: redesignFeedMode === "all" ? BASE_HORIZONTAL_PADDING : 0, paddingBottom: Math.max(0, Number(contentBottomPadding) || 0) },
+        ]}
+        renderItem={renderFeedItem}
+        renderPlaceholder={renderFeedPlaceholder}
+        ListEmptyComponent={feedEmptyState}
+        ListFooterComponent={feedFooter}
+        onDragBegin={handleFeedDragBegin}
+        onDragEnd={handleFeedDragEnd}
+        activationDistance={12}
+        animationConfig={feedDragAnimationConfig}
+        autoscrollThreshold={88}
+        autoscrollSpeed={170}
+        dragItemOverflow={false}
+        onScrollToIndexFailed={handleFeedScrollToIndexFailed}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={false}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={handleFeedScrollBegin}
+        onScrollEndDrag={handleFeedScrollEnd}
+        onMomentumScrollBegin={handleFeedMomentumBegin}
+        onMomentumScrollEnd={handleFeedMomentumEnd}
+        ListHeaderComponent={
+          redesignFeedMode !== "all" ? (
+            <>
+            {todayHeader}
           {showDayTwoIncomePrompt && (
             <PlatformSurface surfaceRole="card"
               style={[
@@ -35233,17 +35315,11 @@ const FeedScreen = React.memo(
           )}
             </>
           ) : <>
-          <Pressable onPress={() => setRedesignFeedMode("overview")} accessibilityRole="button" style={redesignStyles.todayLegacyBack}>
-            <Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>‹  {t("redesignTodayLabel")}</Text>
-          </Pressable>
-          <View style={redesignStyles.allTemptationsHeading}>
-            <Text style={[redesignStyles.pauseTitle, { color: colors.text, marginBottom: 0, flex: 1, fontSize: 26 }]}>{t("redesignTodayAllCards")}</Text>
-          </View>
+          {todayHeader}
+          {showDayTwoIncomePrompt && <PlatformSurface surfaceRole="card" style={[styles.dayTwoIncomePromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}><Text style={[styles.dayTwoIncomePromptText, { color: colors.text }]}>{t("dayTwoIncomePromptText")}</Text><View style={styles.dayTwoIncomePromptActions}><PlatformTouchableOpacity surfaceRole="control" style={[styles.dayTwoIncomePromptPrimary, { backgroundColor: colors.text }]} onPress={handleDayTwoIncomePromptPress} activeOpacity={0.85}><Text style={[styles.dayTwoIncomePromptPrimaryText, { color: colors.background }]}>{t("incomeEntryTitle")}</Text></PlatformTouchableOpacity><PlatformTouchableOpacity surfaceRole="control" style={[styles.dayTwoIncomePromptSecondary, { borderColor: colors.border }]} onPress={handleDayTwoIncomePromptDismiss} activeOpacity={0.85}><Text style={[styles.dayTwoIncomePromptSecondaryText, { color: colors.muted }]}>{t("streakPledgeLater")}</Text></PlatformTouchableOpacity></View></PlatformSurface>}
           <View style={styles.feedTemptationHeader}>
             <Text style={[styles.feedTemptationTitle, { color: colors.text }]}>
-              {temptationSeriesProgress.remaining > 0
-                ? t("temptationSeriesUncheckedTitle")
-                : t("tutorialFeedTitle")}
+              {t("redesignTodayAllCards")}
             </Text>
           </View>
           <View style={styles.feedCategoryToolbar}>
@@ -35261,13 +35337,9 @@ const FeedScreen = React.memo(
                       key={option.id}
                       style={[
                         styles.feedCategoryChip,
-                        { borderWidth: 0 },
+                        { borderWidth: 0, backgroundColor: "transparent", overflow: "hidden" },
                         {
-                          backgroundColor: isActive
-                            ? colors.primarySurface
-                            : isDarkMode
-                            ? "rgba(255,255,255,0.08)"
-                            : "rgba(255,255,255,0.78)",
+                          backgroundColor: "transparent",
                           borderColor: isActive
                             ? colors.primary
                             : isDarkMode
@@ -35281,6 +35353,8 @@ const FeedScreen = React.memo(
                       accessibilityLabel={option.label}
                       accessibilityState={{ selected: isActive }}
                     >
+                      <PlatformGlassBackground style={{ borderRadius: 999 }} isDarkTheme={isDarkMode} glassEffectStyle="regular" fallbackColor={colorWithAlpha(colors.card, 0.68)} solidFallbackColor={colors.card} borderColor={colors.border} />
+                      {isActive ? <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: colorWithAlpha(colors.primary, isDarkMode ? 0.2 : 0.11), borderRadius: 999 }]} /> : null}
                       {!!option.emoji && (
                         <Text
                           style={[
@@ -35317,12 +35391,13 @@ const FeedScreen = React.memo(
               </View>
             </View>
             <View style={styles.feedTemptationAddWrap}>
-              <PlatformTouchableOpacity surfaceRole="control"
+              <PlatformTouchableOpacity testID="today-filter-add-temptation" surfaceRole="control"
                 style={[
                   styles.feedTemptationAddButton,
                   {
-                    backgroundColor: isDarkMode ? colors.surfaceElevated : colors.text,
-                    borderColor: isDarkMode ? colors.separator : colors.text,
+                    backgroundColor: "transparent",
+                    borderColor: "transparent",
+                    overflow: "hidden",
                   },
                 ]}
                 onPress={onNewTemptation}
@@ -35330,11 +35405,12 @@ const FeedScreen = React.memo(
                 accessibilityRole="button"
                 accessibilityLabel={t("fabNewTemptation")}
               >
+                <PlatformGlassBackground style={{ borderRadius: UI_RADIUS.control }} isDarkTheme={isDarkMode} glassEffectStyle="regular" fallbackColor={colorWithAlpha(colors.card, 0.68)} solidFallbackColor={colors.card} borderColor={colors.border} />
                 <Text
                   style={[
                     styles.feedTemptationAddIcon,
                     {
-                      color: isDarkMode ? colors.text : colors.background,
+                      color: colors.text,
                     },
                   ]}
                 >
@@ -36709,7 +36785,7 @@ const RedesignProgressOverview = React.memo(function RedesignProgressOverview({
   );
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <View style={[redesignStyles.pauseTopline, { minHeight: FAB_BUTTON_SIZE + 16, paddingEnd: 196, direction: progressRtl ? "rtl" : "ltr" }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary, textAlign: progressRtl ? "right" : "left" }]}>{t("wishlistTab")}</Text></View>
+      <View style={[redesignStyles.pauseTopline, { minHeight: MENU_HEADER_ROW_HEIGHT, paddingEnd: 196, direction: progressRtl ? "rtl" : "ltr" }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary, textAlign: progressRtl ? "right" : "left" }]}>{t("wishlistTab")}</Text></View>
       <Text style={[redesignStyles.pauseTitle, { color: colors.text }]}>{t("redesignProgressHeadline")}</Text>
       <Text style={[redesignStyles.pauseSubtitle, { color: colors.muted }]}>{t("redesignProgressDecisions", { count: decisionCount })}</Text>
       <View style={{ flexDirection: "row", gap: 12, marginBottom: 8 }}>
@@ -36722,7 +36798,7 @@ const RedesignProgressOverview = React.memo(function RedesignProgressOverview({
           <Text style={{ color: colors.primary, fontSize: 20 }}>›</Text>
         </Pressable>
       </View>
-      <PlatformSurface surfaceRole="card" style={[redesignStyles.todayHero, { backgroundColor: colors.primarySurface, minHeight: goalTargetUSD > 0 ? 184 : 145, marginBottom: 0 }]}>
+      <PlatformSurface surfaceRole="card" style={[redesignStyles.todayHero, { backgroundColor: colors.primarySurface, minHeight: goalTargetUSD > 0 ? 184 : 145, marginTop: 6, marginBottom: 0 }]}>
         <RedesignHeroBackdrop colors={colors} />
         <Image source={mascotSource} resizeMode="contain" style={redesignStyles.todayCat} />
         <View style={redesignStyles.progressGoalHeader}>
@@ -36813,7 +36889,7 @@ const RedesignGoalDetail = React.memo(function RedesignGoalDetail({
 
 const RedesignGoalsList = React.memo(function RedesignGoalsList({
   t, colors, currency, goals, subtitle, activeGoalId, onBack, onGoalPress, onGoalLongPress,
-  onCreateGoal, onOpenActiveGoal, scrollRef, contentBottomPadding, topInset,
+  onCreateGoal, onOpenActiveGoal, activeGoalSavedUSD, scrollRef, contentBottomPadding, topInset,
 }) {
   const items = Array.isArray(goals) ? goals : [];
   return (
@@ -36826,7 +36902,8 @@ const RedesignGoalsList = React.memo(function RedesignGoalsList({
           const goalId = goal.goalId || goal.id;
           const isActive = !!activeGoalId && activeGoalId === goalId;
           const target = Math.max(0, Number(goal.targetUSD) || 0);
-          const saved = Math.max(0, Number(goal.savedUSD) || 0);
+          const recordedSaved = Math.max(0, Number(goal.savedUSD) || 0);
+          const saved = isActive ? activeGoalSavedUSD : recordedSaved;
           const progress = target > 0 ? Math.min(1, saved / target) : 0;
           return <Pressable key={goal.id} onPress={() => onGoalPress(goal)} onLongPress={() => onGoalLongPress(goal)} accessibilityRole="button" accessibilityState={{ selected: isActive }} style={[redesignStyles.pauseActionRow, { borderBottomWidth: 1, borderBottomColor: colors.border, alignItems: "flex-start", paddingVertical: 17 }]}>
             <Text style={{ fontSize: 28, marginRight: 12 }}>{resolveWishEmoji(goal)}</Text>
@@ -36972,6 +37049,7 @@ const ProgressScreen = React.memo(function ProgressScreen({
   isPremiumUser = false,
   onBudgetAutoLocked = null,
   savedTotalUSD = 0,
+  availableGoalSavingsUSD = 0,
   decisionStats = {},
   onBudgetOverrideChange = () => {},
   onBudgetOverrideReset = () => {},
@@ -37131,9 +37209,10 @@ const ProgressScreen = React.memo(function ProgressScreen({
     Number.isFinite(activeGoalEntry?.targetUSD) && activeGoalEntry.targetUSD > 0
       ? activeGoalEntry.targetUSD
       : activeGoalWish?.targetUSD || (resolvedActiveGoalId ? getGoalDefaultTargetUSD(resolvedActiveGoalId) : 0);
-  const goalSavedUSD = Number.isFinite(activeGoalEntry?.savedUSD)
-    ? Math.max(activeGoalEntry.savedUSD, 0)
-    : Math.max(activeGoalWish?.savedUSD || 0, 0);
+  const goalSavedUSD = resolveAvailableGoalSavingsUSD(
+    Math.max(Number(activeGoalEntry?.savedUSD) || 0, Number(activeGoalWish?.savedUSD) || 0),
+    availableGoalSavingsUSD
+  );
   const goalProgress = goalTargetUSD > 0 ? Math.min(goalSavedUSD / goalTargetUSD, 1) : 0;
   const goalTargetLabel = formatCurrency(convertToCurrency(goalTargetUSD || 0, currency), currency);
   const goalRemainingLabel = formatCurrency(
@@ -40813,7 +40892,8 @@ const confirmAccept = () => {
         currency={currency}
         goals={listData}
         subtitle={t("wishlistSummary", { amount: totalTarget })}
-        activeGoalId={activeGoalId}
+        activeGoalId={resolvedActiveGoalId}
+        activeGoalSavedUSD={goalSavedUSD}
         onBack={() => { setRedesignGoalDetailVisible(false); onProgressSectionChange?.("overview"); }}
         onGoalPress={(wish) => {
           const goalId = wish.goalId || wish.id;
@@ -43653,7 +43733,9 @@ const FirstVisitScreenIntroModal = React.memo(function FirstVisitScreenIntroModa
 const FeedSavingsIntroModal = React.memo(function FeedSavingsIntroModal({
   visible = false, tutorial, colors, t, language = DEFAULT_LANGUAGE, onClose,
 }) {
-  return <PracticeTutorialOverlay tutorial={tutorial} visible={visible} colors={colors} t={t}
+  useEffect(() => { tutorial.closeRef.current = onClose; return () => { tutorial.closeRef.current = null; }; }, [onClose, tutorial.closeRef]);
+  const nativeStep = ["amount", "action"].includes(tutorial.state.stage);
+  return <PracticeTutorialOverlay tutorial={tutorial} visible={visible && (!nativeStep || !tutorial.nativeHostVisible)} holdPresentation={nativeStep && !tutorial.nativeHostVisible} colors={colors} t={t}
     rtl={isRtlLanguage(language)} onSkip={onClose} onFinish={() => onClose?.("cta")} />;
 });
 const PENDING_COUNTDOWN_NEAR_WINDOW_MS = 5 * MINUTE_MS;
@@ -43896,30 +43978,14 @@ const RedesignHeroBackdrop = React.memo(function RedesignHeroBackdrop({ colors }
   );
 });
 
-const AlmiCareBackdrop = React.memo(function AlmiCareBackdrop({ colors }) {
-  const glowId = `almi-care-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  return (
-    <View pointerEvents="none" accessible={false} style={StyleSheet.absoluteFillObject}>
-      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <Defs>
-          <SvgRadialGradient id={glowId} cx="70%" cy="28%" rx="65%" ry="55%">
-            <SvgStop offset="0%" stopColor={colors.primary} stopOpacity={0.16} />
-            <SvgStop offset="100%" stopColor={colors.primary} stopOpacity={0} />
-          </SvgRadialGradient>
-        </Defs>
-        <SvgRect width="100" height="100" fill={`url(#${glowId})`} />
-      </Svg>
-    </View>
-  );
-});
 
 const redesignStyles = StyleSheet.create({
   heroCornerOutline: { position: "absolute", width: 180, height: 180, right: -80, top: -55, borderWidth: 1, borderColor: "rgba(255,255,255,0.45)", borderRadius: 28, transform: [{ rotate: "28deg" }] },
   todayRoot: { paddingHorizontal: 18, paddingBottom: 14 },
   decisionSecondary: { gap: 4, marginTop: 12 },
   decisionBottom: { paddingTop: 0, gap: 8 },
-  todayTopline: { minHeight: 43, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  todayBrand: { fontSize: 18, fontWeight: "800", letterSpacing: -0.9 },
+  todayTopline: { minHeight: MENU_HEADER_ROW_HEIGHT, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  todayBrand: { fontSize: 18, lineHeight: 22, includeFontPadding: false, fontWeight: "800", letterSpacing: -0.9 },
   todayAdd: { width: 35, height: 35, borderWidth: 1, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   todayAddAndroid: { borderWidth: 0, backgroundColor: "transparent" },
   todayAddGlyph: { fontSize: 22, lineHeight: 25 },
@@ -43931,6 +43997,8 @@ const redesignStyles = StyleSheet.create({
   progressGoalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   progressGoalOpen: { minHeight: UI_TOUCH_TARGET.current, minWidth: UI_TOUCH_TARGET.current, maxWidth: "55%", flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingVertical: 8, paddingHorizontal: 4, flexShrink: 1 },
   progressGoalOpenLabel: { fontSize: 13, lineHeight: 18, fontWeight: "600", flexShrink: 1, textAlign: "auto" },
+  todayCatAttention: { position: "absolute", top: 4, right: 0, width: 24, height: 24, borderRadius: 12, borderWidth: 2, backgroundColor: "#D92D38", alignItems: "center", justifyContent: "center" },
+  todayCatAttentionMark: { color: "#FFFFFF", fontSize: 15, lineHeight: 18, fontWeight: "800", textAlign: "center" },
   todayCatBadge: { maxWidth: "100%", minHeight: 28, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 14, borderWidth: 1 },
   todayHero: { minHeight: 190, borderRadius: 20, padding: 16, marginTop: 18, marginBottom: 21, overflow: "hidden" },
   todayAmount: { fontSize: 36, lineHeight: 39, fontWeight: "800", letterSpacing: -1.2, marginTop: 8, fontVariant: ["tabular-nums"] },
@@ -43941,7 +44009,7 @@ const redesignStyles = StyleSheet.create({
   todayDecisionIdentity: { borderWidth: 0, padding: 0, minHeight: 42, marginBottom: 11 },
   todayDecisionTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800", letterSpacing: -0.3, marginBottom: 5 },
   todayFeedRow: { marginHorizontal: 18 },
-  todayLegacyBack: { paddingHorizontal: 0, paddingTop: 8, paddingBottom: 5 },
+  todayLegacyBack: { minHeight: MENU_HEADER_ROW_HEIGHT, justifyContent: "center" },
   allTemptationsHeading: { paddingHorizontal: 0, paddingTop: 4, paddingBottom: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   progressTrack: { height: 7, borderRadius: 99, overflow: "hidden" },
   progressFill: { height: 7, borderRadius: 99 },
@@ -43975,9 +44043,9 @@ const redesignStyles = StyleSheet.create({
   settingsThemePreview: { width: 40, height: 32, borderRadius: 8, borderWidth: 1, overflow: "hidden", flexDirection: "row", flexShrink: 0 },
   settingsSwitch: { width: 43, height: 26, borderRadius: 13, justifyContent: "center", paddingHorizontal: 3 },
   settingsSwitchKnob: { width: 20, height: 20, borderRadius: 10 },
-  pauseTopline: { minHeight: 48, justifyContent: "center", paddingEnd: 104 },
-  pauseBrand: { fontSize: 14, fontWeight: "700" },
-  pauseTitle: { fontSize: Platform.OS === "android" ? 26 : 29, fontWeight: "800", letterSpacing: Platform.OS === "android" ? -0.6 : -1.1, marginTop: 6 },
+  pauseTopline: { minHeight: MENU_HEADER_ROW_HEIGHT, justifyContent: "center", paddingEnd: 104 },
+  pauseBrand: { fontSize: 14, lineHeight: 20, includeFontPadding: false, fontWeight: "700" },
+  pauseTitle: { fontSize: 28, lineHeight: 36, includeFontPadding: false, fontWeight: "800", letterSpacing: -0.8, marginTop: 0 },
   pauseSubtitle: { fontSize: 13, lineHeight: 18, marginTop: 5 },
   pauseIntroCard: { borderWidth: 1, borderRadius: 15, minHeight: 118, padding: 16, marginTop: 20, justifyContent: "center" },
   pauseCard: { borderWidth: 1, borderRadius: 15, minHeight: 112, padding: 16 },
@@ -48019,7 +48087,7 @@ const RedesignBudgetOverview = React.memo(function RedesignBudgetOverview({
   const formatAmount = (valueUSD) => formatCurrency(convertToCurrency(Math.max(0, Number(valueUSD) || 0), currency), currency);
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
-      <View style={[redesignStyles.todayTopline, { minHeight: 43 }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("purchasesTitle")}</Text></View>
+      <View style={redesignStyles.todayTopline}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("purchasesTitle")}</Text></View>
       <Text style={[redesignStyles.pauseTitle, { color: colors.text }]}>{t("redesignBudgetHeadline")}</Text>
       <Text style={[redesignStyles.pauseSubtitle, { color: colors.muted }]}>{t("redesignBudgetSubtitle")}</Text>
       <Pressable testID="budget-details" onPress={onDetailsPress} accessibilityRole="button" accessibilityLabel={t("redesignBudgetMore")} style={{ minHeight: 44, alignSelf: "flex-start", justifyContent: "center" }}><Text style={{ color: colors.primary, fontSize: 14, fontWeight: "600" }}>{t("redesignBudgetMore")} ›</Text></Pressable>
@@ -48465,7 +48533,7 @@ const BudgetScreen = React.memo(function BudgetScreen({
         automaticallyAdjustContentInsets={false}
         contentContainerStyle={{
           width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18,
-          paddingTop: Math.max(0, Number(topInset) || 0) + 12,
+          paddingTop: Math.max(0, Number(topInset) || 0) + MENU_TOP_CONTENT_OFFSET,
           paddingBottom: Math.max(0, Number(contentBottomPadding) || 0),
           gap: 16,
         }}
@@ -49312,7 +49380,7 @@ const RedesignProfileOverview = React.memo(function RedesignProfileOverview({
   return (
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background, direction: isRtlLanguage(language) ? "rtl" : "ltr" }} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 620, alignSelf: "center", paddingHorizontal: 18, paddingTop: Math.max(0, topInset) + 4, paddingBottom: Math.max(110, contentBottomPadding) }}>
       <View style={[redesignStyles.pauseTopline, { direction: isRtlLanguage(language) ? "rtl" : "ltr" }]}><Text style={[redesignStyles.pauseBrand, { color: colors.primary }]}>{t("profileTab")}</Text></View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginVertical: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 16, marginTop: 0, marginBottom: 16 }}>
         <Pressable testID="profile-edit-avatar" onPress={onEditPress} accessibilityRole="button" accessibilityLabel={t("profileEdit")} style={{ width: 72, height: 72, borderRadius: 36, overflow: "hidden", backgroundColor: colors.card }}>
           <Image source={avatarSource} resizeMode="cover" style={{ width: 72, height: 72 }} />
         </Pressable>
@@ -49357,6 +49425,7 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
   onCategoriesPress, onPremiumPress, onPrivacyPress, onSupportPress, onHelpGuidePress, onBugReportPress,
   onIncomePress, incomeLabel, incomePaydaySection, isEditingSettings, onSaveEdit, onCancelEdit, onInstagramPress, onResetData,
   onChoicePress, onBack, scrollRef, contentBottomPadding, topInset, onShoppingBlockerPress, bankExpenses, isPremiumUser,
+  analyticsOptOut, analyticsConsentSaving, analyticsConsentError, onAnalyticsConsentChange,
 }) {
   const rtl = isRtlLanguage(language);
   const row = (key, detail, onPress) => (
@@ -49378,12 +49447,12 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
       <PlatformSurface surfaceRole="row" style={[redesignStyles.settingsList, { backgroundColor: colors.card, borderColor: colors.border }]}>{rows}</PlatformSurface>
     </View>
   );
-  const toggle = (key, checked, onPress) => (
-    <Pressable testID={`settings-row-${key}`} key={key} onPress={onPress} accessibilityRole="switch" accessibilityLabel={t(key)} accessibilityState={{ checked }} style={[redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
-      <View style={{ flex: 1, minWidth: 0, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{t(key)}</Text>
+  const toggle = (key, checked, onPress, options = {}) => (
+    <Pressable testID={`settings-row-${key}`} key={key} onPress={onPress} disabled={options.disabled} accessibilityRole="switch" accessibilityLabel={options.label || t(key)} accessibilityState={{ checked, disabled: !!options.disabled }} style={({ pressed }) => [redesignStyles.settingsRow, rtl && redesignStyles.settingsRowRtl, { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth, opacity: pressed ? 0.72 : 1 }]}>
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}><Text style={[redesignStyles.pauseActionText, { color: colors.text }]}>{options.label || t(key)}</Text>
         {key === "tycoonModeLabel" && tycoonModeLocked ? <Text style={{ color: colors.primary, fontSize: 12 }}>{t("featureLockedPremiumLabel")}</Text> : null}
       </View>
-      <Switch style={{ alignSelf: "center", ...(Platform.OS === "ios" ? { width: 51, height: 31 } : {}) }} value={!!checked} onValueChange={onPress} accessible={false} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={checked ? colors.onPrimary : colors.muted} ios_backgroundColor={colors.surfaceMuted} />
+      <Switch style={{ alignSelf: "center", ...(Platform.OS === "ios" ? { width: 51, height: 31 } : {}) }} value={!!checked} onValueChange={onPress} disabled={options.disabled} accessible={false} trackColor={{ false: colors.border, true: colors.primary }} thumbColor={checked ? colors.onPrimary : colors.muted} ios_backgroundColor={colors.surfaceMuted} />
     </Pressable>
   );
   return (
@@ -49405,6 +49474,11 @@ const RedesignSettingsOverview = React.memo(function RedesignSettingsOverview({
       ])}
       {group("redesignSettingsData", [
         row("premiumStoryBadge", "", onPremiumPress),
+        <View key="analytics-consent">
+          {toggle("analyticsConsentAgree", analyticsOptOut === false, () => onAnalyticsConsentChange?.(analyticsOptOut !== false), { label: getOnboardingRedesignCopy(language, "privacy.settingLabel"), disabled: analyticsConsentSaving })}
+          {analyticsConsentSaving ? <Text accessibilityLiveRegion="polite" style={{ color: colors.muted, paddingHorizontal: 16, paddingVertical: 8 }}>{getOnboardingRedesignCopy(language, "privacy.saving")}</Text> : null}
+          {analyticsConsentError ? <Text accessibilityRole="alert" style={{ color: colors.text, paddingHorizontal: 16, paddingVertical: 8 }}>{getOnboardingRedesignCopy(language, "privacy.saveError")}</Text> : null}
+        </View>,
         row("privacyPolicyLink", "", onPrivacyPress),
         <CloudDeletionRow key="cloud-deletion" t={t} colors={colors} />,
         row("supportLink", "", onSupportPress),
@@ -49554,6 +49628,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
   onIncomeEntryOpen,
   soundEnabled = true,
   onSoundToggle,
+  analyticsOptOut = null,
+  analyticsConsentSaving = false,
+  analyticsConsentError = false,
+  onAnalyticsConsentChange,
   spendReducesSavings = false,
   onSpendReductionToggle,
   tycoonModeEnabled = TYCOON_MODE_DEFAULT_ENABLED,
@@ -50045,6 +50123,10 @@ const ProfileScreen = React.memo(function ProfileScreen({
         theme={theme}
         onLanguageChange={onLanguageChange} onCurrencyChange={onCurrencyChange} onThemeToggle={onThemeToggle}
         soundEnabled={soundEnabled}
+        analyticsOptOut={analyticsOptOut}
+        analyticsConsentSaving={analyticsConsentSaving}
+        analyticsConsentError={analyticsConsentError}
+        onAnalyticsConsentChange={onAnalyticsConsentChange}
         onSoundToggle={onSoundToggle}
         spendReducesSavings={spendReducesSavings}
         onSpendReductionToggle={onSpendReductionToggle}
@@ -51015,6 +51097,8 @@ function AppContent() {
     streakPledgeRef.current = streakPledge;
   }, [streakPledge]);
   const [healthPoints, setHealthPoints] = useState(0);
+  const roomBalanceRef = useRef(healthPoints);
+  roomBalanceRef.current = healthPoints;
   const [healthHydrated, setHealthHydrated] = useState(false);
   const [dailyRewardState, setDailyRewardState] = useState({ ...DEFAULT_DAILY_REWARD_STATE });
   const [dailyRewardHydrated, setDailyRewardHydrated] = useState(false);
@@ -51387,6 +51471,8 @@ function AppContent() {
     return "+";
   }, [activeTab, widgetCurrencyCode]);
   const visibleFabIcon = activeTab === "feed" && allTemptationsVisible ? "+" : fabMainIcon;
+  const compactProgressHeaderFab =
+    activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview");
   const playerTierInfo = useMemo(
     () => getTierProgress(levelProgressSaveCount),
     [levelProgressSaveCount]
@@ -52393,7 +52479,7 @@ function AppContent() {
         DEFAULT_TEMPTATION_EMOJI
       );
       const cardAmountUSD = clampTransactionAmountUSD(
-        resolveRememberedAmount(temptationInteractions[templateId], decisionAmountStats[templateId], catalogOverrides?.[templateId] ?? getTemptationPrice(card))
+        resolveAutosaveCardAmountUSD(card, temptationInteractions[templateId], decisionAmountStats[templateId], catalogOverrides?.[templateId], profile.currency || DEFAULT_PROFILE.currency)
       );
       const editedAmountUSD = clampTransactionAmountUSD(entry?.amountOverrideUSD);
       const amountUSD = editedAmountUSD > 0
@@ -52672,7 +52758,7 @@ function AppContent() {
         firstDueAt = derivedDueAt;
       }
       if (!firstDueAt || firstDueAt > now) continue;
-      const amountBase = resolveRememberedAmount(interaction, decisionAmountStats[templateId], getTemptationPrice(card));
+      const amountBase = resolveAutosaveCardAmountUSD(card, interaction, decisionAmountStats[templateId], catalogOverrides?.[templateId], profile.currency || DEFAULT_PROFILE.currency);
       const reminderTime = resolveEntryReminderTime(interaction);
       const weeklyDays = resolveEntryWeeklyDays(interaction);
       const monthlyDays = resolveEntryMonthlyDays(interaction);
@@ -52821,6 +52907,7 @@ function AppContent() {
     currentDayKey,
     currentMonthKey,
     currentMonthRecurringIncomeUSD,
+    catalogOverrides,
     decisionAmountStats,
     language,
     logEvent,
@@ -55008,6 +55095,8 @@ function AppContent() {
   const [tamagotchiGreetingDayKey, setTamagotchiGreetingDayKey] = useState(null);
   const [tamagotchiGreetingDayHydrated, setTamagotchiGreetingDayHydrated] = useState(false);
   const [tamagotchiVisible, setTamagotchiVisible] = useState(false);
+  const { status: almiTutorialStatus, step: almiTutorialStep, schedule: scheduleAlmiTutorial,
+    start: startAlmiTutorial, next: nextAlmiTutorial, dismiss: dismissAlmiTutorial } = useAlmiCareTutorial();
   const [tamagotchiModalMounted, setTamagotchiModalMounted] = useState(false);
   const [tamagotchiClosing, setTamagotchiClosing] = useState(false);
   const [tamagotchiActiveTab, setTamagotchiActiveTab] = useState("food");
@@ -55015,6 +55104,11 @@ function AppContent() {
   const [tamagotchiPendingSkinId, setTamagotchiPendingSkinId] = useState(null);
   const [tamagotchiSkinHydrated, setTamagotchiSkinHydrated] = useState(false);
   const [skinPickerVisible, setSkinPickerVisible] = useState(false);
+  const [roomShopVisible, setRoomShopVisible] = useState(false);
+  const [roomPurchaseBusy, setRoomPurchaseBusy] = useState(false);
+  const roomPurchaseLockRef = useRef(false);
+  const [tamagotchiRoomSceneHeight, setTamagotchiRoomSceneHeight] = useState(500);
+  const tamagotchiRoomScrollY = useRef(new Animated.Value(0)).current;
   const [tamagotchiSkinAssetBaseUrl, setTamagotchiSkinAssetBaseUrl] = useState(
     normalizeTamagotchiSkinAssetBaseUrl(TAMAGOTCHI_SKIN_ASSET_BASE_URL_ENV)
   );
@@ -55405,6 +55499,57 @@ function AppContent() {
     tamagotchiToyFlightAnim,
   ]);
   const closeSkinPicker = useCallback(() => setSkinPickerVisible(false), []);
+  const openRoomShop = useCallback(() => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+    setRoomShopVisible(true);
+  }, [triggerHaptic]);
+  const closeRoomShop = useCallback(() => {
+    if (!roomPurchaseLockRef.current) setRoomShopVisible(false);
+  }, []);
+  const commitRoomPurchase = useCallback(async (itemId) => {
+    if (roomPurchaseLockRef.current || !healthHydrated || !tamagotchiHydratedRef.current) return;
+    const result = purchaseRoomItem({
+      room: tamagotchiCurrentStateRef.current.room,
+      balance: roomBalanceRef.current,
+      itemId,
+    });
+    if (!result.ok) return;
+    roomPurchaseLockRef.current = true;
+    setRoomPurchaseBusy(true);
+    try {
+      const nextCatState = { ...tamagotchiCurrentStateRef.current, room: result.room };
+      await AsyncStorage.multiSet([
+        [STORAGE_KEYS.HEALTH, String(result.balance)],
+        [STORAGE_KEYS.HEALTH_BACKUP, serializeCoinBalanceBackup(result.balance)],
+        [STORAGE_KEYS.TAMAGOTCHI, JSON.stringify(nextCatState)],
+      ]);
+      roomBalanceRef.current = result.balance;
+      tamagotchiCurrentStateRef.current = nextCatState;
+      setHealthPoints((balance) => Math.max(0, balance - result.price));
+      setTamagotchiState((prev) => ({ ...prev, room: result.room }));
+      triggerSuccessHaptic();
+    } catch (error) {
+      console.warn("room purchase", error);
+      Alert.alert(t("almiRoomTitle"), t("almiRoomPurchaseFailed"));
+    } finally {
+      roomPurchaseLockRef.current = false;
+      setRoomPurchaseBusy(false);
+    }
+  }, [healthHydrated, t, triggerHaptic]);
+  const handleRoomBuy = useCallback((itemId) => {
+    const item = ROOM_ITEM_BY_ID[itemId];
+    if (!item || roomPurchaseLockRef.current) return;
+    commitRoomPurchase(itemId);
+  }, [commitRoomPurchase]);
+  const handleRoomEquip = useCallback((itemId, remove = false) => {
+    const result = remove
+      ? removeRoomItem({ room: tamagotchiCurrentStateRef.current.room, itemId })
+      : equipRoomItem({ room: tamagotchiCurrentStateRef.current.room, itemId });
+    if (!result.ok) return;
+    tamagotchiCurrentStateRef.current = { ...tamagotchiCurrentStateRef.current, room: result.room };
+    setTamagotchiState((prev) => ({ ...prev, room: result.room }));
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+  }, [triggerHaptic]);
   const showTamagotchiSkinDownloadAlert = useCallback(
     (errorKind = "download") => {
       const message =
@@ -55942,7 +56087,9 @@ function AppContent() {
     openTamagotchiOverlay();
   }, [clearQueuedModal, openTamagotchiOverlay]);
   const closeTamagotchiOverlay = useCallback(() => {
+    dismissAlmiTutorial();
     playSound("tap");
+    setRoomShopVisible(false);
     setTamagotchiClosing(true);
     setTamagotchiVisible(false);
     setTamagotchiCleanToolArmed(false);
@@ -55961,6 +56108,7 @@ function AppContent() {
     tamagotchiTabContentAnim.setValue(1);
     tamagotchiTabSwitchingRef.current = false;
   }, [
+    dismissAlmiTutorial,
     playSound,
     setTamagotchiClosing,
     setTamagotchiCleanToolArmed,
@@ -57582,8 +57730,8 @@ function AppContent() {
   const shouldRenderMainStatusGlass = shouldRenderStatusGlass;
   const statusGlassFadeHeight = shouldRenderStatusGlass
     ? Platform.OS === "android"
-      ? Math.min(12, ANDROID_STATUS_GLASS_FADE_HEIGHT)
-      : 12
+      ? ANDROID_STATUS_GLASS_FADE_HEIGHT
+      : 24
     : 0;
   const statusGlassHeight = topSafeInset + statusGlassFadeHeight;
   const statusBlurAvailable = useMemo(() => isBlurViewAvailable(), []);
@@ -57679,6 +57827,8 @@ function AppContent() {
     ].join(" ");
   }, [fabTutorialCutout]);
   const [analyticsOptOut, setAnalyticsOptOutState] = useState(null);
+  const [analyticsConsentSaving, setAnalyticsConsentSaving] = useState(false);
+  const [analyticsConsentError, setAnalyticsConsentError] = useState(false);
   const [iosTrackingStatus, setIosTrackingStatus] = useState(null);
   const [iosTrackingResolved, setIosTrackingResolved] = useState(Platform.OS !== "ios");
   const analyticsConsentPressLockRef = useRef(false);
@@ -59647,6 +59797,7 @@ function AppContent() {
     tutorialBlockingVisiblePrevRef.current = tutorialBlockingVisible;
   }, [queueModalCloseSettle, requestQueuedModalProcessAfterHandoff, tutorialBlockingVisible]);
   canShowRatingPromptNowRef.current = () => {
+    if (almiTutorialStatus === "pending" || almiTutorialStatus === "active") return false;
     if (appStateRef.current !== "active") return false;
     if (automaticModalPresentationPausedRef.current) return false;
     if (onboardingStep !== "done") return false;
@@ -59670,6 +59821,7 @@ function AppContent() {
     return true;
   };
   canTriggerStoreReviewNowRef.current = () => {
+    if (almiTutorialStatus === "pending" || almiTutorialStatus === "active") return false;
     if (appStateRef.current !== "active") return false;
     if (automaticModalPresentationPausedRef.current) return false;
     if (onboardingStep !== "done") return false;
@@ -60077,6 +60229,10 @@ function AppContent() {
     const primarySaved = Number.isFinite(primaryGoalSavedUSD) ? Math.max(primaryGoalSavedUSD, 0) : 0;
     return Math.max(wishSaved, primarySaved);
   }, [mainGoalWish?.savedUSD, primaryGoalSavedUSD]);
+  const availableHeroGoalSavedUSD = resolveAvailableGoalSavingsUSD(
+    heroGoalSavedUSD,
+    budgetLedgerTotals.availableToAllocateUSD
+  );
   const goalCelebrationCreatedAt = useMemo(() => {
     const primaryGoal = Array.isArray(profile.primaryGoals)
       ? profile.primaryGoals.find((entry) => entry?.id === resolvedHeroGoalId)
@@ -60092,8 +60248,8 @@ function AppContent() {
       ),
     [goalCelebrationCreatedAt, resolvedHistoryEvents, resolvedHeroGoalId]
   );
-  const heroGoalProgressRatio = heroGoalTargetUSD > 0 ? heroGoalSavedUSD / heroGoalTargetUSD : 0;
-  const remainingGoalUSD = Math.max(heroGoalTargetUSD - heroGoalSavedUSD, 0);
+  const heroGoalProgressRatio = heroGoalTargetUSD > 0 ? availableHeroGoalSavedUSD / heroGoalTargetUSD : 0;
+  const remainingGoalUSD = Math.max(heroGoalTargetUSD - availableHeroGoalSavedUSD, 0);
   const averageSaveActionUSD = useMemo(() => {
     if (!resolvedHistoryEvents.length) return FALLBACK_SAVE_ACTION_USD;
     let total = 0;
@@ -64093,7 +64249,7 @@ function AppContent() {
       return;
     }
     const goalTargetValue = Math.max(0, Number(heroGoalTargetUSD) || 0);
-    const goalSavedValue = Math.max(0, Number(heroGoalSavedUSD) || 0);
+    const goalSavedValue = Math.max(0, Number(availableHeroGoalSavedUSD) || 0);
     const budgetTotalValue = Number(widgetBudgetTotalValue) || 0;
     const budgetRemainingValue = Number(widgetBudgetRemainingValue) || 0;
     const budgetRemainingLabel = widgetBudgetRemainingLabel || "--";
@@ -64151,7 +64307,7 @@ function AppContent() {
     dailySummaryClockTick,
     dailySummaryUnlocked,
     getDayKey,
-    heroGoalSavedUSD,
+    availableHeroGoalSavedUSD,
     heroGoalTargetUSD,
     historyHydrated,
     incomeEntriesHydrated,
@@ -64327,10 +64483,10 @@ function AppContent() {
   }, [colors, moodPreset?.id, theme]);
   const moodGoalInfo = useMemo(() => {
     const aggregatedTargetUSD = heroGoalTargetUSD || 0;
-    const savedUSD = heroGoalSavedUSD || 0;
+    const savedUSD = availableHeroGoalSavedUSD || 0;
     const isComplete = aggregatedTargetUSD > 0 && savedUSD >= aggregatedTargetUSD;
     return { aggregatedTargetUSD, savedUSD, isComplete };
-  }, [heroGoalTargetUSD, heroGoalSavedUSD]);
+  }, [heroGoalTargetUSD, availableHeroGoalSavedUSD]);
   const moodDescription = useMemo(() => {
     if (!moodPreset) return "";
     const baseLine = moodGoalInfo.isComplete
@@ -68827,6 +68983,7 @@ function AppContent() {
         STORAGE_KEYS.TEMPTATION_INTERACTIONS,
         STORAGE_KEYS.REWARDS_CELEBRATED,
         STORAGE_KEYS.ANALYTICS_OPT_OUT,
+        STORAGE_KEYS.ANALYTICS_CONSENT_RECEIPT,
         STORAGE_KEYS.TEMPTATION_GOALS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS,
         STORAGE_KEYS.CUSTOM_TEMPTATIONS_CREATED,
@@ -68963,6 +69120,7 @@ function AppContent() {
       const temptationInteractionsRaw = storedMap[STORAGE_KEYS.TEMPTATION_INTERACTIONS] ?? null;
       const rewardsCelebratedRaw = storedMap[STORAGE_KEYS.REWARDS_CELEBRATED] ?? null;
       const analyticsOptOutRaw = storedMap[STORAGE_KEYS.ANALYTICS_OPT_OUT] ?? null;
+      const analyticsConsentReceiptRaw = storedMap[STORAGE_KEYS.ANALYTICS_CONSENT_RECEIPT] ?? null;
       const goalMapRaw = storedMap[STORAGE_KEYS.TEMPTATION_GOALS] ?? null;
       const customTemptationsRaw = storedMap[STORAGE_KEYS.CUSTOM_TEMPTATIONS] ?? null;
       const customTemptationsCreatedRaw =
@@ -69382,6 +69540,7 @@ function AppContent() {
           const baseState = {
             ...TAMAGOTCHI_START_STATE,
             ...parsed,
+            room: normalizeRoomState(parsed?.room),
             hunger: parsedHunger,
             coins: parsedCoins,
             lastDecayAt:
@@ -70257,16 +70416,8 @@ function AppContent() {
         setRewardCelebratedMap({});
       }
       setRewardCelebratedHydrated(true);
-      const hasAnalyticsConsent =
-        analyticsOptOutRaw === "1" ||
-        analyticsOptOutRaw === "0" ||
-        analyticsOptOutRaw === "true" ||
-        analyticsOptOutRaw === "false";
-      setAnalyticsOptOutState(
-        hasAnalyticsConsent
-          ? analyticsOptOutRaw === "1" || analyticsOptOutRaw === "true"
-          : null
-      );
+      const analyticsChoice = readConsentReceipt(analyticsConsentReceiptRaw, analyticsOptOutRaw);
+      setAnalyticsOptOutState(analyticsChoice === null ? null : !analyticsChoice);
       if (goalMapRaw) {
         try {
           setTemptationGoalMap(JSON.parse(goalMapRaw));
@@ -71898,7 +72049,7 @@ function AppContent() {
     const goalId = normalizePrimaryGoalSelectionId(resolvedHeroGoalId);
     if (!goalId) return;
     const targetUSD = heroGoalTargetUSD > 0 ? heroGoalTargetUSD : 0;
-    const hasMetGoal = targetUSD > 0 && heroGoalSavedUSD >= targetUSD;
+    const hasMetGoal = targetUSD > 0 && availableHeroGoalSavedUSD >= targetUSD;
     const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
     if (hasMetGoal && !hasCelebratedGoal) {
       if (goalCompletionQueuedGoalRef.current === goalId) return;
@@ -71915,7 +72066,7 @@ function AppContent() {
         goalTitle: heroGoalTitle,
         targetLabel: t("goalCelebrationTarget", { amount: targetLabel }),
         summary: goalCelebrationSummary,
-        fallbackTotalUSD: heroGoalSavedUSD,
+        fallbackTotalUSD: availableHeroGoalSavedUSD,
         currency: profile.currency || DEFAULT_PROFILE.currency,
         language,
         rewardCoins,
@@ -71948,7 +72099,7 @@ function AppContent() {
     profile.goalCelebratedById,
     profile.goal,
     profile.currency,
-    heroGoalSavedUSD,
+    availableHeroGoalSavedUSD,
     hasPendingGoals,
     goalCelebrationSummary,
     heroGoalTitle,
@@ -71960,7 +72111,7 @@ function AppContent() {
     const goalId = normalizePrimaryGoalSelectionId(resolvedHeroGoalId);
     if (!goalId) return;
     const targetUSD = heroGoalTargetUSD > 0 ? heroGoalTargetUSD : 0;
-    const hasMetGoal = targetUSD > 0 && heroGoalSavedUSD >= targetUSD;
+    const hasMetGoal = targetUSD > 0 && availableHeroGoalSavedUSD >= targetUSD;
     const hasCelebratedGoal = isGoalCelebratedInProfile(profile, goalId);
     const profileGoalEntry = Array.isArray(profile.primaryGoals)
       ? profile.primaryGoals.find((entry) => entry?.id === goalId)
@@ -72006,7 +72157,7 @@ function AppContent() {
     heroGoalTargetUSD,
     resolvedHeroGoalId,
     profile,
-    heroGoalSavedUSD,
+    availableHeroGoalSavedUSD,
     syncPrimaryGoalProgress,
     wishes,
   ]);
@@ -74121,41 +74272,54 @@ useEffect(() => {
     goToOnboardingStep("analyticsConsent");
   };
 
-  const handleAnalyticsConsentChoice = (enabled) => {
+  const handleAnalyticsConsentChoice = async (enabled) => {
     if (analyticsConsentPressLockRef.current) return;
     analyticsConsentPressLockRef.current = true;
     const nextEnabled = enabled === true;
     const consentSource =
       onboardingStep === "analyticsConsent" ? "onboarding" : "existing_user_prompt";
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    setAnalyticsOptOutState(!nextEnabled);
-    if (onboardingStep === "analyticsConsent") {
-      goToOnboardingStep("persona");
-    }
-    requestAnimationFrame(() => {
-      analyticsConsentPressLockRef.current = false;
-    });
-    AsyncStorage.setItem(
-      STORAGE_KEYS.ANALYTICS_OPT_OUT,
-      nextEnabled ? "0" : "1"
-    ).catch(() => {});
-    InteractionManager.runAfterInteractions(() => {
-      const analyticsSyncTask = setAnalyticsOptOutFlag(!nextEnabled).catch((error) => {
-        console.warn("analytics consent sync", error);
-      });
-      if (!nextEnabled) return;
-      analyticsSyncTask
-        .then(() =>
-          logEvent("consent_analytics_enabled", {
-            enabled: true,
-            source: consentSource,
-          })
-        )
-        .catch((error) => {
-          console.warn("analytics consent event", error);
+    setAnalyticsConsentSaving(true);
+    setAnalyticsConsentError(false);
+    const wasEnabled = analyticsOptOut === false;
+    try {
+      if (!nextEnabled && wasEnabled) {
+        // Close optional event admission as soon as an existing user withdraws consent.
+        bootstrapMonitoring(false);
+        await setAnalyticsOptOutFlag(true);
+      }
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.ANALYTICS_CONSENT_RECEIPT,
+        createConsentReceipt(nextEnabled)
+      );
+      // The old key remains a compatibility mirror, never the source of a new grant.
+      AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, nextEnabled ? "0" : "1")
+        .catch((error) => console.warn("analytics legacy choice mirror", error));
+      setAnalyticsOptOutState(!nextEnabled);
+      if (onboardingStep === "analyticsConsent") goToOnboardingStep("persona");
+      InteractionManager.runAfterInteractions(() => {
+        const analyticsSyncTask = setAnalyticsOptOutFlag(!nextEnabled).catch((error) => {
+          console.warn("analytics consent sync", error);
         });
-      requestTrackingTransparencyIfNeeded().catch(() => {});
-    });
+        if (!nextEnabled) return;
+        analyticsSyncTask.then(() =>
+          logEvent("consent_analytics_enabled", { enabled: true, source: consentSource })
+        ).catch((error) => console.warn("analytics consent event", error));
+        requestTrackingTransparencyIfNeeded().catch(() => {});
+      });
+    } catch (error) {
+      console.warn("analytics consent save", error);
+      setAnalyticsConsentError(true);
+      if (!nextEnabled && wasEnabled) {
+        await setAnalyticsOptOutFlag(false).catch(() => {});
+        bootstrapMonitoring(true);
+      }
+    } finally {
+      setAnalyticsConsentSaving(false);
+      requestAnimationFrame(() => {
+        analyticsConsentPressLockRef.current = false;
+      });
+    }
   };
 
   const updateRegistrationData = (field, value, options = null) => {
@@ -76116,11 +76280,7 @@ useEffect(() => {
       console.warn("onboarding primary goal sync", error);
     }
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    if (analyticsOptOut === null) {
-      setAnalyticsOptOutState(true);
-      setAnalyticsOptOutFlag(true);
-      AsyncStorage.setItem(STORAGE_KEYS.ANALYTICS_OPT_OUT, "1").catch(() => {});
-    }
+    // A skipped onboarding still needs an explicit analytics choice.
     if (shouldCompleteOnboardingAfterGoal) {
       if (!onboardingCompletionEventLoggedRef.current) {
         const startBalanceLocal = convertToCurrency(
@@ -79093,7 +79253,10 @@ useEffect(() => {
             ? getDayKey(now)
             : prevEntry.manualAutosaveSkipDayKey ?? null,
           templateTitle: resolvedTitle || prevEntry.templateTitle || null,
-          ...recordAmountSample(prevEntry, resolvedAmount, decisionAmountStats[primaryKey]),
+          ...recordAmountSample(prevEntry, resolvedAmount, decisionAmountStats[primaryKey], {
+            currency: profile.currency || DEFAULT_PROFILE.currency,
+            localAmount: roundCurrencyValue(convertToCurrency(resolvedAmount, profile.currency || DEFAULT_PROFILE.currency), profile.currency || DEFAULT_PROFILE.currency),
+          }),
           lastAmountUSD: resolvedAmount,
           frequencyReminderHour: preserveConfiguredTimer
             ? prevEntry.frequencyReminderHour ?? null
@@ -79200,6 +79363,7 @@ useEffect(() => {
       safeNotifications,
       temptationInteractions,
       decisionAmountStats,
+      profile.currency,
     ]
   );
   useEffect(() => {
@@ -80511,6 +80675,7 @@ useEffect(() => {
     if (result.payoutCoins > 0) {
       setHealthPoints((prev) => prev + result.payoutCoins);
     }
+    if (result.state.claimedCoins > 0) scheduleAlmiTutorial();
     registerUsageStreakAction("series", claimedAt, {
       suppressOverlay: true,
     });
@@ -80532,6 +80697,7 @@ useEffect(() => {
     triggerSuccessHaptic();
     return true;
   }, [
+    scheduleAlmiTutorial,
     lastCelebratedLevel,
     persistLastCelebratedLevel,
     playerLevel,
@@ -80561,6 +80727,19 @@ useEffect(() => {
     queueModalCloseSettle();
     // Stay on the user's current Today position after collecting a series.
   }, [queueModalCloseSettle]);
+  useEffect(() => {
+    if (almiTutorialStatus !== "pending" || analyticsOptOut === null || temptationSeriesModalVisible ||
+        blockingModalVisible || tutorialBlockingVisible || !interfaceReady ||
+        onboardingStep !== "done" || activeTab !== "feed") return undefined;
+    const timer = setTimeout(() => {
+      startAlmiTutorial();
+      openTamagotchiOverlay("food");
+      tamagotchiCareScrollRef.current?.scrollTo({ y: 0, animated: false });
+    }, Math.max(350, getModalCloseSettleRemainingMs()));
+    return () => clearTimeout(timer);
+  }, [activeTab, almiTutorialStatus, analyticsOptOut, startAlmiTutorial, blockingModalVisible,
+    getModalCloseSettleRemainingMs, interfaceReady, onboardingStep, openTamagotchiOverlay,
+    temptationSeriesModalVisible, tutorialBlockingVisible]);
   const handleTemptationSeriesContinuationHandled = useCallback((requestTick) => {
     const handledTick = Math.max(0, Number(requestTick) || 0);
     setTemptationSeriesContinuationRequestTick((currentTick) =>
@@ -87249,6 +87428,7 @@ useEffect(() => {
             setTamagotchiGreetingDayHydrated(true);
             setTamagotchiSkinId(DEFAULT_TAMAGOTCHI_SKIN);
             setSkinPickerVisible(false);
+            setRoomShopVisible(false);
             setClaimedRewards({});
             setRewardClaimTotal(0);
             setRewardCelebratedMap({});
@@ -88076,6 +88256,7 @@ useEffect(() => {
             onBudgetAutoLocked={handleBudgetAutoLocked}
             budgetLimitOpenRequest={budgetLimitOpenRequest}
             savedTotalUSD={savedTotalUSD}
+            availableGoalSavingsUSD={budgetLedgerTotals.availableToAllocateUSD}
             decisionStats={decisionStats}
             onBudgetOverrideChange={handleBudgetOverrideChange}
             onBudgetOverrideReset={handleBudgetOverrideReset}
@@ -88241,6 +88422,10 @@ useEffect(() => {
             currencyValue={profile.currency || DEFAULT_PROFILE.currency}
             soundEnabled={soundEnabled}
             onSoundToggle={handleSoundToggle}
+            analyticsOptOut={analyticsOptOut}
+            analyticsConsentSaving={analyticsConsentSaving}
+            analyticsConsentError={analyticsConsentError}
+            onAnalyticsConsentChange={(enabled) => handleAnalyticsConsentChoice(enabled)}
             spendReducesSavings={spendReducesSavings}
             onSpendReductionToggle={handleSpendImpactToggle}
             tycoonModeEnabled={tycoonAutosaveEnabled}
@@ -88270,6 +88455,7 @@ useEffect(() => {
       default:
         return (
           <FeedScreen
+            mascotVisible={!(Platform.OS === "android" && Number(Platform.Version) <= 25 && tamagotchiModalMounted)}
             shoppingBlockerEntry={<ShoppingBlockerEntry formatLocalAmount={formatCurrency} currency={profile.currency || DEFAULT_PROFILE.currency} toLocalAmount={(amount) => convertToCurrency(amount, profile.currency || DEFAULT_PROFILE.currency)} controller={shoppingBlocker} t={t} colors={colors} language={language} />}
             ref={feedScreenRef}
             products={products}
@@ -88331,7 +88517,7 @@ useEffect(() => {
             heroGoalId={mainGoalWish?.id || resolvedHeroGoalId}
             heroGoalTitle={heroGoalTitle}
             heroGoalTargetUSD={heroGoalTargetUSD}
-            heroGoalSavedUSD={heroGoalSavedUSD}
+            heroGoalSavedUSD={availableHeroGoalSavedUSD}
             dailyRewardUnlocked={dailyRewardUnlocked}
             dailyRewardReady={dailyRewardReady}
             dailyRewardAmount={dailyRewardDisplayAmount}
@@ -88493,6 +88679,10 @@ useEffect(() => {
           language={language}
           onAgree={() => handleAnalyticsConsentChoice(true)}
           onSkip={() => handleAnalyticsConsentChoice(false)}
+          saving={analyticsConsentSaving}
+          saveError={analyticsConsentError}
+          onPrivacyPress={handlePrivacyPolicyOpen}
+          privacyLabel={t("privacyPolicyLink")}
           onBack={onboardingBackHandler}
           bottomInset={androidNavInset}
           onTap={playSound}
@@ -88724,10 +88914,7 @@ useEffect(() => {
                 reserveAdd={!decisionFocusVisible}
                 activeTab={activeTab}
               />
-              {helpGuideFabVisible && activeTab === "feed" && !decisionFocusVisible ? <HeaderGlassButton testID="header-add-temptation" hitSlop={0} colors={colors} onPress={handleFabNewTemptation} label={t("redesignTodayAdd")}
-                style={{ position: "absolute", top: topSafeInset + 12, right: isRtlLanguage(language) ? undefined : 14, left: isRtlLanguage(language) ? 14 : undefined, width: 32, height: 32, borderRadius: 16, zIndex: 240 }}>
-                <Text style={{ color: colors.text, fontSize: 23, lineHeight: 26 }}>+</Text>
-              </HeaderGlassButton> : null}</PracticeInactive>
+              </PracticeInactive>
           <BugReportModal
             visible={!startupHardLockPendingBeforePaywall && bugReportVisible}
             colors={colors}
@@ -90887,12 +91074,12 @@ useEffect(() => {
                   ? Math.max(fabContainerBottom + tabBarBottomInset, resolvedTabBarHeight + 14)
                   : fabContainerBottom + tabBarBottomInset,
                 top: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview")
-                  ? topSafeInset + 4
+                  ? topSafeInset + 6
                   : undefined,
                 // Keep the goal shortcut and its long-press menu reachable without
                 // covering a challenge's Start/Claim button while the list scrolls.
-                right: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") ? (isRtlLanguage(language) ? undefined : 112) : fabContainerRight,
-                left: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") && isRtlLanguage(language) ? 112 : undefined,
+                right: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") ? (isRtlLanguage(language) ? undefined : (Platform.OS === "android" ? 102 : 94)) : fabContainerRight,
+                left: activeTab === "cart" && (progressSection === "challenges" || progressSection === "overview") && isRtlLanguage(language) ? (Platform.OS === "android" ? 102 : 94) : undefined,
               },
             ]}
           >
@@ -90900,7 +91087,7 @@ useEffect(() => {
               ref={fabButtonWrapperRef}
               accessibilityElementsHidden={feedIntroVisible}
               importantForAccessibility={feedIntroVisible ? "no-hide-descendants" : "auto"}
-              style={styles.fabButtonWrapper}
+              style={[styles.fabButtonWrapper, compactProgressHeaderFab && styles.compactHeaderFab]}
               pointerEvents="box-none"
               onLayout={handleFabWrapperLayout}
               collapsable={false}
@@ -90925,6 +91112,7 @@ useEffect(() => {
               <AnimatedTouchableOpacity
                 style={[
                   styles.cartBadge,
+                  compactProgressHeaderFab && styles.compactHeaderFab,
                   {
                     transform: [{ scale: cartBadgeScale }],
                   },
@@ -90942,7 +91130,8 @@ useEffect(() => {
                 hitSlop={4}
               >
                 <LiquidGlassFabOrb
-                  size={FAB_BUTTON_SIZE}
+                  size={compactProgressHeaderFab ? 32 : FAB_BUTTON_SIZE}
+                  minSize={compactProgressHeaderFab ? 32 : UI_TOUCH_TARGET.current}
                   icon={visibleFabIcon}
                   iconColor={isDarkTheme || isProTheme ? colors.text : "#000000"}
                   isDarkTheme={isDarkTheme}
@@ -91161,6 +91350,7 @@ useEffect(() => {
           onRequestClose={closeTamagotchiOverlay}
           statusBarTranslucent
         >
+          <SolidSurfaceProvider value={true}>
           <Animated.View
             pointerEvents={tamagotchiVisible ? "auto" : "none"}
             accessibilityViewIsModal={tamagotchiVisible}
@@ -91168,10 +91358,10 @@ useEffect(() => {
               styles.tamagotchiBackdrop,
               { backgroundColor: colors.background },
               {
-                opacity: tamagotchiModalAnim.interpolate({
+                opacity: resolveModalCompositeOpacity(tamagotchiModalAnim.interpolate({
                   inputRange: [0, 1],
                   outputRange: [0.4, 1],
-                }),
+                })),
               },
             ]}
           >
@@ -91234,12 +91424,16 @@ useEffect(() => {
                       }),
                     },
                   ],
-                  opacity: tamagotchiModalAnim,
+                  opacity: resolveModalCompositeOpacity(tamagotchiModalAnim),
 	                },
                   tamagotchiClosing && styles.tamagotchiNoShadow,
 	              ]}
 	            >
 	                  <AlmiCareBackdrop colors={colors} />
+                  <Animated.View pointerEvents="none" style={[styles.tamagotchiRoomScene, { height: tamagotchiRoomSceneHeight, transform: [{ translateY: Animated.multiply(tamagotchiRoomScrollY, -1) }] }]}>
+                    <AlmiRoomDecor equipped={normalizeRoomState(tamagotchiState.room).equipped} scene="care" />
+                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colorWithAlpha(colors.background, isDarkTheme ? 0.33 : 0.25) }]} />
+                  </Animated.View>
                     <View style={styles.tamagotchiTopBar}>
                       <View style={styles.tamagotchiTopBarSide}>
                         <HeaderGlassButton colors={colors} onPress={closeTamagotchiOverlay} label={t("onboardingBack")} testID="tamagotchi-back-button" nativeID="tamagotchi-back-button" style={{ width: 44, height: 44, borderRadius: 22 }}><Text style={{ color: colors.text, fontSize: 25, lineHeight: 28 }}>‹</Text></HeaderGlassButton>
@@ -91294,8 +91488,10 @@ useEffect(() => {
                         </View>
                       </View>
                     </View>
-                    <ScrollView
+                    <Animated.ScrollView
 	                    ref={tamagotchiCareScrollRef}
+                        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: tamagotchiRoomScrollY } } }], { useNativeDriver: true })}
+                        scrollEventThrottle={16}
                         scrollEnabled={!tamagotchiCleanTouchActive}
                         style={styles.tamagotchiCardScroll}
 	                    contentContainerStyle={[
@@ -91313,6 +91509,11 @@ useEffect(() => {
 	                    nestedScrollEnabled
 	                  >
 
+                      {almiTutorialStep === 1 && <AlmiCareTutorialCard
+                        step={1} colors={colors} t={t} rtl={isRtlLanguage(language)}
+                        onDismiss={dismissAlmiTutorial}
+                        onNext={nextAlmiTutorial}
+                      />}
 	                  <View
 	                    style={[
 	                      styles.tamagotchiPreview,
@@ -91355,7 +91556,9 @@ useEffect(() => {
                       <View pointerEvents="none" style={[styles.tamagotchiSpeechPointer, { borderTopColor: colors.card }]} />
                     </View>
                     <View style={styles.tamagotchiCareStage}>
-                      <View
+                      <View style={[styles.tamagotchiRoomFloorStage, { height: tamagotchiCareCatSize }]}>
+                        <AlmiRoomDecor equipped={normalizeRoomState(tamagotchiState.room).equipped} scene="careFloor" />
+                        <View
 	                      style={[
 	                        styles.tamagotchiMascotWrap,
                             { width: tamagotchiCareCatSize, minHeight: tamagotchiCareCatSize },
@@ -91393,43 +91596,8 @@ useEffect(() => {
 	                        isTamagotchiCleanToolSelected ? handleTamagotchiCleanStroke : undefined
 	                      }
 	                    >
-                      {tamagotchiDirtyLevel >= 0.12 && (
-                        <View
-                          pointerEvents="none"
-                          style={[
-                            styles.tamagotchiMascotDirtLayer,
-                            {
-                              opacity: Math.min(
-                                1,
-                                0.28 + tamagotchiDirtVisualIntensity * 0.72
-                              ),
-                            },
-                          ]}
-                        >
-                          {ALMI_DIRT_SPOTS.map((spot, index) => (
-                            <View
-                              key={`stage_dirt_spot_${index}`}
-                              style={[
-                                styles.almiMascotDirtySpot,
-                                {
-                                  top: ["30%", "39%", "53%", "64%", "77%"][index],
-                                  left: ["58%", "44%", "57%", "46%", "51%"][index],
-                                  width: 11,
-                                  height: 9,
-                                  borderRadius: Math.round(Math.min(spot.width, spot.height) / 2),
-                                  opacity: Math.min(
-                                    1,
-                                    spot.opacity * (0.72 + tamagotchiDirtVisualIntensity * 0.72)
-                                  ),
-                                  backgroundColor: spot.color,
-                                  transform: [{ rotate: `${spot.rotate}deg` }],
-                                },
-                              ]}
-                            />
-                          ))}
-                        </View>
-                      )}
                       <AlmiTamagotchi
+                        idleAnimationsEnabled={!(Platform.OS === "android" && Number(Platform.Version) <= 25 && roomShopVisible)}
                         override={mascotOverride}
                         onOverrideComplete={handleMascotAnimationComplete}
                         isStarving={
@@ -91439,13 +91607,13 @@ useEffect(() => {
                         isPlayDeprived={tamagotchiNeedsPlay}
                         desaturation={tamagotchiDirtVisualIntensity * 0.78}
                         dirtyOverlayEnabled={false}
-                        transitionFallbackEnabled
                         animations={tamagotchiAnimations}
                         animationSetKey={tamagotchiAnimationSetKey}
                         imageOffsetX={0}
                         imageStyle={{ width: "100%", height: "100%" }}
                         style={[styles.tamagotchiMascotLarge, { width: tamagotchiCareCatSize, height: tamagotchiCareCatSize }]}
                       />
+                      <AlmiDustOverlay intensity={tamagotchiDirtyLevel} />
                       {/* Celebration tint belongs to the mascot, never to readable controls. */}
                       {partyActive && (
                   <Animated.View
@@ -91545,12 +91713,15 @@ useEffect(() => {
                           <Text style={styles.tamagotchiHeartBurstText}>💖</Text>
                         </Animated.View>
                       ))}
-                    </View>
+                        </View>
+                      </View>
                       <View style={styles.tamagotchiCareUtilities}>
-                        <PlatformTouchableOpacity surfaceRole="filter"
+                        <View style={styles.tamagotchiTopActionCell}>
+                        <PlatformTouchableOpacity surfaceRole="glass"
                           style={[
                             styles.tamagotchiTopActionButton,
                             {
+                              width: "100%",
                               borderColor: colors.border,
                               backgroundColor: tamagotchiSkinButtonSurfaceColor,
                             },
@@ -91590,16 +91761,17 @@ useEffect(() => {
                             </View>
                           )}
                         </PlatformTouchableOpacity>
+                        </View>
                         <Animated.View
                           style={[
                             styles.tamagotchiTopActionCell,
                             { transform: [{ scale: tamagotchiRewardPulseAnim }] },
                           ]}
                         >
-                          <PlatformTouchableOpacity surfaceRole="filter"
+                          <PlatformTouchableOpacity surfaceRole="glass"
                             style={[
                               styles.tamagotchiStickyRewardButton,
-                            { minHeight: 44, justifyContent: "center", paddingHorizontal: 10 },
+                              { justifyContent: "center", paddingHorizontal: 10 },
                               dailyRewardReady
                                 ? styles.tamagotchiStickyRewardButtonReady
                                 : styles.tamagotchiStickyRewardButtonResting,
@@ -91613,7 +91785,7 @@ useEffect(() => {
                                     ? isDarkTheme
                                       ? "#173326"
                                       : "#EAF8F1"
-                                    : colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.24 : 0.13)
+                                    : tamagotchiSkinButtonSurfaceColor
                                   : tamagotchiSkinButtonSurfaceColor,
                                 opacity: 1,
                               },
@@ -91623,15 +91795,6 @@ useEffect(() => {
                             accessibilityLabel={`${dailyRewardButtonTitle}. ${dailyRewardButtonLabel}`}
                             activeOpacity={dailyRewardReady ? 0.86 : 0.94}
                           >
-                            {dailyRewardReady && Platform.OS !== "android" && (
-                              <View
-                                pointerEvents="none"
-                                style={[
-                                  styles.tamagotchiStickyRewardGlow,
-                                  { backgroundColor: colorWithAlpha(dailyRewardButtonAccent, isDarkTheme ? 0.28 : 0.18) },
-                                ]}
-                              />
-                            )}
                             <View
                               style={[
                                 styles.tamagotchiStickyRewardIconWrap,
@@ -91723,6 +91886,16 @@ useEffect(() => {
                           </PlatformTouchableOpacity>
                         </Animated.View>
                       </View>
+                      <PlatformTouchableOpacity surfaceRole="glass"
+                        testID="almi-room-open"
+                        onPress={openRoomShop}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("almiRoomOpen")}
+                        style={[styles.tamagotchiTopActionButton, { width: "100%", borderColor: colors.border, backgroundColor: tamagotchiSkinButtonSurfaceColor }]}
+                      >
+                        <Text style={{ fontSize: 19 }} accessible={false}>🏠</Text>
+                        <Text style={[styles.tamagotchiTopActionLabel, { color: colors.text }]}>{t("almiRoomOpen")}</Text>
+                      </PlatformTouchableOpacity>
                     </View>
                   </View>
                   {tamagotchiHasHungerImmunity && (
@@ -91879,6 +92052,10 @@ useEffect(() => {
                     </AnimatedPlatformSurface>
                   )}
                   <PlatformSurface surfaceRole="card"
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      const nextHeight = 52 + layout.y;
+                      setTamagotchiRoomSceneHeight((current) => Math.abs(current - nextHeight) > 1 ? nextHeight : current);
+                    }}
                     style={[
                       styles.tamagotchiCareSummaryGrid,
                       {
@@ -92035,6 +92212,18 @@ useEffect(() => {
 
                   </PlatformSurface>
                   <View
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      if (almiTutorialStep === 2) {
+                        tamagotchiCareScrollRef.current?.scrollTo({ y: Math.max(0, layout.y - 12), animated: !reduceMotion });
+                      }
+                    }}
+                  >
+                    {almiTutorialStep === 2 && <AlmiCareTutorialCard
+                      step={2} colors={colors} t={t} rtl={isRtlLanguage(language)}
+                      onDismiss={dismissAlmiTutorial}
+                      onNext={dismissAlmiTutorial}
+                    />}
+                  <View
                     style={[
                       styles.tamagotchiControlPanel,
                       IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiControlPanelTall,
@@ -92104,6 +92293,7 @@ useEffect(() => {
                             </PlatformTouchableOpacity>
                           );
                         })}
+                        {almiTutorialStep === 2 && <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { borderWidth: 2, borderColor: colors.text, borderRadius: 18, zIndex: 1 }]} />}
                       </PlatformSurface>
                     </View>
                     <Animated.View
@@ -92111,7 +92301,7 @@ useEffect(() => {
                         styles.tamagotchiTabContentWrap,
                         IS_TALL_TAMAGOTCHI_DEVICE && styles.tamagotchiTabContentWrapTall,
                         {
-                          opacity: tamagotchiTabContentAnim,
+                          opacity: resolveModalCompositeOpacity(tamagotchiTabContentAnim),
                           transform: [
                             {
                               translateY: tamagotchiTabContentAnim.interpolate({
@@ -92218,7 +92408,8 @@ useEffect(() => {
                       {t("tamagotchiFullHint")}
                     </Text>
                   )}
-	                  </ScrollView>
+	                  </View>
+	                  </Animated.ScrollView>
               {partyActive && (
                 <>
                   <ConfettiCannon
@@ -92249,7 +92440,23 @@ useEffect(() => {
 	              />
 	            </View>
           </Animated.View>
+          </SolidSurfaceProvider>
         </Modal>
+        <AlmiRoomShop
+          visible={!startupHardLockPendingBeforePaywall && roomShopVisible}
+          onClose={closeRoomShop}
+          onBuy={handleRoomBuy}
+          onEquip={handleRoomEquip}
+          onRemove={(itemId) => handleRoomEquip(itemId, true)}
+          room={tamagotchiState.room}
+          balance={healthPoints}
+          catSource={tamagotchiSkin.avatar}
+          dirtyLevel={tamagotchiDirtyLevel}
+          colors={colors}
+          language={language}
+          t={t}
+          busy={roomPurchaseBusy}
+        />
         <Modal
           visible={!startupHardLockPendingBeforePaywall && skinPickerVisible}
           transparent
@@ -94619,13 +94826,17 @@ const StatusGlass = React.memo(
     const overlayTopOpacity = solid ? 1 : isAndroidStatusGlass ? 0.86 : 0.7;
     const overlaySoftTopOpacity = solid ? 1 : isAndroidStatusGlass ? 0.8 : 0.68;
     const overlaySafeOpacity = solid ? 1 : isAndroidStatusGlass ? 0.72 : 0.6;
-    const overlayUpperOpacity = isAndroidStatusGlass ? (solid ? 0.58 : 0.48) : solid ? 0.53 : 0.5;
-    const overlayUpperMidOpacity = isAndroidStatusGlass ? (solid ? 0.43 : 0.34) : solid ? 0.45 : 0.41;
-    const overlayMidOpacity = isAndroidStatusGlass ? (solid ? 0.3 : 0.23) : solid ? 0.35 : 0.31;
-    const overlayLowerMidOpacity = isAndroidStatusGlass ? (solid ? 0.2 : 0.15) : solid ? 0.26 : 0.23;
-    const overlayLowOpacity = isAndroidStatusGlass ? (solid ? 0.12 : 0.09) : solid ? 0.18 : 0.15;
-    const overlayTailOpacity = isAndroidStatusGlass ? (solid ? 0.065 : 0.045) : solid ? 0.1 : 0.08;
-    const overlayNearClearOpacity = isAndroidStatusGlass ? (solid ? 0.025 : 0.018) : solid ? 0.045 : 0.035;
+    // Sample a smoothstep falloff: opacity only decreases, with a gentle slope
+    // at both ends. Keep the system icons on an opaque backing in solid mode.
+    const fadeOpacity = (progress) =>
+      overlaySafeOpacity * (1 - progress * progress * (3 - 2 * progress));
+    const overlayUpperOpacity = fadeOpacity(0.16);
+    const overlayUpperMidOpacity = fadeOpacity(0.33);
+    const overlayMidOpacity = fadeOpacity(0.5);
+    const overlayLowerMidOpacity = fadeOpacity(0.67);
+    const overlayLowOpacity = fadeOpacity(0.82);
+    const overlayTailOpacity = fadeOpacity(0.93);
+    const overlayNearClearOpacity = fadeOpacity(0.985);
     const topOffset = -Math.max(0, Number(offsetY) || 0);
 
     const renderBlurBand = (bandHeight, bandOpacity, bandIntensity, key) => {
@@ -94668,7 +94879,8 @@ const StatusGlass = React.memo(
 
     return (
       <View pointerEvents="none" style={[styles.statusGlass, { height, top: topOffset }, layerStyle]}>
-        {blurAvailable
+        {/* Solid system chrome already covers the blur. Avoid its hard lower edge. */}
+        {blurAvailable && !solid
           ? blurBands.map((band, index) =>
               renderBlurBand(
                 band.height,
@@ -94690,7 +94902,7 @@ const StatusGlass = React.memo(
               <SvgStop
                 offset={toPercent(safeStopPercent)}
                 stopColor={overlayColor}
-                stopOpacity={overlaySafeOpacity * 0.55}
+                stopOpacity={overlaySafeOpacity}
               />
               <SvgStop
                 offset={toPercent(upperStopPercent)}
@@ -97789,6 +98001,13 @@ const styles = StyleSheet.create({
   tamagotchiCardScroll: {
     flex: 1,
   },
+  tamagotchiRoomScene: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: "hidden",
+  },
   tamagotchiTopBar: {
     minHeight: 52,
     width: "100%",
@@ -97810,6 +98029,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tamagotchiCareStage: { width: "100%", alignItems: "center", gap: 4 },
+  tamagotchiRoomFloorStage: {
+    width: "100%",
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
   tamagotchiCareUtilities: { width: "100%", flexDirection: "row", alignItems: "stretch", justifyContent: "center", gap: 12 },
   tamagotchiTopBarCenter: {
     width: "100%",
@@ -97831,15 +98057,16 @@ const styles = StyleSheet.create({
   tamagotchiTopActionButton: {
     flex: 1,
     minWidth: 0,
-    minHeight: 44,
+    minHeight: 54,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
+    borderRadius: UI_RADIUS.pill,
     paddingHorizontal: 10,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+    overflow: "hidden",
   },
   tamagotchiTopActionIcon: {
     width: 30,
@@ -97892,10 +98119,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tamagotchiStickyRewardButton: {
+    flex: 1,
     width: "100%",
     minHeight: 54,
     borderWidth: 1,
-    borderRadius: UI_RADIUS.control,
+    borderRadius: UI_RADIUS.pill,
     paddingHorizontal: UI_SPACING.xs,
     paddingVertical: UI_SPACING.xxs,
     flexDirection: "row",
@@ -97910,14 +98138,6 @@ const styles = StyleSheet.create({
   tamagotchiStickyRewardButtonResting: {
     shadowOpacity: 0,
     elevation: 0,
-  },
-  tamagotchiStickyRewardGlow: {
-    position: "absolute",
-    top: -scaleTamagotchiMetric(16, 12),
-    right: -scaleTamagotchiMetric(14, 10),
-    width: scaleTamagotchiMetric(64, 48),
-    height: scaleTamagotchiMetric(64, 48),
-    borderRadius: scaleTamagotchiMetric(45, 34),
   },
   tamagotchiStickyRewardIconWrap: {
     width: 30,
@@ -98308,8 +98528,7 @@ const styles = StyleSheet.create({
   },
   tamagotchiHeroSpeechBubble: {
     alignSelf: "center",
-    width: "100%",
-    maxWidth: 360,
+    maxWidth: "94%",
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
@@ -98329,7 +98548,6 @@ const styles = StyleSheet.create({
   tamagotchiHeroSpeechText: {
     ...createBodyText({ fontSize: 13, textAlign: "left" }),
     lineHeight: 18,
-    alignSelf: "stretch",
     flexShrink: 1,
     textAlign: "center",
   },
@@ -105991,19 +106209,6 @@ const styles = StyleSheet.create({
   temptationReviewMoreText: { fontSize: 27, lineHeight: 30, marginTop: -9 },
   temptationReviewDescription: { ...createBodyText({ fontSize: 14 }), lineHeight: 20 },
   temptationReviewTimer: { ...createBodyText({ fontSize: 12, fontWeight: "700" }), lineHeight: 17 },
-  temptationReviewPrimary: {
-    minHeight: 50,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  temptationReviewPrimaryText: {
-    ...createCtaText({ fontSize: 15 }),
-    lineHeight: 21,
-    alignSelf: "stretch",
-    textAlign: "center",
-  },
   temptationReviewMenu: { borderTopWidth: 1, paddingTop: 5 },
   temptationReviewMenuRow: {
     minHeight: 46,
@@ -106536,15 +106741,14 @@ const styles = StyleSheet.create({
     ...createBodyText({ fontSize: 13, lineHeight: 18, fontWeight: "700" }),
   },
   temptationAmountModalClose: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
   },
   temptationAmountModalScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
+    flex: 1,
     minHeight: 0,
   },
   temptationAmountModalScrollContent: {
@@ -106557,7 +106761,7 @@ const styles = StyleSheet.create({
     borderRadius: UI_RADIUS.sheet,
     borderWidth: 1,
     padding: 14,
-    gap: 12,
+    gap: 10,
     overflow: "hidden",
     ...Platform.select({
       android: {
@@ -106589,7 +106793,7 @@ const styles = StyleSheet.create({
   temptationAmountModalHeroText: {
     flex: 1,
     minWidth: 0,
-    gap: 8,
+    gap: 0,
   },
   temptationAmountModalHeadline: {
     fontSize: 24,
@@ -106637,7 +106841,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 10,
-    gap: 6,
+    gap: 2,
   },
   temptationAmountSliderPanelCompact: {
     borderRadius: 18,
@@ -106647,35 +106851,35 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   temptationAmountMoodStage: {
-    minHeight: 152,
-    borderRadius: 24,
+    minHeight: 92,
+    borderRadius: 18,
     borderWidth: 1,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
   temptationAmountMoodStageCompact: {
-    minHeight: 104,
-    borderRadius: 20,
+    minHeight: 72,
+    borderRadius: 16,
   },
   temptationAmountMoodAura: {
     position: "absolute",
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
   },
   temptationAmountMoodAuraCompact: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
   },
   temptationAmountMoodCat: {
-    width: 140,
-    height: 140,
+    width: 88,
+    height: 88,
   },
   temptationAmountMoodCatCompact: {
-    width: 108,
-    height: 108,
+    width: 70,
+    height: 70,
   },
   temptationAmountStats: {
     flexDirection: "row",
@@ -106701,14 +106905,14 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   temptationAmountStatValue: {
-    fontSize: 27,
-    lineHeight: 32,
+    fontSize: 21,
+    lineHeight: 26,
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
   temptationAmountStatValueCompact: {
-    fontSize: 22,
-    lineHeight: 27,
+    fontSize: 19,
+    lineHeight: 24,
   },
   temptationAmountProgressTrack: {
     height: 10,
@@ -106920,9 +107124,35 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
+  temptationAmountCurrentRow: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountCurrentTap: {
+    minHeight: 44,
+    minWidth: 88,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  temptationAmountCurrentText: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    textAlign: "center",
+  },
+  temptationAmountCurrentHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   temptationAmountScaleText: {
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   temptationGoalBadge: {
     alignSelf: "flex-start",
@@ -107275,19 +107505,23 @@ const styles = StyleSheet.create({
   },
   pauseFreezeActionGhost: {
     flex: 1,
+    minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
     paddingVertical: 11,
     alignItems: "center",
+    justifyContent: "center",
   },
   pauseFreezeActionGhostText: {
     ...createCtaText({ fontSize: 12 }),
   },
   pauseFreezeActionPrimary: {
     flex: 1,
+    minHeight: 48,
     borderRadius: 14,
     paddingVertical: 11,
     alignItems: "center",
+    justifyContent: "center",
   },
   pauseFreezeActionPrimaryText: {
     ...createCtaText({ fontSize: 12 }),
@@ -112112,6 +112346,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
+  },
+  compactHeaderFab: {
+    width: UI_TOUCH_TARGET.current,
+    height: UI_TOUCH_TARGET.current,
+    borderRadius: UI_TOUCH_TARGET.current / 2,
   },
   cartBadge: {
     width: FAB_BUTTON_SIZE,

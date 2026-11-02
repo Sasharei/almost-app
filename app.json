@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almost Savings",
     "slug": "almost_clean",
-    "version": "8.0.2",
+    "version": "8.1.0",
     "orientation": "portrait",
     "icon": "./assets/Almost_icon.png",
     "userInterfaceStyle": "light",
@@ -27,7 +27,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "googleServicesFile": "./ios/GoogleService-Info.plist",
-      "buildNumber": "136",
+      "buildNumber": "137",
       "appStoreUrl": "https://apps.apple.com/app/id6756276744?action=write-review",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -101,7 +101,7 @@
     },
     "android": {
       "package": "com.sasarei.almostclean",
-      "versionCode": 136,
+      "versionCode": 137,
       "googleServicesFile": "./android/app/google-services.json",
       "playStoreUrl": "https://play.google.com/store/apps/details?id=com.sasarei.almostclean",
       "icon": "./assets/android/ic_launcher.png",

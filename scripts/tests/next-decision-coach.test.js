@@ -104,14 +104,13 @@ test("coach scrolling targets the virtualized feed index instead of a cell-local
   assert.equal(buildNextDecisionCoachScrollRequest({ index: -1 }), null);
 });
 
-test("coach continuation preserves Today/focus and never treats scheduled scrolling as shown", () => {
+test("coach continuation scrolls to a gallery card and never treats scheduled scrolling as shown", () => {
   const presentationEffect = getSourceSection(
     "if (!nextDecisionCoachRequest) return;",
     "const resolveAssignedGoalLabel = useCallback("
   );
-  assert.match(presentationEffect, /setRedesignFocusId\(targetEntry.id\)/);
-  assert.match(presentationEffect, /setRedesignFeedMode\("focus"\)/);
-  assert.doesNotMatch(presentationEffect, /onNextDecisionCoachShown|setRedesignFeedMode\("all"\)/);
+  assert.match(presentationEffect, /scrollToTemptationCard\(\{ templateId: targetEntry.item\?\.templateId \|\| targetEntry.item\?\.id, animated: true \}\)/);
+  assert.doesNotMatch(presentationEffect, /onNextDecisionCoachShown|setRedesignFeedMode\("focus"\)/);
   const nativeCoach = getSourceSection("function PresentedDecisionCoach(", "const RedesignTodayHeader =");
   assert.match(nativeCoach, /measureInWindow/);
   assert.match(nativeCoach, /isCoachActuallyPresented/);

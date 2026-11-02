@@ -15,6 +15,7 @@ import { useMotionPreferences } from "../hooks/useMotionPreferences";
 import { createMotionLoop } from "../utils/motion";
 import { resolveFabricAutoFitMinimumFontSize } from "../utils/textAutoFit";
 import { UI_TOUCH_TARGET } from "../constants/designSystem";
+import { ANDROID_LIVE_GLASS_BLUR_ENABLED } from "../constants/appBehavior";
 
 const colorWithAlpha = (hex, alpha = 1) => {
   const clamped = Math.max(0, Math.min(1, Number(alpha) || 0));
@@ -88,6 +89,7 @@ const snapEvenSize = (value = 0) => {
 
 const LiquidGlassFabOrb = ({
   size = 64,
+  minSize = UI_TOUCH_TARGET.current,
   icon = "$",
   iconColor = "#0D1930",
   isDarkTheme = false,
@@ -97,7 +99,7 @@ const LiquidGlassFabOrb = ({
   androidBlurMode = "live",
 }) => {
   const { reduceMotion, reduceTransparency } = useMotionPreferences();
-  const resolvedSize = Math.max(UI_TOUCH_TARGET.current, Number(size) || 64);
+  const resolvedSize = Math.max(minSize, Number(size) || 64);
   const radius = resolvedSize / 2;
   const isAndroid = Platform.OS === "android";
   const nativeLiquidGlassAvailable = isNativeLiquidGlassAvailable();
@@ -298,15 +300,15 @@ const LiquidGlassFabOrb = ({
             height: resolvedSize,
             borderRadius: radius,
             backgroundColor: isDarkTheme
-              ? "rgba(53,72,104,0.78)"
+              ? "#354868"
               : isProTheme
-              ? colorWithAlpha(proThemeAccentColor, 0.22)
-              : "rgba(222,233,250,0.78)",
+              ? "#DEE4FA"
+              : "#DEE9FA",
             borderColor: isDarkTheme ? "rgba(232,241,255,0.32)" : "rgba(255,255,255,0.78)",
           },
         ]}
       >
-        {!reduceTransparency && (
+        {ANDROID_LIVE_GLASS_BLUR_ENABLED && !reduceTransparency && (
           <ExpoBlurView
             pointerEvents="none"
             tint={isDarkTheme ? "dark" : "light"}
@@ -332,8 +334,16 @@ const LiquidGlassFabOrb = ({
           </View>
         ) : (
           <View style={styles.androidPlus}>
-            <View style={[styles.androidPlusHorizontal, { backgroundColor: androidIconColor }]} />
-            <View style={[styles.androidPlusVertical, { backgroundColor: androidIconColor }]} />
+            <View style={[styles.androidPlusHorizontal, {
+              backgroundColor: androidIconColor,
+              width: Math.round(resolvedSize * 0.406),
+              height: Math.max(2, Math.round(resolvedSize * 0.047)),
+            }]} />
+            <View style={[styles.androidPlusVertical, {
+              backgroundColor: androidIconColor,
+              width: Math.max(2, Math.round(resolvedSize * 0.047)),
+              height: Math.round(resolvedSize * 0.406),
+            }]} />
           </View>
         )}
       </View>

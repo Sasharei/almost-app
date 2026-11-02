@@ -1,6 +1,6 @@
 {
   "name": "almost_clean",
-  "version": "8.0.2",
+  "version": "8.1.0",
   "main": "index.js",
   "scripts": {
     "start": "EXPO_NO_TYPESCRIPT_SETUP=1 expo start --dev-client",
@@ -17,9 +17,9 @@
     "check:functional-parity": "node scripts/check-ui-functional-parity.js",
     "check:analytics-contract": "node scripts/check-analytics-contract.js",
     "check:native-analytics-config": "node scripts/check-native-analytics-config.js",
-    "test:attribution": "node --test scripts/tests/attribution-state-machine.test.js",
+    "test:attribution": "node --test scripts/tests/attribution-state-machine.test.js scripts/tests/analytics-consent-receipt.test.js",
     "test:ui-session": "node --test scripts/tests/report-insights.test.js scripts/tests/amount-slider.test.js scripts/tests/ui-session-state.test.js scripts/tests/practice-tutorial.test.js scripts/tests/fab-tutorial-geometry.test.js scripts/tests/goal-progress.test.js scripts/tests/history-presentation.test.js scripts/tests/monthly-budget.test.js scripts/tests/control-geometry.test.js scripts/tests/almost-pay-sequence.test.js scripts/tests/almost-pay-title.test.js scripts/tests/decision-countdown.test.js scripts/tests/traditional-chinese.test.js scripts/tests/contextual-fixes.test.js scripts/tests/savings-spend-balance.test.js scripts/tests/currency-coverage.test.js scripts/tests/device-language.test.js scripts/tests/currency-selector.test.js scripts/tests/controls-context-regression.test.js scripts/tests/surface-contrast.test.js scripts/tests/ui-design-regressions.test.js",
-    "test:engagement": "node --test scripts/tests/ios-paywall-offer.test.js scripts/tests/automatic-soft-paywall.test.js scripts/tests/coin-balance.test.js scripts/tests/daily-challenge.test.js scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/temptation-price-override-storage.test.js scripts/tests/decision-amount-memory.test.js scripts/tests/temptation-lifetime-stats.test.js scripts/tests/subscription-watch.test.js scripts/tests/temptation-card-access.test.js scripts/tests/today-temptations.test.js scripts/tests/today-overview.test.js scripts/tests/next-decision-coach.test.js scripts/tests/action-reward-overlay.test.js scripts/tests/rating-prompt.test.js scripts/tests/tycoon-access.test.js scripts/tests/trial-and-review.test.js",
+    "test:engagement": "node --test scripts/tests/almi-care-tutorial.test.js scripts/tests/almi-room.test.js scripts/tests/ios-paywall-offer.test.js scripts/tests/automatic-soft-paywall.test.js scripts/tests/coin-balance.test.js scripts/tests/daily-challenge.test.js scripts/tests/temptation-series.test.js scripts/tests/temptation-schedule.test.js scripts/tests/temptation-price-override-storage.test.js scripts/tests/decision-amount-memory.test.js scripts/tests/temptation-lifetime-stats.test.js scripts/tests/subscription-watch.test.js scripts/tests/temptation-card-access.test.js scripts/tests/today-temptations.test.js scripts/tests/today-overview.test.js scripts/tests/next-decision-coach.test.js scripts/tests/action-reward-overlay.test.js scripts/tests/rating-prompt.test.js scripts/tests/tycoon-access.test.js scripts/tests/trial-and-review.test.js",
     "check:security-audit": "node scripts/check-security-audit.js",
     "check:applovin-cost": "node scripts/check-applovin-cost-import.js",
     "check:localization": "node scripts/check-localization.js && node scripts/check-native-permission-localization.js && node scripts/generate-app-shortcuts-strings.js --check",
@@ -36,7 +36,7 @@
     "test:cloud-notifications": "node --test scripts/tests/cloud-notifications.test.js scripts/tests/push-copy-refresh.test.js scripts/tests/cat-notification-regressions.test.js scripts/tests/notification-policy.test.js",
     "test:shopping-blocker": "node --test scripts/tests/shopping-blocker.test.js",
     "test:widgets": "node --test scripts/tests/almi-widget.test.js",
-    "test:ios-lifecycle": "node --test scripts/tests/ios-scene-lifecycle.test.js",
+    "test:ios-lifecycle": "node --test scripts/tests/ios-scene-lifecycle.test.js scripts/tests/mlkit-simulator.test.js",
     "test:privacy-deletion": "node --test scripts/tests/cloud-deletion.test.cjs"
   },
   "dependencies": {
@@ -66,6 +66,7 @@
     "expo-font": "~14.0.12",
     "expo-glass-effect": "~0.1.10",
     "expo-haptics": "^15.0.7",
+    "expo-image": "~3.0.11",
     "expo-image-picker": "~17.0.11",
     "expo-local-authentication": "~17.0.9",
     "expo-localization": "~17.0.9",
@@ -103,7 +104,8 @@
     "eslint": "^9.39.4",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2",
-    "fill-range": "7.1.1"
+    "fill-range": "7.1.1",
+    "minimatch-core": "npm:minimatch@11.0.1"
   },
   "expo": {
     "install": {
@@ -133,21 +135,26 @@
   "overrides": {
     "@xmldom/xmldom": "0.8.15",
     "@react-native-async-storage/async-storage": "$@react-native-async-storage/async-storage",
-    "brace-expansion": "2.1.7",
     "browserslist": "4.28.7",
     "image-size": "2.0.2",
     "postcss": "8.5.26",
-    "qs": "6.16.0",
+    "qs": "6.17.1",
     "uuid": "11.1.1",
-    "joi": "17.13.8",
+    "joi": "17.13.9",
     "@grpc/grpc-js": "1.14.6",
     "compression": "1.8.2",
     "shell-quote": "1.12.0",
     "source-map-js": "1.2.2",
-    "undici@6": "6.29.0",
+    "undici@6": "6.29.1",
     "braces": "file:./vendor/security/braces",
     "node-forge": "file:./vendor/security/node-forge",
-    "js-yaml": "4.3.2"
+    "js-yaml": "4.3.2",
+    "launch-editor": "2.14.2",
+    "deepmerge": "file:./vendor/security/deepmerge",
+    "minimatch": "file:./vendor/security/minimatch",
+    "glob@>=9.0.0": "14.0.2",
+    "brace-expansion@<3": "2.1.7",
+    "brace-expansion@>=3": "5.0.12"
   },
   "private": true
 }

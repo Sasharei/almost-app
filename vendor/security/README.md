@@ -9,3 +9,8 @@ These are explicitly named local forks, not upstream fixed releases. Sources and
 References: https://github.com/advisories/GHSA-vfj7-8cjw-p6xm, https://github.com/advisories/GHSA-86w9-cpqp-85rv, https://github.com/advisories/GHSA-hp3w-g68c-fv3c.
 
 When upstream fixes become available, replace each fork after retaining the adversarial and compatibility tests; do not remove the protections merely to obtain a clean audit. Run `npm run check:security-audit` after a clean install.
+
+- deepmerge 4.3.1 → @almost-security/deepmerge 4.3.1-almost.1: GHSA-gcqx-w48m-w2h4 has no fixed upstream release. Every destination write defines an own data property, preventing the legacy `__proto__` setter from changing the merged object's prototype. Existing key filtering, array/custom merges, symbols and type declarations are preserved. The contract probes poisoned targets/sources and valid nested/array/symbol merges.
+- minimatch → @almost-security/minimatch 11.0.1-almost.1: a small compatibility adapter around the **published fixed minimatch 11.0.1 engine**, installed as the root dev dependency `minimatch-core` (npm alias). It preserves callable CommonJS consumers such as glob 7 and exposes modern named helpers; it does not contain a renamed vulnerable implementation. Modern glob consumers use the fixed glob 14.0.2; glob 7 retains its legacy API. Contracts exercise both matcher APIs/defaults and bound the adversarial optimizationLevel=2 amplification probe in a timed child process.
+
+Additional references: https://github.com/advisories/GHSA-gcqx-w48m-w2h4, https://github.com/advisories/GHSA-g3hv-75wg-m249, https://github.com/advisories/GHSA-3g3m-2fjr-6pw4.

@@ -5,7 +5,17 @@ const {
   isGoalCompletionLocked,
   resolveGoalProgressState,
   resolveGoalProgressPercentLabel,
+  resolveAvailableGoalSavingsUSD,
 } = require("../../src/utils/goalProgress");
+
+test("main goal progress follows the unallocated savings balance", () => {
+  assert.equal(resolveAvailableGoalSavingsUSD(3202.8, 3202.8), 3202.8);
+  assert.equal(resolveAvailableGoalSavingsUSD(3202.8, 2616.21), 2616.21);
+  assert.equal(resolveAvailableGoalSavingsUSD(3202.8, 2800), 2800);
+  assert.equal(resolveAvailableGoalSavingsUSD(3202.8, 0), 0);
+  assert.equal(resolveAvailableGoalSavingsUSD(200, 0), 0);
+  assert.equal(resolveAvailableGoalSavingsUSD(1000, 2500), 1000);
+});
 
 test("keeps an almost-complete goal below 100 percent", () => {
   assert.equal(resolveGoalProgressPercentLabel(978 / 980, false), 99);

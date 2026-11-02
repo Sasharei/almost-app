@@ -545,7 +545,8 @@ test("pending autosaves render after hydration and relaunch with remembered amou
     names.has(id.name || id.elements?.[0]?.name)
   ));
   assert.equal(declarations.length, 4);
-  const source = declarations.map((node) => appSource.slice(node.start, node.end)).join("\n");
+  const amountHelper = ast.program.body.find((node) => node.type === "VariableDeclaration" && node.declarations[0].id.name === "resolveAutosaveCardAmountUSD");
+  const source = [amountHelper, ...declarations].map((node) => appSource.slice(node.start, node.end)).join("\n");
   for (const [hydrated, editedAmount] of [[false, null], [true, null], [true, 7.25]]) {
     const context = vm.createContext({
       useState: (initial) => [typeof initial === "boolean" ? hydrated : { tea: { averageAmountUSD: 12 } }, () => {}],
@@ -557,6 +558,7 @@ test("pending autosaves render after hydration and relaunch with remembered amou
       normalizeEmojiValue: (value) => value, DEFAULT_TEMPTATION_EMOJI: "☕",
       clampTransactionAmountUSD: (value) => value,
       resolveRememberedAmount: require("../../src/utils/decisionAmountMemory").resolveRememberedAmount,
+      CURRENCY_RATES: { USD: 1 },
       getTemptationPrice: (card) => card.priceUSD, getTemptationPricePrecision: () => 2,
       getTycoonAutosaveEventDayKey, isManualTycoonInteractionInDay,
       decisionAmountStats: {}, catalogOverrides: {}, emojiOverrides: {}, titleOverrides: {}, pricePrecisionOverrides: {},

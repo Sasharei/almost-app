@@ -35,7 +35,7 @@ test('translucent iOS surfaces bypass adaptive glass, including when transparenc
     const React = { memo: (f) => f, createElement: (type, props, ...children) => ({ type, props, children }) };
     const render = vm.runInNewContext(`${helpers}\n${code}\nSurfaceMaterial`, {
       React, useMotionPreferences: () => ({ reduceTransparency: reduced }),
-      useContext: (context) => context, SurfaceDepth: false, SurfaceAppearance: false, SurfaceBackground: '#FFFFFF',
+      useContext: (context) => context, SurfaceSolid: false, SurfaceDepth: false, SurfaceAppearance: false, SurfaceBackground: '#FFFFFF',
       StyleSheet: { flatten: (v) => v, absoluteFillObject: {} }, Platform: { OS: 'ios' },
       resolveSwiftUISurface: () => 'NativeSurface', nativeGlassAvailable: () => true,
       View: 'View', GlassView: 'GlassView', BlurView: 'BlurView',
@@ -86,5 +86,39 @@ test('party glow belongs to the mascot and cannot cover bonus, protection or car
   };
   visit(tree);
   assert.ok(owners?.some((node) => app.slice(node.openingElement.start, node.openingElement.end).includes('styles.tamagotchiMascotWrap')));
-  assert.ok(owners?.some((node) => node.openingElement.name.name === 'ScrollView'));
+  assert.ok(owners?.some((node) => node.openingElement.name.name === 'ScrollView' ||
+    (node.openingElement.name.object?.name === 'Animated' && node.openingElement.name.property?.name === 'ScrollView')));
+});
+
+
+test('cat menu keeps every material role on a stable themed fill during native glass updates', () => {
+  const component = source.slice(source.indexOf('const SurfaceMaterial ='), source.indexOf('\nfunction resolveSurfaceStyle'));
+  const code = babel.transformSync(component, { babelrc: false, configFile: false, plugins: ['@babel/plugin-transform-react-jsx'] }).code;
+  const React = { memo: (f) => f, createElement: (type, props, ...children) => ({ type, props, children }) };
+  const palettes = [...Object.values(config.THEMES), ...config.PRO_THEME_ACCENT_OPTIONS.map((v) => ({ ...config.THEMES.pro, ...v.palette, primary: v.accent }))];
+  for (const colors of palettes) {
+    for (const reduced of [false, true]) {
+      const render = vm.runInNewContext(`${helpers}\n${code}\nSurfaceMaterial`, {
+        React, useMotionPreferences: () => ({ reduceTransparency: reduced }),
+        useContext: (context) => context, SurfaceSolid: true, SurfaceDepth: false,
+        SurfaceAppearance: colors.appearance === 'dark', SurfaceBackground: colors.card,
+        StyleSheet: { flatten: (v) => v, absoluteFillObject: {} }, Platform: { OS: 'ios' },
+        resolveSwiftUISurface: () => { throw new Error('Adaptive native material must not mount'); },
+        nativeGlassAvailable: () => { throw new Error('Adaptive Expo glass must not mount'); },
+        resolveControlGradient: () => null, resolveForegroundForColor: () => colors.text,
+        View: 'View', GlassView: 'GlassView', BlurView: 'BlurView',
+      });
+      for (const surfaceRole of ['glass', 'control', 'card', 'filter']) {
+        for (const backgroundColor of [colors.primary, colorWithAlpha(colors.card, 0.48)]) {
+          const tree = render({ style: { backgroundColor }, surfaceRole });
+          assert.equal(tree.children[0].type, 'View');
+          assert.equal(tree.children[0].props.style[1].backgroundColor, resolveStableSurfaceColor(backgroundColor, colors.card));
+          assert.equal(tree.props.pointerEvents, 'none');
+        }
+      }
+    }
+  }
+  const menu = app.slice(app.indexOf('visible={!startupHardLockPendingBeforePaywall && tamagotchiModalMounted}'));
+  const modal = menu.slice(0, menu.indexOf('</Modal>'));
+  assert.match(modal, /<SolidSurfaceProvider value=\{true\}>[\s\S]*onPress=\{handleTamagotchiDailyRewardPress\}[\s\S]*onPress=\{handleTamagotchiHourlyRewardClaim\}[\s\S]*<\/SolidSurfaceProvider>/);
 });

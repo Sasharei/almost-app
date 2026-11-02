@@ -1,11 +1,16 @@
 package com.sasarei.almostclean
 
 import android.app.Application
+import android.os.Build
 import android.content.res.Configuration
 import android.util.Log
 
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
+import com.facebook.react.bridge.BridgeReactContext
+import com.facebook.react.modules.fresco.FrescoModule
+import com.facebook.react.shell.MainPackageConfig
+import com.facebook.imagepipeline.cache.MemoryCacheParams
 import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.ReactHost
@@ -27,6 +32,24 @@ import com.sasarei.almostclean.design.MaterialNavigationPackage
 import java.io.IOException
 
 class MainApplication : Application(), ReactApplication {
+  // API 24/25 stores decoded bitmaps in the Java heap. Size animation frames to
+  // their drawable bounds and leave room for the second mascot in the care sheet.
+  // Keep React Native's fetcher, cookies, cache keys and decoder configuration.
+  private val legacyImageConfig: MainPackageConfig? by lazy {
+    if (Build.VERSION.SDK_INT > Build.VERSION_CODES.N_MR1 ||
+        Runtime.getRuntime().maxMemory() > 64L * 1024 * 1024) {
+      null
+    } else {
+      val builder = FrescoModule.getDefaultConfigBuilder(BridgeReactContext(this))
+      val cacheBytes = 1024 * 1024
+      builder.setBitmapMemoryCacheParamsSupplier {
+        MemoryCacheParams(cacheBytes, 64, cacheBytes, 64, cacheBytes)
+      }
+      builder.experiment().setShouldDownscaleFrameToDrawableDimensions(true)
+      MainPackageConfig(builder.build())
+    }
+  }
+
   companion object {
     @Volatile
     private var runtimeNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
@@ -40,7 +63,7 @@ class MainApplication : Application(), ReactApplication {
       this,
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
+            PackageList(this, legacyImageConfig).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
               add(LevelSharePackage())

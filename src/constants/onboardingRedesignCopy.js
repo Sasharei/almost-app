@@ -15,6 +15,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Условия использования"
     },
     "privacy": {
+      "settingLabel": "Делиться аналитикой и диагностикой",
+      "saving": "Сохраняем выбор…",
+      "saveError": "Не удалось сохранить выбор. Попробуйте ещё раз.",
+      "scopeNote": "Выбор управляет аналитикой, отчётами о сбоях и производительности в Firebase, Amplitude и Sentry. Атрибуция установок и события подписок обрабатываются отдельно.",
       "title": "Помогите сделать Almost лучше",
       "subtitle": "Необязательные данные помогают быстрее находить ошибки.",
       "stabilityTitle": "Стабильность и ошибки",
@@ -103,6 +107,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Terms of Use"
     },
     "privacy": {
+      "settingLabel": "Share analytics and diagnostics",
+      "saving": "Saving your choice…",
+      "saveError": "Could not save your choice. Please try again.",
+      "scopeNote": "This choice controls analytics, crash reports and performance data in Firebase, Amplitude and Sentry. Install attribution and subscription events are processed separately.",
       "title": "Help make Almost better",
       "subtitle": "Optional usage data helps us find problems faster.",
       "stabilityTitle": "Stability and errors",
@@ -191,6 +199,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Términos de uso"
     },
     "privacy": {
+      "settingLabel": "Compartir analíticas y diagnósticos",
+      "saving": "Guardando tu elección…",
+      "saveError": "No se pudo guardar tu elección. Inténtalo de nuevo.",
+      "scopeNote": "Esta elección controla las analíticas, los informes de fallos y los datos de rendimiento en Firebase, Amplitude y Sentry. La atribución de instalaciones y los eventos de suscripción se procesan por separado.",
       "title": "Ayúdanos a mejorar Almost",
       "subtitle": "Los datos opcionales nos ayudan a detectar errores antes.",
       "stabilityTitle": "Estabilidad y errores",
@@ -279,6 +291,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Conditions d’utilisation"
     },
     "privacy": {
+      "settingLabel": "Partager les analyses et diagnostics",
+      "saving": "Enregistrement de votre choix…",
+      "saveError": "Impossible d’enregistrer votre choix. Réessayez.",
+      "scopeNote": "Ce choix contrôle les analyses, les rapports de plantage et les données de performance dans Firebase, Amplitude et Sentry. L’attribution des installations et les événements d’abonnement sont traités séparément.",
       "title": "Aidez-nous à améliorer Almost",
       "subtitle": "Les données facultatives nous aident à détecter les problèmes plus vite.",
       "stabilityTitle": "Stabilité et erreurs",
@@ -367,6 +383,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Nutzungsbedingungen"
     },
     "privacy": {
+      "settingLabel": "Analysen und Diagnosedaten teilen",
+      "saving": "Auswahl wird gespeichert…",
+      "saveError": "Deine Auswahl konnte nicht gespeichert werden. Versuche es erneut.",
+      "scopeNote": "Diese Auswahl steuert Analysen, Absturzberichte und Leistungsdaten in Firebase, Amplitude und Sentry. Installationsattribution und Abo-Ereignisse werden getrennt verarbeitet.",
       "title": "Helfen Sie uns, Almost zu verbessern",
       "subtitle": "Optionale Nutzungsdaten helfen uns, Probleme schneller zu finden.",
       "stabilityTitle": "Stabilität und Fehler",
@@ -455,6 +475,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Termos de Uso"
     },
     "privacy": {
+      "settingLabel": "Partilhar análises e diagnósticos",
+      "saving": "A guardar a tua escolha…",
+      "saveError": "Não foi possível guardar a tua escolha. Tenta novamente.",
+      "scopeNote": "Esta escolha controla análises, relatórios de falhas e dados de desempenho no Firebase, Amplitude e Sentry. A atribuição de instalações e os eventos de subscrição são tratados separadamente.",
       "title": "Ajude a melhorar o Almost",
       "subtitle": "Dados opcionais nos ajudam a encontrar problemas mais rápido.",
       "stabilityTitle": "Estabilidade e erros",
@@ -543,6 +567,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "Termini di utilizzo"
     },
     "privacy": {
+      "settingLabel": "Condividi analisi e diagnostica",
+      "saving": "Salvataggio della scelta…",
+      "saveError": "Impossibile salvare la scelta. Riprova.",
+      "scopeNote": "Questa scelta controlla analisi, segnalazioni di arresto anomalo e dati sulle prestazioni in Firebase, Amplitude e Sentry. Attribuzione delle installazioni ed eventi degli abbonamenti sono trattati separatamente.",
       "title": "Aiutaci a migliorare Almost",
       "subtitle": "I dati facoltativi ci aiutano a trovare prima i problemi.",
       "stabilityTitle": "Stabilità ed errori",
@@ -631,6 +659,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "شروط الاستخدام"
     },
     "privacy": {
+      "settingLabel": "مشاركة التحليلات والتشخيصات",
+      "saving": "جارٍ حفظ اختيارك…",
+      "saveError": "تعذّر حفظ اختيارك. حاول مرة أخرى.",
+      "scopeNote": "يتحكم هذا الاختيار في التحليلات وتقارير الأعطال وبيانات الأداء في Firebase وAmplitude وSentry. تُعالَج معلومات إسناد التثبيت وأحداث الاشتراك بصورة منفصلة.",
       "title": "ساعدنا في تحسين Almost",
       "subtitle": "تساعدنا البيانات الاختيارية على اكتشاف المشكلات بسرعة.",
       "stabilityTitle": "الاستقرار والأخطاء",
@@ -719,6 +751,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "使用條款"
     },
     "privacy": {
+      "settingLabel": "分享分析與診斷資料",
+      "saving": "正在儲存你的選擇…",
+      "saveError": "無法儲存你的選擇，請重試。",
+      "scopeNote": "此選擇控制 Firebase、Amplitude 和 Sentry 中的分析、當機報告與效能資料。安裝歸因和訂閱事件會另行處理。",
       "title": "幫助我們改進 Almost",
       "subtitle": "可選使用資料幫助我們更快發現問題。",
       "stabilityTitle": "穩定性與錯誤",
@@ -807,6 +843,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "使用条款"
     },
     "privacy": {
+      "settingLabel": "分享分析和诊断数据",
+      "saving": "正在保存你的选择…",
+      "saveError": "无法保存你的选择，请重试。",
+      "scopeNote": "此选择控制 Firebase、Amplitude 和 Sentry 中的分析、崩溃报告和性能数据。安装归因和订阅事件会单独处理。",
       "title": "帮助我们改进 Almost",
       "subtitle": "可选使用数据帮助我们更快发现问题。",
       "stabilityTitle": "稳定性与错误",
@@ -895,6 +935,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "이용약관"
     },
     "privacy": {
+      "settingLabel": "분석 및 진단 데이터 공유",
+      "saving": "선택 사항을 저장하는 중…",
+      "saveError": "선택 사항을 저장하지 못했습니다. 다시 시도하세요.",
+      "scopeNote": "이 선택은 Firebase, Amplitude, Sentry의 분석, 충돌 보고서 및 성능 데이터를 제어합니다. 설치 기여도와 구독 이벤트는 별도로 처리됩니다.",
       "title": "Almost 개선에 참여해 주세요",
       "subtitle": "선택적 사용 데이터는 문제를 더 빨리 찾는 데 도움이 됩니다.",
       "stabilityTitle": "안정성과 오류",
@@ -983,6 +1027,10 @@ export const ONBOARDING_REDESIGN_COPY = {
       "terms": "利用規約"
     },
     "privacy": {
+      "settingLabel": "分析と診断データを共有",
+      "saving": "選択を保存しています…",
+      "saveError": "選択を保存できませんでした。もう一度お試しください。",
+      "scopeNote": "この選択は Firebase、Amplitude、Sentry の分析、クラッシュレポート、パフォーマンスデータを制御します。インストールのアトリビューションとサブスクリプションイベントは別途処理されます。",
       "title": "Almostの改善にご協力ください",
       "subtitle": "任意の利用データは問題の早期発見に役立ちます。",
       "stabilityTitle": "安定性とエラー",

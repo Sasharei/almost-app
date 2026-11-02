@@ -18,6 +18,14 @@ export function initSentry() {
   }
 }
 
+export async function stopSentry() {
+  try {
+    await Sentry.close();
+  } catch (error) {
+    console.warn("Failed to stop Sentry:", error?.message || error);
+  }
+}
+
 export const captureException = Sentry.captureException;
 export const captureMessage = Sentry.captureMessage;
 

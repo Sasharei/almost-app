@@ -73,6 +73,13 @@ enum BankExpenseStore {
     return result == SQLITE_ROW
   }
   static var premiumActive: Bool { defaults.double(forKey: "expensePremiumUntil") > Date().timeIntervalSince1970 * 1000 }
+  static func merchantKey(_ label: String) -> String {
+    let folded = label.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    if folded == "apple pay" { return "" }
+    let merchant = folded.hasPrefix("apple pay · ") ? String(folded.dropFirst("apple pay · ".count)) : folded
+    let withoutTerminalID = merchant.replacingOccurrences(of: #"^\s*\d+\s+"#, with: "", options: .regularExpression)
+    return withoutTerminalID.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  }
   static func captureWallet(amount: Decimal, currency: String, merchant: String? = nil, transactionDate: Date? = nil) throws -> Bool {
     try queue.sync {
       guard defaults.bool(forKey: "expenseEnabled") else { throw BankExpenseError.disabled }
@@ -130,13 +137,28 @@ enum BankExpenseStore {
     try withDB { db in
       try execute(db, "BEGIN DEFERRED TRANSACTION")
       defer { try? execute(db, "COMMIT") }
-      let stmt = try statement(db, "SELECT r.id,r.label,r.text,r.amount,r.currency,r.created,r.status,r.source,COALESCE(c.category,m.category,''),(SELECT COUNT(*) FROM wallet_duplicate_signals d WHERE d.receipt=r.id) FROM receipts r LEFT JOIN expense_categories c ON c.receipt=r.id LEFT JOIN expense_merchant_categories m ON m.merchant=lower(r.label) WHERE r.status<>'deleted' ORDER BY r.created DESC,r.id LIMIT 50 OFFSET ?", [String(max(0, offset))])
+      let rules = try statement(db, "SELECT merchant,category FROM expense_merchant_categories ORDER BY rowid")
+      defer { sqlite3_finalize(rules) }
+      var merchantCategories: [String: String] = [:]
+      var ruleResult = sqlite3_step(rules)
+      while ruleResult == SQLITE_ROW {
+        if let raw = sqlite3_column_text(rules, 0), let category = sqlite3_column_text(rules, 1) {
+          let key = merchantKey(String(cString: raw))
+          if !key.isEmpty { merchantCategories[key] = String(cString: category) }
+        }
+        ruleResult = sqlite3_step(rules)
+      }
+      guard ruleResult == SQLITE_DONE else { throw BankExpenseError.unavailable }
+      let stmt = try statement(db, "SELECT r.id,r.label,r.text,r.amount,r.currency,r.created,r.status,r.source,COALESCE(c.category,''),(SELECT COUNT(*) FROM wallet_duplicate_signals d WHERE d.receipt=r.id) FROM receipts r LEFT JOIN expense_categories c ON c.receipt=r.id WHERE r.status<>'deleted' ORDER BY r.created DESC,r.id LIMIT 50 OFFSET ?", [String(max(0, offset))])
       defer { sqlite3_finalize(stmt) }
       var items: [[String: Any]] = []
       var result = sqlite3_step(stmt)
       while result == SQLITE_ROW {
         func string(_ column: Int32) -> String { sqlite3_column_text(stmt, column).map { String(cString: $0) } ?? "" }
-        items.append(["id": string(0), "label": string(1), "text": string(2), "amount": string(3), "currency": string(4), "created": sqlite3_column_int64(stmt, 5), "status": string(6), "source": string(7), "merchant": string(1).hasPrefix("Apple Pay · ") ? String(string(1).dropFirst(12)) : "", "category": string(8), "duplicateCount": sqlite3_column_int(stmt, 9)])
+        let label = string(1)
+        let key = merchantKey(label)
+        let category = string(8)
+        items.append(["id": string(0), "label": label, "text": string(2), "amount": string(3), "currency": string(4), "created": sqlite3_column_int64(stmt, 5), "status": string(6), "source": string(7), "merchant": label.hasPrefix("Apple Pay · ") ? String(label.dropFirst(12)) : "", "category": category.isEmpty ? (merchantCategories[key] ?? "") : category, "duplicateCount": sqlite3_column_int(stmt, 9)])
         result = sqlite3_step(stmt)
       }
       guard result == SQLITE_DONE else { throw BankExpenseError.unavailable }
@@ -165,7 +187,12 @@ enum BankExpenseStore {
           let allowed = ["food", "rent", "utilities", "car", "mandatory", "home", "transport", "health", "beauty", "fun", "things", "clothing", "education", "pets", "subscriptions", "vices"]
           guard allowed.contains(category) else { throw BankExpenseError.unavailable }
           try execute(db, "INSERT OR REPLACE INTO expense_categories VALUES (?,?)", [id, category])
-          try execute(db, "INSERT OR REPLACE INTO expense_merchant_categories SELECT lower(label),? FROM receipts WHERE id=? AND label<>'Apple Pay'", [category, id])
+          let merchant = try statement(db, "SELECT label FROM receipts WHERE id=? AND source='apple-pay'", [id])
+          defer { sqlite3_finalize(merchant) }
+          if sqlite3_step(merchant) == SQLITE_ROW, let raw = sqlite3_column_text(merchant, 0) {
+            let key = merchantKey(String(cString: raw))
+            if !key.isEmpty { try execute(db, "INSERT OR REPLACE INTO expense_merchant_categories VALUES (?,?)", [key, category]) }
+          }
         }
       }
       try execute(db, "COMMIT")

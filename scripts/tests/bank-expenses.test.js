@@ -73,6 +73,9 @@ let valid: [(String, String, String)] = [
   ("1\\u{202f}234,56", "EUR", "1234.56"), ("١٬٢٣٤٫٥٦ ر.س.", "SAR", "1234.56"),
   ("$1,234", "USD", "1234"), ("1.234.567", "EUR", "1234567"),
   ("1,234", "KWD", "1.234"), ("1,234.567", "KWD", "1234.567"),
+  ("\\u{20c1}123.45", "SAR", "123.45"), ("123.45 \\u{20c1}", "SAR", "123.45"),
+  ("\\u{200f}١٢٣٫٤٥ \\u{20c1}", "SAR", "123.45"),
+  ("\\u{200e}\\u{20c1} 1,234.56", "SAR", "1234.56"),
   ("12.34", "USD", "12.34"), ("\\u{200f}١٢٫٣٤", "SAR", "12.34")
 ]
 for (input, currency, expected) in valid {
@@ -81,6 +84,20 @@ for (input, currency, expected) in valid {
 for input in ["EUR 12.34", "-12.34", "12.34 USD EUR", "1,23,4", "12.3456", "0.123", "0,123", "01,234", "1,234.567", "0", "NaN", "12 USD 34", ""] {
   precondition(ExpenseParser.walletAmount(input, currency: "USD") == nil, "Invalid input accepted: \\(input)")
 }
+// Real Foundation output covers localized symbol placement, digits and bidi marks.
+for locale in ["en_SA", "ar_SA", "ru_SA", "en_US", "ru_RU"] {
+  let formatter = NumberFormatter()
+  formatter.locale = Locale(identifier: locale)
+  formatter.numberStyle = .currency
+  formatter.currencyCode = "SAR"
+  let input = formatter.string(from: 1234.56)!
+  precondition(ExpenseParser.walletAmount(input, currency: "SAR") == "1234.56", "SAR locale: \\(locale): \\(input)")
+}
+precondition(ExpenseParser.walletAmount("\\u{20c1}12.34", currency: "USD") == nil)
+precondition(ExpenseParser.walletAmount("\\u{20c1}12.34", currency: nil) == nil)
+precondition(ExpenseParser.walletAmount("$12.34", currency: "SAR") == nil)
+precondition(ExpenseParser.walletAmount("\\u{20c1}-12.34", currency: "SAR") == nil)
+precondition(ExpenseParser.walletAmount("\\u{20c1}12.3456", currency: "SAR") == nil)
 precondition(ExpenseParser.walletAmount("12.34", currency: nil) == nil)
 precondition(ExpenseParser.walletAmount(nil, currency: "USD") == nil)
 precondition(ExpenseParser.walletCurrency("ZZZ") == nil)
@@ -190,6 +207,13 @@ check((try BankExpenseStore.page(0)["revision"] as! Int64) > correctionRevision)
 do { try BankExpenseStore.updateReceipt(kwdID, amount: "9", currency: "KWD", delete: false, category: "invalid"); fatalError("invalid category accepted") } catch {}
 let unchanged = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["id"] as! String == kwdID }!
 check(unchanged["amount"] as! String == "2.345" && unchanged["category"] as! String == "food")
+check(try BankExpenseStore.captureWallet(amount: 2, currency: "SAR"))
+let unnamed = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "2" }!
+check(unnamed["category"] as! String == "")
+try BankExpenseStore.withDB { try BankExpenseStore.execute($0, "INSERT OR REPLACE INTO expense_merchant_categories VALUES (?,?)", ["apple pay · legacy shop", "health"]) }
+check(try BankExpenseStore.captureWallet(amount: 3, currency: "SAR", merchant: "LEGACY  Shop"))
+let legacyRule = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "3" }!
+check(legacyRule["category"] as! String == "health")
 check(try BankExpenseStore.captureWallet(amount: 44, currency: "SAR", merchant: "Learned merchant"))
 let learned = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["merchant"] as! String == "Learned merchant" }!
 try BankExpenseStore.updateReceipt(learned["id"] as! String, amount: "45", currency: "SAR", delete: false, category: "transport")
@@ -197,6 +221,19 @@ check(!(try BankExpenseStore.captureWallet(amount: 44, currency: "SAR", merchant
 check(try BankExpenseStore.captureWallet(amount: 46, currency: "SAR", merchant: "Learned merchant"))
 let learnedNext = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "46" }!
 check(learnedNext["category"] as! String == "transport")
+check(try BankExpenseStore.captureWallet(amount: 47, currency: "SAR", merchant: " 81005  LEARNED   MERCHANT "))
+let variedName = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "47" }!
+check(variedName["category"] as! String == "transport")
+check(try BankExpenseStore.captureWallet(amount: 48, currency: "SAR", merchant: "Different merchant"))
+let differentMerchant = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "48" }!
+check(differentMerchant["category"] as! String == "")
+// A later correction changes future matches while preserving each receipt's own choice.
+try BankExpenseStore.updateReceipt(variedName["id"] as! String, amount: "47", currency: "SAR", delete: false, category: "food")
+check(try BankExpenseStore.captureWallet(amount: 49, currency: "SAR", merchant: "Learned merchant"))
+let relearned = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["amount"] as! String == "49" }!
+check(relearned["category"] as! String == "food")
+let originalChoice = (try BankExpenseStore.page(0)["items"] as! [[String: Any]]).first { $0["id"] as! String == learned["id"] as! String }!
+check(originalChoice["category"] as! String == "transport")
 try BankExpenseStore.updateReceipt(learnedNext["id"] as! String, amount: "", currency: "", delete: true)
 check(!(try BankExpenseStore.captureWallet(amount: 46, currency: "SAR", merchant: "Learned merchant")))
 // Legacy duplicate signals may have different milliseconds. Migrate once,

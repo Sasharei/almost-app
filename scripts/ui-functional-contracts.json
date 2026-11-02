@@ -10,20 +10,8 @@
         "testID=\"decision-add-temptation\"",
         "onPress={() => { Keyboard.dismiss(); onAdd?.(); }}",
         "reserveAdd={!decisionFocusVisible}",
-        "activeTab === \"feed\" && !decisionFocusVisible ? <HeaderGlassButton",
-        "addLabel={t(\"redesignTodayAdd\")} onAdd={onAdd}"
-      ]
-    },
-    {
-      "id": "decision-wheel-trailing-create",
-      "description": "The trailing create row is a labelled explicit action, never a synthetic decision entry or an automatic creation on scroll; real card selection and search remain intact.",
-      "file": "src/components/DecisionCardWheel.js",
-      "requiredFragments": [
-        "testID=\"decision-wheel-add\"",
-        "accessibilityLabel={addLabel}",
-        "onAdd();",
-        "entries.map((item, index) =>",
-        "onInteractionChange?.(false);"
+        "testID=\"today-filter-add-temptation\"",
+        "testID=\"decision-add-temptation\""
       ]
     },
     {
@@ -172,7 +160,7 @@
     },
     {
       "id": "onboarding-analytics-consent-actions",
-      "description": "First-run analytics consent offers equally reachable accept and decline actions, persists either choice, continues onboarding before SDK synchronization, and prevents duplicate rapid submissions.",
+      "description": "First-run analytics consent offers accept and decline, saves the revised choice before continuing, shows a retryable error, and prevents duplicate submissions.",
       "file": "App.js",
       "requiredFragments": [
         "goToOnboardingStep(\"analyticsConsent\");",
@@ -180,13 +168,30 @@
         "<AnalyticsConsentScreen",
         "onAgree={() => handleAnalyticsConsentChoice(true)}",
         "onSkip={() => handleAnalyticsConsentChoice(false)}",
+        "onPrivacyPress={handlePrivacyPolicyOpen}",
+        "saveError={analyticsConsentError}",
         "if (analyticsConsentPressLockRef.current) return;",
+        "await AsyncStorage.setItem(",
+        "STORAGE_KEYS.ANALYTICS_CONSENT_RECEIPT,",
+        "createConsentReceipt(nextEnabled)",
         "setAnalyticsOptOutState(!nextEnabled);",
         "goToOnboardingStep(\"persona\");",
         "const analyticsSyncTask = setAnalyticsOptOutFlag(!nextEnabled).catch((error) => {"
       ],
       "requiredPatterns": [
-        "const handleAnalyticsConsentChoice = \\(enabled\\) => \\{(?:(?!await)[\\s\\S])*?goToOnboardingStep\\(\\\"persona\\\"\\);"
+        "const handleAnalyticsConsentChoice = async \\(enabled\\) => \\{[\\s\\S]*?await AsyncStorage\\.setItem\\(\\s*STORAGE_KEYS\\.ANALYTICS_CONSENT_RECEIPT,[\\s\\S]*?goToOnboardingStep\\(\\\"persona\\\"\\);"
+      ]
+    },
+    {
+      "id": "settings-analytics-consent-control",
+      "description": "The same analytics and diagnostics choice is reachable in Settings, shows its saved state, and can be changed without removing Privacy Policy access.",
+      "file": "App.js",
+      "requiredFragments": [
+        "toggle(\"analyticsConsentAgree\", analyticsOptOut === false",
+        "onAnalyticsConsentChange?.(analyticsOptOut !== false)",
+        "disabled: analyticsConsentSaving",
+        "onAnalyticsConsentChange={(enabled) => handleAnalyticsConsentChoice(enabled)}",
+        "row(\"privacyPolicyLink\", \"\", onPrivacyPress)"
       ]
     },
     {
@@ -647,7 +652,7 @@
     },
     {
       "id": "new-user-next-decision-coach",
-      "description": "The first resolved temptation queues a persisted, dismissible next-decision coach. Continuation chooses an unfinished Today card in focus, with native viewport confirmation before shown. Explicit All, back, dismiss, card actions and virtualized scrolling utilities remain available.",
+      "description": "The first resolved temptation queues a persisted, dismissible next-decision coach. Continuation scrolls to an unfinished card in the home gallery, while card actions and virtualized scrolling utilities remain available.",
       "file": "App.js",
       "requiredFragments": [
         "STORAGE_KEYS.NEXT_DECISION_COACH",
@@ -669,7 +674,7 @@
         "onNextDecisionCoachDismiss?.(\"not_now\")",
         "t(\"nextDecisionCoachTitle\")",
         "t(\"nextDecisionCoachBody\")",
-        "setRedesignFocusId(targetEntry.id);",
+        "scrollToTemptationCard({ templateId: targetEntry.item?.templateId || targetEntry.item?.id, animated: true })",
         "<PresentedDecisionCoach",
         "onLayout={measure}",
         "isCoachActuallyPresented({ ...context, x, y, width, height })"
@@ -2341,7 +2346,7 @@
         "const compactDecisionLayout = windowHeight <= 700;",
         "styles.temptationAmountModalRootCompact",
         "showsVerticalScrollIndicator",
-        "onPress={closeAmountSlider}",
+        "onPress={practiceTutorial?.active ? dismissPracticeAmount : closeAmountSlider}",
         "onPress={openAmountManual}",
         "onPress={handleAmountCategoryBudgetPress}",
         "onPress={handleAmountGoalPress}",
@@ -2698,10 +2703,12 @@
     },
     {
       "id": "redesign-today-action-routing",
-      "description": "The redesigned Today overview opens a focused purchase decision, keeps all legacy cards reachable, and dispatches save, spend, and pause through the existing action handler.",
+      "description": "The redesigned Today home opens directly into the temptation gallery with save, spend and pause on each card; the older focused decision remains available for in-progress sessions.",
       "file": "App.js",
       "requiredFragments": [
         "<RedesignTodayHeader",
+        "const [redesignFeedMode, setRedesignFeedMode] = useState(\"all\");",
+        "actionButtonsMode=\"gallery\"",
         "onFocus={(entry) => { setRedesignFocusId(entry.id); setRedesignFeedMode(\"focus\"); }}",
         "onAll={() => { onNextDecisionCoachDismiss?.(\"filter_changed\"); setRedesignFeedMode(\"all\"); }}",
         "onAction={async (type, item, actionOptions) => { const result = await onTemptationAction(type, item, actionOptions); if (result?.cancelled) return;",
@@ -2879,11 +2886,11 @@
     },
     {
       "id": "redesign-today-utility-discoverability",
-      "description": "Today names series, Almi, subscriptions, savings, budget, and history routes. Series is independent of decorative detail disclosure; category filtering is outside it.",
+      "description": "Today keeps series, Almi, subscriptions, savings, budget, and history routes after the gallery. Category filtering remains visible above cards.",
       "file": "App.js",
       "requiredFragments": [
         "tools={[",
-        "{ key: \"temptationSeriesTitle\", onPress: () => setRedesignFeedMode(\"all\") }",
+        "{React.cloneElement(todayHeader, { extrasOnly: true })}",
         "{ key: \"subscriptionWidgetTitle\", onPress: handleHomeSubscriptionPress }",
         "{ key: \"historyTitle\", onPress: openHistoryModal }",
         "{ key: \"savingsBreakdownTitle\", onPress: onSavingsBreakdownPress }"
@@ -3028,7 +3035,7 @@
         "<TycoonAutosaveAmountSlider value={amountValid ? amountUSD : 0}",
         "onEdit={onTemptationEditToggle}",
         "onPress={() => { Keyboard.dismiss(); onEdit(focusEntry.item); }}",
-        "disabled={!amountValid || sliderInteracting || wheelInteracting}",
+        "disabled={!amountValid || sliderInteracting}",
         "if (!savingConfirmed) return { cancelled: true };",
         "onConfirm={handleSpendConfirm}",
         "<AlmostPayConfirmControl active={visible} onConfirm={onConfirm}"
@@ -3061,12 +3068,12 @@
     },
     {
       "id": "decision-keyboard-and-card-entry",
-      "description": "The unified decision button opens the existing focus, card selection preserves all entries, and numeric entry exposes a localized Done action.",
+      "description": "Gallery cards expose decisions directly; the legacy focused decision retains numeric entry with a localized Done action for in-progress sessions.",
       "file": "App.js",
       "requiredFragments": [
         "testID=\"decision-amount-done\"",
         "onPress={Keyboard.dismiss}",
-        "testID=\"today-make-decision\""
+        "actionButtonsMode=\"gallery\""
       ]
     },
     {
@@ -3131,12 +3138,12 @@
     },
     {
       "id": "followup-global-glass-utilities",
-      "description": "All main tabs retain help and bug reporting in distinct accessible circular targets; Today also keeps new-temptation creation.",
+      "description": "All main tabs retain help and bug reporting in distinct accessible circular targets; Today keeps new-temptation creation beside its filters.",
       "file": "App.js",
       "requiredFragments": [
         "testID=\"header-help\"",
         "testID=\"header-bug-report\"",
-        "testID=\"header-add-temptation\"",
+        "testID=\"today-filter-add-temptation\"",
         "onPress={handleFabNewTemptation}",
         "label={resolveHelpGuideCopy(language, activeTab).buttonLabel}",
         "label={resolveBugReportCopy(language).buttonLabel}"
@@ -3261,13 +3268,16 @@
     },
     {
       "id": "decision-average-memory-shared",
-      "description": "Decision recording, legacy history recovery, displayed cards and autosave use the shared amount memory.",
+      "description": "Decision recording, legacy history recovery, displayed cards and autosave use the shared amount memory. Autosave rounds only catalog defaults and confirmed local amounts survive rate refreshes.",
       "file": "App.js",
       "requiredFragments": [
         "buildDecisionAmountStats(historyEvents)",
-        "...recordAmountSample(prevEntry, resolvedAmount, decisionAmountStats[primaryKey])",
+        "...recordAmountSample(prevEntry, resolvedAmount, decisionAmountStats[primaryKey], {",
         "priceUSD: resolveRememberedAmount(temptationInteractions[card.id], decisionAmountStats[card.id]",
-        "const amountBase = resolveRememberedAmount(interaction, decisionAmountStats[templateId]"
+        "const amountBase = resolveAutosaveCardAmountUSD(card, interaction, decisionAmountStats[templateId]",
+        "const remembered = resolveRememberedAmount(interaction, history, 0, { currency, rate });",
+        "if (remembered > 0) return remembered;",
+        "localAmount: roundCurrencyValue(convertToCurrency(resolvedAmount, profile.currency || DEFAULT_PROFILE.currency)"
       ]
     },
     {
@@ -3327,10 +3337,10 @@
     },
     {
       "id": "unified-decision-entry-and-tools",
-      "description": "Unified entry keeps card selection, amount input, existing decisions and collapsed tools reachable.",
+      "description": "Gallery cards expose save, spend and freeze directly. The focused decision remains for in-progress sessions and collapsed tools remain reachable after the feed.",
       "file": "App.js",
       "requiredFragments": [
-        "testID=\"today-make-decision\"",
+        "actionButtonsMode=\"gallery\"",
         "testID=\"decision-card-picker\"",
         "filteredDecisionEntries.map(renderScheduledRow)",
         "testID=\"today-tools-toggle\"",
@@ -3345,11 +3355,11 @@
       ]
     },
     {
-      "id": "decision-wheel-history-and-native-drag",
-      "description": "Decision wheel and full picker select the same card; recent history stays reachable; native drag retains ownership outside the slider and unlocks scrolling on finalization.",
+      "id": "decision-list-history-and-native-drag",
+      "description": "The replacement searchable card list keeps selection and history reachable; native slider ownership and finalization remain intact.",
       "file": "App.js",
       "requiredFragments": [
-        "<DecisionCardWheel tutorial={practiceTutorial} onEngage={() => practiceTutorial?.event(\"CARD\")} entries={decisionEntries} selectedId={focusEntry.id} onSelect={onFocus}",
+        "testID=\"decision-search-cards\"",
         "testID=\"today-recent-history\"",
         "onHistory={openHistoryModal}",
         ".slice(0, 5)",
@@ -3360,19 +3370,6 @@
       ],
       "requiredPatterns": [
         "\\.onFinalize\\(\\(\\) => \\{[\\s\\S]*?gestureCallbacks\\.current\\.setInteractionState\\(false\\);"
-      ]
-    },
-    {
-      "id": "decision-wheel-independent-scroll",
-      "description": "The wheel has its own native scroll surface and explicit end spacers so nested virtualized-list context cannot shift the selected row or steal scroll commands.",
-      "file": "src/components/DecisionCardWheel.js",
-      "requiredFragments": [
-        "<Animated.ScrollView ref={list}",
-        "contentInsetAdjustmentBehavior=\"never\"",
-        "<View style={{ height: ROW_HEIGHT }} />",
-        "snapToInterval={ROW_HEIGHT}",
-        "onMomentumScrollEnd={({ nativeEvent }) => settle(nativeEvent.contentOffset.y)}",
-        "accessibilityRole=\"adjustable\""
       ]
     },
     {
@@ -3388,25 +3385,11 @@
       ]
     },
     {
-      "id": "wheel-search-status-and-responsive-selection",
-      "description": "Search scrolls with the leading row; each card exposes schedule and completed-today state; releasing a drag unlocks actions immediately and repeated selection does not reset the amount.",
-      "file": "src/components/DecisionCardWheel.js",
-      "requiredFragments": [
-        "testID=\"decision-wheel-search\"",
-        "onSearch?.()",
-        "statusFor?.(item)",
-        "status.checked ? \"✓ \" : \"○ \"",
-        "selectAt(nativeEvent.targetContentOffset?.y ?? nativeEvent.contentOffset.y);",
-        "if (entry.id !== selected) select(entry);",
-        "coasting.current = false;"
-      ]
-    },
-    {
       "id": "today-due-and-calendar-status",
-      "description": "User approved moving the actual due count into the decision button; deadlines, picker and calendar labels remain connected.",
+      "description": "Due and calendar states remain connected to the home gallery and the decision picker.",
       "file": "App.js",
       "requiredFragments": [
-        "testID=\"today-awaiting-decisions\"",
+        "const [redesignFeedMode, setRedesignFeedMode] = useState(\"all\");",
         "dueEntries={redesignTodayGroups.due}",
         "useDeadlineTicker(nextDecisionDeadline, true)",
         "t(\"redesignTodayLabel\")"
@@ -3576,7 +3559,7 @@
     },
     {
       "id": "today-compact-summary-actions",
-      "description": "The approved compact overview preserves savings details, mascot speech/care, real series progress, chest rewards and decision focus. Series explanation moves behind a tap; mascot speech remains visible; other screens keep their existing density.",
+      "description": "The compact home preserves savings details, mascot speech/care, series progress, chest rewards and direct gallery card actions. Series explanation moves behind a tap.",
       "file": "App.js",
       "requiredFragments": [
         "testID=\"today-series-compact\"",
@@ -3586,8 +3569,8 @@
         "testID=\"today-savings-details\"",
         "testID=\"today-cat-care\"",
         "event.stopPropagation(); onMascotPress?.();",
-        "testID=\"today-awaiting-decisions\"",
-        "onPress={() => onFocus(dueEntries[0] || leadEntry)}",
+        "actionButtonsMode=\"gallery\"",
+        "{todayHeader}",
         "onShoppingBlockerPress={() => shoppingBlocker.openSettings()}",
         "testID=\"today-cat-speech\""
       ]
@@ -3630,12 +3613,19 @@
         "testID=\"practice-retry\"",
         "testID=\"practice-finish\"",
         "onStartShouldSetResponder={() => true}",
-        "clearTimeout(deadline); clearInterval(interval);",
         "show.remove(); hide.remove();",
         "onSkip(\"system_back\")",
         "fillRule=\"evenodd\"",
         "<View pointerEvents=\"none\" accessible={false} style={StyleSheet.absoluteFill}>",
-        "zIndex: 900, elevation: 900"
+        "zIndex: 900, elevation: 900",
+        "clearTimeout(deadline)",
+        "clearInterval(interval)",
+        "cancelAnimationFrame(revealFrame)",
+        "isPracticeAnchorCurrent(anchor, targetId, session",
+        "onContentSizeChange=",
+        "useAnimatedProps",
+        "visualHole.value",
+        "revealRef.current?.key !== revealKey"
       ]
     },
     {
@@ -3805,13 +3795,13 @@
     },
     {
       "id": "today-honest-unfinished-context",
-      "description": "Today includes both overdue and later-today unfinished checks, excludes actual same-day decisions, and only uses finishing encouragement after actual progress.",
+      "description": "Today keeps overdue, later-today and checked cards in the gallery with honest series and section counts.",
       "file": "App.js",
       "requiredFragments": [
         "laterEntries={redesignTodayGroups.later}",
-        "const remainingEntries = [...dueEntries, ...laterEntries]",
-        "!isDecisionRecordedToday(entry.interaction, now)",
-        "completedToday > 0 && remainingEntries.length === 1",
+        "showTodaySectionHeader",
+        "todaySectionCount",
+        "seriesChecked={Boolean(entry.seriesChecked)}",
         "getDayKey(entry.seriesResolution?.firstAt) === getDayKey(now)"
       ]
     },
@@ -4086,7 +4076,7 @@
         "onPress={() => { Keyboard.dismiss(); onAdd?.(); }}",
         "onAdd={onNewTemptation}",
         "paddingEnd: focus ? 104 : 164",
-        "minHeight: FAB_BUTTON_SIZE + 16, paddingEnd: 196"
+        "minHeight: MENU_HEADER_ROW_HEIGHT, paddingEnd: 196"
       ]
     },
     {
@@ -4131,6 +4121,9 @@
       "description": "Hero cat keeps its existing care route and stops propagation to savings. Earned rewards take priority over hunger, the badge stays part of the cat target, and the savings action is preserved.",
       "file": "App.js",
       "requiredFragments": [
+        "const handleHeroCatPress = useCallback(() => onMascotPress(tamagotchiHeroBadge)",
+        "onMascotPress={handleHeroCatPress}",
+        "onPress={handleTamagotchiDailyRewardPress}",
         "testID=\"today-cat-care\"",
         "event.stopPropagation(); onMascotPress?.();",
         "testID=\"today-savings-details\" onPress={onSavingsBreakdownPress}",
@@ -4141,18 +4134,59 @@
       ]
     },
     {
-      "id": "today-cat-care-states-and-silhouette",
-      "description": "Hero exposes the most urgent food, play or clean need through the existing care route and shows actual cleanliness on the selected cat silhouette without painting a rectangular dirt canvas. Earned reward and ordinary care routes remain available.",
+      "id": "today-cat-care-states-and-animation",
+      "description": "Hero exposes the most urgent food, play or clean need through the existing care route and keeps the selected cat animated with visible cleanliness marks. Earned reward and ordinary care routes remain available.",
       "file": "App.js",
       "requiredFragments": [
         "mascotDirtyLevel={tamagotchiDirtyLevel}",
-        "<TamagotchiHeroImage source={mascotSource} size={IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />",
+        "<TamagotchiHeroImage animations={mascotAnimations} animationSetKey={mascotAnimationSetKey} visible={mascotVisible} size={gallery ? 90 : IS_SHORT_DEVICE ? 96 : 132} dirtyLevel={mascotDirtyLevel} />",
+        "mascotVisible={!(Platform.OS === \"android\" && Number(Platform.Version) <= 25 && tamagotchiModalMounted)}",
+        "mascotAnimations={tamagotchiAnimations}",
+        "mascotAnimationSetKey={tamagotchiAnimationSetKey}",
         "onMascotPress={handleHeroCatPress}",
         "onMascotPress(tamagotchiHeroBadge)",
         "setTamagotchiActiveTab(careTab === \"play\" || careTab === \"clean\" ? careTab : \"food\");",
-        "testID=\"today-cat-silhouette-dirt\" source={source}",
+        "<AlmiDustOverlay testID=\"today-cat-dirt\" intensity={strength} />",
+        "dirtyOverlayEnabled={false}",
         "t(\"tamagotchiHeroPlay\")",
         "t(\"tamagotchiHeroClean\")"
+      ]
+    },
+    {
+      "id": "almi-room-purchases-and-care-parity",
+      "description": "Cat care, skin selection and rewards remain reachable while the new room catalog previews, confirms, persists and equips permanent coin purchases. Cleaning gestures remain on the cat stage.",
+      "file": "App.js",
+      "requiredFragments": [
+        "testID=\"tamagotchi-skins-button\"",
+        "onPress={handleTamagotchiHourlyRewardClaim}",
+        "...(tamagotchiActiveTab === \"clean\"",
+        "<AlmiRoomDecor equipped={normalizeRoomState(tamagotchiState.room).equipped} scene=\"care\" />",
+        "<AlmiRoomDecor equipped={normalizeRoomState(tamagotchiState.room).equipped} scene=\"careFloor\" />",
+        "testID=\"almi-room-open\"",
+        "onPress={openRoomShop}",
+        "<AlmiRoomShop",
+        "onBuy={handleRoomBuy}",
+        "onEquip={handleRoomEquip}",
+        "onRemove={(itemId) => handleRoomEquip(itemId, true)}",
+        "await AsyncStorage.multiSet([",
+        "purchaseRoomItem({",
+        "room: normalizeRoomState(parsed?.room)"
+      ]
+    },
+    {
+      "id": "almi-room-shop-denominations-and-confirmation",
+      "description": "Room shopping keeps the existing colored coin breakdown, confirmation and cancellation, and purchase, placement, removal and close actions reachable.",
+      "file": "src/components/AlmiRoomShop.js",
+      "requiredFragments": [
+        "<AlmiCoinBreakdown amount={balance}",
+        "<AlmiCoinBreakdown amount={item.price}",
+        "<AlmiCoinBreakdown amount={shortfall || selected.price}",
+        "onPress={() => setConfirmingId(null)}",
+        "setConfirmingId(selected.id)",
+        "onBuy(selected.id)",
+        "onEquip(selected.id)",
+        "onRemove(selected.id)",
+        "onPress={onClose}"
       ]
     },
     {
@@ -4241,6 +4275,40 @@
         "setCategory(item.category || classifyMerchant(item.merchant).category);",
         "if (saved) setEditing(null); else setInvalid(true);",
         "else if (editing) setEditing(null)"
+      ]
+    },
+    {
+      "id": "feed-practice-current-card-model",
+      "description": "The tutorial uses real gallery actions and the native amount modal; canceled confirmations resume the unchanged draft, and stale sessions cannot reopen it.",
+      "file": "App.js",
+      "requiredFragments": [
+        "practiceTutorial={practiceTutorial?.active && entry.id === firstFeedCardId ? practiceTutorial : null}",
+        "practiceTutorial?.event(\"CARD\")",
+        "practiceTutorial?.event(\"AMOUNT\", { valid: true })",
+        "practiceTutorial.sessionRef.current === session && practiceTutorial.activeRef.current",
+        "allowScrollReveal={false}",
+        "return await onTemptationAction(type, item, actionOptions);"
+      ]
+    },
+    {
+      "id": "almi-first-series-care-tutorial",
+      "description": "The first series coin collection schedules a one-time optional care guide after the chest closes, including precredited rewards. Existing food/play/clean, reward, room, appearance, back and cleaning gestures remain reachable.",
+      "file": "App.js",
+      "requiredFragments": [
+        "scheduleAlmiTutorial();",
+        "getModalCloseSettleRemainingMs()",
+        "openTamagotchiOverlay(\"food\");",
+        "onDismiss={dismissAlmiTutorial}",
+        "onNext={nextAlmiTutorial}",
+        "onPress={() => handleTamagotchiTabPress(tab.id)}",
+        "onPress={handleTamagotchiDailyRewardPress}",
+        "onPress={handleTamagotchiHourlyRewardClaim}",
+        "onPress={openSkinPicker}",
+        "onPress={openRoomShop}",
+        "onRequestClose={closeTamagotchiOverlay}",
+        "tamagotchiCleanPanResponder.panHandlers",
+        "almiTutorialStep === 2 && <View pointerEvents=\"none\"",
+        "if (almiTutorialStatus === \"pending\" || almiTutorialStatus === \"active\") return false;"
       ]
     }
   ]

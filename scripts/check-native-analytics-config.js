@@ -17,6 +17,14 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(rootDir, relativePath), "utf8");
 
 const appConfig = JSON.parse(read("app.json"));
+const firebaseConfig = JSON.parse(read("firebase.json"))["react-native"] || {};
+for (const key of [
+  "analytics_auto_collection_enabled",
+  "perf_auto_collection_enabled",
+  "crashlytics_auto_collection_enabled",
+]) {
+  assert(firebaseConfig[key] === false, `firebase.json must default ${key} off before consent.`);
+}
 const facebookPlugin = (appConfig?.expo?.plugins || []).find(
   (entry) => Array.isArray(entry) && entry[0] === "react-native-fbsdk-next"
 );
@@ -46,6 +54,13 @@ const readPlistString = (source, key) => {
 };
 
 const iosSourcePlist = read("ios/Almost/Info.plist");
+for (const key of [
+  "FIREBASE_ANALYTICS_COLLECTION_ENABLED",
+  "firebase_performance_collection_enabled",
+  "FirebaseCrashlyticsCollectionEnabled",
+]) {
+  assert(readPlistBoolean(iosSourcePlist, key) === "false", `iOS Info.plist must default ${key} off.`);
+}
 assert(
   readPlistBoolean(iosSourcePlist, "FacebookAutoLogAppEventsEnabled") === "false",
   "iOS Info.plist must disable FacebookAutoLogAppEventsEnabled."
@@ -92,6 +107,13 @@ const readAndroidMetaBoolean = (source, key) => {
   );
   return source.match(expression)?.[1] || null;
 };
+for (const key of [
+  "firebase_analytics_collection_enabled",
+  "firebase_performance_collection_enabled",
+  "firebase_crashlytics_collection_enabled",
+]) {
+  assert(readAndroidMetaBoolean(androidSourceManifest, key) === "false", `Android manifest must default ${key} off.`);
+}
 assert(
   readAndroidMetaBoolean(
     androidSourceManifest,

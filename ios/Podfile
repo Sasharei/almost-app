@@ -5,6 +5,7 @@ require 'json'
 require 'fileutils'
 require 'xcodeproj'
 require_relative 'patches/revenuecat-xcode27'
+require_relative 'patches/mlkit-simulator'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
 
 # CocoaPods 1.16 + xcodeproj 1.27 misses compatibility for objectVersion 70.
@@ -165,6 +166,8 @@ $AppsFlyerPurchaseConnector=false
         ]
       end
     end
+
+    AlmostMLKitSimulator.apply(installer)
 
     # Keep RNFB scripts after widget embedding to avoid Xcode dependency cycles.
     installer.aggregate_targets.map(&:user_project).uniq.compact.each do |project|

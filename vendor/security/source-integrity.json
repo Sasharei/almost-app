@@ -59,5 +59,16 @@
     "lib/ed25519.js": "b0d15f1e11168a3a6de9914cdff9bf1be0c5c2fc313499e44dfeb164f5202849",
     "lib/pbe.js": "2b5c931e1549f5b98478a5b7b014fd3b62260a20db0704f72612dbe64540e25c",
     "lib/pkcs7.js": "f5cc5a89b093262cdcf8f7e01615dddcdb87907228a1c56b5fe73db8cc4160a2"
+  },
+  "deepmerge": {
+    "index.d.ts": "146ba4b99c5feb82663e17a671bf9f53bb39c704cd76345d6c5a801c26372f44",
+    "index.js": "3c022f8b609e18196778de0a5d1edb8593eb2de57026d733fd008ff278b82254",
+    "license.txt": "6cfc4687cb2f2d86f4a77e6b526290d3878e5e512f3fec2f4cb36a9cb36f798b",
+    "package.json": "a24ca94b5244d9cbbccc53dbbbf0679eb60d7c1f215e4689b0b2428de45bb975"
+  },
+  "minimatch": {
+    "LICENSE": "2c7c5d22ed5a8ee968c64757710979afcd77438c48b4a265b94e615babd8a901",
+    "index.js": "b0154636f8802632cf61409cda838aed3c32584280df749d45af4805e2f9b26c",
+    "package.json": "9fd9eb7e7a195db39c68bff3edd748b9bcd239b910b943539de814432898a54a"
   }
 }

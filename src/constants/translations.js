@@ -1,4 +1,6 @@
+import { ALMI_TUTORIAL_TRANSLATIONS } from "./almiTutorialTranslations";
 import { GENERATED_TRANSLATIONS } from "./translations.generated.js";
+import { ALMI_ROOM_TRANSLATIONS } from "./almiRoomTranslations";
 
 export const TRANSLATIONS = {
   ru: {
@@ -43,15 +45,15 @@ export const TRANSLATIONS = {
     practicePendingBody: "Подтвердите выбор в открывшемся окне. Если отмените, вернёмся к кнопкам решения.",
 
     practiceOpenTitle: "Попробуйте на своей покупке",
-    practiceOpenBody: "Нажмите подсвеченную кнопку. Откроются карточки покупок — выберите ту, о которой сейчас думаете.",
-    practiceCardTitle: "Выберите покупку",
-    practiceCardBody: "Прокрутите карточки в подсвеченной области. Нажмите подходящую карточку, чтобы продолжить.",
+    practiceOpenBody: "Нажмите на подсвеченную карточку в ленте. Все искушения теперь находятся здесь.",
+    practiceCardTitle: "Выберите решение",
+    practiceCardBody: "Нажмите «{{save}}», если отказались от покупки, или «{{spend}}», если купили. Затем выберите сумму.",
     practiceAmountTitle: "Проверьте цену",
-    practiceAmountBody: "Сдвиньте ползунок или введите цену в поле и закройте клавиатуру. Это сумма выбранной покупки, а не списание денег.",
-    practiceActionTitle: "Что произошло с покупкой?",
-    practiceActionBody: "Выберите свой вариант: отказались, купили или хотите подумать позже. Almost запишет ваш выбор; при необходимости подтвердите его в открывшемся окне.",
+    practiceAmountBody: "Передвиньте слайдер. Для точной суммы нажмите на цену и введите значение. Деньги при этом не списываются.",
+    practiceActionTitle: "Подтвердите решение",
+    practiceActionBody: "Проверьте сумму и нажмите выбранную кнопку ещё раз. При необходимости подтвердите решение в следующем окне.",
     practiceResultTitle: "Вы сделали первое решение",
-    practiceSavedBody: "Отказ записан. Сумма покупки теперь показана в «Не потрачено». Это запись о вашем решении, а не перевод денег в банк.",
+    practiceSavedBody: "Отказ записан. Сумма покупки теперь показана в «{{total}}». Это запись о вашем решении, а не перевод денег в банк.",
     practiceSpentBody: "Покупка записана в историю. Almost не списывает деньги — это учёт вашего решения.",
     practicePausedBody: "Покупка на паузе. Она появится в «Паузе», где можно вернуться к решению.",
     practiceEmptyTitle: "Добавьте свою покупку",
@@ -1244,7 +1246,7 @@ export const TRANSLATIONS = {
     redesignTemptationEdit: "Изменить соблазн",
     redesignTodayLaterToday: "Позже сегодня",
     redesignTodayUpcoming: "Следующие проверки",
-    redesignTodayAllCards: "Все соблазны",
+    redesignTodayAllCards: "Искушения",
     redesignTodayNoChecks: "Сегодня нет карточек для проверки",
     redesignTodayAdd: "Добавить соблазн",
     redesignTodayPurchase: "Покупка",
@@ -2604,15 +2606,15 @@ export const TRANSLATIONS = {
     practicePendingBody: "Confirm your choice in the window that opens. Cancel to return to the decision buttons.",
 
     practiceOpenTitle: "Try it with your purchase",
-    practiceOpenBody: "Tap the highlighted button to open your purchase cards. Choose a purchase you are thinking about.",
-    practiceCardTitle: "Choose a purchase",
-    practiceCardBody: "Scroll the cards in the highlighted area. Tap a suitable card to continue.",
+    practiceOpenBody: "Tap the highlighted card in the feed. All your temptations live here.",
+    practiceCardTitle: "Choose a decision",
+    practiceCardBody: "Tap {{save}} if you resisted the purchase, or {{spend}} if you bought it. Then choose the amount.",
     practiceAmountTitle: "Check the price",
-    practiceAmountBody: "Move the slider or enter the price and dismiss the keyboard. This is the purchase amount; no money is charged.",
-    practiceActionTitle: "What happened to the purchase?",
-    practiceActionBody: "Choose what is true for you: resisted, bought, or think later. Almost records your choice; confirm it in the window that opens if asked.",
+    practiceAmountBody: "Move the slider. For an exact amount, tap the price and enter a value. No money is charged.",
+    practiceActionTitle: "Confirm your decision",
+    practiceActionBody: "Check the amount and tap the selected button again. Confirm your decision in the next window if asked.",
     practiceResultTitle: "You made your first decision",
-    practiceSavedBody: "Your resisted purchase is recorded. Its amount appears in Not spent. This is a decision record, not a bank transfer.",
+    practiceSavedBody: "Your resisted purchase is recorded. Its amount appears in {{total}}. This is a decision record, not a bank transfer.",
     practiceSpentBody: "The purchase is recorded in history. Almost does not charge money; it tracks your decision.",
     practicePausedBody: "The purchase is paused. Find it in Pause when you are ready to decide.",
     practiceEmptyTitle: "Add your purchase",
@@ -3757,7 +3759,7 @@ export const TRANSLATIONS = {
     redesignTemptationEdit: "Edit temptation",
     redesignTodayLaterToday: "Later today",
     redesignTodayUpcoming: "Upcoming checks",
-    redesignTodayAllCards: "All Temptations",
+    redesignTodayAllCards: "Temptations",
     redesignTodayNoChecks: "No temptations to check today",
     redesignTodayAdd: "Add a temptation",
     redesignTodayPurchase: "Purchase",
@@ -5086,15 +5088,15 @@ export const TRANSLATIONS = {
     practicePendingBody: "Confirmez votre choix dans la fenêtre ouverte. Annulez pour revenir aux décisions.",
 
     practiceOpenTitle: "Essayez avec votre achat",
-    practiceOpenBody: "Touchez le bouton mis en évidence pour ouvrir vos cartes. Choisissez un achat que vous envisagez.",
-    practiceCardTitle: "Choisissez un achat",
-    practiceCardBody: "Faites défiler les cartes dans la zone éclairée. Touchez une carte adaptée pour continuer.",
+    practiceOpenBody: "Touchez la carte en évidence dans le fil. Toutes vos tentations se trouvent ici.",
+    practiceCardTitle: "Choisissez une décision",
+    practiceCardBody: "Touchez {{save}} si vous avez résisté, ou {{spend}} si vous avez acheté. Choisissez ensuite le montant.",
     practiceAmountTitle: "Vérifiez le prix",
-    practiceAmountBody: "Déplacez le curseur ou saisissez le prix et fermez le clavier. Il s’agit du montant de l’achat, sans débit d’argent.",
-    practiceActionTitle: "Qu’est-il arrivé à cet achat ?",
-    practiceActionBody: "Choisissez ce qui est vrai : achat évité, effectué ou à réfléchir plus tard. Almost enregistre votre choix ; confirmez-le dans la fenêtre ouverte si demandé.",
+    practiceAmountBody: "Déplacez le curseur. Pour un montant précis, touchez le prix et saisissez une valeur. Aucun argent n’est débité.",
+    practiceActionTitle: "Confirmez votre décision",
+    practiceActionBody: "Vérifiez le montant et touchez à nouveau le bouton sélectionné. Confirmez dans la fenêtre suivante si demandé.",
     practiceResultTitle: "Votre première décision est prise",
-    practiceSavedBody: "L’achat évité est enregistré. Son montant apparaît dans Non dépensé. C’est une décision enregistrée, pas un virement bancaire.",
+    practiceSavedBody: "L’achat évité est enregistré. Son montant apparaît dans {{total}}. C’est une décision enregistrée, pas un virement bancaire.",
     practiceSpentBody: "L’achat est enregistré dans l’historique. Almost ne débite pas d’argent : il suit votre décision.",
     practicePausedBody: "L’achat est en pause. Retrouvez-le dans Pause lorsque vous serez prêt à décider.",
     practiceEmptyTitle: "Ajoutez votre achat",
@@ -6233,7 +6235,7 @@ export const TRANSLATIONS = {
     redesignTemptationEdit: "Modifier la tentation",
     redesignTodayLaterToday: "Plus tard aujourd’hui",
     redesignTodayUpcoming: "Prochaines vérifications",
-    redesignTodayAllCards: "Toutes les tentations",
+    redesignTodayAllCards: "Tentations",
     redesignTodayNoChecks: "Aucune tentation à vérifier aujourd’hui",
     redesignTodayAdd: "Ajouter une tentation",
     redesignTodayPurchase: "Achat",
@@ -7562,15 +7564,15 @@ export const TRANSLATIONS = {
     practicePendingBody: "Confirma tu elección en la ventana que se abra. Si cancelas, volverás a las decisiones.",
 
     practiceOpenTitle: "Prueba con tu compra",
-    practiceOpenBody: "Pulsa el botón resaltado para abrir tus tarjetas. Elige una compra que estés considerando.",
-    practiceCardTitle: "Elige una compra",
-    practiceCardBody: "Desliza las tarjetas en la zona resaltada. Pulsa la adecuada para continuar.",
+    practiceOpenBody: "Pulsa la tarjeta resaltada en la lista. Aquí están todas tus tentaciones.",
+    practiceCardTitle: "Elige una decisión",
+    practiceCardBody: "Pulsa {{save}} si evitaste la compra o {{spend}} si compraste. Después elige el importe.",
     practiceAmountTitle: "Revisa el precio",
-    practiceAmountBody: "Mueve el control o introduce el precio y cierra el teclado. Es el importe de la compra; no se cobra dinero.",
-    practiceActionTitle: "¿Qué pasó con la compra?",
-    practiceActionBody: "Elige lo que ocurrió: la evitaste, la hiciste o quieres pensar después. Almost registra tu elección; confírmala en la ventana que se abra si se solicita.",
+    practiceAmountBody: "Mueve el control. Para un importe exacto, pulsa el precio e introduce un valor. No se cobra dinero.",
+    practiceActionTitle: "Confirma tu decisión",
+    practiceActionBody: "Revisa el importe y vuelve a pulsar el botón seleccionado. Confirma en la siguiente ventana si se solicita.",
     practiceResultTitle: "Tomaste tu primera decisión",
-    practiceSavedBody: "La compra evitada está registrada. Su importe aparece en No gastado. Es un registro, no una transferencia bancaria.",
+    practiceSavedBody: "La compra evitada está registrada. Su importe aparece en {{total}}. Es un registro, no una transferencia bancaria.",
     practiceSpentBody: "La compra está registrada en el historial. Almost no cobra dinero: registra tu decisión.",
     practicePausedBody: "La compra está en pausa. La encontrarás en Pausa cuando quieras decidir.",
     practiceEmptyTitle: "Añade tu compra",
@@ -8709,7 +8711,7 @@ export const TRANSLATIONS = {
     redesignTemptationEdit: "Editar tentación",
     redesignTodayLaterToday: "Más tarde hoy",
     redesignTodayUpcoming: "Próximas revisiones",
-    redesignTodayAllCards: "Todas las tentaciones",
+    redesignTodayAllCards: "Tentaciones",
     redesignTodayNoChecks: "No hay tentaciones que revisar hoy",
     redesignTodayAdd: "Añadir una tentación",
     redesignTodayPurchase: "Compra",
@@ -10004,6 +10006,12 @@ export const TRANSLATIONS = {
 };
 
 Object.assign(TRANSLATIONS, GENERATED_TRANSLATIONS);
+Object.entries(ALMI_TUTORIAL_TRANSLATIONS).forEach(([language, copy]) => {
+  Object.assign(TRANSLATIONS[language], copy);
+});
+Object.entries(ALMI_ROOM_TRANSLATIONS).forEach(([language, copy]) => {
+  Object.assign(TRANSLATIONS[language], copy);
+});
 
 // The same count forms are used by both Pause summaries.
 const PAUSE_COUNT_COPY = {

@@ -53,7 +53,9 @@ enum ExpenseParser {
     guard let input, let code = walletCurrency(currency) else { return nil }
     var number = normalize(input).trimmingCharacters(in: .whitespacesAndNewlines)
     var tokens = [code]
-    let symbols = ["EUR": ["€"], "GBP": ["£"], "RUB": ["₽"], "SAR": ["ر.س.", "ر.س", "ريال"], "AED": ["د.إ.", "د.إ", "درهم"], "USD": ["US$", "$"], "CAD": ["CA$", "C$", "$"], "AUD": ["A$", "$"], "NZD": ["NZ$", "$"], "HKD": ["HK$", "$"], "SGD": ["S$", "$"], "JPY": ["JP¥", "¥", "￥"], "CNY": ["CN¥", "¥", "￥"]]
+    // Foundation now formats SAR with the Saudi riyal sign (U+20C1).
+    // Accept both generations of symbol only with an explicit SAR currency.
+    let symbols = ["EUR": ["€"], "GBP": ["£"], "RUB": ["₽"], "SAR": ["\u{20C1}", "ر.س.", "ر.س", "ريال"], "AED": ["د.إ.", "د.إ", "درهم"], "USD": ["US$", "$"], "CAD": ["CA$", "C$", "$"], "AUD": ["A$", "$"], "NZD": ["NZ$", "$"], "HKD": ["HK$", "$"], "SGD": ["S$", "$"], "JPY": ["JP¥", "¥", "￥"], "CNY": ["CN¥", "¥", "￥"]]
     tokens += symbols[code] ?? []
     for token in tokens {
       if number.uppercased().hasPrefix(token.uppercased()) {
