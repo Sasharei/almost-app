@@ -51,3 +51,7 @@ These rules are mandatory for every Codex change in this repository.
 
 - For non-trivial changes, run `npm run verify` after the targeted checks.
 - In the final response, mention the functional parity check, localization check, theme check, and any visual theme review that was run or could not be run.
+
+## Polling and implementation hygiene
+
+Read and apply [POLLING_AND_IMPLEMENTATION_HYGIENE.md](POLLING_AND_IMPLEMENTATION_HYGIENE.md). The maintained source is `/Users/sasarei/.codex/rules/POLLING_AND_IMPLEMENTATION_HYGIENE.md`. Keep the copies synchronized. Existing execution and release restrictions remain in force.

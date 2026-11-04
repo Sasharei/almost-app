@@ -55,3 +55,9 @@ Server default URL: `http://localhost:8787`
 - Apple validation returns `apple_config_incomplete` if required Apple credentials are missing while `APPLE_VALIDATION_ENABLED=1`.
 - Google validation returns `google_config_incomplete` with `missing` env var names when misconfigured and `GOOGLE_VALIDATION_ENABLED=1`.
 - Check `/health` after deploy to confirm readiness before sending users to paywall.
+
+### Legacy session scope hotfix (4 November 2026)
+
+Compatibility mode (`REQUIRE_INSTALL_SECRET_PROOF=0`) continues to accept diagnostic snapshots from published clients, with `accepted=true` and `trusted=false`. It does not register credentials. Such sessions cannot read stored entitlements or validate purchases. A signed session carries a privileged scope only when its secret matches an existing server binding and its app user equals the bound install ID. Tokens without this new claim are limited, including previously issued tokens. First registration cannot claim an existing unbound entitlement owner. Recovery of those owners needs a separately verified ownership migration.
+
+RevenueCat remains the client source of paid access. Published 8.1.0 (137) and the current candidate ignore snapshot response entitlements; optional validation errors do not remove RevenueCat access. Preserve this compatibility mode until supported clients and verified identity recovery permit strict binding. Remove it only after confirming that no supported client needs it. JSON persistence, webhook contracts and provider configuration are unchanged. No polling or parallel implementation was added. Purchase idempotency responses are scoped to the authenticated identity and platform.

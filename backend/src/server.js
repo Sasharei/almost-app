@@ -26,6 +26,7 @@ import {
   markTransactionSeen,
   upsertEntitlement,
   verifyOrRegisterInstallSecret,
+  hasVerifiedInstallSecret,
 } from "./store/entitlementsStore.js";
 import { validateApplePurchase } from "./validators/apple.js";
 import { validateGooglePurchase } from "./validators/google.js";
@@ -436,7 +437,11 @@ app.post("/v1/auth/session", authSessionRateLimiter, (req, res) => {
         platform: parsed.data.platform || null,
       }
     : parsed.data;
-  const issued = issueSessionToken(tokenClaims);
+  const issued = issueSessionToken({
+    ...tokenClaims,
+    installSecretVerified: tokenClaims.appUserId === installId &&
+      hasVerifiedInstallSecret(installId, installSecret),
+  });
   if (!issued.ok) {
     res.status(503).json({ ok: false, error: issued.reason || "session_issue_failed" });
     return;
@@ -455,7 +460,8 @@ app.get("/v1/entitlements/:appUserId", appEndpointRateLimiter, requireAppAuth, (
     res.status(400).json({ error: "missing_app_user_id" });
     return;
   }
-  const entitlement = getEntitlementByUser(appUserId);
+  const entitlement = req.authSession?.installSecretVerified === true
+    ? getEntitlementByUser(appUserId) : null;
   res.json({
     ok: true,
     entitlement: entitlement || null,
@@ -471,7 +477,8 @@ app.post("/v1/entitlements/sync", appEndpointRateLimiter, requireAppAuth, (req, 
 
   const payload = parsed.data;
   const risk = scoreFraudRisk({ payload, trustedValidation: false });
-  const entitlement = getEntitlementByUser(payload.appUserId);
+  const entitlement = req.authSession?.installSecretVerified === true
+    ? getEntitlementByUser(payload.appUserId) : null;
 
   res.json({
     ok: true,
@@ -483,7 +490,16 @@ app.post("/v1/entitlements/sync", appEndpointRateLimiter, requireAppAuth, (req, 
 });
 
 app.post("/v1/iap/validate", appEndpointRateLimiter, requireAppAuth, async (req, res) => {
-  const idempotencyKey = req.header("idempotency-key") || "";
+  // Check scope before cache lookup or any store/provider operation. Tokens issued
+  // before this fix have no proof claim and intentionally remain limited.
+  if (req.authSession?.installSecretVerified !== true) {
+    res.status(403).json({ ok: false, error: "install_secret_proof_required" });
+    return;
+  }
+  const requestKey = req.header("idempotency-key") || "";
+  const idempotencyKey = requestKey
+    ? JSON.stringify([req.authSession.appUserId, req.authSession.installId, req.authSession.platform, requestKey])
+    : "";
   if (idempotencyKey) {
     const cached = getCachedIdempotentResponse(idempotencyKey);
     if (cached) {

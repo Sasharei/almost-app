@@ -181,6 +181,15 @@ export const cacheIdempotentResponse = (idempotencyKey, responseBody) => {
   idempotencyCache.set(idempotencyKey, responseBody);
 };
 
+// Read-only proof check. Compatibility mode must never bind an existing identity
+// merely because a caller knows its public install ID.
+export const hasVerifiedInstallSecret = (installId, installSecret) => {
+  const existing = installSecretBindings.peek(String(installId || "").trim());
+  const secret = normalizeInstallSecret(installSecret);
+  return !!secret && !!existing?.secretHash &&
+    timingSafeEquals(existing.secretHash, hashInstallSecret(secret));
+};
+
 export const verifyOrRegisterInstallSecret = (installId, installSecret) => {
   const normalizedInstallId = String(installId || "").trim();
   const normalizedSecret = normalizeInstallSecret(installSecret);
@@ -190,6 +199,11 @@ export const verifyOrRegisterInstallSecret = (installId, installSecret) => {
   const nextHash = hashInstallSecret(normalizedSecret);
   const existing = installSecretBindings.get(normalizedInstallId);
   if (!existing?.secretHash) {
+    const hasHistoricalOwner = entitlementByUser.has(normalizedInstallId) ||
+      [...seenTransactions.values()].some(value => value?.appUserId === normalizedInstallId);
+    if (hasHistoricalOwner) {
+      return { ok: false, reason: "legacy_identity_requires_recovery" };
+    }
     const nowIso = new Date().toISOString();
     installSecretBindings.set(normalizedInstallId, {
       secretHash: nextHash,

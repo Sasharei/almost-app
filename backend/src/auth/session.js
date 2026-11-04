@@ -34,7 +34,7 @@ const signPayload = (payloadPart) => {
 
 export const isSessionAuthEnabled = () => !!config.session.enabled;
 
-export const issueSessionToken = ({ appUserId = null, installId = null, platform = null } = {}) => {
+export const issueSessionToken = ({ appUserId = null, installId = null, platform = null, installSecretVerified = false } = {}) => {
   if (!isSessionAuthEnabled()) {
     return {
       ok: false,
@@ -44,6 +44,7 @@ export const issueSessionToken = ({ appUserId = null, installId = null, platform
   const now = Date.now();
   const ttlMs = Math.max(60 * 1000, Number(config.session.ttlMs) || 0);
   const payload = {
+    installSecretVerified: installSecretVerified === true,
     v: TOKEN_VERSION,
     iat: now,
     exp: now + ttlMs,
@@ -134,6 +135,7 @@ export const verifySessionToken = (token = "") => {
     return {
       ok: true,
       payload: {
+        installSecretVerified: decodedPayload?.installSecretVerified === true,
         v: version,
         iat: issuedAt,
         exp: expiresAt,
