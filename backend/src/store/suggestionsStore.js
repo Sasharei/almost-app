@@ -35,6 +35,11 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
   if (!db.prepare("PRAGMA table_info(suggestions)").all().some(column => column.name === "revision")) db.exec("ALTER TABLE suggestions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
   db.exec("CREATE TABLE IF NOT EXISTS suggestion_moderation_log (id INTEGER PRIMARY KEY, suggestion_id TEXT NOT NULL, previous_status TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL)");
   db.exec("CREATE TABLE IF NOT EXISTS suggestion_admin_sessions (hash TEXT PRIMARY KEY, expires INTEGER NOT NULL)");
+  db.exec(`CREATE TABLE IF NOT EXISTS suggestion_email_outbox (
+    suggestion_id TEXT PRIMARY KEY, due_at INTEGER NOT NULL, lease TEXT,
+    lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
+    completed_at INTEGER, sent_at INTEGER, last_error TEXT);
+    CREATE INDEX IF NOT EXISTS suggestion_email_due ON suggestion_email_outbox(completed_at,due_at);`);
   for (const row of db.prepare("SELECT id,title,description FROM suggestions WHERE search_text='' ").all()) {
     db.prepare("UPDATE suggestions SET search_text=? WHERE id=?").run(searchable(`${row.title}\n${row.description}`), row.id);
   }
@@ -70,6 +75,34 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
     db.prepare("INSERT INTO suggestion_moderation_log(suggestion_id,previous_status,status,created_at) VALUES (?,?,?,?)").run(id,previous.status,status,Date.now());
   });
   return {
+    claimEmail(now = Date.now()) {
+      return atomic(() => {
+        const row = db.prepare(`SELECT o.suggestion_id AS id,o.attempts,s.status,s.created_at AS createdAt
+          FROM suggestion_email_outbox o JOIN suggestions s ON s.id=o.suggestion_id
+          WHERE o.completed_at IS NULL AND o.due_at<=? AND o.lease_until<=?
+          ORDER BY o.due_at,o.suggestion_id LIMIT 1`).get(now,now);
+        if (!row) return null;
+        const lease = crypto.randomUUID();
+        db.prepare("UPDATE suggestion_email_outbox SET lease=?,lease_until=? WHERE suggestion_id=?").run(lease,now+60_000,row.id);
+        return {...row,lease};
+      });
+    },
+    finishEmail(job,error = null,now = Date.now(),sent = true) {
+      if (error) {
+        const delay = Math.min(3_600_000,60_000*2**Math.min(job.attempts,6));
+        db.prepare(`UPDATE suggestion_email_outbox SET attempts=attempts+1,due_at=?,lease=NULL,lease_until=0,last_error=?
+          WHERE suggestion_id=? AND lease=?`).run(now+Math.round(delay*(0.85+Math.random()*0.3)),error,job.id,job.lease);
+      } else db.prepare(`UPDATE suggestion_email_outbox SET completed_at=?,sent_at=?,lease=NULL,lease_until=0,last_error=NULL
+        WHERE suggestion_id=? AND lease=?`).run(now,sent?now:null,job.id,job.lease);
+    },
+    nextEmailAt() {
+      return db.prepare("SELECT min(max(due_at,lease_until)) AS at FROM suggestion_email_outbox WHERE completed_at IS NULL").get().at;
+    },
+    emailStatus() {
+      return {pending:db.prepare("SELECT count(*) AS count FROM suggestion_email_outbox WHERE completed_at IS NULL").get().count,
+        lastSentAt:db.prepare("SELECT max(sent_at) AS at FROM suggestion_email_outbox").get().at,
+        failed:db.prepare("SELECT count(*) AS count FROM suggestion_email_outbox WHERE completed_at IS NULL AND last_error IS NOT NULL").get().count};
+    },
     adminSession(hash,expires) {
       if(expires) db.prepare("DELETE FROM suggestion_admin_sessions WHERE expires<=?").run(Date.now());
       if(expires===0) { db.prepare("DELETE FROM suggestion_admin_sessions WHERE hash=?").run(hash); return false; }
@@ -107,6 +140,7 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
         const id = crypto.randomUUID();
         db.prepare("INSERT INTO suggestions(id,author,request_id,title,description,language,created_at,search_text) VALUES (?,?,?,?,?,?,?,?)")
           .run(id, actor, requestId, title, description, language, Date.now(), searchable(`${title}\n${description}`));
+        db.prepare("INSERT INTO suggestion_email_outbox(suggestion_id,due_at) VALUES (?,?)").run(id,Date.now());
         return present(visible(actor, id), actor);
       });
     },

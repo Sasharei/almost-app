@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { config } from "./config.js";
 import { createSuggestionsStore } from "./store/suggestionsStore.js";
+import { createSuggestionEmailWorker, emailConfigPath, readEmailConfig } from "./suggestionEmail.js";
 
 export const suggestionsDatabasePath = () => {
   if (process.env.SUGGESTIONS_DATABASE_PATH) return process.env.SUGGESTIONS_DATABASE_PATH;
@@ -10,7 +11,13 @@ export const suggestionsDatabasePath = () => {
   return `${persistentBase}.suggestions.sqlite`;
 };
 let store;
+let emailWorker;
 export const getSuggestionsStore = () => { store ||= createSuggestionsStore(suggestionsDatabasePath()); return store; };
+export const kickSuggestionEmail = () => {
+  emailWorker ||= createSuggestionEmailWorker({store:getSuggestionsStore(),readConfig:()=>readEmailConfig(emailConfigPath(suggestionsDatabasePath()))});
+  emailWorker.kick();
+};
+export const stopSuggestionEmail = async () => { await emailWorker?.stop(); emailWorker=null; };
 export const closeSuggestionsStore = () => { store?.close(); store = null; };
 const identity = {
   appUserId: z.string().max(200).nullable().optional(),
@@ -46,6 +53,7 @@ export const registerSuggestionsRoutes = (app, limiter, auth) => {
           : action === "create" ? { item: service.create(actor, payload) }
           : action === "vote" ? { item: service.vote(actor, payload.id, payload.value) }
           : service[action](actor, payload.id);
+        if(action === "create") kickSuggestionEmail();
         return res.status(action === "create" ? 201 : 200).json(result);
       } catch (error) {
         if (error.status) return res.status(error.status).json({ error: error.message });

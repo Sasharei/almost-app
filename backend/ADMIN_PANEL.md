@@ -12,7 +12,7 @@ Open `https://almost-monetization-backend.onrender.com/admin/suggestions/` in a 
 6. On a timeout or conflict, refresh before deciding again. A timed-out write may already have committed. Revisions prevent stale decisions from silently overwriting newer changes.
 7. Sign out on a shared device. Sessions last at most8 hours and logout revokes the current session server-side.
 
-The owner is the moderation operator. This feature does not provide automatic AI moderation, scheduled queue monitoring or notifications.
+The owner is the moderation operator. This feature does not provide automatic AI moderation. Event-driven email notifications are configured in the owner panel as described below.
 
 ## One-time operator setup and recovery
 
@@ -45,3 +45,15 @@ Deployment must be based on the exact current production artifact. Never deploy 
 ## Validation scope
 
 Web UI copy covers the12 shipping languages. Light/dark/PRO(indigo) are supported. Phone-browser layouts are web evidence, not native-device QA. The native app, store binaries, attribution and revenue SDK configuration are unchanged. Future app uploads remain subject to the separate server-readiness barrier.
+
+## Email notifications
+
+Open Notifications while signed in. Both sender and recipient are fixed to the owner-authorized support account `almostappsup@gmail.com`. In that Google account generate a separate App Password, then personally paste it into the panel and choose Connect Gmail. This Google credential is separate from the8-character minimum panel login password. Google App Passwords require2-Step Verification. Do not provide either password in chat. The first connection sends a clearly labeled test email and only enables delivery after Gmail accepts it. Check Inbox and Spam to confirm actual receipt. Existing connection details are collapsed behind Gmail; an owner can replace the credential, explicitly send another test, or pause notifications. Refresh reconciles uncertain results rather than replaying a write automatically. No Render interaction is needed for normal configuration.
+
+Every new successful suggestion insert adds exactly one outbox record in the same SQLite transaction. Replayed client requests do not create another job. Existing suggestions are not backfilled. The server wakes the worker after creation, on startup and after configuration. Only a persisted queued retry or lease has a timer; an empty/disabled queue has no polling. At most one delivery runs per process, with a database lease coordinating overlapping processes. A20-second whole SMTP deadline owns and destroys the TLS socket on timeout or shutdown. Failed sends use persisted exponential retry with jitter, roughly1 minute up to1 hour. Restarts recover unsent jobs; disabling pauses queued work. Already processed/withdrawn ideas are skipped before sending. The queue is independent from mobile response success.
+
+Email has a recognizable Almost subject, creation time, idea ID and a direct private-panel link. Submitted title/body, author/install identity and credentials are not sent. Templates and settings copy cover all12 app languages; the language selected when connecting is saved for future mail. No customer reply is sent. Deterministic Message-ID plus outbox deduplication prevents ordinary replay duplication. SMTP has no transactional idempotency guarantee: a lost acknowledgement after Gmail accepted a message can cause a duplicate on retry. Do not claim exactly-once delivery.
+
+The Gmail App Password is stored only in the separate persistent `<suggestions database>.email.json`, mode0600, through an atomic replacement. Plaintext is required for SMTP authentication. The authenticated read endpoint exposes only configuration flags and aggregate queue status, never the secret. Configuration writes require owner session, same canonical Origin, CSRF and the bounded login limiter; only one configuration exchange is active. TLS certificate verification stays enabled, SMTP destination is fixed to `smtp.gmail.com:465`, and file/URL attachments, SMTP debugging and raw error logging are disabled. Provider errors persist only as generic categories. Revoking the App Password in Google stops authentication; pause notifications first when retiring the connection.
+
+Production uses the existing paid Render Starter service. No new provider account, paid service, app binary or store publication is needed. Verify live asset hashes, anonymous isolation, database integrity, queue recovery, the real test email in the support inbox and a marked synthetic new suggestion before reporting notifications enabled. Backups/rollback preserve the additive outbox and independent credential file.

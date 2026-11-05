@@ -4,8 +4,21 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { getSuggestionsStore, suggestionsDatabasePath } from './suggestions.js';
+import {
+  getSuggestionsStore,
+  suggestionsDatabasePath,
+  kickSuggestionEmail,
+} from './suggestions.js';
+import {
+  emailConfigPath,
+  readEmailConfig,
+  writeEmailConfig,
+  sendGmail,
+  buildSuggestionEmail,
+  SUPPORT_EMAIL,
+} from './suggestionEmail.js';
 import { SUGGESTION_STATUSES } from './store/suggestionsStore.js';
+import { languages } from '../admin/suggestions/i18n.js';
 import {
   adminConfigPath,
   readAdminCredentials,
@@ -23,7 +36,11 @@ const assets = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../admin/suggestions',
 );
-export const registerSuggestionsAdmin = (app, loginLimiter) => {
+export const registerSuggestionsAdmin = (
+  app,
+  loginLimiter,
+  { sendEmail = sendGmail, wakeEmail = kickSuggestionEmail } = {},
+) => {
   let passwordChecks = 0;
   // Render terminates TLS before the legacy server. Do not alter global proxy trust.
   const adminOrigin =
@@ -172,6 +189,71 @@ export const registerSuggestionsAdmin = (app, loginLimiter) => {
     res.json({
       csrf: adminCsrf(req.suggestionsAdmin.token, req.suggestionsAdmin.config),
     }),
+  );
+  let configuringEmail = false;
+  app.get(
+    `${root}/api/email`,
+    auth,
+    safe((req, res) => {
+      const value = readEmailConfig(emailConfigPath(suggestionsDatabasePath()));
+      res.json({
+        enabled: value.enabled,
+        configured: !!value.password,
+        recipient: SUPPORT_EMAIL,
+        ...getSuggestionsStore().emailStatus(),
+      });
+    }),
+  );
+  app.post(
+    `${root}/api/email`,
+    sameOrigin,
+    auth,
+    csrf,
+    loginLimiter,
+    async (req, res) => {
+      if (configuringEmail) return res.status(409).json({ error: 'busy' });
+      const parsed = z
+        .object({
+          enabled: z.boolean(),
+          password: z.string().max(64).optional(),
+          locale: z.enum(Object.keys(languages)).default('ru'),
+        })
+        .strict()
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: 'request' });
+      const controller = new AbortController();
+      const cancel = () => {
+        if (!res.writableEnded) controller.abort();
+      };
+      res.once('close', cancel);
+      configuringEmail = true;
+      try {
+        const file = emailConfigPath(suggestionsDatabasePath());
+        const existing = readEmailConfig(file);
+        const password =
+          parsed.data.password?.replace(/\s/g, '') || existing.password;
+        if (!/^[a-z]{16}$/.test(password || ''))
+          return res.status(400).json({ error: 'email_password' });
+        if (parsed.data.enabled)
+          await sendEmail(
+            password,
+            buildSuggestionEmail(null, parsed.data.locale),
+            controller.signal,
+          );
+        writeEmailConfig(file, {
+          enabled: parsed.data.enabled,
+          password,
+          locale: parsed.data.locale,
+        });
+        wakeEmail();
+        res.json({ ok: true, enabled: parsed.data.enabled });
+      } catch {
+        res.status(503).json({ error: 'email_delivery' });
+      } finally {
+        configuringEmail = false;
+        res.off('close', cancel);
+      }
+    },
   );
   app.post(
     `${root}/api/logout`,

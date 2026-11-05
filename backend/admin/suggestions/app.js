@@ -1,4 +1,5 @@
 import { messages, languages } from './i18n.js';
+import { setupEmailSettings } from './email-settings.js';
 const $ = (id) => document.getElementById(id);
 const statuses = [
   'pending',
@@ -176,7 +177,10 @@ function renderFolders() {
   $('folder-title').textContent = t(folder);
 }
 const controllers = new Set();
-async function api(path, { method = 'GET', body, signal } = {}) {
+async function api(
+  path,
+  { method = 'GET', body, signal, timeoutMs = 12000 } = {},
+) {
   const controller = new AbortController();
   controllers.add(controller);
   const cancel = () => controller.abort();
@@ -186,7 +190,7 @@ async function api(path, { method = 'GET', body, signal } = {}) {
   const deadline = setTimeout(() => {
     timedOut = true;
     cancel();
-  }, 12000);
+  }, timeoutMs);
   try {
     const response = await fetch(`/admin/suggestions/api/${path}`, {
       method,
@@ -228,6 +232,7 @@ function showLogin(message) {
   $('board').hidden = true;
   $('login').hidden = false;
   $('logout').hidden = true;
+  $('email-settings').hidden = true;
   $('startup').hidden = true;
   $('list').replaceChildren();
   $('detail').replaceChildren();
@@ -455,7 +460,8 @@ function renderDetail(item) {
     button.textContent = t(
       item.status === 'pending' && select.value === 'open' ? 'approve' : 'save',
     );
-    button.disabled = busy || uncertainId === item.id || select.value === item.status;
+    button.disabled =
+      busy || uncertainId === item.id || select.value === item.status;
     select.disabled = busy || uncertainId === item.id;
     visibility.textContent = t(
       publicStatus(select.value) ? 'publicHelp' : 'privateHelp',
@@ -569,6 +575,7 @@ $('login-form').onsubmit = async (event) => {
     $('login').hidden = true;
     $('board').hidden = false;
     $('logout').hidden = false;
+    $('email-settings').hidden = false;
     await loadList();
     if (location.hash.length === 37) {
       $('board').classList.add('show-detail');
@@ -672,6 +679,7 @@ addEventListener('pagehide', () => {
   for (const controller of controllers) controller.abort();
 });
 localize();
+setupEmailSettings({ api, t });
 try {
   const session = await api('session');
   csrf = session.csrf;
@@ -680,6 +688,7 @@ try {
   $('startup').hidden = true;
   $('board').hidden = false;
   $('logout').hidden = false;
+  $('email-settings').hidden = false;
   await loadList();
   if (location.hash.length === 37) {
     $('board').classList.add('show-detail');

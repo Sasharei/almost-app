@@ -20,6 +20,12 @@
         ><label
           ><span class="sr-only" data-t="theme"></span
           ><select id="theme"></select></label
+        ><button
+          id="email-settings"
+          class="quiet"
+          hidden
+          data-t="emailSettings"
+        ></button
         ><button id="logout" class="quiet" hidden data-t="logout"></button>
       </div>
     </header>
@@ -97,5 +103,62 @@
       ><button id="dismiss-notice" class="quiet" data-t="close"></button>
     </div>
     <div id="startup" class="startup" role="status" data-t="loading"></div>
+    <dialog id="email-dialog" aria-labelledby="email-title">
+      <div class="email-heading">
+        <h2 id="email-title" data-t="emailSettings"></h2>
+        <button
+          id="email-close"
+          class="quiet"
+          type="button"
+          data-t="close"
+        ></button>
+      </div>
+      <p class="muted" data-t="emailIntro"></p>
+      <p><strong>almostappsup@gmail.com</strong></p>
+      <p id="email-state" role="status"></p>
+      <form id="email-form">
+        <details id="email-credentials" open>
+          <summary>Gmail</summary>
+          <div class="email-credentials">
+            <p data-t="emailHelp"></p>
+            <a
+              href="https://myaccount.google.com/apppasswords"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-t="emailGoogle"
+            ></a>
+            <label for="email-password" data-t="emailPassword"></label>
+            <input
+              id="email-password"
+              type="password"
+              autocomplete="off"
+              maxlength="64"
+              spellcheck="false"
+            />
+          </div>
+        </details>
+        <p id="email-feedback" role="status"></p>
+        <button
+          id="email-reload"
+          type="button"
+          class="primary"
+          data-t="refresh"
+          hidden
+        ></button>
+        <button
+          id="email-save"
+          type="submit"
+          class="primary"
+          data-t="emailConnect"
+        ></button>
+        <button
+          id="email-disable"
+          type="button"
+          class="quiet"
+          data-t="emailDisable"
+          hidden
+        ></button>
+      </form>
+    </dialog>
   </body>
 </html>

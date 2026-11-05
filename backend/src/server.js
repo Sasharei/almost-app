@@ -1,6 +1,6 @@
 import cors from "cors";
 import { deriveSuggestionsActor } from "./auth/suggestionsIdentity.js";
-import { registerSuggestionsRoutes, closeSuggestionsStore } from "./suggestions.js";
+import { registerSuggestionsRoutes, closeSuggestionsStore, kickSuggestionEmail, stopSuggestionEmail } from "./suggestions.js";
 import { registerSuggestionsAdmin } from "./suggestionsAdmin.js";
 import express from "express";
 import helmet from "helmet";
@@ -810,6 +810,7 @@ const start = async () => {
     )
   );
   const server = app.listen(config.port, () => {
+    kickSuggestionEmail();
     // eslint-disable-next-line no-console
     console.log(`almost monetization backend listening on :${config.port}`);
   });
@@ -818,6 +819,7 @@ const start = async () => {
     // eslint-disable-next-line no-console
     console.log(`received ${signal}, flushing store and shutting down`);
     await flushStore();
+    await stopSuggestionEmail();
     closeSuggestionsStore();
     server.close(() => {
       process.exit(0);

@@ -32,12 +32,17 @@ test('moderation UI copy covers all twelve shipping locales and every literal UI
     new URL('../admin/suggestions/app.js', import.meta.url),
     'utf8',
   );
+  const email = fs.readFileSync(
+    new URL('../admin/suggestions/email-settings.js', import.meta.url),
+    'utf8',
+  );
   const html = fs.readFileSync(
     new URL('../admin/suggestions/index.html', import.meta.url),
     'utf8',
   );
   for (const match of [
     ...app.matchAll(/\bt\('([a-zA-Z_]+)'\)/g),
+    ...email.matchAll(/\bt\('([a-zA-Z_]+)'\)/g),
     ...html.matchAll(/data-t="([a-zA-Z_]+)"/g),
   ])
     assert.ok(keys.includes(match[1]), match[1]);
