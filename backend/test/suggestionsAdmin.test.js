@@ -40,7 +40,9 @@ test('admin sessions expire, reject tampering and rotate without changing instal
     ),
     false,
   );
-  await assert.rejects(createAdminCredentials('weak'));
+  await assert.rejects(createAdminCredentials('1234567'));
+  const minimum = await createAdminCredentials('12345678');
+  assert.equal(await checkAdminPassword('12345678', minimum), true);
 });
 
 test('private owner panel: one-time setup, CSRF, revision conflict, hidden recovery, complete queue and logout revocation', async () => {
@@ -104,7 +106,7 @@ test('private owner panel: one-time setup, CSRF, revision conflict, hidden recov
         expires: Date.now() + 60000,
       }),
     );
-    const body = { token: bootstrap, password: 'synthetic-owner-password-001' };
+    const body = { token: bootstrap, password: 'test1234' };
     assert.equal(
       (
         await call('setup', {
@@ -122,6 +124,13 @@ test('private owner panel: one-time setup, CSRF, revision conflict, hidden recov
           body: { ...body, token: 'a'.repeat(64) },
         })
       ).status,
+      403,
+    );
+    assert.equal(
+      (await call('setup', {
+        method: 'POST',
+        body: { ...body, password: '1234567' },
+      })).status,
       403,
     );
     const setup = await call('setup', { method: 'POST', body });

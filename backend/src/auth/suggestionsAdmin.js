@@ -7,7 +7,7 @@ export const adminConfigPath = (databasePath) => `${databasePath}.admin.json`;
 export const createAdminCredentials = async (password) => {
   if (
     typeof password !== 'string' ||
-    password.length < 16 ||
+    password.length < 8 ||
     password.length > 256
   )
     throw new Error('password_length');

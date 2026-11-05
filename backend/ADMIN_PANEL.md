@@ -4,7 +4,7 @@ Open `https://almost-monetization-backend.onrender.com/admin/suggestions/` in a 
 
 ## Owner workflow
 
-1. Sign in with the owner password. First access uses a private, single-use setup link, valid for30 minutes, where the owner personally chooses a password of at least16 characters. Passwords are never provided to the assistant or embedded in HTML. After setup use the regular panel URL.
+1. Sign in with the owner password. First access uses a private, single-use setup link, valid for30 minutes, where the owner personally chooses a password of at least8 characters. Passwords are never provided to the assistant or embedded in HTML. After setup use the regular panel URL.
 2. The default queue is Awaiting review. Open a suggestion to read its complete original text and see vote/report counts.
 3. Approve makes it public. Planned, In progress, Done and Closed are also public statuses. Pending is visible only to the author. Hidden is excluded from the public board.
 4. Select another status and Save when needed. Hidden records remain available under Hidden and can be restored. The feedback bar offers Undo; history records committed transitions.

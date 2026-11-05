@@ -99,7 +99,7 @@ export const registerSuggestionsAdmin = (app, loginLimiter) => {
       const parsed = z
         .object({
           token: z.string().regex(/^[a-f0-9]{64}$/),
-          password: z.string().min(16).max(256),
+          password: z.string().min(8).max(256),
         })
         .strict()
         .safeParse(req.body);
@@ -138,7 +138,7 @@ export const registerSuggestionsAdmin = (app, loginLimiter) => {
     let checking = false;
     try {
       const parsed = z
-        .object({ password: z.string().min(16).max(256) })
+        .object({ password: z.string().min(8).max(256) })
         .strict()
         .safeParse(req.body);
       const config = credentials();

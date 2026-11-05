@@ -113,7 +113,7 @@ function localize() {
       input.type = 'password';
       input.autocomplete = 'new-password';
       input.required = true;
-      input.minLength = 16;
+      input.minLength = 8;
       input.maxLength = 256;
       $('login-form').insertBefore(
         label,
@@ -540,7 +540,7 @@ $('login-form').onsubmit = async (event) => {
   const button = event.submitter;
   if (
     setupToken &&
-    ($('password').value.length < 16 ||
+    ($('password').value.length < 8 ||
       $('password').value !== $('confirm-password').value)
   ) {
     $('login-error').textContent = t('passwordRules');
