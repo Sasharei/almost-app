@@ -6,9 +6,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import express from 'express';
 process.env.DOTENV_CONFIG_PATH = '/dev/null';
-test('email configuration is owner-only, CSRF protected, secret write-only, atomic and tested before enable', async () => {
+test('email configuration is owner-only, CSRF protected, server-configured, atomic and tested before enable', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'almost-mail-api-'));
   process.env.SUGGESTIONS_DATABASE_PATH = path.join(directory, 'board.sqlite');
+  process.env.SUGGESTIONS_EMAIL_API_KEY = 're_synthetic_key';
   const { registerSuggestionsAdmin } =
     await import('../src/suggestionsAdmin.js');
   const { getSuggestionsStore, closeSuggestionsStore } =
@@ -62,14 +63,18 @@ test('email configuration is owner-only, CSRF protected, secret write-only, atom
   try {
     assert.equal((await call(null, { owner: false })).status, 401);
     assert.equal(
-      (await call({ enabled: true, password: 'a'.repeat(16) }, { csrf: false }))
-        .status,
+      (
+        await call(
+          { enabled: true, password: 'rejected-retired-field' },
+          { csrf: false },
+        )
+      ).status,
       403,
     );
     assert.equal(
       (
         await call(
-          { enabled: true, password: 'a'.repeat(16) },
+          { enabled: true, password: 'rejected-retired-field' },
           { origin: 'https://attacker.invalid' },
         )
       ).status,
@@ -79,7 +84,7 @@ test('email configuration is owner-only, CSRF protected, secret write-only, atom
       (
         await call({
           enabled: true,
-          password: 'a'.repeat(16),
+          password: 'rejected-retired-field',
           recipient: 'attacker@example.com',
         })
       ).status,
@@ -90,17 +95,13 @@ test('email configuration is owner-only, CSRF protected, secret write-only, atom
       400,
     );
     const file = emailConfigPath(process.env.SUGGESTIONS_DATABASE_PATH);
-    assert.equal(
-      (await call({ enabled: true, password: 'a'.repeat(16) })).status,
-      503,
-    );
+    assert.equal((await call({ enabled: true })).status, 503);
     assert.equal(fs.existsSync(file), false);
     fail = false;
     assert.equal(
       (
         await call({
           enabled: true,
-          password: 'aaaa aaaa aaaa aaaa',
           locale: 'ru',
         })
       ).status,
@@ -111,6 +112,11 @@ test('email configuration is owner-only, CSRF protected, secret write-only, atom
     assert.equal(state.body.enabled, true);
     assert.equal(state.body.recipient, 'almostappsup@gmail.com');
     assert.equal(state.body.password, undefined);
+    assert.equal(state.body.apiKey, undefined);
+    assert.ok(!fs.readFileSync(file, 'utf8').includes('re_synthetic_key'));
+    delete process.env.SUGGESTIONS_EMAIL_API_KEY;
+    assert.equal((await call({ enabled: true })).status, 503);
+    process.env.SUGGESTIONS_EMAIL_API_KEY = 're_synthetic_key';
     assert.equal((await call({ enabled: false })).status, 200);
     assert.equal((await call(null)).body.enabled, false);
     assert.equal(sends, 2);

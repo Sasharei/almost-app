@@ -40,6 +40,7 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
     lease_until INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
     completed_at INTEGER, sent_at INTEGER, last_error TEXT);
     CREATE INDEX IF NOT EXISTS suggestion_email_due ON suggestion_email_outbox(completed_at,due_at);`);
+  if (!db.prepare("PRAGMA table_info(suggestion_email_outbox)").all().some(column => column.name === "payload")) db.exec("ALTER TABLE suggestion_email_outbox ADD COLUMN payload TEXT");
   for (const row of db.prepare("SELECT id,title,description FROM suggestions WHERE search_text='' ").all()) {
     db.prepare("UPDATE suggestions SET search_text=? WHERE id=?").run(searchable(`${row.title}\n${row.description}`), row.id);
   }
@@ -75,6 +76,12 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
     db.prepare("INSERT INTO suggestion_moderation_log(suggestion_id,previous_status,status,created_at) VALUES (?,?,?,?)").run(id,previous.status,status,Date.now());
   });
   return {
+    emailPayload(job, message) {
+      db.prepare("UPDATE suggestion_email_outbox SET payload=COALESCE(payload,?) WHERE suggestion_id=? AND lease=?").run(JSON.stringify(message),job.id,job.lease);
+      const row=db.prepare("SELECT payload FROM suggestion_email_outbox WHERE suggestion_id=? AND lease=?").get(job.id,job.lease);
+      if(!row?.payload) fail("email_lease_changed",409);
+      return JSON.parse(row.payload);
+    },
     claimEmail(now = Date.now()) {
       return atomic(() => {
         const row = db.prepare(`SELECT o.suggestion_id AS id,o.attempts,s.status,s.created_at AS createdAt

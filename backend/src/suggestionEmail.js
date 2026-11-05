@@ -1,17 +1,22 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import tls from 'node:tls';
-import nodemailer from 'nodemailer';
 import { messages } from '../admin/suggestions/i18n.js';
 
 export const SUPPORT_EMAIL = 'almostappsup@gmail.com';
+export const EMAIL_FROM = 'Almost <suggestions@notify.almsotapp.com>';
+export const isEmailConfigured = () =>
+  /^re_[A-Za-z0-9_-]{8,}$/.test(process.env.SUGGESTIONS_EMAIL_API_KEY || '');
 export const PANEL_URL =
   'https://almost-monetization-backend.onrender.com/admin/suggestions/';
 export const emailConfigPath = (databasePath) => `${databasePath}.email.json`;
 export const readEmailConfig = (file) => {
   if (!fs.existsSync(file)) return { enabled: false };
   const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (typeof value.enabled !== 'boolean' || !/^[a-z]{16}$/.test(value.password))
+  if (
+    typeof value.enabled !== 'boolean' ||
+    'password' in value ||
+    'apiKey' in value
+  )
     throw new Error('email_config');
   return value;
 };
@@ -59,96 +64,65 @@ export const buildSuggestionEmail = (item = null, locale = 'ru') => {
     );
   const html = `<!doctype html><html lang="${escape(locale)}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}"><body style="margin:0;padding:28px;background:#f5f6fa;font:16px/1.6 Arial,sans-serif;color:#1f2230"><main style="max-width:580px;margin:auto;padding:28px;background:white;border:1px solid #dde1ea;border-radius:12px"><p style="font-weight:bold">Almost · ${escape(t.title)}</p><h1 style="font-size:24px;line-height:1.3">${escape(subject)}</h1>${lines.map((line) => `<p>${escape(line)}</p>`).join('')}<p style="margin:28px 0"><a href="${escape(url)}" style="display:inline-block;padding:12px 20px;background:#485ed7;color:white;border-radius:8px;text-decoration:none">${escape(t.mailOpen)}</a></p><p>${escape(t.mailPrivacy)}</p><p><a href="${PANEL_URL}">${escape(t.emailSettings)}</a></p></main></body></html>`;
   return {
-    from: { name: `Almost · ${t.title}`, address: SUPPORT_EMAIL },
-    to: SUPPORT_EMAIL,
+    from: EMAIL_FROM,
+    to: [SUPPORT_EMAIL],
+    reply_to: SUPPORT_EMAIL,
     subject,
     text,
     html,
-    ...(item
-      ? { messageId: `<suggestion.${item.id}@notifications.almostapp.com>` }
-      : {}),
-    disableFileAccess: true,
-    disableUrlAccess: true,
+    idempotencyKey: item
+      ? `suggestion/${item.id}`
+      : `test/${crypto.randomUUID()}`,
   };
 };
 
-// One connection per operation. The socket is owned here so timeout/shutdown can
-// abort the entire SMTP exchange, including authentication and message upload.
-export const sendGmail = async (
-  password,
+// One request, including response body, owns a deadline and cancellation signal.
+// Queued payload and idempotency key remain unchanged across retries/restarts.
+export const sendNotificationEmail = async (
   message,
   signal,
   {
-    connect = tls.connect,
-    createTransport = nodemailer.createTransport,
+    request = fetch,
+    apiKey = process.env.SUGGESTIONS_EMAIL_API_KEY,
     timeoutMs = 20_000,
   } = {},
 ) => {
-  let socket, callbackPending;
+  if (!/^re_[A-Za-z0-9_-]{8,}$/.test(apiKey || ''))
+    throw new Error('email_not_configured');
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  signal?.addEventListener('abort', abort, { once: true });
-  const timeout = setTimeout(abort, timeoutMs);
-  const cancelled = () => {
-    const error = new Error('email_cancelled');
-    error.code = 'ECANCELLED';
-    socket?.destroy(error);
-    callbackPending?.(error);
-  };
-  controller.signal.addEventListener('abort', cancelled, { once: true });
-  let transport;
+  const cancel = () => controller.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
+  if (signal?.aborted) cancel();
+  const timer = setTimeout(cancel, timeoutMs);
   try {
-    transport = createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: { user: SUPPORT_EMAIL, pass: password },
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-      dnsTimeout: 10_000,
-      logger: false,
-      debug: false,
-      getSocket(options, callback) {
-        let called = false;
-        const done = (error, value) => {
-          if (called) return;
-          called = true;
-          callbackPending = null;
-          callback(error, value);
-        };
-        callbackPending = done;
-        if (controller.signal.aborted || signal?.aborted)
-          return done(new Error('email_cancelled'));
-        socket = connect({
-          host: 'smtp.gmail.com',
-          port: 465,
-          servername: 'smtp.gmail.com',
-          rejectUnauthorized: true,
-        });
-        socket.once('error', (error) => done(error));
-        socket.once('secureConnect', () =>
-          done(null, { connection: socket, secured: true }),
-        );
+    const { idempotencyKey, ...body } = message;
+    const response = await request('https://api.resend.com/emails', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
       },
+      body: JSON.stringify(body),
     });
-    if (signal?.aborted) controller.abort();
-    const result = await transport.sendMail(message);
-    if (!result.accepted?.includes(SUPPORT_EMAIL))
-      throw new Error('email_rejected');
+    const result = await response.json();
+    if (!response.ok || typeof result.id !== 'string') {
+      const error = new Error('email_delivery');
+      error.code = [401, 403].includes(response.status) ? 'EAUTH' : 'EPROVIDER';
+      throw error;
+    }
+    return { id: result.id };
   } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', abort);
-    controller.signal.removeEventListener('abort', cancelled);
-    transport?.close();
-    socket?.destroy();
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
   }
 };
 
 export const createSuggestionEmailWorker = ({
   store,
   readConfig,
-  send = sendGmail,
+  send = sendNotificationEmail,
   now = Date.now,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
@@ -190,11 +164,11 @@ export const createSuggestionEmailWorker = ({
       }
       active = new AbortController();
       try {
-        await send(
-          config.password,
+        const message = store.emailPayload(
+          job,
           buildSuggestionEmail(job, config.locale),
-          active.signal,
         );
+        await send(message, active.signal);
         store.finishEmail(job, null, now());
       } catch (error) {
         store.finishEmail(

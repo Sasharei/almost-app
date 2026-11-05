@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { config } from "./config.js";
 import { createSuggestionsStore } from "./store/suggestionsStore.js";
-import { createSuggestionEmailWorker, emailConfigPath, readEmailConfig } from "./suggestionEmail.js";
+import { createSuggestionEmailWorker, emailConfigPath, readEmailConfig, isEmailConfigured } from "./suggestionEmail.js";
 
 export const suggestionsDatabasePath = () => {
   if (process.env.SUGGESTIONS_DATABASE_PATH) return process.env.SUGGESTIONS_DATABASE_PATH;
@@ -14,7 +14,7 @@ let store;
 let emailWorker;
 export const getSuggestionsStore = () => { store ||= createSuggestionsStore(suggestionsDatabasePath()); return store; };
 export const kickSuggestionEmail = () => {
-  emailWorker ||= createSuggestionEmailWorker({store:getSuggestionsStore(),readConfig:()=>readEmailConfig(emailConfigPath(suggestionsDatabasePath()))});
+  emailWorker ||= createSuggestionEmailWorker({store:getSuggestionsStore(),readConfig:()=>{const value=readEmailConfig(emailConfigPath(suggestionsDatabasePath()));return {...value,enabled:value.enabled && isEmailConfigured()};}});
   emailWorker.kick();
 };
 export const stopSuggestionEmail = async () => { await emailWorker?.stop(); emailWorker=null; };

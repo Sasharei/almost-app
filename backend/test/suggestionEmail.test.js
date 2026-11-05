@@ -4,13 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import net from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { createSuggestionsStore } from '../src/store/suggestionsStore.js';
 import {
   createSuggestionEmailWorker,
   buildSuggestionEmail,
-  sendGmail,
+  sendNotificationEmail,
+  EMAIL_FROM,
   SUPPORT_EMAIL,
 } from '../src/suggestionEmail.js';
 import { messages } from '../admin/suggestions/i18n.js';
@@ -99,14 +99,14 @@ test('worker has one active delivery, no idle polling, retries only queued work,
     fail = true;
   const worker = createSuggestionEmailWorker({
     store,
-    readConfig: () => ({ enabled, password: 'a'.repeat(16) }),
+    readConfig: () => ({ enabled }),
     setTimer: (fn, delay) => {
       const id = ++sequence;
       timers.set(id, { fn, delay });
       return id;
     },
     clearTimer: (id) => timers.delete(id),
-    send: async (password, message, signal) => {
+    send: async (message, signal) => {
       sent++;
       active++;
       maximum = Math.max(maximum, active);
@@ -165,7 +165,7 @@ test('already moderated or withdrawn ideas are suppressed and an empty queue lea
   let sends = 0;
   const worker = createSuggestionEmailWorker({
     store,
-    readConfig: () => ({ enabled: true, password: 'a'.repeat(16) }),
+    readConfig: () => ({ enabled: true }),
     send: async () => {
       sends++;
     },
@@ -198,8 +198,8 @@ test('mail uses all supported locales, a direct owner link and no submitted text
   for (const locale of Object.keys(messages)) {
     const mail = buildSuggestionEmail(item, locale),
       raw = JSON.stringify(mail);
-    assert.equal(mail.to, SUPPORT_EMAIL);
-    assert.equal(mail.from.address, SUPPORT_EMAIL);
+    assert.deepEqual(mail.to, [SUPPORT_EMAIL]);
+    assert.equal(mail.from, EMAIL_FROM);
     assert.ok(mail.text.includes('#' + item.id));
     assert.ok(mail.html.includes(messages[locale].mailOpen));
     assert.ok(!raw.includes('PRIVATE'));
@@ -208,74 +208,101 @@ test('mail uses all supported locales, a direct owner link and no submitted text
   }
 });
 
-test('real Nodemailer SMTP exchange has fixed support sender/recipient and a cancellable socket deadline', async () => {
-  let envelope = '',
-    data = false,
-    wire = '',
-    hang = false;
-  const sockets = new Set();
-  const server = net.createServer((socket) => {
-    sockets.add(socket);
-    socket.on('close', () => sockets.delete(socket));
-    socket.on('error', () => {});
-    socket.write('220 synthetic SMTP\r\n');
-    let buffer = '';
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString();
-      let at;
-      while ((at = buffer.indexOf('\r\n')) >= 0) {
-        const line = buffer.slice(0, at);
-        buffer = buffer.slice(at + 2);
-        if (hang) continue;
-        if (data) {
-          wire += line + '\r\n';
-          if (line === '.') {
-            data = false;
-            socket.write('250 accepted\r\n');
-          }
-          continue;
-        }
-        if (line.startsWith('EHLO'))
-          socket.write('250-localhost\r\n250 AUTH PLAIN\r\n');
-        else if (line.startsWith('AUTH')) socket.write('235 authenticated\r\n');
-        else if (line.startsWith('DATA')) {
-          data = true;
-          socket.write('354 send data\r\n');
-        } else if (line.startsWith('MAIL') || line.startsWith('RCPT')) {
-          envelope += line;
-          socket.write('250 ok\r\n');
-        } else if (line === 'QUIT') {
-          socket.end('221 bye\r\n');
-        }
-      }
-    });
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const connect = (options) => {
-    assert.equal(options.host, 'smtp.gmail.com');
-    assert.equal(options.port, 465);
-    assert.equal(options.rejectUnauthorized, true);
-    const socket = net.connect(server.address().port, '127.0.0.1');
-    socket.once('connect', () => socket.emit('secureConnect'));
-    return socket;
+test('managed HTTPS sender uses fixed recipient, idempotency and validates provider acceptance', async () => {
+  const item = { id: crypto.randomUUID(), createdAt: Date.now() };
+  const message = buildSuggestionEmail(item, 'ru');
+  let requests = 0;
+  const request = async (url, options) => {
+    requests++;
+    assert.equal(url, 'https://api.resend.com/emails');
+    assert.equal(options.headers['Idempotency-Key'], `suggestion/${item.id}`);
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body.to, [SUPPORT_EMAIL]);
+    assert.equal(body.from, EMAIL_FROM);
+    assert.equal(body.idempotencyKey, undefined);
+    assert.equal(body.disableFileAccess, undefined);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'provider-message-001' }),
+    };
   };
-  try {
-    await sendGmail('a'.repeat(16), buildSuggestionEmail(), null, {
-      connect,
-      timeoutMs: 2000,
-    });
-    assert.ok(envelope.includes(`FROM:<${SUPPORT_EMAIL}>`));
-    assert.ok(envelope.includes(`TO:<${SUPPORT_EMAIL}>`));
-    assert.ok(wire.includes('text/plain'));
-    hang = true;
-    await assert.rejects(
-      sendGmail('a'.repeat(16), buildSuggestionEmail(), null, {
-        connect,
-        timeoutMs: 30,
+  assert.deepEqual(
+    await sendNotificationEmail(message, null, {
+      request,
+      apiKey: 're_synthetic_key',
+    }),
+    { id: 'provider-message-001' },
+  );
+  assert.equal(requests, 1);
+  await assert.rejects(
+    sendNotificationEmail(message, null, {
+      request: async () => ({
+        ok: false,
+        status: 403,
+        json: async () => ({ message: 'synthetic rejection' }),
       }),
+      apiKey: 're_synthetic_key',
+    }),
+    (error) => error.code === 'EAUTH',
+  );
+  await assert.rejects(
+    sendNotificationEmail(message, null, { request, apiKey: '' }),
+    /email_not_configured/,
+  );
+});
+
+test('HTTPS deadline includes response body and external cancellation reaches the provider', async () => {
+  for (const external of [false, true]) {
+    const controller = new AbortController();
+    let aborted = false;
+    const request = async (url, { signal }) => ({
+      ok: true,
+      status: 200,
+      json: () =>
+        new Promise((resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              reject(new Error('cancelled'));
+            },
+            { once: true },
+          );
+        }),
+    });
+    const pending = sendNotificationEmail(
+      buildSuggestionEmail(),
+      controller.signal,
+      { request, apiKey: 're_synthetic_key', timeoutMs: external ? 1000 : 20 },
     );
+    if (external) queueMicrotask(() => controller.abort());
+    await assert.rejects(pending);
+    assert.equal(aborted, true);
+  }
+});
+
+test('queued payload is frozen across restarts, retries and owner language changes', () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'almost-mail-payload-'),
+  );
+  const file = path.join(directory, 'board.sqlite');
+  let store = createSuggestionsStore(file);
+  try {
+    const item = store.create('a', proposal());
+    const now = Date.now() + 10;
+    const job = store.claimEmail(now);
+    const first = store.emailPayload(job, buildSuggestionEmail(item, 'ru'));
+    store.finishEmail(job, 'delivery', now);
+    const due = store.nextEmailAt();
+    store.close();
+    store = createSuggestionsStore(file);
+    const retry = store.claimEmail(due);
+    const second = store.emailPayload(retry, buildSuggestionEmail(item, 'de'));
+    assert.deepEqual(second, first);
+    assert.equal(second.subject, messages.ru.mailSubject);
   } finally {
-    for (const socket of sockets) socket.destroy();
-    await new Promise((resolve) => server.close(resolve));
+    store.close();
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 });

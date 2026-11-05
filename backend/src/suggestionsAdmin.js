@@ -13,7 +13,8 @@ import {
   emailConfigPath,
   readEmailConfig,
   writeEmailConfig,
-  sendGmail,
+  sendNotificationEmail,
+  isEmailConfigured,
   buildSuggestionEmail,
   SUPPORT_EMAIL,
 } from './suggestionEmail.js';
@@ -39,7 +40,7 @@ const assets = path.resolve(
 export const registerSuggestionsAdmin = (
   app,
   loginLimiter,
-  { sendEmail = sendGmail, wakeEmail = kickSuggestionEmail } = {},
+  { sendEmail = sendNotificationEmail, wakeEmail = kickSuggestionEmail } = {},
 ) => {
   let passwordChecks = 0;
   // Render terminates TLS before the legacy server. Do not alter global proxy trust.
@@ -198,7 +199,7 @@ export const registerSuggestionsAdmin = (
       const value = readEmailConfig(emailConfigPath(suggestionsDatabasePath()));
       res.json({
         enabled: value.enabled,
-        configured: !!value.password,
+        configured: isEmailConfigured(),
         recipient: SUPPORT_EMAIL,
         ...getSuggestionsStore().emailStatus(),
       });
@@ -215,7 +216,6 @@ export const registerSuggestionsAdmin = (
       const parsed = z
         .object({
           enabled: z.boolean(),
-          password: z.string().max(64).optional(),
           locale: z.enum(Object.keys(languages)).default('ru'),
         })
         .strict()
@@ -229,20 +229,15 @@ export const registerSuggestionsAdmin = (
       configuringEmail = true;
       try {
         const file = emailConfigPath(suggestionsDatabasePath());
-        const existing = readEmailConfig(file);
-        const password =
-          parsed.data.password?.replace(/\s/g, '') || existing.password;
-        if (!/^[a-z]{16}$/.test(password || ''))
-          return res.status(400).json({ error: 'email_password' });
+        if (parsed.data.enabled && !isEmailConfigured())
+          return res.status(503).json({ error: 'email_not_configured' });
         if (parsed.data.enabled)
           await sendEmail(
-            password,
             buildSuggestionEmail(null, parsed.data.locale),
             controller.signal,
           );
         writeEmailConfig(file, {
           enabled: parsed.data.enabled,
-          password,
           locale: parsed.data.locale,
         });
         wakeEmail();
