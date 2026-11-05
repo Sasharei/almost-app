@@ -1,4 +1,6 @@
 import cors from "cors";
+import { deriveSuggestionsActor } from "./auth/suggestionsIdentity.js";
+import { registerSuggestionsRoutes, closeSuggestionsStore } from "./suggestions.js";
 import express from "express";
 import helmet from "helmet";
 import fs from "node:fs";
@@ -439,6 +441,7 @@ app.post("/v1/auth/session", authSessionRateLimiter, (req, res) => {
     : parsed.data;
   const issued = issueSessionToken({
     ...tokenClaims,
+    suggestionsActor: deriveSuggestionsActor(installId, installSecret),
     installSecretVerified: tokenClaims.appUserId === installId &&
       hasVerifiedInstallSecret(installId, installSecret),
   });
@@ -777,6 +780,8 @@ app.post(
   }
 );
 
+registerSuggestionsRoutes(app, appEndpointRateLimiter, requireAppAuth);
+
 const start = async () => {
   assertSecureStartupConfig();
   await bootstrapStore();
@@ -811,6 +816,7 @@ const start = async () => {
     // eslint-disable-next-line no-console
     console.log(`received ${signal}, flushing store and shutting down`);
     await flushStore();
+    closeSuggestionsStore();
     server.close(() => {
       process.exit(0);
     });
