@@ -1,4 +1,4 @@
-// Run only on the authorized server with its persistent volume mounted. No network admin endpoint.
+// Recovery CLI on the authorized server. Normal moderation uses the owner web panel.
 import { createSuggestionsStore, SUGGESTION_STATUSES } from "../src/store/suggestionsStore.js";
 import { suggestionsDatabasePath } from "../src/suggestions.js";
 const [action, id, status] = process.argv.slice(2);

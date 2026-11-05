@@ -10,7 +10,7 @@ export const suggestionsDatabasePath = () => {
   return `${persistentBase}.suggestions.sqlite`;
 };
 let store;
-const getStore = () => { store ||= createSuggestionsStore(suggestionsDatabasePath()); return store; };
+export const getSuggestionsStore = () => { store ||= createSuggestionsStore(suggestionsDatabasePath()); return store; };
 export const closeSuggestionsStore = () => { store?.close(); store = null; };
 const identity = {
   appUserId: z.string().max(200).nullable().optional(),
@@ -41,7 +41,7 @@ export const registerSuggestionsRoutes = (app, limiter, auth) => {
       res.set("Cache-Control", "no-store");
       const payload = parsed.data;
       try {
-        const service = getStore();
+        const service = getSuggestionsStore();
         const result = action === "list" ? service.list(actor, payload)
           : action === "create" ? { item: service.create(actor, payload) }
           : action === "vote" ? { item: service.vote(actor, payload.id, payload.value) }

@@ -38,6 +38,8 @@ Limits: 5 new ideas per installation/UTC day, 60 vote requests/minute, 20 report
 
 ## Moderation operations
 
+The owner browser panel at `/admin/suggestions/` is documented in [ADMIN_PANEL.md](ADMIN_PANEL.md). The CLI remains for deliberate operator recovery. Owner access activation is separate and requires the owner.
+
 Run the supplied CLI in an authorized server shell, with the same configuration and persistent volume:
 
 ```sh

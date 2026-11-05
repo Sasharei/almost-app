@@ -1,6 +1,7 @@
 import cors from "cors";
 import { deriveSuggestionsActor } from "./auth/suggestionsIdentity.js";
 import { registerSuggestionsRoutes, closeSuggestionsStore } from "./suggestions.js";
+import { registerSuggestionsAdmin } from "./suggestionsAdmin.js";
 import express from "express";
 import helmet from "helmet";
 import fs from "node:fs";
@@ -781,6 +782,7 @@ app.post(
 );
 
 registerSuggestionsRoutes(app, appEndpointRateLimiter, requireAppAuth);
+registerSuggestionsAdmin(app,createRateLimiter({ maxRequests:5,windowMs:60000,buildKey:req=>`suggestions_admin_login:${getClientIp(req)}`,errorCode:"login_rate_limited" }));
 
 const start = async () => {
   assertSecureStartupConfig();

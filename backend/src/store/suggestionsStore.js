@@ -32,6 +32,9 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
   if (!db.prepare("PRAGMA table_info(suggestions)").all().some(column => column.name === "search_text")) {
     db.exec("ALTER TABLE suggestions ADD COLUMN search_text TEXT NOT NULL DEFAULT ''");
   }
+  if (!db.prepare("PRAGMA table_info(suggestions)").all().some(column => column.name === "revision")) db.exec("ALTER TABLE suggestions ADD COLUMN revision INTEGER NOT NULL DEFAULT 0");
+  db.exec("CREATE TABLE IF NOT EXISTS suggestion_moderation_log (id INTEGER PRIMARY KEY, suggestion_id TEXT NOT NULL, previous_status TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS suggestion_admin_sessions (hash TEXT PRIMARY KEY, expires INTEGER NOT NULL)");
   for (const row of db.prepare("SELECT id,title,description FROM suggestions WHERE search_text='' ").all()) {
     db.prepare("UPDATE suggestions SET search_text=? WHERE id=?").run(searchable(`${row.title}\n${row.description}`), row.id);
   }
@@ -58,7 +61,21 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
     status: row.status, createdAt: row.created_at, score: row.score, isOwn: row.author === actor,
     myVote: db.prepare("SELECT value FROM suggestion_votes WHERE suggestion_id=? AND voter=?").get(row.id, actor)?.value || 0,
   });
+  const setStatus = (id,status,revision) => atomic(() => {
+    if (!SUGGESTION_STATUSES.includes(status)) fail("invalid_status",400);
+    const previous=db.prepare("SELECT status,revision FROM suggestions WHERE id=?").get(id);
+    if (!previous) fail("suggestion_not_found",404);
+    if (revision!==undefined && previous.revision!==revision) fail("suggestion_changed",409);
+    db.prepare("UPDATE suggestions SET status=?,revision=revision+1 WHERE id=?").run(status,id);
+    db.prepare("INSERT INTO suggestion_moderation_log(suggestion_id,previous_status,status,created_at) VALUES (?,?,?,?)").run(id,previous.status,status,Date.now());
+  });
   return {
+    adminSession(hash,expires) {
+      if(expires) db.prepare("DELETE FROM suggestion_admin_sessions WHERE expires<=?").run(Date.now());
+      if(expires===0) { db.prepare("DELETE FROM suggestion_admin_sessions WHERE hash=?").run(hash); return false; }
+      if(expires) db.prepare("INSERT INTO suggestion_admin_sessions VALUES (?,?)").run(hash,expires);
+      return !!db.prepare("SELECT 1 FROM suggestion_admin_sessions WHERE hash=? AND expires>?").get(hash,Date.now());
+    },
     list(actor, { query = "", sort = "top", cursor = null, limit = 30 } = {}) {
       consume(actor, "read", 120, 60_000);
       const order = sort === "new" ? "created_at" : "score";
@@ -124,15 +141,36 @@ export const createSuggestionsStore = (databasePath = ":memory:") => {
       return { ok: true };
     },
     withdraw(actor, id) {
-      const row = visible(actor, id);
-      if (row.author !== actor) fail("not_suggestion_owner", 403);
-      db.prepare("UPDATE suggestions SET status='hidden' WHERE id=?").run(id);
-      return { ok: true };
+      return atomic(() => {
+        const row = visible(actor, id);
+        if (row.author !== actor) fail("not_suggestion_owner", 403);
+        db.prepare("UPDATE suggestions SET status='hidden',revision=revision+1 WHERE id=?").run(id);
+        db.prepare("INSERT INTO suggestion_moderation_log(suggestion_id,previous_status,status,created_at) VALUES (?,?,?,?)").run(id,row.status,"hidden",Date.now());
+        return { ok: true };
+      });
     },
-    moderate(id, status) {
-      if (!SUGGESTION_STATUSES.includes(status)) fail("invalid_status", 400);
-      if (!db.prepare("UPDATE suggestions SET status=? WHERE id=?").run(status, id).changes) fail("suggestion_not_found", 404);
+    moderate(id,status) { setStatus(id,status); },
+    adminList({ status = "pending", query = "", offset = 0, reported = false, sort = "oldest" } = {}) {
+      const where = `WHERE (?='all' OR s.status=?) AND instr(s.search_text,?)>0 AND (?=0 OR EXISTS (SELECT 1 FROM suggestion_reports r WHERE r.suggestion_id=s.id))`;
+      const params = [status,status,searchable(query),Number(reported)];
+      const columns = `s.id,s.title,substr(s.description,1,180) AS description,s.language,s.status,s.created_at AS createdAt,s.score,s.revision,(SELECT count(*) FROM suggestion_reports r WHERE r.suggestion_id=s.id) AS reports`;
+      const order = sort === "top" ? "s.score DESC,s.created_at DESC" : sort === "newest" ? "s.created_at DESC" : "s.created_at ASC";
+      const total = db.prepare(`SELECT count(*) AS count FROM suggestions s ${where}`).get(...params).count;
+      offset=Math.min(offset,Math.max(0,Math.floor((total-1)/50)*50));
+      const items = db.prepare(`SELECT ${columns} FROM suggestions s ${where} ORDER BY ${order},s.id LIMIT 50 OFFSET ?`).all(...params,offset);
+      const counts = Object.fromEntries(SUGGESTION_STATUSES.map(value => [value,0]));
+      for (const row of db.prepare("SELECT status,count(*) AS count FROM suggestions GROUP BY status").all()) counts[row.status] = row.count;
+      return { items,total,counts,offset,nextOffset: offset+items.length<total ? offset+items.length : null };
     },
+    adminDetail(id) {
+      const row = db.prepare(`SELECT id,title,description,language,status,created_at AS createdAt,score,revision FROM suggestions WHERE id=?`).get(id);
+      if (!row) fail("suggestion_not_found",404);
+      return { ...row,reports:db.prepare("SELECT count(*) AS count FROM suggestion_reports WHERE suggestion_id=?").get(id).count,
+        up:db.prepare("SELECT count(*) AS count FROM suggestion_votes WHERE suggestion_id=? AND value=1").get(id).count,
+        down:db.prepare("SELECT count(*) AS count FROM suggestion_votes WHERE suggestion_id=? AND value=-1").get(id).count,
+        history:db.prepare("SELECT previous_status AS previousStatus,status,created_at AS createdAt FROM suggestion_moderation_log WHERE suggestion_id=? ORDER BY id DESC LIMIT 20").all(id) };
+    },
+    adminModerate(id,status,revision) { setStatus(id,status,revision); return { ok:true }; },
     review(offset = 0) {
       return db.prepare(`SELECT s.id,s.title,s.description,s.language,s.status,s.created_at,s.score,
         (SELECT count(*) FROM suggestion_reports r WHERE r.suggestion_id=s.id) AS reports

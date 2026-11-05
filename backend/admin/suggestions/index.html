@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Almost</title>
+    <link rel="stylesheet" href="/admin/suggestions/style.css" />
+    <script type="module" src="/admin/suggestions/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="wordmark" href="/admin/suggestions/" aria-label="Almost"
+        >almost<span>.</span></a
+      ><span class="workspace" data-t="workspace"></span>
+      <div class="preferences">
+        <label
+          ><span class="sr-only" data-t="language"></span
+          ><select id="language"></select></label
+        ><label
+          ><span class="sr-only" data-t="theme"></span
+          ><select id="theme"></select></label
+        ><button id="logout" class="quiet" hidden data-t="logout"></button>
+      </div>
+    </header>
+    <main id="login" class="login" hidden>
+      <h1 data-t="signIn"></h1>
+      <p class="muted" data-t="loginIntro"></p>
+      <form id="login-form">
+        <label for="password" data-t="password"></label
+        ><input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          minlength="16"
+          maxlength="256"
+          required
+        /><button class="primary" type="submit" data-t="enter"></button>
+      </form>
+      <p id="login-error" role="alert"></p>
+    </main>
+    <main id="board" class="board" hidden>
+      <aside class="sidebar">
+        <h1 data-t="title"></h1>
+        <p class="muted sidebar-intro" data-t="intro"></p>
+        <nav id="folders" aria-label="Filters"></nav>
+        <label class="reported"
+          ><input id="reported" type="checkbox" /><span data-t="reported"></span
+        ></label>
+        <p class="sidebar-note" data-t="privateNote"></p>
+      </aside>
+      <section class="inbox" aria-label="Ideas">
+        <header class="inbox-header">
+          <div>
+            <h2 id="folder-title" tabindex="-1"></h2>
+            <p id="range" class="muted" aria-live="polite"></p>
+          </div>
+          <button id="refresh" class="icon" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"
+              /></svg
+            ><span class="sr-only" data-t="refresh"></span>
+          </button>
+        </header>
+        <form id="search-form" class="search">
+          <label class="sr-only" for="search" data-t="search"></label
+          ><input id="search" type="search" maxlength="120" /><button
+            type="submit"
+            class="secondary"
+            data-t="search"
+          ></button>
+        </form>
+        <label class="sort"
+          ><span data-t="sort"></span
+          ><select id="sort"></select
+        ></label>
+        <div id="list-error" class="message error" role="alert" hidden></div>
+        <div id="list" class="ideas" aria-busy="false"></div>
+        <footer class="pagination">
+          <button id="previous" class="quiet" data-t="previous"></button
+          ><button id="next" class="quiet" data-t="next"></button>
+        </footer>
+      </section>
+      <section id="detail" class="detail" aria-label="Idea">
+        <div class="detail-empty">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v14H4zM4 6l8 7 8-7" />
+          </svg>
+          <h2 data-t="choose"></h2>
+          <p class="muted" data-t="chooseHelp"></p>
+        </div>
+      </section>
+    </main>
+    <div id="notice" class="notice" role="status" hidden>
+      <span></span><button id="undo" class="quiet" data-t="undo" hidden></button
+      ><button id="dismiss-notice" class="quiet" data-t="close"></button>
+    </div>
+    <div id="startup" class="startup" role="status" data-t="loading"></div>
+  </body>
+</html>
